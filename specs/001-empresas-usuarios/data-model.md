@@ -1,6 +1,8 @@
 # Modelo de datos: Empresas, usuarios y roles
 
 **Spec**: [`spec.md`](spec.md) · **Plan**: [`plan.md`](plan.md) · **ADR**: ADR-003, ADR-004, ADR-005, ADR-008
+**Revisión 2026-09-27**: sesiones 24 h sin uso / 7 días (P-5); auditoría de reactivación (P-3) y
+de reemisión de invitación por pedido de reset (DD-20). Sin cambios de columnas ni índices.
 
 DDL **conceptual**: define tablas, tipos, constraints, índices, políticas y privilegios. No es
 una migración ejecutable: las migraciones goose las escribe quien implementa, respetando esto.
@@ -170,7 +172,7 @@ Constraints de tabla:
 | `password_hash` | `text` | sí | `<= 255` | 🔒 Secreto. PHC argon2id. `NULL` si nunca aceptó la invitación |
 | `role` | `text` | no | `IN ('admin','operator')` | `authz.Role` |
 | `status` | `text` | no | `IN ('invited','active','disabled')` | |
-| `email_verified_at` | `timestamptz` | sí | | |
+| `email_verified_at` | `timestamptz` | sí | | `NULL` = sin verificar; no bloquea nada (P-2) |
 | `status_changed_at` | `timestamptz` | no | default `now()` | |
 | `created_at` | `timestamptz` | no | default `now()` | |
 | `updated_at` | `timestamptz` | no | default `now()` | |
@@ -179,12 +181,14 @@ Constraints de tabla:
 
 - `users_tenant_id_id_key UNIQUE (tenant_id, id)`: destino de las FK compuestas (INV-07).
 - `users_active_complete_chk`: `status <> 'active' OR (name IS NOT NULL AND password_hash IS NOT NULL)`.
+  Consecuencia para la reactivación (P-3): un usuario `disabled` sin contraseña **no puede** pasar
+  a `active`; la base obliga a que vuelva a `invited`.
 
 Índices:
 
 | Índice | Columnas | Por qué |
 |---|---|---|
-| `users_email_key` | `(email)` único | Login y reset por email (fase `crm_auth`); garantiza DD-2 incluso bajo concurrencia |
+| `users_email_key` | `(email)` único | Login y reset por email (fase `crm_auth`); garantiza DD-2 incluso bajo concurrencia; su violación en el registro produce `409 email_already_registered` |
 | `users_tenant_id_id_key` | `(tenant_id, id)` único | FK compuestas; lecturas por id dentro de la empresa |
 | `users_tenant_created_idx` | `(tenant_id, created_at)` | `GET /users` ordenado por alta |
 
@@ -201,15 +205,22 @@ con `users_tenant_created_idx`; no justifica un índice propio.
 | `token_hash` | `bytea` | no | `sessions_token_hash_key UNIQUE`; `octet_length = 32` | 🔒 SHA-256 del token de la cookie |
 | `created_at` | `timestamptz` | no | default `now()` | |
 | `last_seen_at` | `timestamptz` | no | default `now()` | Se actualiza como máximo cada 5 min (DD-10) |
-| `expires_at` | `timestamptz` | no | `expires_at > created_at` | Vencimiento absoluto (30 días) |
+| `expires_at` | `timestamptz` | no | `expires_at > created_at` | Vencimiento absoluto: `created_at + 7 días` (P-5) |
 | `revoked_at` | `timestamptz` | sí | | |
 | `revoked_reason` | `text` | sí | `IN ('logout','password_reset','user_disabled')`; `(revoked_at IS NULL) = (revoked_reason IS NULL)` | |
 | `ip` | `inet` | sí | | 🔒 |
 | `user_agent` | `text` | sí | `<= 512` | 🔒 |
 
 Una sesión es **válida** si `revoked_at IS NULL AND $now < expires_at AND $now < last_seen_at +
-idle_timeout` y el usuario está `active`. `idle_timeout` es configuración (7 días); `$now` lo
-provee `clock.Clock` (DD-18).
+idle_timeout` y el usuario está `active`. `idle_timeout` es configuración (`SESSION_IDLE`,
+default **24 h**); el absoluto (`SESSION_ABSOLUTE`, default **7 días**) se fija en `expires_at` al
+crear la sesión. `$now` lo provee `clock.Clock` (DD-18).
+
+No hace falta una columna ni un índice para la expiración por inactividad: se evalúa sobre la
+fila ya encontrada por `token_hash`. Con vida máxima de 7 días, una sesión inactiva queda en la
+tabla como mucho 7 días + 30 días de retención antes de la limpieza (el índice `sessions_expires_idx`
+alcanza). Cambiar `SESSION_ABSOLUTE` solo afecta a sesiones nuevas; cambiar `SESSION_IDLE` afecta
+a todas en el siguiente request.
 
 Índices:
 
@@ -228,7 +239,7 @@ provee `clock.Clock` (DD-18).
 | `user_id` | `uuid` | no | FK `(tenant_id, user_id)` → `users(tenant_id, id)` | Destinatario |
 | `purpose` | `text` | no | `IN ('email_verification','password_reset','invitation')` | |
 | `token_hash` | `bytea` | no | `user_tokens_token_hash_key UNIQUE`; `octet_length = 32` | 🔒 SHA-256 |
-| `created_by_user_id` | `uuid` | sí | FK `(tenant_id, created_by_user_id)` → `users(tenant_id, id)` | Administrador que invitó |
+| `created_by_user_id` | `uuid` | sí | FK `(tenant_id, created_by_user_id)` → `users(tenant_id, id)` | Administrador que invitó o reactivó; `NULL` si la reemisión la disparó un pedido de reset (DD-20) |
 | `created_at` | `timestamptz` | no | default `now()` | |
 | `expires_at` | `timestamptz` | no | `expires_at > created_at` | Verificación 48 h, reset 1 h, invitación 7 días |
 | `used_at` | `timestamptz` | sí | | |
@@ -255,7 +266,7 @@ concurrentes del mismo token no pueden ganar ambas.
 | `id` | `uuid` | no | PK, default `uuidv7()` | |
 | `tenant_id` | `uuid` | no | FK → `tenants(id)` | |
 | `kind` | `text` | no | `IN ('email')` | |
-| `template` | `text` | no | `IN ('email_verification','password_reset','invitation')` | Se amplía por migración |
+| `template` | `text` | no | `IN ('email_verification','password_reset','invitation')` | Se amplía por migración. La reemisión por reset (DD-20) y la reactivación sin contraseña usan `invitation` |
 | `recipient` | `text` | no | `<= 254` | 🔒 |
 | `payload` | `jsonb` | sí | ver `outbox_scrub_chk` | 🔒 Parámetros de la plantilla, **incluido el token en claro** |
 | `status` | `text` | no | `IN ('pending','sent','failed')`, default `'pending'` | |
@@ -303,7 +314,8 @@ nunca se borran, así que la FK del actor no bloquea nada.
 Índice: `audit_log_tenant_time_idx (tenant_id, occurred_at DESC)` para la futura consulta por
 empresa.
 
-Catálogo de acciones de 001 (FR-008 exige las marcadas con ✱):
+Catálogo de acciones de 001. ✱ = obligatoria por FR-008 (inicios de sesión, invitaciones, cambios
+de rol); ✚ = obligatoria por decisión del usuario (P-3: la reactivación se audita).
 
 | `action` | Actor | Target | `data` |
 |---|---|---|---|
@@ -315,15 +327,19 @@ Catálogo de acciones de 001 (FR-008 exige las marcadas con ✱):
 | `auth.login_locked` | `NULL` | user | `{}` |
 | `auth.login_rejected_disabled` | `NULL` | user | `{}` |
 | `auth.logout` | usuario | session | `{}` |
-| `auth.password_reset_requested` | `NULL` | user | `{}` |
+| `auth.password_reset_requested` | `NULL` | user | `{}` (solo usuarios `active`) |
 | `auth.password_reset_completed` | usuario | user | `{sessions_revoked}` |
 | `auth.email_verified` | usuario | user | `{}` |
 | `user.invited` ✱ | admin | user | `{role}` |
-| `user.invitation_reissued` ✱ | admin | user | `{role}` |
+| `user.invitation_reissued` ✱ | admin, o `NULL` si lo disparó un pedido de reset (DD-20) | user | `{role, trigger: "admin" \| "password_reset_request" \| "reactivation"}` |
 | `user.invitation_accepted` ✱ | usuario | user | `{}` |
 | `user.role_changed` ✱ | admin | user | `{from, to}` |
 | `user.deactivated` | admin | user | `{sessions_revoked}` |
-| `user.reactivated` | admin | user | `{to_status}` |
+| `user.reactivated` ✚ | admin | user | `{to_status: "active" \| "invited"}` |
+
+El registro con email existente (`409 email_already_registered`) **no** se audita: no hay empresa
+a la cual asociarlo sin revelar cuál es. Queda en logs como `security_event=signup_email_exists`
+(DD-19).
 
 ### 2.7 `app.login_throttles` — Contador de intentos (sin empresa)
 
@@ -335,8 +351,9 @@ Catálogo de acciones de 001 (FR-008 exige las marcadas con ✱):
 | `last_failed_at` | `timestamptz` | no | | |
 | `locked_until` | `timestamptz` | sí | | Bloqueo vigente si `> $now` |
 
-Sin `tenant_id` a propósito (Constitution Check, principio III). Si se rota `AUTH_HMAC_KEY`, los
-contadores vigentes se pierden (efecto: se levantan los bloqueos en curso); aceptable.
+Sin `tenant_id` a propósito (Constitution Check, principio III). Se mantiene tras P-4 (DD-19): el
+login sigue sin revelar si un email existe. Si se rota `AUTH_HMAC_KEY`, los contadores vigentes se
+pierden (efecto: se levantan los bloqueos en curso); aceptable.
 
 ---
 
@@ -466,7 +483,7 @@ filtra hasta el JSON.
 
 | Dato | Dónde | Clasificación | Tratamiento |
 |---|---|---|---|
-| Email de usuario | `users.email`, `outbox_messages.recipient` | Personal | Nunca en logs (se loguea `user_id` o `email_hmac`) |
+| Email de usuario | `users.email`, `outbox_messages.recipient` | Personal | Nunca en logs (se loguea `user_id` o `email_hmac`). El registro confirma su existencia (DD-19) pero nunca lo asocia a una empresa |
 | Nombre de usuario | `users.name` | Personal | — |
 | Hash de contraseña | `users.password_hash` | Secreto | Nunca sale del módulo `identity`; nunca en respuestas ni logs |
 | Hash de tokens | `sessions.token_hash`, `user_tokens.token_hash` | Secreto derivado | Solo comparación |

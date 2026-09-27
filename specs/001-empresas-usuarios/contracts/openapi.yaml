@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CRM - API 001 Empresas, usuarios y roles
-  version: 0.1.0
+  version: 0.2.0
   summary: Registro de empresas, autenticación, sesiones, invitaciones, usuarios y datos de la empresa.
   description: |
     Contrato **canónico** de la spec 001 (`specs/001-empresas-usuarios/spec.md`).
@@ -11,13 +11,18 @@ info:
     Convenciones:
     - Base: `/api/v1`. JSON en `snake_case`. Fechas ISO 8601 en UTC.
     - Autenticación: cookie de sesión `__Host-crm_session` (HttpOnly, Secure, SameSite=Lax).
-      El cliente no la lee ni la manipula: el navegador la envía sola.
+      El cliente no la lee ni la manipula: el navegador la envía sola. La sesión vence tras
+      24 h sin uso o 7 días desde el inicio, lo primero que ocurra (DD-10).
     - Todo endpoint con body JSON exige `Content-Type: application/json` (si no, 415).
-    - Errores: RFC 9457 `application/problem+json` con el campo `code` estable (ADR-009).
-      El frontend decide el texto a mostrar a partir de `code`.
+    - Errores: RFC 9457 `application/problem+json` con el campo `code` estable (ADR-009) y,
+      cuando corresponde, `suggested_action`. El frontend decide el texto a mostrar a partir de
+      `code`.
     - Un recurso de otra empresa responde 404, nunca 403 (INV-12).
-    - Los componentes `Problem`, `ValidationProblem`, `ErrorCode`, `Role` y `Permission` son la
-      fuente para las specs siguientes, que los referencian con `$ref` (DD-17).
+    - Los componentes `Problem`, `ValidationProblem`, `ErrorCode`, `SuggestedAction`, `Role` y
+      `Permission` son la fuente para las specs siguientes, que los referencian con `$ref` (DD-17).
+
+    Historial: 0.2.0 incorpora las respuestas P-2 a P-5 (`email_already_registered`,
+    `suggested_action`, reactivación confirmada, reset para invitados, duración de sesión).
 servers:
   - url: /api/v1
 tags:
@@ -68,7 +73,13 @@ paths:
       description: |
         Crea la empresa, su rol de base de datos, el usuario Administrador, aplica la plantilla,
         encola el email de verificación e inicia sesión, todo en una transacción (INV-14).
-        Si el email ya existe responde 409 sin revelar datos de la cuenta existente.
+
+        Si ya existe un usuario con ese email (en cualquier empresa y en cualquier estado)
+        responde 409 `email_already_registered` con `suggested_action: password_reset`. La
+        respuesta confirma que el email existe (enumeración aceptada, DD-19) pero **no** incluye
+        empresa, nombre, estado ni ningún otro dato de la cuenta (INV-20).
+
+        Rate limit: 5 intentos por hora por IP, contando éxitos y rechazos (DD-9).
       security: []
       requestBody:
         required: true
@@ -89,11 +100,16 @@ paths:
         '400':
           $ref: '#/components/responses/MalformedRequest'
         '409':
-          description: El email ya está registrado (`code` = `email_taken`)
+          description: |
+            Ya existe un usuario con ese email (`code` = `email_already_registered`).
+            `title`: "Ya existe un usuario con ese email".
+            `detail`: "Ya existe un usuario con ese email. ¿Querés recuperar la contraseña?".
+            La UI usa `suggested_action` para ofrecer el flujo de `POST /auth/password-reset`
+            con el email que el visitante ya escribió.
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/Problem'
+                $ref: '#/components/schemas/EmailAlreadyRegisteredProblem'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
@@ -109,8 +125,9 @@ paths:
       operationId: login
       summary: Iniciar sesión (Historia 2, FR-003)
       description: |
-        Mismo status y cuerpo exista o no el email (INV-13). Tras 5 fallos seguidos el siguiente
-        intento responde 429 `login_locked` durante 15 minutos, exista o no la cuenta.
+        Mismo status y cuerpo exista o no el email (INV-13; se mantiene aunque el registro
+        confirme la existencia de un email, DD-19). Tras 5 fallos seguidos el siguiente intento
+        responde 429 `login_locked` durante 15 minutos, exista o no la cuenta.
         Un usuario desactivado con contraseña correcta recibe 403 `account_disabled` (DD-8).
       security: []
       requestBody:
@@ -183,8 +200,11 @@ paths:
       operationId: requestPasswordReset
       summary: Pedir enlace para restablecer la contraseña (Historia 2.3, FR-004)
       description: |
-        Siempre 202 con cuerpo vacío, exista o no el email (INV-13). Si el usuario existe y está
-        activo, se envía un enlace de un solo uso válido por 1 hora.
+        Siempre 202 con cuerpo vacío, exista o no el email y cualquiera sea su estado (INV-13).
+        - Usuario activo: se envía un enlace de un solo uso válido por 1 hora.
+        - Usuario invitado (nunca aceptó): se reemite su invitación por 7 días y se le envía el
+          email de invitación (DD-20).
+        - Usuario desactivado o email inexistente: no se envía nada.
       security: []
       requestBody:
         required: true
@@ -240,6 +260,7 @@ paths:
       tags: [auth]
       operationId: confirmEmailVerification
       summary: Verificar el email con el token recibido (Historia 1.3)
+      description: La verificación no bloquea ninguna funcionalidad (P-2); solo quita el aviso de la UI.
       security: []
       requestBody:
         required: true
@@ -249,7 +270,7 @@ paths:
               $ref: '#/components/schemas/TokenRequest'
       responses:
         '204':
-          description: Email verificado (idempotente si ya estaba verificado con ese token)
+          description: Email verificado
         '400':
           $ref: '#/components/responses/TokenInvalidOrMalformed'
         '415':
@@ -348,6 +369,7 @@ paths:
       description: |
         `permissions` es la lista de FR-007 que corresponde al rol. El frontend la usa solo para
         mostrar u ocultar opciones (UX); la autorización real la hace el servidor en cada endpoint.
+        `user.email_verified` = false indica a la UI que muestre el aviso de verificación (P-2).
       security:
         - sessionCookie: []
       responses:
@@ -547,7 +569,8 @@ paths:
         Requiere `settings.manage`. Crea el usuario en estado `invited` y envía una invitación
         válida por 7 días (201). Si el email ya está `invited` en esta misma empresa, revoca la
         invitación anterior y envía una nueva (200, DD-5). Si el email ya pertenece a un usuario
-        activo o desactivado de cualquier empresa, responde 409 `email_taken`.
+        activo o desactivado de cualquier empresa, responde 409 `email_taken` (sin
+        `suggested_action`: el Administrador no puede recuperar la cuenta de otra persona, DD-21).
       security:
         - sessionCookie: []
       requestBody:
@@ -598,7 +621,7 @@ paths:
       description: |
         Requiere `settings.manage`. Rechaza bajar a Operador al último Administrador activo
         (409 `last_admin`, Historia 3.4). Asignar el mismo rol que ya tiene es un no-op (200).
-        No cierra sesiones: el rol se lee en cada request.
+        No cierra sesiones: el rol se lee en cada request. Auditado (`user.role_changed`).
       security:
         - sessionCookie: []
       requestBody:
@@ -641,7 +664,8 @@ paths:
       description: |
         Requiere `settings.manage`. Revoca todas las sesiones y tokens pendientes del usuario en
         la misma transacción. Rechaza desactivar al último Administrador activo (409 `last_admin`).
-        Desactivar un usuario ya desactivado responde 409 `invalid_state`.
+        Desactivar un usuario ya desactivado responde 409 `invalid_state`. Auditado
+        (`user.deactivated`).
       security:
         - sessionCookie: []
       responses:
@@ -668,16 +692,18 @@ paths:
     post:
       tags: [users]
       operationId: reactivateUser
-      summary: Reactivar un usuario desactivado (pendiente de confirmación, pregunta P-3)
+      summary: Reactivar un usuario desactivado (FR-005, decisión P-3)
       description: |
-        Requiere `settings.manage`. Si el usuario tenía contraseña vuelve a `active`; si nunca
-        aceptó su invitación vuelve a `invited` con una invitación nueva de 7 días.
+        Solo Administrador (`settings.manage`). Si el usuario tenía contraseña vuelve a `active`
+        (debe iniciar sesión de nuevo: las sesiones revocadas no se reabren); si nunca aceptó su
+        invitación vuelve a `invited` con una invitación nueva de 7 días.
         Reactivar un usuario que no está `disabled` responde 409 `invalid_state`.
+        Auditado en la misma transacción (`user.reactivated`, con `data.to_status`).
       security:
         - sessionCookie: []
       responses:
         '200':
-          description: Usuario reactivado
+          description: Usuario reactivado (`status` = `active` o `invited`)
           content:
             application/json:
               schema:
@@ -737,7 +763,9 @@ components:
       type: apiKey
       in: cookie
       name: __Host-crm_session
-      description: Token opaco de sesión. HttpOnly, Secure, SameSite=Lax, Path=/ (ADR-006).
+      description: |
+        Token opaco de sesión. HttpOnly, Secure, SameSite=Lax, Path=/ (ADR-006).
+        Vence tras 24 h sin uso o 7 días desde el inicio de sesión.
 
   parameters:
     UserId:
@@ -750,7 +778,7 @@ components:
 
   headers:
     SetSessionCookie:
-      description: '`__Host-crm_session=<token>; Path=/; Max-Age=<segundos>; HttpOnly; Secure; SameSite=Lax`'
+      description: '`__Host-crm_session=<token>; Path=/; Max-Age=604800; HttpOnly; Secure; SameSite=Lax` (7 días; además vence tras 24 h sin uso)'
       schema:
         type: string
     ClearSessionCookie:
@@ -855,6 +883,7 @@ components:
         - account_disabled
         - forbidden
         - not_found
+        - email_already_registered
         - email_taken
         - last_admin
         - invalid_state
@@ -863,6 +892,15 @@ components:
         - rate_limited
         - service_unavailable
         - internal
+
+    SuggestedAction:
+      type: string
+      description: |
+        Acción que la UI puede ofrecer para salir del error. Estable; se amplía con cada spec.
+        - password_reset: ofrecer "¿Querés recuperar la contraseña?" y llamar a
+          `POST /auth/password-reset` con el email ya ingresado.
+      enum:
+        - password_reset
 
     Problem:
       type: object
@@ -888,6 +926,24 @@ components:
           description: Request id para correlacionar con los logs
         code:
           $ref: '#/components/schemas/ErrorCode'
+        suggested_action:
+          $ref: '#/components/schemas/SuggestedAction'
+
+    EmailAlreadyRegisteredProblem:
+      description: |
+        409 del registro cuando ya existe un usuario con ese email (DD-19, DD-21, INV-20).
+        No contiene ningún dato de la cuenta existente.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          required: [code, suggested_action, detail]
+          properties:
+            code:
+              const: email_already_registered
+            status:
+              const: 409
+            suggested_action:
+              const: password_reset
 
     ValidationProblem:
       allOf:
@@ -1134,6 +1190,7 @@ components:
           $ref: '#/components/schemas/UserStatus'
         email_verified:
           type: boolean
+          description: Si es false, la UI muestra un aviso para verificar; no bloquea nada (P-2)
 
     TenantSummary:
       type: object

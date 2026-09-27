@@ -2,6 +2,8 @@
 
 **Spec**: [`spec.md`](spec.md) · **Plan**: [`plan.md`](plan.md) · **Modelo**: [`data-model.md`](data-model.md)
 · **Contrato**: [`contracts/openapi.yaml`](contracts/openapi.yaml)
+**Revisión 2026-09-27**: incorporadas P-2 a P-5 (tareas afectadas: T-B002, T-B201, T-B303, T-B305,
+T-B307, T-B402, T-B501, T-B506, T-B604, T-B606, T-B903).
 
 ---
 
@@ -14,7 +16,7 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
 - `[T]` = tarea de test. Va **antes** de la tarea de código que la hace pasar, y el test debe
   fallar por la razón correcta antes de implementar (Red).
 - Cada tarea lleva trazabilidad: historia (`US-n` = Historia n de la spec), `FR-`, `SC-`, `INV-`
-  (plan §5), `DD-` (plan §6), `ADR-`.
+  (plan §5), `DD-` (plan §6), `ADR-`, `P-` (respuestas del usuario, plan §14.2).
 - Tests: paquete `testing` nativo, *table-driven*, sin testify (ADR-012). Unitarios junto al
   código (`*_test.go`). Integración con build tag `integration` (`//go:build integration`) y
   PostgreSQL 18 real vía `internal/testsupport/pgtest`.
@@ -60,12 +62,12 @@ sqlc y hay un harness que levanta PostgreSQL 18 real con los roles del proyecto.
 - `cmd/crm` con subcomandos `serve`, `migrate {up|down|status}`, `tenants reprovision-roles`
   (este último vacío hasta la Fase 9), usando `flag` de la librería estándar.
 
-**T-B002 [T] — Configuración** · ADR-001, plan §10.5
+**T-B002 [T] — Configuración** · ADR-001, plan §10.5, DD-10, P-5
 - **Red**:
 
   | Entrada (env) | Resultado esperado |
   |---|---|
-  | Todas las variables obligatorias válidas | `Config` poblado; defaults: `HTTP_ADDR=:8080`, `METRICS_ADDR=127.0.0.1:9090`, `SESSION_IDLE=168h`, `SESSION_ABSOLUTE=720h` |
+  | Todas las variables obligatorias válidas | `Config` poblado; defaults: `HTTP_ADDR=:8080`, `METRICS_ADDR=127.0.0.1:9090`, `SESSION_IDLE=24h`, `SESSION_ABSOLUTE=168h` |
   | Falta `DATABASE_URL` | error que nombra la variable |
   | `AUTH_HMAC_KEY` de menos de 32 bytes (decodificada) | error |
   | `APP_BASE_URL` sin esquema `https://` y `COOKIE_SECURE` ≠ `false` | error |
@@ -308,6 +310,8 @@ un `POST` de origen cruzado es rechazado; la matriz de permisos coincide con FR-
   | Caso | Esperado |
   |---|---|
   | `WriteProblem(w, r, code)` para cada `code` de §9.1 | status correcto, `Content-Type: application/problem+json`, `type=/problems/{code}`, `instance`=request id, `title` en español |
+  | `WriteProblem` con la opción `SuggestedPasswordReset` | el cuerpo incluye `"suggested_action": "password_reset"`; sin la opción, el campo no aparece |
+  | `WriteProblem(email_already_registered, SuggestedPasswordReset)` | `409`, `title` "Ya existe un usuario con ese email", `detail` "Ya existe un usuario con ese email. ¿Querés recuperar la contraseña?"; valida contra `EmailAlreadyRegisteredProblem` del contrato |
   | `ValidationError` con dos campos | `422`, `errors` con `{field, code}` en orden estable |
   | `DecodeJSON` con JSON válido | struct poblado |
   | Campo desconocido | `400 malformed_request` (`DisallowUnknownFields`) |
@@ -318,7 +322,7 @@ un `POST` de origen cruzado es rechazado; la matriz de permisos coincide con FR-
 - **Green**: pasa la tabla; las respuestas validan contra `Problem`/`ValidationProblem` del
   contrato.
 
-**T-B202 — Implementar `platform/httpx` (problem+json, DecodeJSON, mapeo por defecto de errores)**.
+**T-B202 — Implementar `platform/httpx` (problem+json con `suggested_action` opcional, DecodeJSON, mapeo por defecto de errores)**.
 
 **T-B203 [T] — Middlewares de seguridad y observabilidad** · ADR-006, plan §10.2–10.3, DD-12
 - **Red** (unitario, `httptest`):
@@ -440,7 +444,8 @@ CrossOriginProtection → rate limit por ruta → autenticación por grupo).
 - **Green**: pasa la tabla.
 
 **T-B218 — Implementar `platform/ratelimit` y el middleware por ruta** (`429 rate_limited` +
-`Retry-After`).
+`Retry-After`). El middleware consume el cupo **antes** de ejecutar el handler, así cuentan tanto
+los éxitos como los rechazos (DD-9).
 
 **Checkpoint Fase 2**: `make check` en verde.
 
@@ -452,7 +457,9 @@ CrossOriginProtection → rate limit por ruta → autenticación por grupo).
 verificación llega a Mailpit.
 
 **Prueba independiente**: `POST /api/v1/auth/signup` → `201` + cookie → `GET /api/v1/me` con esa
-cookie → `200` con rol `admin` y los 15 permisos; en Mailpit hay un email de verificación.
+cookie → `200` con rol `admin`, los 15 permisos y `email_verified: false`; en Mailpit hay un email
+de verificación. Repetir el registro con el mismo email → `409 email_already_registered` con
+`suggested_action: password_reset`.
 
 **T-B301 [T] — Catálogo de plantillas y `GET /industry-templates`** · FR-002, DD-3
 - **Red**:
@@ -472,9 +479,9 @@ cookie → `200` con rol `admin` y los 15 permisos; en Mailpit hay un email de v
 
   | Caso | Esperado |
   |---|---|
-  | Datos válidos | Una empresa con `base_currency`, `timezone` (del request o default), `industry_template_code/version`; rol `crm_t_<hex>` creado; un usuario `admin`/`active` con email normalizado y hash argon2id; un token `email_verification` (48 h); un mensaje `email_verification` pendiente; una sesión; auditoría `tenant.registered` |
+  | Datos válidos | Una empresa con `base_currency`, `timezone` (del request o default), `industry_template_code/version`; rol `crm_t_<hex>` creado; un usuario `admin`/`active` con email normalizado, hash argon2id y `email_verified_at` nulo; un token `email_verification` (48 h); un mensaje `email_verification` pendiente; una sesión; auditoría `tenant.registered` |
   | Email con mayúsculas y espacios | se guarda en minúsculas y sin espacios |
-  | Email ya existente (en cualquier empresa) | `identity.ErrEmailTaken`; **no** queda empresa, usuario, token, mensaje, sesión ni **rol** nuevos |
+  | Email ya existente en otra empresa, con el usuario en cada estado (`invited`, `active`, `disabled`) | `identity.ErrEmailTaken` en los tres casos; **no** queda empresa, usuario, token, mensaje, sesión ni **rol** nuevos |
   | Dos registros concurrentes con el mismo email | exactamente uno tiene éxito; el otro `ErrEmailTaken` |
   | Plantilla inexistente | error de validación `unknown_template`; nada creado |
   | `Seeder` falso que falla | error; nada creado (incluido el rol) |
@@ -488,21 +495,26 @@ cookie → `200` con rol `admin` y los 15 permisos; en Mailpit hay un email de v
 **T-B304 — Implementar `tenant.Service.Register` y en `identity`: `CreateFirstAdmin`,
 `CreateSession`, `IssueEmailVerification`**.
 
-**T-B305 [T] — `POST /auth/signup`** · US-1, SC-001
+**T-B305 [T] — `POST /auth/signup`** · US-1, SC-001, P-4, P-5, DD-9, DD-19, DD-21, INV-20
 - **Red** (integración HTTP, contrato validado en cada respuesta):
 
   | Caso | Esperado |
   |---|---|
-  | Payload válido | `201` `SessionInfo`; `Set-Cookie: __Host-crm_session=…; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000` |
-  | Email existente | `409 email_taken`; el cuerpo no contiene el nombre de la otra empresa ni datos del usuario existente |
+  | Payload válido | `201` `SessionInfo`; `Set-Cookie: __Host-crm_session=…; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=604800` |
+  | Email existente | `409`, `code: email_already_registered`, `suggested_action: password_reset`, `title` "Ya existe un usuario con ese email", `detail` "Ya existe un usuario con ese email. ¿Querés recuperar la contraseña?"; valida contra `EmailAlreadyRegisteredProblem` |
+  | Email existente de un usuario `invited`, `active` y `disabled` (tres cuentas distintas) | los tres cuerpos son **idénticos byte a byte** salvo `instance` (INV-20) |
+  | Cuerpo del `409` | no contiene el nombre ni el id de la otra empresa, ni el nombre, id, rol o estado del usuario existente (búsqueda de esos valores en el cuerpo crudo) |
+  | `409` | log con `security_event=signup_email_exists` e `ip`, sin el email en claro; `signup_email_exists_total` +1 |
   | Campo faltante / campo extra | `422` con `errors[].field` / `400 malformed_request` |
   | Sin `Content-Type` JSON | `415` |
   | 6.º registro en una hora desde la misma IP | `429 rate_limited` con `Retry-After` |
+  | 5 registros rechazados con `409` desde la misma IP y un 6.º con email nuevo | el 6.º recibe `429` (los rechazos consumen cupo, DD-9) |
 - **Green**: pasa la tabla.
 
-**T-B306 — Implementar el handler de signup**.
+**T-B306 — Implementar el handler de signup** (mapeo `identity.ErrEmailTaken` →
+`409 email_already_registered` + `SuggestedPasswordReset`, DD-21).
 
-**T-B307 [T] — Resolución de sesión (`identity.Authenticate`)** · ADR-006, INV-11, DD-10
+**T-B307 [T] — Resolución de sesión (`identity.Authenticate`)** · ADR-006, INV-09, INV-11, DD-10, P-5
 - **Red** (integración, `Clock` falso):
 
   | Caso | Esperado |
@@ -511,10 +523,12 @@ cookie → `200` con rol `admin` y los 15 permisos; en Mailpit hay un email de v
   | Sin cookie en ruta protegida | `401 unauthenticated` |
   | Token desconocido | `401` + cookie borrada |
   | Sesión revocada | `401` |
-  | Pasados 30 días desde el login (aun con uso diario) | `401` |
-  | 7 días sin uso | `401` |
+  | Uso cada 12 h durante 7 días (nunca 24 h sin uso) | sigue válida hasta los 7 días; a los **7 días + 1 s** desde el login → `401` |
+  | **24 h + 1 s** sin uso | `401` |
+  | 23 h 59 min sin uso y luego un request | válida; `last_seen_at` actualizado |
   | Uso dentro de los 5 min de `last_seen_at` | no escribe en la base |
   | Uso pasados 5 min | actualiza `last_seen_at` |
+  | `expires_at` de una sesión nueva | `created_at + 7 días` |
   | Usuario `disabled` con sesión no revocada (fixture) | `401` (doble verificación) |
   | Rol cambiado en la base | el siguiente request trae el rol nuevo |
   | La base guarda solo el hash del token | `SELECT` como dueño: ningún valor de `token_hash` coincide con el raw |
@@ -522,9 +536,9 @@ cookie → `200` con rol `admin` y los 15 permisos; en Mailpit hay un email de v
 
 **T-B308 — Implementar `Authenticate` y `ResolveSession`**.
 
-**T-B309 [T] — `GET /me`** · US-1, FR-007
-- **Red**: admin → `200` con 15 permisos; operador → 6 permisos; sin cookie → `401`. Validado
-  contra el contrato.
+**T-B309 [T] — `GET /me`** · US-1, FR-007, P-2
+- **Red**: admin → `200` con 15 permisos; operador → 6 permisos; `user.email_verified` refleja
+  `email_verified_at`; sin cookie → `401`. Validado contra el contrato.
 
 **T-B310 — Implementar `/me` y el cableado en `internal/app`** (grupos de rutas públicas y
 autenticadas, worker arrancado por `serve`).
@@ -553,12 +567,13 @@ autenticadas, worker arrancado por `serve`).
   | 3 fallos | éxito | estado borrado |
 - **Green**: pasa la tabla.
 
-**T-B402 [T] — Servicio de login** · US-2.1, US-2.2, FR-003, FR-008, INV-09, INV-13, DD-8
-- **Red** (integración):
+**T-B402 [T] — Servicio de login** · US-2.1, US-2.2, FR-003, FR-008, INV-09, INV-13, DD-8, DD-19
+- **Red** (integración). El login **sigue siendo no enumerable** aunque el registro confirme la
+  existencia de un email (DD-19):
 
   | Caso | Esperado |
   |---|---|
-  | Email y contraseña correctos, usuario activo | sesión creada; auditoría `auth.login_succeeded`; `login_throttles` sin fila para ese email |
+  | Email y contraseña correctos, usuario activo | sesión creada (`expires_at = now + 7 días`); auditoría `auth.login_succeeded`; `login_throttles` sin fila para ese email |
   | Contraseña incorrecta | `ErrInvalidCredentials`; auditoría `auth.login_failed`; contador +1 |
   | Email inexistente | `ErrInvalidCredentials` (mismo error); contador +1 para ese HMAC; se llamó a `VerifyDummy` |
   | 5 fallos seguidos con email **existente** y luego contraseña correcta | el 6.º devuelve `*LockedError` con `RetryAfter ≈ 15 min`; auditoría `auth.login_locked` al quinto |
@@ -573,12 +588,12 @@ autenticadas, worker arrancado por `serve`).
 
 **T-B403 — Implementar `Login` y `Logout`**.
 
-**T-B404 [T] — `POST /auth/login` y `POST /auth/logout`** · US-2
+**T-B404 [T] — `POST /auth/login` y `POST /auth/logout`** · US-2, INV-13
 - **Red** (HTTP + contrato):
 
   | Caso | Esperado |
   |---|---|
-  | Login correcto | `200` `SessionInfo` + cookie |
+  | Login correcto | `200` `SessionInfo` + cookie con `Max-Age=604800` |
   | Incorrecto / inexistente | `401 invalid_credentials`, **cuerpos idénticos byte a byte** salvo `instance` |
   | Bloqueado | `429 login_locked` + `Retry-After` en segundos |
   | Desactivado con contraseña correcta | `403 account_disabled` |
@@ -595,19 +610,23 @@ autenticadas, worker arrancado por `serve`).
 
 ### Fase 5 — Historia 2: Recuperar contraseña y verificar email (P1)
 
-**Objetivo**: reset por email con enlace de un solo uso de 1 h; verificación de email.
+**Objetivo**: reset por email con enlace de un solo uso de 1 h (o reemisión de invitación para
+invitados); verificación de email que no bloquea nada (P-2).
 
 **Prueba independiente**: pedir reset → enlace en Mailpit → nueva contraseña → las sesiones
-anteriores dan `401` y la nueva contraseña entra.
+anteriores dan `401` y la nueva contraseña entra. Para un invitado, pedir reset → llega un email
+de invitación nuevo.
 
-**T-B501 [T] — Pedido de reset** · US-2.3, FR-004, INV-13, S-9
+**T-B501 [T] — Pedido de reset** · US-2.3, FR-004, INV-13, DD-19, DD-20, S-9
 - **Red** (integración):
 
   | Caso | Esperado |
   |---|---|
-  | Usuario activo | token `password_reset` (vence en 1 h) + mensaje pendiente con enlace; auditoría `auth.password_reset_requested` |
-  | Segundo pedido | el token anterior queda revocado; hay uno solo vigente |
-  | Email inexistente, usuario `invited` o `disabled` | no se crea nada; **mismo** resultado (`nil`) |
+  | Usuario activo | token `password_reset` (vence en 1 h) + mensaje `password_reset` pendiente con enlace; auditoría `auth.password_reset_requested` |
+  | Segundo pedido de un activo | el token anterior queda revocado; hay uno solo vigente |
+  | Usuario `invited` | invitación reemitida: token `invitation` anterior revocado, uno nuevo de 7 días con `created_by_user_id` nulo, mensaje `invitation` pendiente; auditoría `user.invitation_reissued` con actor `NULL` y `trigger: password_reset_request`; **no** se crea token de reset (DD-20) |
+  | Usuario `disabled` o email inexistente | no se crea nada |
+  | En todos los casos anteriores | el servicio devuelve `nil` (mismo resultado, INV-13) |
   | 4.º pedido en una hora para el mismo email | se ignora (rate limit por email) sin cambiar la respuesta |
 - **Green**: pasa la tabla.
 
@@ -626,20 +645,23 @@ anteriores dan `401` y la nueva contraseña entra.
   | Dos confirmaciones concurrentes del mismo token | exactamente una tiene éxito |
 - **Green**: pasa la tabla.
 
-**T-B503 — Implementar `RequestPasswordReset` y `ConfirmPasswordReset`**.
+**T-B503 — Implementar `RequestPasswordReset` (con DD-20) y `ConfirmPasswordReset`**. La
+reemisión reutiliza la misma función interna que la reinvitación del Administrador (DD-5).
 
-**T-B504 [T] — Verificación de email** · US-1.3, DD-13
+**T-B504 [T] — Verificación de email** · US-1.3, DD-13, P-2
 - **Red**: confirmar con token válido → `email_verified_at` puesto y auditoría; repetir con el
   mismo token → `ErrTokenInvalid`; token vencido (48 h) → `ErrTokenInvalid`; `resend` con email
-  ya verificado → no crea nada; `resend` sin verificar → revoca el anterior y crea uno nuevo.
+  ya verificado → no crea nada; `resend` sin verificar → revoca el anterior y crea uno nuevo. Un
+  usuario sin verificar puede usar todos los endpoints de 001 que su rol permite (P-2: no bloquea
+  nada).
 
 **T-B505 — Implementar verificación y reenvío**.
 
-**T-B506 [T] — Endpoints de reset y verificación** · contrato
-- **Red**: `POST /auth/password-reset` → `202` sin cuerpo para email existente e inexistente
-  (respuestas idénticas); `confirm` → `204` / `400 token_invalid` / `422`;
-  `email-verification/confirm` → `204` / `400`; `resend` → `202` / `401` sin cookie. Todos
-  validados contra el contrato.
+**T-B506 [T] — Endpoints de reset y verificación** · contrato, INV-13
+- **Red**: `POST /auth/password-reset` → `202` sin cuerpo, con respuestas **idénticas** (status,
+  headers relevantes y cuerpo vacío) para email de un usuario activo, invitado, desactivado e
+  inexistente; `confirm` → `204` / `400 token_invalid` / `422`; `email-verification/confirm` →
+  `204` / `400`; `resend` → `202` / `401` sin cookie. Todos validados contra el contrato.
 
 **T-B507 — Implementar los handlers**.
 
@@ -650,10 +672,11 @@ anteriores dan `401` y la nueva contraseña entra.
 ### Fase 6 — Historia 3: Invitar operadores y administrar usuarios (P2)
 
 **Objetivo**: invitar, reinvitar, aceptar, cambiar rol, desactivar (cerrando sesiones) y
-reactivar (P-3), sin dejar nunca la empresa sin Administrador.
+reactivar (P-3, confirmado), sin dejar nunca la empresa sin Administrador y con todo auditado.
 
 **Prueba independiente**: el admin invita a un operador; el operador acepta y entra; el operador
-recibe `403` en `/users`; el admin lo desactiva y el siguiente request del operador da `401`.
+recibe `403` en `/users`; el admin lo desactiva y el siguiente request del operador da `401`; el
+admin lo reactiva y el operador vuelve a entrar con su contraseña.
 
 **T-B601 [T] — Invitar y reinvitar** · US-3.1, FR-005, FR-008, INV-16, DD-1, DD-5
 - **Red** (integración):
@@ -661,7 +684,7 @@ recibe `403` en `/users`; el admin lo desactiva y el siguiente request del opera
   | Caso | Esperado |
   |---|---|
   | Email nuevo, rol `operator` | usuario `invited`, `name` y `password_hash` nulos; token `invitation` de 7 días con `created_by_user_id`; mensaje `invitation` pendiente; auditoría `user.invited` |
-  | Mismo email ya `invited` en la misma empresa | token anterior revocado, token nuevo; `reissued = true`; auditoría `user.invitation_reissued`; sigue habiendo **un** usuario |
+  | Mismo email ya `invited` en la misma empresa | token anterior revocado, token nuevo; `reissued = true`; auditoría `user.invitation_reissued` con `trigger: admin`; sigue habiendo **un** usuario |
   | Email de un usuario activo o desactivado de esta empresa | `ErrEmailTaken` |
   | Email de un usuario (cualquier estado) de **otra** empresa | `ErrEmailTaken` (sin datos de la otra empresa en el error) |
   | Rol `admin` | permitido |
@@ -676,6 +699,7 @@ recibe `403` en `/users`; el admin lo desactiva y el siguiente request del opera
   | `Preview` con token vigente | nombre de la empresa, email, rol, vencimiento |
   | `Accept` válido | usuario `active` con nombre y hash; `email_verified_at` puesto; token usado; sesión creada; auditoría `user.invitation_accepted` |
   | Token vencido (7 días + 1 s), reemplazado por reinvitación, o ya usado | `ErrTokenInvalid` (en `Preview` y en `Accept`) |
+  | Token reemplazado por una reemisión disparada por pedido de reset (DD-20) | `ErrTokenInvalid`; el token nuevo sí funciona |
   | Usuario desactivado antes de aceptar | `ErrTokenInvalid` |
   | Contraseña inválida | validación; token no consumido |
   | Dos `Accept` concurrentes | uno solo tiene éxito |
@@ -695,7 +719,7 @@ recibe `403` en `/users`; el admin lo desactiva y el siguiente request del opera
   | **Concurrencia**: empresa con 2 admins; cada uno baja al otro a la vez (20 repeticiones) | en todas, exactamente una operación tiene éxito y la otra `ErrLastAdmin`; siempre queda ≥ 1 admin activo |
 - **Green**: pasa la tabla.
 
-**T-B604 [T] — Desactivar y reactivar** · US-3.3, US-3.4, INV-10, INV-11, P-3
+**T-B604 [T] — Desactivar y reactivar** · US-3.3, US-3.4, FR-005, FR-008, INV-10, INV-11, P-3
 - **Red** (integración):
 
   | Caso | Esperado |
@@ -707,27 +731,37 @@ recibe `403` en `/users`; el admin lo desactiva y el siguiente request del opera
   | Desactivar un usuario ya `disabled` | `ErrInvalidTransition` |
   | Desactivar un `invited` | `disabled`; su invitación queda revocada |
   | **Concurrencia**: 2 admins se desactivan mutuamente a la vez | uno solo tiene éxito |
-  | Reactivar un `disabled` con contraseña | `active`; auditoría `user.reactivated {to_status: active}`; sus sesiones viejas **siguen** revocadas |
-  | Reactivar un `disabled` sin contraseña | `invited` con invitación nueva de 7 días y mensaje encolado |
-  | Reactivar un `active` o `invited` | `ErrInvalidTransition` |
+  | Reactivar un `disabled` con contraseña | `active`; auditoría `user.reactivated {to_status: active}` con actor = admin, en la **misma** transacción; sus sesiones viejas **siguen** revocadas; puede iniciar sesión con su contraseña |
+  | Reactivar un `disabled` que nunca tuvo contraseña | `invited` con invitación nueva de 7 días (`created_by_user_id` = admin) y mensaje `invitation` encolado; auditoría `user.reactivated {to_status: invited}` **y** `user.invitation_reissued {trigger: reactivation}` (FR-008: toda invitación se audita) |
+  | Reactivar un `disabled` sin contraseña **no** puede dejarlo `active` | la base lo impide (`users_active_complete_chk`) aun si el código lo intentara (test directo contra la constraint) |
+  | Reactivar un `active` o `invited` | `ErrInvalidTransition`; sin auditoría |
+  | Reactivar un id de otra empresa o inexistente | `ErrUserNotFound` |
+  | Reactivar un admin desactivado | vuelve a contar como admin activo para INV-10 |
+  | **Concurrencia**: un admin reactiva a X mientras otro desactiva a X (20 repeticiones) | las operaciones se serializan por el lock de `tenants`; el estado final es consistente con una de las dos órdenes y hay exactamente una fila de auditoría por operación exitosa |
+  | Cualquier operación fallida | ninguna fila de auditoría |
 - **Green**: pasa la tabla.
 
 **T-B605 — Implementar `Invite`, `PreviewInvitation`, `AcceptInvitation`, `ListUsers`,
 `ChangeRole`, `Deactivate`, `Reactivate`**. Las transiciones de estado se expresan como una
-tabla (`estado actual × acción → estado nuevo | error`) con su test unitario, y cada operación de
-cambio de rol o estado empieza con el lock de la fila `tenants` (INV-10).
+tabla (`estado actual × acción → estado nuevo | error`) con su test unitario (incluye las dos
+salidas de `reactivate` según tenga o no contraseña), y cada operación de cambio de rol o estado
+empieza con el lock de la fila `tenants` (INV-10).
 
-**T-B606 [T] — Endpoints de usuarios e invitaciones** · contrato, FR-007
+**T-B606 [T] — Endpoints de usuarios e invitaciones** · contrato, FR-005, FR-007, P-3
 - **Red** (HTTP + contrato):
 
   | Caso | Esperado |
   |---|---|
   | Admin: `GET /users` | `200` con invitados (con `invitation_expires_at`), activos y desactivados, en orden de alta |
-  | Operador en `GET /users`, `POST /users/invitations`, `PUT /users/{id}/role`, `POST .../deactivate`, `POST .../reactivate` | `403 forbidden` en todos |
-  | Admin, `userId` inexistente o de otra empresa | `404 not_found` (idénticos) |
-  | `userId` que no es UUID | `404` (no `400`: no revela formato de ids) |
+  | Operador en `GET /users`, `POST /users/invitations`, `PUT /users/{id}/role`, `POST .../deactivate`, `POST .../reactivate` | `403 forbidden` en todos; ningún cambio en la base ni en la auditoría |
+  | Admin, `userId` inexistente o de otra empresa | `404 not_found` (idénticos) en `role`, `deactivate` y `reactivate` |
+  | `userId` que no es UUID | `404` (no `400`: no revela formato de ids; el test valida solo la respuesta contra el contrato) |
   | Invitar nuevo / reinvitar | `201` / `200` |
-  | `409 last_admin`, `409 invalid_state`, `409 email_taken` | según T-B601..T-B604 |
+  | Invitar un email existente | `409 email_taken` **sin** `suggested_action` (DD-21) |
+  | `POST /users/{id}/reactivate` sobre `disabled` con contraseña | `200` con `status: active` |
+  | `POST /users/{id}/reactivate` sobre `disabled` sin contraseña | `200` con `status: invited` e `invitation_expires_at` a 7 días |
+  | `POST /users/{id}/reactivate` sobre `active` o `invited` | `409 invalid_state` |
+  | `409 last_admin`, `409 invalid_state` en `role`/`deactivate` | según T-B603..T-B604 |
   | `POST /auth/invitations/preview` y `accept` | `200` / `201` + cookie / `400 token_invalid` |
 - **Green**: pasa la tabla.
 
@@ -802,8 +836,9 @@ el test falle solo si mañana se agrega un endpoint sin cubrir.
 reporte de cobertura de rutas al 100 %.
 
 **Fixture común** (`internal/testsupport/fixture`): empresas `A` y `B`, cada una con un admin, un
-operador, un invitado, un desactivado, logo y datos completos; cookies de sesión de cada usuario;
-tokens vigentes de reset, verificación e invitación de cada empresa.
+operador, un invitado, un desactivado con contraseña, un desactivado sin contraseña, logo y datos
+completos; cookies de sesión de cada usuario; tokens vigentes de reset, verificación e invitación
+de cada empresa.
 
 **T-B801 [T] — Matriz HTTP de aislamiento con cobertura de rutas** · SC-002, FR-006, INV-12
 - **Red**:
@@ -814,10 +849,11 @@ tokens vigentes de reset, verificación e invitación de cada empresa.
 
     | Tipo de ruta | Ataque | Esperado |
     |---|---|---|
-    | Con `{userId}` | usar ids de usuarios de `B` (cada estado) | `404`, cuerpo idéntico al de un id inexistente; `B` sin cambios (verificado como `B`) |
+    | Con `{userId}` (`role`, `deactivate`, `reactivate`) | usar ids de usuarios de `B` (cada estado) | `404`, cuerpo idéntico al de un id inexistente; `B` sin cambios ni filas de auditoría nuevas (verificado como `B`) |
     | Sin id, lectura (`/me`, `/tenant`, `/users`, `/tenant/logo`) | — | solo datos de `A`: ningún id, email o nombre de `B` aparece en el cuerpo |
     | Sin id, escritura (`PATCH /tenant`, `PUT/DELETE /tenant/logo`, `POST /users/invitations`) | — | modifica solo `A`; `B` sin cambios; la clave del logo empieza con `tenants/{A}/` |
     | Públicas con token (`/auth/*`) | token de `B` usado junto con la cookie de `A` | la operación afecta solo a `B` (la cookie no cambia la empresa del token); ninguna fila de `A` cambia |
+    | `POST /auth/signup` con el email de un usuario de `B` | — | `409 email_already_registered` sin ningún dato de `B` (INV-20) |
 - **Green**: todas las filas pasan y la cobertura de rutas es total.
 
 **T-B802 [T] — Matriz de permisos por endpoint** · FR-007, INV-12
@@ -832,6 +868,7 @@ tokens vigentes de reset, verificación e invitación de cada empresa.
   |---|---|
   | Login de un usuario de `B` | la sesión creada tiene `tenant_id = B` y `/me` devuelve `B` |
   | Reset de un usuario de `B` | cambia solo ese usuario; sesiones de `A` intactas |
+  | Pedido de reset del invitado de `B` | la invitación reemitida y su auditoría quedan en `B`; nada cambia en `A` |
   | Worker con mensajes de `A` y `B` | cada `UPDATE` corre bajo el rol de su empresa; ningún mensaje de `B` pasa por una transacción de `A` |
   | `ResolveSession` con token de `B` | `Principal.TenantID = B` |
 
@@ -868,15 +905,17 @@ borrar un rol de empresa y correr `crm tenants reprovision-roles` restablece el 
 **T-B903 [T] — `/readyz` y métricas** · plan §12
 - **Red**: base caída → `503 {"status":"unavailable"}`; versión de migración de la base ≠ la
   embebida → `503`; ok → `200`; `/debug/vars` solo escucha en `METRICS_ADDR` y expone las
-  métricas de §12.1; `tenant_roles_total` = cantidad de empresas.
+  métricas de §12.1 (incluida `signup_email_exists_total`); `tenant_roles_total` = cantidad de
+  empresas.
 
 **T-B904 — Implementar `/readyz` y `expvar`**.
 
 **T-B905 — Benchmark con 10.000 empresas** · R-2, R-3, ADR-005
 - Script de carga (test con build tag `bench`, fuera de `make check`) que aprovisiona 10.000
   empresas en un contenedor con la versión exacta de producción y mide p95 de: `SET LOCAL ROLE`,
-  `GET /me`, `POST /auth/signup` y el tiempo de conexión de `crm_app`. Comparar con `plan.md` §13.
-  **Si algún target no se cumple, frenar y volver al arquitecto** (se reabre ADR-005).
+  `GET /me`, `POST /auth/login`, `POST /auth/signup` y el tiempo de conexión de `crm_app`.
+  Comparar con `plan.md` §13. **Si algún target no se cumple, frenar y volver al arquitecto**
+  (se reabre ADR-005).
 
 **T-B906 [T] — Reaprovisionamiento de roles** · plan §12.4
 - **Red**: con dos empresas, se borra el rol de `A` (como superusuario del contenedor); los
@@ -900,16 +939,16 @@ llama a la función como `crm_signup`).
 
 ### Trazabilidad
 
-| Requisito / criterio | Tareas |
+| Requisito / criterio / decisión | Tareas |
 |---|---|
 | FR-001 Registro autónomo | T-B303, T-B305 |
 | FR-002 Plantillas | T-B301, T-B303 |
 | FR-003 Email + contraseña, hash robusto | T-B205, T-B402, T-B404 |
 | FR-004 Recuperar contraseña | T-B501, T-B502, T-B506 |
-| FR-005 Invitar, desactivar, cambiar rol | T-B601..T-B606 |
+| FR-005 Invitar, desactivar, cambiar rol (+ reactivar, P-3) | T-B601..T-B606 |
 | FR-006 Aislamiento | T-B101, T-B103, T-B107..T-B112, T-B801..T-B804 |
 | FR-007 Matriz de permisos | T-B207, T-B309, T-B606, T-B705, T-B802 |
-| FR-008 Auditoría | T-B209, T-B402, T-B601, T-B603 |
+| FR-008 Auditoría (y reactivación, P-3) | T-B209, T-B402, T-B501, T-B601, T-B603, T-B604 |
 | US-1 (1, 2, 3) | T-B303 (1, 2), T-B305 (2), T-B303/T-B504 (3) |
 | US-2 (1, 2, 3) | T-B402 (1, 2), T-B501/T-B502 (3) |
 | US-3 (1, 2, 3, 4) | T-B601 (1), T-B602 (2), T-B604 (3), T-B603/T-B604 (4) |
@@ -917,6 +956,10 @@ llama a la función como `crm_signup`).
 | Casos borde (404 de otra empresa, 403 de operador) | T-B606, T-B801, T-B802 |
 | SC-001 Panel en < 3 min | T-B305 (un request), T-B905 (latencia de signup) |
 | SC-002 0 accesos cruzados | T-B110, T-B801..T-B804 |
+| P-2 Verificación no bloqueante | T-B309, T-B504 |
+| P-3 Reactivación | T-B604, T-B605, T-B606, T-B801 |
+| P-4 `email_already_registered` + login/reset no enumerables | T-B201, T-B305, T-B402, T-B404, T-B501, T-B506, T-B801 |
+| P-5 Sesión 24 h / 7 días | T-B002, T-B305, T-B307, T-B402, T-B404 |
 
 ---
 
@@ -924,6 +967,9 @@ llama a la función como `crm_signup`).
 
 > **Pendiente: `frontend-architect`.** Esta sección la escribe el arquitecto de frontend a partir
 > de `ui.md`. Insumos del backend que necesita: `contracts/openapi.yaml` (canónico), los `code`
-> de error de `plan.md` §9.1, la lista `permissions` de `/me` (solo para UX; la autorización es
-> del servidor) y los enlaces de email con el token en el fragmento (DD-14), cuyos *paths* debe
-> fijar `ui.md`.
+> de error de `plan.md` §9.1 y el campo `suggested_action` (en 001, `password_reset` en el `409`
+> del registro: ofrecer "¿Querés recuperar la contraseña?" con el email ya ingresado), el aviso de
+> email sin verificar a partir de `user.email_verified` de `/me` (no bloquea nada, P-2), la lista
+> `permissions` de `/me` (solo para UX; la autorización es del servidor), la expiración de sesión
+> (24 h sin uso / 7 días: la UI debe manejar un `401` en cualquier request volviendo al login) y
+> los enlaces de email con el token en el fragmento (DD-14), cuyos *paths* debe fijar `ui.md`.

@@ -2,6 +2,7 @@
 
 **Spec**: [`spec.md`](spec.md) · **Rama**: `001-empresas-usuarios` · **Fecha**: 2026-09-27
 **Autor**: `backend-architect` · **Estado**: Propuesto (pendiente de aprobación del usuario)
+**Revisión 2026-09-27**: incorporadas las respuestas del usuario a P-2, P-3, P-4 y P-5 (§14.2).
 
 Artefactos de esta spec:
 
@@ -29,7 +30,7 @@ además de diseñar la funcionalidad fija las decisiones base del proyecto (ADR-
 | Acceso a datos | `sqlc` (generador) + `github.com/jackc/pgx/v5` (`pgxpool`) | ADR-003 (decisión del usuario) |
 | Migraciones | `github.com/pressly/goose/v3`, SQL versionado embebido con `embed.FS` | ADR-004 (decisión del usuario) |
 | Aislamiento | **Un rol de PostgreSQL por empresa** + RLS forzada + filtro explícito | ADR-005 (decisión del usuario) |
-| Sesiones | Tabla `sessions` + token opaco en cookie `__Host-crm_session` | ADR-006 (decisión del usuario) |
+| Sesiones | Tabla `sessions` + token opaco en cookie `__Host-crm_session`; 24 h de inactividad / 7 días máximo | ADR-006 (decisión del usuario) |
 | CSRF | `net/http.CrossOriginProtection` (Go ≥1.25) + `SameSite=Lax` + JSON obligatorio | ADR-006 |
 | Contraseñas | argon2id (`golang.org/x/crypto/argon2`), formato PHC | ADR-007 |
 | Identificadores | UUIDv7 (`uuidv7()` de PG 18 y `github.com/google/uuid` en Go) | ADR-008 |
@@ -59,13 +60,13 @@ asíncrono** (outbox de emails: idempotencia, reintentos, estados terminales) y 
 
 | Principio | Estado | Cómo se cumple / justificación |
 |---|:---:|---|
-| **I. Simplicidad primero** | ✅ | Se construye solo lo que pide la spec. Registro y aceptación de invitación son una sola pantalla y un solo request. Un único binario (API + worker). Sin colas externas, sin caché, sin microservicios. Las únicas adiciones fuera del texto literal de la spec son consecuencias necesarias y están marcadas: reemisión de invitación (DD-5) y reactivación de usuarios (pregunta P-3). |
+| **I. Simplicidad primero** | ✅ | Se construye solo lo que pide la spec. Registro y aceptación de invitación son una sola pantalla y un solo request. Un único binario (API + worker). Sin colas externas, sin caché, sin microservicios. Las únicas adiciones fuera del texto literal de la spec son consecuencias necesarias, marcadas y **confirmadas por el usuario**: reemisión de invitación (DD-5) y reactivación de usuarios (P-3). |
 | **II. Genérico por configuración** | ✅ | Las plantillas de rubro son **datos** embebidos (catálogo), no código por rubro. 001 define el catálogo mínimo (código y nombre) y el puerto `industrytemplate.Seeder`; el contenido lo define 002 (DD-3). |
 | **III. Aislamiento entre empresas** | ✅ / ⚠️ | Toda tabla de negocio tiene `tenant_id NOT NULL`, RLS habilitada y **forzada**, política por rol de empresa y filtro explícito en cada query (INV-01 a INV-07). Tests de aislamiento en BD y HTTP (Fases 1 y 8). ⚠️ **Excepciones justificadas**: (a) `tenants` no tiene `tenant_id` porque *es* la empresa: su política usa `id`; (b) `login_throttles` no tiene `tenant_id` porque se indexa por email **exista o no la cuenta** (anti-enumeración, DD-7): no es dato de negocio ni pertenece a una empresa; solo lo ve el rol `crm_auth`. |
 | **IV. Integridad del dinero** | ✅ (N/A) | 001 no maneja importes. `tenants.base_currency` es ISO 4217 restringido a `ARS`/`USD`. Quedan listas la auditoría append-only (`audit_log`) y la atomicidad por operación (`TxRunner`) que usarán las specs financieras; el checklist de tablas nuevas (`data-model.md` §6) ya prevé tablas inmutables sin `DELETE`. |
-| **V. Spec Driven Development** | ✅ / ⚠️ | Plan derivado de `spec.md` y sus Clarificaciones; criterios Dado/Cuando/Entonces trazados a tareas `[T]` (`tasks.md`, tabla de trazabilidad). ⚠️ Quedan 5 preguntas abiertas (§14) **con default propuesto**; ninguna bloquea el inicio (Fase 0), pero P-1 debe resolverse antes de elegir el hosting de producción y P-2/P-3 antes de las fases que las usan. |
+| **V. Spec Driven Development** | ✅ / ⚠️ | Plan derivado de `spec.md` y sus Clarificaciones; criterios Dado/Cuando/Entonces trazados a tareas `[T]` (`tasks.md`, tabla de trazabilidad). P-2 a P-5 están **resueltas** por el usuario (§14.2). ⚠️ Queda abierta P-1 (hosting): no bloquea el desarrollo, sí la elección del proveedor de producción. |
 | **VI. Tests primero** | ✅ | Todas las fases son TDD. El contrato OpenAPI se valida con tests de contrato sobre cada respuesta de los tests HTTP (ADR-014). |
-| **VII. Mobile-first** | ✅ (N/A backend) | Sesiones largas con expiración por inactividad (uso en obra/taller), payloads chicos, logo acotado en tamaño. PWA servida desde el mismo origen que la API (S-2). |
+| **VII. Mobile-first** | ✅ (N/A backend) | Sesiones con expiración por inactividad, payloads chicos, logo acotado en tamaño. PWA servida desde el mismo origen que la API (S-2). |
 | **Stack** | ✅ | Go, PostgreSQL, OpenAPI, monolito modular, S3 compatible. Librerías registradas como ADR, como pide la constitución. |
 | **Convenciones** | ✅ | Documentación en español; tablas, columnas, endpoints e identificadores en inglés con nombres del glosario (`Tenant`, `User`, `Role`, `IndustryTemplate`, `AuditLog`). Fechas `timestamptz` en UTC; `tenants.timezone` para mostrar. Términos nuevos propuestos para el glosario en §17. |
 
@@ -195,7 +196,7 @@ permite `AsSystem` → `AsTenant`, pero **nunca dos empresas distintas en una tr
 | Registro | `crm_signup` | Nada (solo puede ejecutar la función de aprovisionamiento) | Crea el rol, `SET LOCAL ROLE` al rol nuevo e inserta empresa, admin, token, outbox, sesión y auditoría | Todas las escrituras pasan por la RLS de la empresa nueva |
 | Resolución de sesión (cada request) | `crm_auth` | `sessions(id, tenant_id, token_hash)` | Valida revocación, vencimiento y estado del usuario; carga rol | La validación y los datos del usuario se leen bajo RLS |
 | Login | `crm_auth` | `users(id, tenant_id, email)`, `login_throttles` | Lee hash, estado y rol; crea sesión; audita | `crm_auth` no puede leer `password_hash`, `name`, `role` ni `status` (privilegios por columna) |
-| Pedir reset | `crm_auth` | `users(id, tenant_id, email)` | Revoca tokens previos, crea token, encola email | Idem |
+| Pedir reset | `crm_auth` | `users(id, tenant_id, email)` | Según el estado: token de reset, reemisión de invitación (DD-20) o nada | Idem |
 | Confirmar reset, verificar email, ver/aceptar invitación | `crm_auth` | `user_tokens(id, tenant_id, token_hash, purpose)` | Valida vencimiento/uso, escribe | Vencimiento, uso y usuario se validan bajo RLS |
 | Worker de outbox | `crm_worker` | `outbox_messages(id, tenant_id, status, next_attempt_at)` pendientes | Lee destinatario y payload, envía, marca | Destinatario y contenido solo bajo RLS |
 | Limpieza periódica | `crm_worker` | Filas **vencidas** de `sessions`, `user_tokens`, `outbox_messages` terminales, `login_throttles` | — | La política de `DELETE` solo alcanza filas vencidas |
@@ -223,7 +224,7 @@ sequenceDiagram
     participant W as Outbox worker
 
     V->>H: POST /api/v1/auth/signup
-    H->>H: rate limit por IP y validación del payload
+    H->>H: rate limit por IP (cuenta éxitos y rechazos) y validación del payload
     H->>S: Register(cmd)
     S->>S: hash argon2id de la contraseña (fuera de la transacción)
     S->>DB: BEGIN y SET LOCAL ROLE crm_signup
@@ -236,7 +237,7 @@ sequenceDiagram
         DB-->>I: unique_violation en users_email_key
         I-->>S: ErrEmailTaken
         S->>DB: ROLLBACK (deshace empresa, usuario y también el rol)
-        H-->>V: 409 problem+json code email_taken (sin datos de la cuenta)
+        H-->>V: 409 code email_already_registered y suggested_action password_reset
     else email libre
         S->>DB: Seeder.Seed(plantilla) e INSERT user_tokens (verificación)
         S->>DB: INSERT outbox_messages (email de verificación)
@@ -247,6 +248,10 @@ sequenceDiagram
     W->>DB: toma el mensaje pendiente (después del COMMIT)
     W->>W: envía por SMTP el enlace de verificación
 ```
+
+El `409` dice explícitamente que ya existe un usuario con ese email y ofrece recuperar la
+contraseña (P-4, DD-19, DD-21). No incluye empresa, nombre ni estado de la cuenta, y es el mismo
+cualquiera sea el estado del usuario existente (`invited`, `active`, `disabled`).
 
 #### Inicio de sesión con bloqueo (Historia 2, escenarios 1 y 2; FR-003, FR-008)
 
@@ -299,9 +304,9 @@ sequenceDiagram
 
 El quinto fallo seguido responde `401` y deja `locked_until = now + 15 min`; el sexto intento
 (con cualquier contraseña) recibe `429`. El comportamiento es **idéntico** exista o no el email
-(DD-7), así que el bloqueo no sirve para enumerar cuentas. La fila de `login_throttles` se toma
-con `FOR UPDATE`: intentos concurrentes contra el mismo email se serializan y el límite de 5 es
-exacto.
+(DD-7). Aunque el registro ahora confirma la existencia de un email, el login **se mantiene no
+enumerable** por defensa en profundidad (DD-19). La fila de `login_throttles` se toma con
+`FOR UPDATE`: intentos concurrentes contra el mismo email se serializan y el límite de 5 es exacto.
 
 #### Recuperación de contraseña (Historia 2, escenario 3; FR-004)
 
@@ -317,13 +322,18 @@ sequenceDiagram
     U->>H: POST /api/v1/auth/password-reset (email)
     H->>S: RequestPasswordReset(email)
     S->>DB: BEGIN, SET LOCAL ROLE crm_auth, buscar usuario por email
-    opt existe y está activo
+    alt usuario activo
         S->>DB: SET LOCAL ROLE crm_t_HEX
         S->>DB: revocar tokens de reset previos e INSERT user_tokens (1 h)
-        S->>DB: INSERT outbox_messages (email con enlace)
+        S->>DB: INSERT outbox_messages (email con enlace de reset)
+    else usuario invitado
+        S->>DB: SET LOCAL ROLE crm_t_HEX
+        S->>DB: reemitir invitación (token 7 días) y outbox con enlace de invitación
+    else email inexistente o usuario desactivado
+        S->>S: no hace nada
     end
     S->>DB: COMMIT
-    H-->>U: 202 siempre (mismo cuerpo exista o no)
+    H-->>U: 202 siempre (mismo cuerpo en todos los casos)
     W->>U: email con enlace de un solo uso
 
     U->>H: POST /api/v1/auth/password-reset/confirm (token, nueva contraseña)
@@ -341,6 +351,10 @@ sequenceDiagram
         H-->>U: 204 (el usuario inicia sesión con la nueva contraseña)
     end
 ```
+
+El caso "usuario invitado" existe porque el `409` del registro ahora sugiere "recuperar la
+contraseña" a cualquiera cuyo email ya exista, incluido quien todavía no aceptó su invitación
+(DD-20).
 
 #### Invitación y aceptación (Historia 3, escenarios 1 y 2; FR-005, FR-008)
 
@@ -426,6 +440,11 @@ sequenceDiagram
     M-->>X: 401 code unauthenticated y cookie borrada
 ```
 
+La **reactivación** (P-3, confirmada) sigue el mismo patrón: `RequirePermission(settings.manage)`,
+lock de `tenants`, búsqueda del usuario (`404` si no es de la empresa), transición según la tabla
+de §4.6 (`409 invalid_state` si no está `disabled`), y auditoría `user.reactivated` en la misma
+transacción. Las sesiones revocadas al desactivar **no** se reabren.
+
 ### 4.6 Máquinas de estado
 
 #### Estado del usuario (`users.status`)
@@ -434,18 +453,22 @@ sequenceDiagram
 stateDiagram-v2
     [*] --> active : registro de empresa (primer Administrador)
     [*] --> invited : Administrador invita
-    invited --> invited : Administrador reinvita (nuevo token)
+    invited --> invited : Administrador reinvita o el invitado pide reset (nuevo token)
     invited --> active : invitado acepta con token válido
     invited --> disabled : Administrador desactiva
     active --> disabled : Administrador desactiva (no es el último Administrador activo)
-    disabled --> active : Administrador reactiva y tiene contraseña (P-3)
-    disabled --> invited : Administrador reactiva sin contraseña, nueva invitación (P-3)
+    disabled --> active : Administrador reactiva y el usuario tiene contraseña
+    disabled --> invited : Administrador reactiva y el usuario nunca tuvo contraseña (invitación nueva)
 ```
 
 - El **rol** (`admin`/`operator`) es ortogonal al estado. Bajar a Operador al último
   Administrador **activo** se rechaza con `409 last_admin` (INV-10).
 - Entrar a `disabled` revoca en la misma transacción todas las sesiones y los tokens pendientes
-  (INV-11).
+  (INV-11). Salir de `disabled` (reactivar) no reabre sesiones: el usuario vuelve a iniciar
+  sesión.
+- Toda transición la ejecuta un Administrador y queda auditada (`user.invited`,
+  `user.invitation_reissued`, `user.invitation_accepted`, `user.deactivated`,
+  `user.reactivated`); la reemisión disparada por un pedido de reset se audita con actor `NULL`.
 - No hay estado terminal ni borrado: los usuarios no se eliminan (la auditoría los referencia).
 - La tabla de transiciones (`estado × acción → estado | error`) vive en `identity/user.go` y es
   la única fuente de verdad en el código (T-B605).
@@ -454,10 +477,10 @@ stateDiagram-v2
 
 ```mermaid
 stateDiagram-v2
-    [*] --> pending : Administrador invita (token 7 días)
+    [*] --> pending : Administrador invita o reactiva sin contraseña (token 7 días)
     pending --> accepted : invitado acepta con token válido
     pending --> expired : pasan 7 días sin aceptar
-    pending --> superseded : Administrador reinvita (token anterior revocado)
+    pending --> superseded : reinvitación del Administrador o pedido de reset del invitado
     pending --> revoked : Administrador desactiva al usuario invitado
     expired --> [*]
     superseded --> [*]
@@ -467,7 +490,7 @@ stateDiagram-v2
 
 No hay tabla `invitations`: la spec modela "invitado" como estado del `User`, y la invitación es
 el token de propósito `invitation` (DD-1). Una invitación vencida no cambia de fila: su estado se
-deriva de `expires_at`. Reinvitar crea una invitación nueva (DD-5).
+deriva de `expires_at`. Reinvitar crea una invitación nueva (DD-5, DD-20).
 
 #### Estado de un mensaje del outbox
 
@@ -499,16 +522,17 @@ la vigila.
 | INV-07 | Toda FK entre tablas de empresa es **compuesta** con `tenant_id` (`(tenant_id, user_id) → users(tenant_id, id)`): la base impide referencias entre empresas. | Migraciones | T-B108 |
 | INV-08 | Las vistas se crean con `security_invoker = true`. Las únicas funciones `SECURITY DEFINER` viven en el esquema `provisioning`, con `search_path` fijo y `EXECUTE` revocado a `PUBLIC`. | Migraciones | T-B107 |
 | INV-09 | Tokens de sesión y de un solo uso se guardan solo como SHA-256; el valor en claro existe únicamente en la cookie o en el email. El payload del outbox se borra al pasar a `sent` o `failed` (lo obliga un `CHECK`). | `identity`, `outbox` | T-B205, T-B211, T-B307 |
-| INV-10 | Cada empresa tiene siempre al menos un Administrador **activo**. Todo cambio de rol o estado de un usuario toma primero `SELECT … FROM tenants … FOR UPDATE`. | `identity.Service` | T-B603, T-B604 (con concurrencia) |
+| INV-10 | Cada empresa tiene siempre al menos un Administrador **activo**. Todo cambio de rol o estado de un usuario (incluida la reactivación) toma primero `SELECT … FROM tenants … FOR UPDATE`. | `identity.Service` | T-B603, T-B604 (con concurrencia) |
 | INV-11 | Pasar un usuario a `disabled` revoca en la **misma transacción** todas sus sesiones y tokens pendientes; la resolución de sesión verifica en cada request que el usuario siga `active`. | `identity` | T-B307, T-B604 |
 | INV-12 | La autorización por permiso se decide **antes** de buscar el recurso y no depende de su existencia. Un recurso de otra empresa responde `404`, nunca `403`. | `authz`, handlers | T-B207, T-B801, T-B802 |
-| INV-13 | Login y pedido de reset responden igual (status, cuerpo, bloqueo y costo de hash) exista o no el email. | `identity.Service` | T-B402, T-B404, T-B501 |
+| INV-13 | Login y pedido de reset responden igual (status, cuerpo, bloqueo y costo de hash) exista o no el email, y cualquiera sea su estado. Se mantiene aunque el registro confirme la existencia de un email (DD-19). | `identity.Service` | T-B402, T-B404, T-B501, T-B506 |
 | INV-14 | El registro es atómico: rol de PostgreSQL, empresa, admin, configuración de plantilla, token, outbox, sesión y auditoría se crean todos o ninguno. | `tenant.Service` | T-B303 |
 | INV-15 | `audit_log` es append-only: el rol de empresa solo tiene `SELECT, INSERT`. | Migraciones | T-B107, T-B209 |
 | INV-16 | Ningún email se envía dentro del request: toda notificación se encola en el outbox dentro de la transacción de la operación. | `identity`, `outbox` | T-B211, T-B303, T-B601 |
 | INV-17 | La base nunca referencia un objeto de logo inexistente: se sube a S3 **antes** del `COMMIT` y el objeto anterior se borra **después**. | `tenant.Service` | T-B703 |
 | INV-18 | Los tests de integración se conectan como `crm_app`, nunca como superusuario (un superusuario ignora la RLS y haría pasar los tests de aislamiento en falso). | `internal/testsupport/pgtest` | T-B009 |
 | INV-19 | Una violación de RLS o de privilegio (`SQLSTATE 42501`) es un bug: se responde `500`, se loguea con `level=ERROR` y `security_event=rls_violation`, nunca se traduce a `403`/`404`. | `platform/db`, `platform/httpx` | T-B105 |
+| INV-20 | El `409 email_already_registered` del registro nunca incluye datos de la cuenta existente (empresa, nombre, estado, fechas) y es idéntico byte a byte (salvo `instance`) cualquiera sea el estado del usuario existente. | `tenant` HTTP | T-B305 |
 
 ---
 
@@ -521,13 +545,13 @@ Las decisiones estructurales están en `docs/adr/` (ADR-001 a ADR-014). Estas so
 | **DD-1** | El "usuario invitado" es una fila de `users` con `status = invited`, sin nombre ni contraseña; la invitación es un `user_tokens` de propósito `invitation`. No hay tabla `invitations`. | La spec define `invitado` como estado del `User`; una sola lista de usuarios; menos conceptos. | Un email invitado queda reservado globalmente hasta que se acepte o se desactive. |
 | **DD-2** | Email **único global** (`users_email_key`) y normalizado (trim + minúsculas). | Un usuario pertenece a una sola empresa (Clarificaciones); el login es por email sin elegir empresa. | Cuando se permitan varias empresas por usuario habrá que separar identidad y membresía (fuera del MVP). |
 | **DD-3** | Plantillas de rubro: catálogo embebido en el binario (código, nombre, versión) + puerto `industrytemplate.Seeder` invocado **dentro** de la transacción de registro. En 001 el seeder no precarga nada: se registra el código y la versión en `tenants`; 002 implementa la precarga. | Principio II (datos, no código por rubro); atomicidad; 001 no invade 002. | Hasta 002, "se precarga la configuración" (Historia 1.1) se cumple solo en el registro del código de plantilla. |
-| **DD-4** | Registro y aceptación de invitación inician sesión en el mismo response (`201` + cookie). La verificación de email **no bloquea** el acceso (P-2). | SC-001 (panel en < 3 min); una pantalla. | Una cuenta puede operar con email no verificado hasta que se resuelva P-2. |
+| **DD-4** | Registro y aceptación de invitación inician sesión en el mismo response (`201` + cookie). La verificación de email **no bloquea nada** (P-2, resuelta): `/me` expone `email_verified` y la UI muestra un aviso hasta verificar. | SC-001 (panel en < 3 min); una pantalla. | Una cuenta puede operar con email no verificado. |
 | **DD-5** | Invitar un email que ya está `invited` **en la misma empresa** reemite la invitación (revoca el token anterior, crea uno nuevo de 7 días) y responde `200`. | Sin esto, una invitación vencida deja el email reservado sin salida. No agrega endpoint. | Reinvitar y "reenviar" son la misma acción. |
 | **DD-6** | Contraseñas: mínimo 10 caracteres, máximo 128, sin reglas de composición; se rechazan si son iguales al email. | Las guías actuales desaconsejan reglas de composición; 128 acota el costo del hash. | Algunas guías recientes piden mínimos mayores para contraseñas de un solo factor (verificar la revisión vigente de NIST SP 800-63B); se prioriza la carga desde el celular. |
-| **DD-7** | Bloqueo: contador por **HMAC-SHA256(email normalizado)** en `login_throttles`, exista o no la cuenta. 5 fallos seguidos → `locked_until = now + 15 min`; los intentos durante el bloqueo no lo extienden ni verifican contraseña; al vencer se reinicia el contador; un login exitoso o un reset de contraseña lo borra. | Bloqueo indistinguible para emails inexistentes (anti-enumeración); HMAC evita guardar en claro emails que no son usuarios. | Cualquiera puede bloquear 15 min una cuenta ajena (aceptado por la spec); se acota con rate limit por IP (DD-9). |
+| **DD-7** | Bloqueo: contador por **HMAC-SHA256(email normalizado)** en `login_throttles`, exista o no la cuenta. 5 fallos seguidos → `locked_until = now + 15 min`; los intentos durante el bloqueo no lo extienden ni verifican contraseña; al vencer se reinicia el contador; un login exitoso o un reset de contraseña lo borra. | Bloqueo indistinguible para emails inexistentes; HMAC evita guardar en claro emails que no son usuarios. Se mantiene tras P-4 (DD-19). | Cualquiera puede bloquear 15 min una cuenta ajena (aceptado por la spec); se acota con rate limit por IP (DD-9). |
 | **DD-8** | Login de usuario `disabled` con contraseña **correcta** → `403 account_disabled`; con contraseña incorrecta → `401` genérico. Usuario `invited` → siempre `401` genérico. | Quien conoce la contraseña merece saber por qué no entra; no filtra nada a quien no la conoce. | — |
-| **DD-9** | Rate limit en memoria por IP (token bucket, `golang.org/x/time/rate`): signup 5/h, login 20/min, password-reset 5/h (y 3/h por email), invitations/preview y accept 20/h, email-verification 20/h. Excedido → `429 rate_limited` + `Retry-After`. | Una sola instancia (S-1); cero infraestructura extra. | Con varias instancias el límite es por instancia. Valores iniciales, ajustables por configuración. |
-| **DD-10** | Sesión: expira a los **7 días sin uso** o a los **30 días** desde el login, lo que ocurra primero (P-5). `last_seen_at` se actualiza como máximo cada 5 minutos. | Uso en obra/taller desde el celular sin re-login diario; una escritura por request sería desproporcionada. | La expiración por inactividad tiene una tolerancia de hasta 5 min. |
+| **DD-9** | Rate limit en memoria por IP (token bucket, `golang.org/x/time/rate`): **signup 5/h por IP, contando éxitos y rechazos** (es la mitigación principal de la enumeración aceptada en DD-19), login 20/min, password-reset 5/h (y 3/h por email), invitations/preview y accept 20/h, email-verification 20/h. Excedido → `429 rate_limited` + `Retry-After`. | Una sola instancia (S-1); cero infraestructura extra. | Con varias instancias el límite es por instancia; un atacante con muchas IPs enumera más rápido (se detecta con la métrica de DD-19). Valores ajustables por configuración. |
+| **DD-10** | Sesión: expira a las **24 h sin uso** o a los **7 días** desde el login, lo que ocurra primero (P-5, elección del usuario). `last_seen_at` se actualiza como máximo cada 5 minutos. Cookie con `Max-Age = 604800`. | Ventana de exposición corta ante un dispositivo perdido o compartido en obra/taller. | Quien no usa la app un día vuelve a iniciar sesión; la expiración por inactividad tiene una tolerancia de hasta 5 min. |
 | **DD-11** | Logo: solo PNG y JPEG (detección por *magic bytes*, no por extensión ni `Content-Type`), máximo 2 MB y 2000×2000 px, subido como `multipart/form-data`. Se sirve por el backend (`GET /tenant/logo`) con `Content-Type` fijo y `nosniff`, sin URLs prefirmadas. Clave: `tenants/{tenant_id}/logo/{uuidv7}.{png\|jpg}`. | SVG permite scripts; las librerías de PDF (005) soportan PNG/JPEG; servir por backend mantiene el bucket privado y sin CORS. | El backend transfiere los bytes del logo (volumen despreciable). |
 | **DD-12** | Logs estructurados con `log/slog` en JSON; cada request lleva `request_id`, `tenant_id`, `user_id`, `route`, `status`, `duration_ms`. Nunca se loguean contraseñas, tokens, cookies ni payloads del outbox. | Librería estándar; operable. | Sin trazas distribuidas (un solo proceso). |
 | **DD-13** | Verificación de email: token de 48 h; reenviable con `POST /auth/email-verification/resend` (autenticado). Aceptar una invitación marca el email como verificado (el token llegó a ese email). | Cierra Historia 1.3 sin bloquear el uso. | 48 h es un supuesto. |
@@ -535,7 +559,10 @@ Las decisiones estructurales están en `docs/adr/` (ADR-001 a ADR-014). Estas so
 | **DD-15** | `tenants.base_currency` se fija al registrarse y **no se edita** en 001; `timezone` sí (default `America/Argentina/Buenos_Aires`, o la que envíe el navegador al registrarse). | La Historia 4 no incluye moneda base; cambiarla tiene efectos en reportes (009). | Si se quiere editar, se agrega en 009 con su análisis. |
 | **DD-16** | CUIT opcional; si se informa, 11 dígitos con dígito verificador válido (módulo 11); se guarda sin guiones. | Evita errores de tipeo en los PDF (005). | Validación específica de Argentina: es del país, no del rubro (no afecta el principio II). |
 | **DD-17** | El contrato de 001 es la fuente canónica de los componentes compartidos (`Problem`, `ValidationProblem`, `ErrorCode`, `Role`, `Permission`); las specs siguientes los referencian con `$ref` a este archivo. | Un solo lugar para el modelo de errores y los permisos. | Hace falta un paso de *bundle* para que el frontend genere tipos de todas las specs juntas (lo decide `ui.md`). |
-| **DD-18** | Toda comparación de vencimientos en queries recibe `now` como parámetro desde `clock.Clock` (no usa `now()` de SQL). Excepción: las políticas de limpieza de `crm_worker`, que usan `now()` a propósito. | Tests deterministas de vencimientos (1 h, 48 h, 7 días, 15 min) sin dormir ni manipular el reloj del sistema. | Un parámetro más en esas queries. |
+| **DD-18** | Toda comparación de vencimientos en queries recibe `now` como parámetro desde `clock.Clock` (no usa `now()` de SQL). Excepción: las políticas de limpieza de `crm_worker`, que usan `now()` a propósito. | Tests deterministas de vencimientos (15 min, 1 h, 24 h, 48 h, 7 días) sin dormir ni manipular el reloj del sistema. | Un parámetro más en esas queries. |
+| **DD-19** | **Enumeración aceptada solo en el registro** (P-4). El `409` de `POST /auth/signup` confirma que existe un usuario con ese email (sin ningún otro dato). **Login y pedido de reset se mantienen no enumerables** (INV-13, DD-7): mismas respuestas, hash ficticio, bloqueo por HMAC y `202` constante. Se registra `security_event=signup_email_exists` y la métrica `signup_email_exists_total` para detectar enumeración masiva. | Defensa en profundidad: el registro es el oráculo más lento (5/h por IP, formulario completo, argon2id por intento); simplificar login (20/min) o reset daría oráculos 240 veces más rápidos. Mantener la uniformidad no cuesta nada: ya está diseñada y probada. | Quien quiera saber si un email tiene cuenta puede averiguarlo por el registro, de a pocos por IP. Aceptado por el usuario. |
+| **DD-20** | Un pedido de reset para un usuario **`invited`** reemite su invitación (revoca el token anterior, token nuevo de 7 días, email de invitación) en lugar de enviar un enlace de reset; para un usuario **`disabled`** o un email inexistente no se envía nada. La respuesta es siempre `202`. Auditoría `user.invitation_reissued` con actor `NULL` y `data.trigger = "password_reset_request"`. | Coherencia con DD-19: el registro sugiere "recuperar la contraseña" también a quien todavía no aceptó su invitación; sin esto, ese usuario no recibiría nada. Reusa la plantilla y la lógica de reinvitación (DD-5). | Un invitado puede renovar su invitación por su cuenta (solo le llega a su propio email; rate limit 3/h por email). El usuario `disabled` no recibe explicación: debe hablar con su Administrador. |
+| **DD-21** | Mismo error de dominio (`identity.ErrEmailTaken`), **distinto `code` HTTP por endpoint**: registro → `409 email_already_registered` con `suggested_action: "password_reset"`; invitación → `409 email_taken` sin acción sugerida. | Semánticas distintas para la UI: el visitante probablemente ya tiene cuenta y puede recuperarla; el Administrador no puede recuperar la cuenta de otra persona. | Dos códigos para la misma condición de base; el mapeo vive en el `http.go` de cada módulo. |
 
 ---
 
@@ -547,7 +574,7 @@ Detalle completo en [`data-model.md`](data-model.md).
 |---|---|:---:|---|
 | `tenants` | La empresa: nombre, datos fiscales y de contacto, logo, moneda base, zona horaria, plantilla | (es `id`) | Nunca |
 | `users` | Usuarios: email, nombre, hash, rol, estado | ✔ | Nunca |
-| `sessions` | Sesiones: hash del token, vencimientos, revocación | ✔ | Limpieza 30 días después de vencer |
+| `sessions` | Sesiones: hash del token, vencimientos (24 h sin uso / 7 días), revocación | ✔ | Limpieza 30 días después de vencer |
 | `user_tokens` | Tokens de un solo uso: verificación, reset, invitación | ✔ | Limpieza 30 días después de vencer |
 | `outbox_messages` | Emails pendientes/enviados | ✔ | Limpieza 30 días después de `sent`/`failed` |
 | `audit_log` | Auditoría append-only | ✔ | Nunca |
@@ -567,16 +594,16 @@ Base: `/api/v1`. Cookie de sesión: `__Host-crm_session`.
 | Método | Ruta | Propósito | Auth | Permiso | Éxito | Errores |
 |---|---|---|---|---|---|---|
 | GET | `/industry-templates` | Plantillas para el formulario de registro | — | — | 200 | 429 |
-| POST | `/auth/signup` | Registrar empresa + admin (inicia sesión) | — | — | 201 | 409 `email_taken`, 415, 422, 429 |
+| POST | `/auth/signup` | Registrar empresa + admin (inicia sesión) | — | — | 201 | 409 `email_already_registered`, 415, 422, 429 |
 | POST | `/auth/login` | Iniciar sesión | — | — | 200 | 401 `invalid_credentials`, 403 `account_disabled`, 422, 429 `login_locked`/`rate_limited` |
 | POST | `/auth/logout` | Cerrar la sesión actual | opcional | — | 204 | — |
-| POST | `/auth/password-reset` | Pedir enlace de reset | — | — | 202 | 422, 429 |
+| POST | `/auth/password-reset` | Pedir enlace de reset (o reemisión de invitación, DD-20) | — | — | 202 | 422, 429 |
 | POST | `/auth/password-reset/confirm` | Definir nueva contraseña | — | — | 204 | 400 `token_invalid`, 422, 429 |
 | POST | `/auth/email-verification/confirm` | Verificar email | — | — | 204 | 400 `token_invalid`, 429 |
 | POST | `/auth/email-verification/resend` | Reenviar verificación | sí | — | 202 | 401, 429 |
 | POST | `/auth/invitations/preview` | Ver datos de una invitación | — | — | 200 | 400 `token_invalid`, 429 |
 | POST | `/auth/invitations/accept` | Aceptar invitación (inicia sesión) | — | — | 201 | 400 `token_invalid`, 422, 429 |
-| GET | `/me` | Usuario, empresa y permisos de la sesión | sí | — | 200 | 401 |
+| GET | `/me` | Usuario (incluido `email_verified`), empresa y permisos de la sesión | sí | — | 200 | 401 |
 | GET | `/tenant` | Datos de la empresa | sí | — | 200 | 401 |
 | PATCH | `/tenant` | Editar datos de la empresa | sí | `settings.manage` | 200 | 401, 403, 422 |
 | GET | `/tenant/logo` | Imagen del logo | sí | — | 200 | 401, 404 |
@@ -586,7 +613,7 @@ Base: `/api/v1`. Cookie de sesión: `__Host-crm_session`.
 | POST | `/users/invitations` | Invitar (o reinvitar) | sí | `settings.manage` | 201 / 200 | 401, 403, 409 `email_taken`, 422 |
 | PUT | `/users/{userId}/role` | Cambiar rol | sí | `settings.manage` | 200 | 401, 403, 404, 409 `last_admin`, 422 |
 | POST | `/users/{userId}/deactivate` | Desactivar | sí | `settings.manage` | 200 | 401, 403, 404, 409 `last_admin`/`invalid_state` |
-| POST | `/users/{userId}/reactivate` | Reactivar (P-3) | sí | `settings.manage` | 200 | 401, 403, 404, 409 `invalid_state` |
+| POST | `/users/{userId}/reactivate` | Reactivar (P-3, confirmado) | sí | `settings.manage` | 200 | 401, 403, 404, 409 `invalid_state` |
 | GET | `/healthz` | Liveness (fuera de `/api/v1`) | — | — | 200 | — |
 | GET | `/readyz` | Readiness: BD alcanzable y migraciones al día | — | — | 200 | 503 |
 
@@ -600,7 +627,8 @@ reciben JSON, además `400 malformed_request` y `415`.
 Formato: RFC 9457 `application/problem+json` (ADR-009). Campos: `type` (URI relativa
 `/problems/{code}`), `title` (en español, genérico), `status`, `detail` (opcional, en español,
 sin datos internos), `instance` (request id), **`code`** (estable, en inglés: es lo que usa el
-frontend) y, en validaciones, `errors[]` con `{field, code}`.
+frontend), en validaciones `errors[]` con `{field, code}` y, cuando la UI puede ofrecer una
+salida, **`suggested_action`** (enum estable; en 001 solo `password_reset`).
 
 ### 9.1 Taxonomía
 
@@ -615,7 +643,8 @@ frontend) y, en validaciones, `errors[]` con `{field, code}`.
 | `account_disabled` | 403 | Rechazo definitivo | Usuario desactivado con contraseña correcta | No |
 | `forbidden` | 403 | Rechazo definitivo | Operador en recurso de Administrador | No |
 | `not_found` | 404 | Rechazo definitivo | No existe **o es de otra empresa** | No |
-| `email_taken` | 409 | Rechazo definitivo | Registro o invitación con email ya usado | No, otro email |
+| `email_already_registered` | 409 | Rechazo definitivo | **Registro** con un email que ya tiene usuario. `title`: "Ya existe un usuario con ese email"; `detail`: "Ya existe un usuario con ese email. ¿Querés recuperar la contraseña?"; `suggested_action: "password_reset"` (DD-19, DD-21, INV-20) | No; ofrecer recuperar la contraseña |
+| `email_taken` | 409 | Rechazo definitivo | **Invitación** con un email que ya tiene usuario (en esta u otra empresa) | No, otro email |
 | `last_admin` | 409 | Rechazo definitivo | Desactivar o bajar al último Administrador activo | No |
 | `invalid_state` | 409 | Rechazo definitivo | Transición no válida (p. ej. reactivar un activo) | No |
 | `token_invalid` | 400 | Rechazo definitivo | Token inexistente, vencido, usado o revocado (un solo código para no filtrar cuál) | No, pedir otro |
@@ -629,7 +658,8 @@ frontend) y, en validaciones, `errors[]` con `{field, code}`.
 ```
 store (sqlc/pgx) ──► platform/db.MapError ──► errores de dominio ──► handler ──► httpx.WriteProblem
    pgx.ErrNoRows        db.ErrNotFound          identity.ErrUserNotFound       404 not_found
-   23505 + constraint   db.ErrUniqueViolation   identity.ErrEmailTaken         409 email_taken
+   23505 + constraint   db.ErrUniqueViolation   identity.ErrEmailTaken         409 email_already_registered (signup)
+                                                                               409 email_taken (invitación)
    42501 (RLS/priv)     db.ErrPrivilege         (no se traduce)                500 internal + alerta
    conexión / timeout   db.ErrUnavailable       (no se traduce)                503 service_unavailable
 ```
@@ -638,8 +668,9 @@ store (sqlc/pgx) ──► platform/db.MapError ──► errores de dominio ─
   tipos (`errors.As`) cuando llevan datos (`*identity.LockedError{RetryAfter}`,
   `*httpx.ValidationError{Fields}`).
 - El único lugar que conoce códigos HTTP es la capa HTTP de cada módulo (`http.go`), a través de
-  una tabla de mapeo; `platform/httpx` escribe el problem+json y tiene el mapeo por defecto de
-  los errores de `platform/db`.
+  una tabla de mapeo **por endpoint** cuando el mismo error de dominio tiene distinto significado
+  para la UI (DD-21); `platform/httpx` escribe el problem+json y tiene el mapeo por defecto de los
+  errores de `platform/db`.
 - Los errores se envuelven con `fmt.Errorf("...: %w", err)` para conservar la causa en los logs;
   la respuesta HTTP nunca incluye el mensaje envuelto.
 
@@ -663,7 +694,7 @@ type ConstraintError struct {
 var (
     ErrInvalidCredentials = errors.New("identity: invalid credentials")
     ErrAccountDisabled    = errors.New("identity: account disabled")
-    ErrEmailTaken         = errors.New("identity: email taken")
+    ErrEmailTaken         = errors.New("identity: email taken") // signup → email_already_registered; invitación → email_taken
     ErrTokenInvalid       = errors.New("identity: token invalid")
     ErrLastAdmin          = errors.New("identity: last active admin")
     ErrInvalidTransition  = errors.New("identity: invalid status transition")
@@ -686,6 +717,11 @@ var ErrForbidden = errors.New("authz: forbidden")
 
 // internal/platform/outbox
 type PermanentError struct{ Err error } // el Mailer lo devuelve para fallos definitivos
+
+// internal/platform/httpx
+type SuggestedAction string
+const SuggestedPasswordReset SuggestedAction = "password_reset"
+// WriteProblem acepta opciones; una de ellas agrega suggested_action al problem+json.
 ```
 
 ### 9.4 Errores del worker (recuperable vs definitivo)
@@ -709,12 +745,14 @@ type PermanentError struct{ Err error } // el Mailer lo devuelve para fallos def
   más débiles que los vigentes (ADR-007). La verificación corre bajo un **semáforo** de
   concurrencia (default 4) para que una ráfaga de logins no agote la memoria (19 MiB por hash).
 - Token de sesión: 32 bytes de `crypto/rand`, base64url en la cookie; en la base, SHA-256.
-- Cookie: `__Host-crm_session`; `HttpOnly; Secure; SameSite=Lax; Path=/`, sin `Domain`.
-  `Max-Age` igual al vencimiento absoluto.
+- Cookie: `__Host-crm_session`; `HttpOnly; Secure; SameSite=Lax; Path=/`, sin `Domain`,
+  `Max-Age=604800` (7 días, el vencimiento absoluto).
+- Vencimiento: **24 h sin uso** o **7 días** desde el login, lo primero que ocurra (DD-10, P-5).
 - Sin fijación de sesión: el token siempre lo genera el servidor al autenticar; una cookie
   entrante nunca se reutiliza como sesión nueva.
 - Revocación: logout (esa sesión), reset de contraseña (todas las del usuario), desactivación
-  (todas). Cambio de rol: no revoca, porque el rol se lee de la base en cada request.
+  (todas). Cambio de rol: no revoca, porque el rol se lee de la base en cada request. Reactivar no
+  reabre sesiones revocadas.
 
 ### 10.2 CSRF
 
@@ -733,11 +771,11 @@ desde un formulario), así que depende de las capas 1 y 2.
 | Amenaza (OWASP 2021) | Vector concreto en 001 | Mitigación |
 |---|---|---|
 | A01 Broken Access Control | Leer o modificar usuarios/empresa de otra empresa por id (IDOR) | Filtro explícito + RLS con rol por empresa + FKs compuestas + `404` (INV-01..07, INV-12); tests de aislamiento en BD y HTTP (T-B110, T-B801..T-B804) |
-| A01 | Operador invita, cambia roles o edita la empresa | `RequirePermission(settings.manage)` por grupo de rutas; test de matriz (T-B207) y por endpoint (T-B802) |
+| A01 | Operador invita, cambia roles, reactiva o edita la empresa | `RequirePermission(settings.manage)` por grupo de rutas; test de matriz (T-B207) y por endpoint (T-B802) |
 | A01 | Dejar la empresa sin administrador por concurrencia | Lock de la fila `tenants` (INV-10) + tests concurrentes (T-B603, T-B604) |
 | A07 Identification & Auth Failures | Fuerza bruta / *credential stuffing* | Bloqueo 5/15 min por email + rate limit por IP + argon2id |
-| A07 | Enumeración de cuentas | Mensajes y status idénticos, hash ficticio, bloqueo también para emails inexistentes, `202` constante en reset (INV-13). **Excepción aceptada**: registro e invitación responden `409 email_taken` porque la spec pide rechazar el registro (Historia 1.2); se mitiga con rate limit (research R-15, pregunta P-4) |
-| A07 | Robo de sesión | `HttpOnly`, `Secure`, `__Host-`, revocación inmediata, vencimiento por inactividad |
+| A07 | Enumeración de cuentas | **Aceptada solo en el registro** (P-4, DD-19): `409 email_already_registered` confirma la existencia, sin otros datos (INV-20). Mitigación: rate limit de signup 5/h por IP contando rechazos (DD-9), costo de argon2id por intento, métrica y evento `signup_email_exists` para detectar barridos. Login y reset **siguen no enumerables** (INV-13): mensajes idénticos, hash ficticio, bloqueo también para emails inexistentes, `202` constante |
+| A07 | Robo de sesión | `HttpOnly`, `Secure`, `__Host-`, revocación inmediata, 24 h de inactividad / 7 días de vida |
 | A07 | Token de reset/invitación filtrado | Un solo uso, vencimiento corto, hash en base, fragmento en el enlace (DD-14), borrado del payload del outbox (INV-09) |
 | A03 Injection | SQL | Solo queries parametrizadas de sqlc; el único identificador dinámico (nombre de rol) se deriva de un UUID y se sanea con `pgx.Identifier`; la función de aprovisionamiento recibe `uuid` tipado y usa `format('%I')` |
 | A03 | Inyección de cabeceras de email | Emails validados con `net/mail.ParseAddress` y sin `\r`/`\n`; el nombre del invitado no va en cabeceras |
@@ -745,7 +783,7 @@ desde un formulario), así que depende de las capas 1 y 2.
 | A05 Security Misconfiguration | Errores con detalles internos | problem+json sin stack ni SQL; headers `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store` en `/auth/*` y `/me` |
 | A05 | Privilegios excesivos en BD | `crm_app` sin privilegios; roles por columna; `CREATEROLE` aislado en una función `SECURITY DEFINER` (§10.4) |
 | A08 Software & Data Integrity | Subida de archivo malicioso (SVG con script, bomba de descompresión) | Solo PNG/JPEG por *magic bytes*, 2 MB, `image.DecodeConfig` ≤ 2000×2000, se sirve con tipo fijo y `nosniff` |
-| A09 Logging Failures | Falta de trazas de seguridad | `audit_log` (FR-008) + logs con `security_event` (login fallido, bloqueo, violación RLS) |
+| A09 Logging Failures | Falta de trazas de seguridad | `audit_log` (FR-008) + logs con `security_event` (login fallido, bloqueo, violación RLS, email existente en registro) |
 | A09 | Secretos en logs | Redacción de `password`, `token`, `Cookie`, `Set-Cookie`, payload del outbox |
 | DoS de aplicación | Ráfaga de hashes, bodies grandes | Semáforo de argon2id, `http.MaxBytesReader`, timeouts de servidor (`ReadHeaderTimeout` 5 s, `ReadTimeout` 15 s, `WriteTimeout` 30 s), `statement_timeout` 5 s en `crm_app` |
 
@@ -774,7 +812,8 @@ Variables de entorno (nunca en el repo, nunca en logs): `DATABASE_URL` (`crm_app
 `DATABASE_MIGRATION_URL` (`crm_owner`, solo para `crm migrate`), `AUTH_HMAC_KEY` (≥ 32 bytes,
 para `login_throttles`), `SMTP_HOST/PORT/USERNAME/PASSWORD/FROM`, `S3_ENDPOINT/BUCKET/ACCESS_KEY/
 SECRET_KEY/USE_SSL`, `APP_BASE_URL`, `APP_LINK_RESET/VERIFY/INVITATION` (paths de la SPA),
-`COOKIE_SECURE` (solo `false` en tests sin TLS).
+`SESSION_IDLE` (default `24h`), `SESSION_ABSOLUTE` (default `168h`), `COOKIE_SECURE` (solo
+`false` en tests sin TLS).
 
 ### 10.6 Datos personales
 
@@ -1008,7 +1047,7 @@ type IdentityUseCases interface {
     Login(ctx context.Context, email, password string, meta RequestMeta) (SessionResult, error)
     Logout(ctx context.Context, rawToken string, meta RequestMeta) error
     ResolveSession(ctx context.Context, rawToken string) (authz.Principal, error)
-    RequestPasswordReset(ctx context.Context, email string, meta RequestMeta) error
+    RequestPasswordReset(ctx context.Context, email string, meta RequestMeta) error // DD-20 para invitados
     ConfirmPasswordReset(ctx context.Context, rawToken, newPassword string, meta RequestMeta) error
     ConfirmEmailVerification(ctx context.Context, rawToken string, meta RequestMeta) error
     ResendEmailVerification(ctx context.Context, p authz.Principal) error
@@ -1032,10 +1071,10 @@ type IdentityUseCases interface {
 | Señal | Dónde | Campos |
 |---|---|---|
 | Log por request | `httpx` middleware | `request_id`, `method`, `route` (patrón chi, no la URL cruda), `status`, `duration_ms`, `tenant_id`, `user_id`, `ip` |
-| Evento de seguridad | `identity`, `db` | `security_event` ∈ {`login_failed`, `login_locked`, `login_disabled`, `rls_violation`, `privilege_error`, `rate_limited`}, `tenant_id` si se conoce, `email_hmac` (nunca el email) |
+| Evento de seguridad | `identity`, `tenant`, `db` | `security_event` ∈ {`login_failed`, `login_locked`, `login_disabled`, `signup_email_exists`, `rls_violation`, `privilege_error`, `rate_limited`}, `tenant_id` si se conoce, `email_hmac` (nunca el email), `ip` |
 | Worker | `outbox` | `message_id`, `tenant_id`, `template`, `attempt`, `outcome` ∈ {`sent`,`retry`,`failed`}, `smtp_code` |
 | Auditoría de negocio | `audit_log` | ver `data-model.md` §2.6 (acciones de FR-008 y más) |
-| Métricas | `expvar` (stdlib) en `/debug/vars`, **solo** en la interfaz interna (`METRICS_ADDR`, default `127.0.0.1:9090`) | `http_requests_total{status}`, `login_failed_total`, `login_locked_total`, `outbox_pending`, `outbox_oldest_pending_seconds`, `outbox_failed_total`, `db_pool_acquire_wait_ms`, `tenant_roles_total` |
+| Métricas | `expvar` (stdlib) en `/debug/vars`, **solo** en la interfaz interna (`METRICS_ADDR`, default `127.0.0.1:9090`) | `http_requests_total{status}`, `login_failed_total`, `login_locked_total`, `signup_email_exists_total`, `outbox_pending`, `outbox_oldest_pending_seconds`, `outbox_failed_total`, `db_pool_acquire_wait_ms`, `tenant_roles_total` |
 
 ### 12.2 Health checks
 
@@ -1053,6 +1092,7 @@ type IdentityUseCases interface {
 | Todos los requests de una empresa dan 500 | log `role "crm_t_…" does not exist` | Restore sin roles: correr `crm tenants reprovision-roles` (§12.4) |
 | Algún 500 con `security_event=rls_violation` | alerta inmediata | Es un bug de aislamiento: request id → handler → query. Tratar como incidente crítico (principio III) |
 | Muchos `429 login_locked` | `login_locked_total` | Ataque de fuerza bruta o bloqueo masivo; IPs en logs; ajustar rate limit |
+| Posible barrido de emails por el registro | `signup_email_exists_total` crece sin registros exitosos equivalentes | IPs de los eventos `signup_email_exists`; bajar el límite de signup o bloquear en el proxy (DD-19) |
 | Latencia alta generalizada | `duration_ms` p95, `db_pool_acquire_wait_ms` | Pool agotado (transacciones largas); `pg_stat_activity`: cada empresa aparece con su rol (`crm_t_…`), lo que ubica la empresa |
 | Registro lento | `duration_ms` de `/auth/signup` | Costo de `CREATE ROLE`/`GRANT` con muchos roles (riesgo R-2); `tenant_roles_total` |
 
@@ -1080,13 +1120,16 @@ type IdentityUseCases interface {
 | Subida de logo (2 MB) | < 2 s | Subida en streaming a S3 antes de la transacción |
 | Worker: demora de envío | 95 % de los emails despachados < 30 s tras el `COMMIT` | *Polling* cada 2 s, lote de 10, `FOR UPDATE SKIP LOCKED` |
 
+Con sesiones de 24 h de inactividad (DD-10) habrá más logins que con el diseño anterior; a la
+escala supuesta (S-3) sigue siendo un volumen chico para el semáforo de argon2id.
+
 Los targets se verifican en la Fase 9 con un benchmark en un contenedor con **10.000 roles de
 empresa** (T-B905, riesgo R-2): si `SET LOCAL ROLE` o el registro superan los targets, se reabre
 ADR-005.
 
 ---
 
-## 14. Supuestos y preguntas abiertas
+## 14. Supuestos y preguntas
 
 ### 14.1 Supuestos
 
@@ -1100,19 +1143,18 @@ ADR-005.
 | S-6 | Un clúster de PostgreSQL por entorno (dev, staging, prod) | Colisión de roles entre entornos |
 | S-7 | `GET /users` sin paginación (pocas decenas de usuarios por empresa) | Agregar paginación por cursor |
 | S-8 | `PATCH /tenant`: última escritura gana (sin `ETag`) | Un solo administrador suele editar estos datos |
-| S-9 | Pedir reset para un usuario `invited` o `disabled` no envía nada (respuesta igual, `202`) | — |
+| S-9 | Pedir reset para un usuario `disabled` o un email inexistente no envía nada; para un `invited` reemite la invitación (DD-20). La respuesta siempre es `202` | — |
 | S-10 | Los *paths* de la SPA para los enlaces de email son configurables (`APP_LINK_*`); `ui.md` fija los valores | — |
-| S-11 | "Sin revelar datos de la cuenta existente" (Historia 1.2) se interpreta como: se informa que el email no se puede usar, sin mostrar empresa, nombre ni estado | Ver P-4 |
 
-### 14.2 Preguntas abiertas (máx. 5, con default)
+### 14.2 Preguntas
 
-| ID | Pregunta | Default propuesto | ¿Bloquea? |
+| ID | Pregunta | Estado | Respuesta / default |
 |---|---|---|---|
-| **P-1** | ¿Dónde se hostea PostgreSQL en producción, y permite `CREATEROLE` a un rol no superusuario, `SECURITY DEFINER` y restringir qué roles se conectan? | PostgreSQL 18 (último minor) gestionado o autogestionado que lo permita, **verificado en la Fase 0 con el mismo script de bootstrap** (T-B012). Si el proveedor elegido no lo permite, se aplica la alternativa B de ADR-005 (rol único `crm_tenant` + `SET LOCAL app.tenant_id`), que solo cambia `app.current_tenant_id()` y `InTenantTx`. | **Sí, bloquea elegir el hosting** (no bloquea empezar el desarrollo) |
-| **P-2** | ¿La verificación de email bloquea algo? | No bloquea nada en el MVP: el usuario opera y la UI muestra un aviso para verificar. | No (afecta Fase 5) |
-| **P-3** | ¿El Administrador puede **reactivar** un usuario desactivado? (La spec solo dice "desactivar".) | Sí: `POST /users/{id}/reactivate`; vuelve a `active` si tenía contraseña o a `invited` con invitación nueva si no. Sin esto, un error del administrador deja el email bloqueado para siempre. | No (afecta Fase 6; si la respuesta es "no", se quita un endpoint) |
-| **P-4** | Ante un registro con email ya existente, ¿alcanza con `409` y un mensaje genérico ("No pudimos crear la cuenta con ese email. Si ya tenés cuenta, iniciá sesión o recuperá tu contraseña")? | Sí. La alternativa (responder siempre "revisá tu email" y avisar por correo al dueño de la cuenta) elimina la enumeración pero obliga a verificar el email antes de ver el panel, en tensión con SC-001. | No |
-| **P-5** | Duración de la sesión | 7 días sin uso o 30 días desde el login, lo que ocurra primero (DD-10) | No |
+| **P-1** | ¿Dónde se hostea PostgreSQL en producción, y permite `CREATEROLE` a un rol no superusuario, `SECURITY DEFINER` y restringir qué roles se conectan? | **Abierta. Bloquea elegir el hosting** (no bloquea empezar el desarrollo) | Default: PostgreSQL 18 (último minor) gestionado o autogestionado que lo permita, **verificado en la Fase 0 con el mismo script de bootstrap** (T-B012). Si el proveedor elegido no lo permite, se aplica la alternativa B de ADR-005 (rol único `crm_tenant` + `SET LOCAL app.tenant_id`), que solo cambia `app.current_tenant_id()` y `InTenantTx`. |
+| **P-2** | ¿La verificación de email bloquea algo? | **Resuelta** (default aceptado) | No bloquea nada; la UI muestra un aviso hasta verificar (`/me` expone `email_verified`). DD-4, DD-13. |
+| **P-3** | ¿El Administrador puede reactivar un usuario desactivado? | **Resuelta** (default aceptado) | Sí: `POST /users/{id}/reactivate`, solo Administrador (`settings.manage`), auditado (`user.reactivated`). Vuelve a `active` si tenía contraseña o a `invited` con invitación nueva si no. Contrato, §4.6, `data-model.md` §2.6 y T-B604/T-B606. |
+| **P-4** | ¿Cómo responde el registro con un email ya existente? | **Resuelta** (el usuario ajustó el default) | `409` con `code: email_already_registered`, mensaje explícito "Ya existe un usuario con ese email. ¿Querés recuperar la contraseña?" y `suggested_action: password_reset`; sin empresa, nombre ni estado. Se acepta conscientemente que confirma la existencia del email. Login y reset siguen no enumerables. DD-19, DD-20, DD-21, INV-20. |
+| **P-5** | Duración de la sesión | **Resuelta** (el usuario eligió otro valor) | **24 h de inactividad / 7 días de vida máxima**. DD-10, ADR-006. |
 
 ---
 
@@ -1126,10 +1168,11 @@ ADR-005.
 | R-4 | CVE-2026-14666: planes cacheados que ignoraban cambios de membresía de roles en políticas RLS | — | Medio | Exigir el último *minor* de PostgreSQL 18 que incluye el arreglo; `server_version` logueado al arrancar |
 | R-5 | Operación: backups sin roles, entornos en el mismo clúster, roles huérfanos | Media | Medio | §12.4: `reprovision-roles` (T-B906), métrica de inventario, S-6 |
 | R-6 | Falsa sensación de seguridad: el rol por empresa no protege contra inyección SQL con ejecución arbitraria (mismo límite que la alternativa) | — | Alto si ocurre | sqlc sin SQL dinámico; test de repositorio T-B011; revisión de código |
-| R-7 | Enumeración por tiempo en `password-reset` (el camino con usuario existente hace más trabajo en la base) | Baja | Bajo | Rate limit por IP y por email; el trabajo extra es de pocos ms |
+| R-7 | Enumeración por tiempo en `password-reset` (los caminos con usuario existente hacen más trabajo en la base) | Baja | Bajo | Rate limit por IP y por email; el trabajo extra es de pocos ms; además el registro ya confirma existencia (DD-19), así que el valor de este canal es marginal |
 | R-8 | Bloqueo malicioso de cuentas ajenas (5 intentos) | Media | Bajo | Aceptado por la spec; rate limit por IP; el reset de contraseña sigue funcionando y limpia el bloqueo |
 | R-9 | Complejidad para el equipo (8 roles, bootstrap fuera de goose) | Media | Medio | ADR-004/005 explican el porqué; tests de catálogo detectan desvíos; `make db-reset` en desarrollo |
 | R-10 | Dependencias con soporte OpenAPI 3.1 todavía jóvenes | Baja | Bajo | Validación en tests con `libopenapi-validator`; sin generación de servidor (ADR-014) |
+| R-11 | Enumeración masiva de emails por el registro (aceptada en P-4) usando muchas IPs | Media | Bajo | Rate limit por IP contando rechazos, costo de argon2id por intento, métrica `signup_email_exists_total` y runbook (§12.3); si se vuelve un problema, CAPTCHA o límite en el proxy (spec futura) |
 
 ---
 
@@ -1140,12 +1183,14 @@ La actualización de la documentación va **en el mismo cambio** que el código.
 | Cuando cambies… | También tenés que actualizar… |
 |---|---|
 | Un endpoint (ruta, payload, código de error) | `contracts/openapi.yaml` (canónico) + §8 de este plan + la tabla de rutas de T-B801/T-B802 + `ui.md` si la consume |
-| Un `code` de error | §9.1 + `components/schemas/ErrorCode` del contrato + mapeo en el `http.go` del módulo |
-| Una transición de estado de usuario o invitación | §4.6 + la tabla de transiciones en `identity/user.go` + tests T-B603/T-B604 |
+| Un `code` de error o un `suggested_action` | §9.1 + `components/schemas/ErrorCode` / `SuggestedAction` del contrato + mapeo en el `http.go` del módulo + `ui.md` |
+| Una transición de estado de usuario o invitación | §4.6 + la tabla de transiciones en `identity/user.go` + tests T-B603/T-B604 + catálogo de auditoría de `data-model.md` §2.6 |
 | La matriz de permisos | `authz` + tabla de T-B207 + `Permission` en el contrato + FR-007 (spec, con aprobación) + ADR-013 si cambia el mecanismo |
 | El modelo de datos | `data-model.md` (tablas, ER, privilegios por rol) + migración nueva + lista de tablas de T-B107 |
 | Una tabla de empresa nueva (cualquier spec) | Checklist de `data-model.md` §6; los tests de catálogo (T-B107..T-B110) la verifican solos |
 | Privilegios de un rol de sistema | `data-model.md` §3.4 + test T-B109 + §4.4 de este plan |
+| La duración de la sesión | DD-10 + ADR-006 + defaults de `platform/config` + T-B002/T-B305/T-B307 + descripción de la cookie en el contrato |
+| La postura de enumeración (registro, login, reset) | DD-19 + INV-13/INV-20 + research R-15 + tests T-B305/T-B402/T-B404/T-B501/T-B506 |
 | Estrategia de aislamiento, sesiones, email, archivos | ADR nuevo que reemplace al vigente (nunca editar uno aceptado) |
 | El bootstrap de roles o la operación de backups | `db/bootstrap/` + §12.4 + ADR-004/005 + README (operación) |
 | Un término nuevo (Invitación, Sesión, Outbox) | `docs/glosario.md` (propuesta en §17) |
@@ -1159,7 +1204,7 @@ La actualización de la documentación va **en el mismo cambio** que el código.
 | Término (ES) | Código (EN) | Definición |
 |---|---|---|
 | Invitación | `Invitation` | Enlace de un solo uso, válido 7 días, para que un usuario invitado defina su contraseña. |
-| Sesión | `Session` | Acceso iniciado desde un dispositivo; se cierra al salir, al desactivar el usuario o al cambiar la contraseña. |
+| Sesión | `Session` | Acceso iniciado desde un dispositivo; vence tras 24 h sin uso o 7 días, y se cierra al salir, al desactivar el usuario o al cambiar la contraseña. |
 | Token de un solo uso | `UserToken` | Secreto enviado por email para verificar el email, restablecer la contraseña o aceptar una invitación. |
 | Permiso | `Permission` | Capacidad concreta de la matriz de FR-007 (p. ej. `settings.manage`). |
 | Mensaje saliente | `OutboxMessage` | Email pendiente de envío, guardado junto con la operación que lo originó. |

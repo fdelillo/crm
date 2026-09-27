@@ -1,6 +1,8 @@
 # Research: Empresas, usuarios y roles (backend)
 
 **Spec**: [`spec.md`](spec.md) · **Plan**: [`plan.md`](plan.md)
+**Revisión 2026-09-27**: R-06 (duración de sesión, P-5) y R-15 (enumeración en el registro, P-4)
+actualizadas con las respuestas del usuario.
 
 Alternativas evaluadas por decisión. Las marcadas **(usuario)** las tomó el usuario antes del
 plan: acá se documenta por qué son razonables y qué cuestan. Las demás son defaults del
@@ -65,7 +67,7 @@ pide FR-007.
 
 Recomendación del arquitecto: B es la opción más simple con la misma protección práctica. Se
 diseña sobre A por decisión del usuario, con la reversibilidad garantizada y el riesgo del
-hosting planteado en la pregunta P-1.
+hosting planteado en la pregunta P-1 (sigue abierta).
 
 ### R-04b Cómo resolver la empresa antes de conocerla (login, tokens, worker)
 
@@ -104,6 +106,14 @@ debe tener y no pertenecen a una base.
 | JWT de acceso corto + refresh | Sin consulta por request | La revocación inmediata exige lista negra (vuelve a consultar la base); rol "congelado" en el token hasta que expira; más piezas |
 | Token en `Authorization` guardado en `localStorage` | Sin CSRF | Cualquier XSS roba la sesión; peor para una PWA |
 
+Duración de la sesión (**usuario, P-5**):
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **24 h sin uso / 7 días de vida máxima** | Ventana corta si se pierde o comparte un celular en obra/taller; sesiones viejas desaparecen rápido | Quien no usa la app un día vuelve a iniciar sesión; más logins (costo de argon2id acotado por el semáforo) | **Elegida por el usuario** |
+| 7 días sin uso / 30 días (default propuesto) | Menos fricción en el celular | Ventana de exposición mayor | Descartada por el usuario |
+| Sin expiración por inactividad, solo absoluta | Simple | Una sesión olvidada vale lo mismo que una activa | Descartada |
+
 ## R-07 CSRF → ADR-006
 
 | Opción | A favor | En contra | Veredicto |
@@ -134,9 +144,10 @@ debe tener y no pertenecen a una base.
 
 | Opción | A favor | En contra | Veredicto |
 |---|---|---|---|
-| **RFC 9457 + `code` estable** | Estándar; herramientas lo reconocen; `code` desacopla el texto de la UI | Un campo de extensión propio | **Elegida** |
+| **RFC 9457 + `code` estable (+ `suggested_action` cuando aplica)** | Estándar; herramientas lo reconocen; `code` desacopla el texto de la UI; `suggested_action` le dice a la UI qué salida ofrecer sin parsear textos | Dos campos de extensión propios | **Elegida** |
 | Envoltorio propio `{error: {...}}` | Libre | Reinventa un estándar | Descartada |
-| Solo status HTTP | Mínimo | No distingue `email_taken` de `last_admin` (ambos 409) | Descartada |
+| Solo status HTTP | Mínimo | No distingue `email_already_registered` de `last_admin` (ambos 409) | Descartada |
+| Link absoluto a la pantalla de recuperación en el error | La UI no decide nada | El backend tendría que conocer rutas de la SPA; se acopla a la UI | Descartada: `suggested_action` es un enum estable y la UI decide la ruta |
 
 ## R-11 Envío de email **(usuario: outbox + worker en el binario; puerto `Mailer` SMTP)** → ADR-010
 
@@ -196,24 +207,53 @@ Validación de contrato:
 | Motor de políticas (Casbin, OPA) | Flexible | Complejidad desproporcionada para 2 roles fijos | Descartada |
 | Permisos en base de datos | Configurables | Roles configurables están fuera del MVP (visión) | Descartada |
 
-## R-15 Bloqueo por intentos y enumeración → DD-7, DD-8
+## R-15 Enumeración de cuentas y bloqueo por intentos → DD-7, DD-8, DD-19, DD-20, DD-21
+
+### Registro con email existente (**usuario, P-4**)
 
 | Opción | A favor | En contra | Veredicto |
 |---|---|---|---|
-| **Contador por HMAC del email, exista o no la cuenta** | Bloqueo idéntico para emails inexistentes; no guarda emails de no-usuarios en claro | Cualquiera puede bloquear una cuenta ajena 15 min | **Elegida** |
+| **`409 email_already_registered` con mensaje explícito ("Ya existe un usuario con ese email. ¿Querés recuperar la contraseña?") y `suggested_action: password_reset`, sin otros datos** | El dueño entiende qué pasó y tiene una salida en un toque; compatible con entrar al panel al instante (SC-001) | **Confirma que el email tiene cuenta** (enumeración) | **Elegida por el usuario**, con la enumeración aceptada conscientemente |
+| `409` con mensaje genérico ("No pudimos crear la cuenta con ese email") | Algo menos explícito | Igual confirma la existencia (el rechazo es el oráculo); peor experiencia | Descartada (era el default; el usuario pidió el mensaje explícito) |
+| Responder siempre "te enviamos un email" y notificar al dueño de la cuenta | Sin enumeración | Hay que verificar el email antes de ver el panel; más pasos | Descartada |
+
+Mitigaciones de la enumeración aceptada: rate limit de signup de 5/h por IP **contando rechazos**
+(DD-9), costo de argon2id por intento (el hash se calcula antes de saber si el email existe),
+el `409` no dice empresa, nombre ni estado (INV-20), y `security_event=signup_email_exists` con su
+métrica para detectar barridos (DD-19).
+
+### ¿Siguen siendo no enumerables el login y el reset?
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Mantenerlos no enumerables** (mismas respuestas, hash ficticio, bloqueo por HMAC también para emails inexistentes, `202` constante) | Defensa en profundidad: el registro queda como **único** oráculo y es el más lento (5/h por IP, formulario completo); ya está diseñado y probado, no cuesta nada extra | "Protege" algo que el registro igual revela | **Elegida** (DD-19) |
+| Simplificar: login dice "no existe ese usuario", reset responde 404 | Mensajes más claros; `login_throttles` podría indexarse por `user_id` | Crea oráculos 240 veces más rápidos (login 20/min por IP); habilita *credential stuffing* dirigido solo a cuentas existentes; el bloqueo pasaría a revelar existencia | Descartada |
+
+### Coherencia del "recuperar contraseña" sugerido
+
+El `409` del registro sugiere recuperar la contraseña también a quien existe como **invitado** (sin
+contraseña todavía) o **desactivado**. Opciones para el pedido de reset en esos estados:
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Invitado: reemitir la invitación (7 días) y enviar el email de invitación. Desactivado: nada** | El invitado recibe lo que necesita sin plantilla nueva (reusa DD-5); el desactivado no puede entrar igual | Un invitado puede renovar su invitación por su cuenta (solo llega a su propio email; rate limit 3/h por email) | **Elegida** (DD-20) |
+| No enviar nada a invitados | Sin cambios | El invitado que sigue la sugerencia del `409` no recibe nada y queda trabado | Descartada |
+| Enviar un enlace de reset al invitado para que defina contraseña | Un solo flujo | Saltearía la aceptación de la invitación (nombre, auditoría `invitation_accepted`) y mezclaría dos estados | Descartada |
+| Email explicativo al desactivado ("tu usuario está desactivado") | Mejor experiencia | Plantilla nueva; el desactivado igual debe hablar con su Administrador | Descartada por ahora (reevaluable) |
+
+### Bloqueo por intentos
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Contador por HMAC del email, exista o no la cuenta** | Bloqueo idéntico para emails inexistentes; no guarda emails de no-usuarios en claro | Cualquiera puede bloquear una cuenta ajena 15 min | **Elegida** (se mantiene tras P-4) |
 | Contador en `users` | Simple | El bloqueo solo ocurre en cuentas existentes: el `429` revela que la cuenta existe | Descartada |
 | Solo rate limit por IP | Sin bloqueo de cuentas | No cumple Historia 2.2 y no frena ataques distribuidos | Complemento, no reemplazo |
 
-Registro con email existente (Historia 1.2):
+### Invitación con email existente
 
-| Opción | A favor | En contra | Veredicto |
-|---|---|---|---|
-| **`409 email_taken` con mensaje genérico + rate limit** | Cumple la spec literal; el usuario entiende qué pasa; compatible con entrar al panel al instante (SC-001) | Permite confirmar que un email tiene cuenta | **Elegida** (pregunta P-4) |
-| Responder siempre "te enviamos un email" y notificar al dueño | Sin enumeración | Hay que verificar el email antes de ver el panel; más pasos para el dueño | Descartada salvo que P-4 diga lo contrario |
-
-Invitar un email que ya tiene cuenta en otra empresa responde también `409 email_taken`: como el
-registro ya permite confirmar la existencia de un email, ocultarlo en la invitación no agregaría
-protección y complicaría la experiencia del Administrador.
+Responde `409 email_taken`, sin `suggested_action` (DD-21): el Administrador no puede recuperar la
+cuenta de otra persona. Como el registro ya confirma la existencia de un email, ocultarlo en la
+invitación no agregaría protección.
 
 ## R-16 Último Administrador bajo concurrencia → INV-10
 
@@ -230,7 +270,7 @@ protección y complicaría la experiencia del Administrador.
 |---|---|---|---|
 | **En memoria (`golang.org/x/time/rate`), por IP y por email** | Sin infraestructura; paquete del proyecto Go | Por instancia | **Elegida** (S-1) |
 | En PostgreSQL | Compartido entre instancias | Escritura por request anónimo | Descartada hasta tener varias instancias |
-| En el proxy (nginx, Cloudflare) | Fuera de la app | Depende del hosting aún no elegido | Complemento posible |
+| En el proxy (nginx, Cloudflare) | Fuera de la app | Depende del hosting aún no elegido | Complemento posible (también contra enumeración distribuida por el registro) |
 
 ## R-18 Logs y métricas → DD-12
 
