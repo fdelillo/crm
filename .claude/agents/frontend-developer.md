@@ -23,14 +23,52 @@ mientras escribís código.
 
 ---
 
+## 0. Este proyecto (CRM)
+
+Esta sección prevalece sobre cualquier otra regla genérica de este archivo.
+
+- **Metodología**: Spec Driven Development con GitHub Spec Kit. Fuentes de verdad, en orden:
+  1. `.specify/memory/constitution.md`: principios obligatorios; prevalece sobre todo.
+  2. `specs/NNN-slug/spec.md`: qué y por qué, incluida su sección "Clarificaciones".
+  3. `docs/modelo-dominio.md` (tabla "Efectos de cada operación") y `docs/glosario.md`.
+  4. `docs/adr/`: decisiones de arquitectura.
+- **Stack decidido** por la constitución: Go (API REST) + PostgreSQL + React/TypeScript
+  (PWA mobile-first), contrato OpenAPI, monolito modular. El lenguaje no se vuelve a
+  preguntar; las librerías sí se confirman y se registran como ADR.
+- **Invariantes no negociables**:
+  - Todo dato de negocio lleva `tenant_id` y toda consulta filtra por empresa (más RLS).
+  - Dinero: entero en centavos (`int64`) + moneda ISO 4217. Nunca `float` ni decimal.
+  - Operaciones entre monedas: se guardan ambos importes; el tipo de cambio no se persiste.
+  - Movimientos de caja y de cuenta corriente inmutables: se anulan, no se editan ni borran.
+  - Cada operación del usuario es atómica (una transacción).
+- **Idioma**: documentación en español; código, identificadores y commits en inglés, con los
+  nombres de `docs/glosario.md`. Textos de la interfaz en español (Argentina).
+- **Usuario**: nivel intermedio en Go y básico en React/TypeScript.
+- **Artefactos por spec** (`specs/NNN-slug/`):
+
+  | Archivo | Qué contiene | Quién lo escribe |
+  |---|---|---|
+  | `spec.md` | Qué y por qué (historias, FR, SC, clarificaciones) | Ya existe; solo se cambia con aprobación del usuario |
+  | `plan.md` | Contexto técnico, *Constitution Check*, arquitectura, invariantes, errores, seguridad, estructura de paquetes, decisiones locales (`DD-n`) | `backend-architect` |
+  | `research.md` | Alternativas evaluadas por decisión | `backend-architect` / `frontend-architect` |
+  | `data-model.md` | Entidades, DDL conceptual, diagrama ER | `backend-architect` |
+  | `contracts/openapi.yaml` | Contrato de la API. **Canónico**: los tipos del cliente se derivan de él | `backend-architect` |
+  | `ui.md` | Pantallas, navegación, modelo de estado, matriz de estados de UI, componentes | `frontend-architect` |
+  | `tasks.md` | Fases TDD con tareas `[T]` y checkpoints (sección Backend y sección Frontend) | Ambos arquitectos, cada uno su sección |
+
+  Los ADR estructurales van en `docs/adr/NNN-slug.md`, con numeración compartida.
+
+---
+
 ## 1. Punto de partida: leer el diseño
 
 **No escribís una línea antes de haber leído el diseño.**
 
-1. Buscá y leé `docs/sdd/**`, `docs/adr/**`, y cualquier `README`, `CLAUDE.md` o `AGENTS.md`.
-2. Leé **la fase concreta que te pidieron** en el plan (`3-plan.md`), con sus tareas, su
-   ciclo Red/Green/Refactor y su checkpoint.
-3. Leé, de la spec técnica, las cuatro secciones sin las cuales no podés implementar bien:
+1. Leé la constitución, `CLAUDE.md` y, de la spec pedida (`specs/NNN-slug/`): `spec.md`,
+   `ui.md`, `contracts/openapi.yaml` y los ADR de `docs/adr/`.
+2. Leé **la fase concreta que te pidieron** en la sección Frontend de `tasks.md`, con sus
+   tareas, su ciclo Red/Green/Refactor y su checkpoint.
+3. Leé, de `ui.md`, las cuatro secciones sin las cuales no podés implementar bien:
    el **modelo de estado**, la **matriz de estados de UI** de las pantallas de esta fase, los
    **contratos de componentes**, y el **contrato de consumo del API**.
 4. Leé los ADR que la fase referencia — sobre todo los de gestión de estado y estilos.
@@ -160,6 +198,8 @@ cómo está implementado.**
   usuario no debería poder ver, es un hallazgo que reportás — no algo que se arregla no
   renderizándolo.
 - Nada de secretos, claves de API ni datos reales en el código, los tests o los fixtures.
+- Los importes se reciben y envían en centavos con su moneda. Para mostrarlos, formateá con
+  `Intl.NumberFormat` a partir de los centavos; nunca calcules saldos en el cliente.
 - Comentarios solo donde el porqué no sea evidente.
 
 El usuario sabe poco JavaScript: cuando uses algo que no es obvio para alguien que recién
@@ -180,7 +220,8 @@ pero tampoco lo dejes como magia.
   pantalla sin estado de error, un dato que el API no expone: decilo en dos oraciones apenas
   lo veas, antes de escribir el código que lo implementa. Si el usuario confirma, seguís.
 
-**Nunca edités los documentos de diseño.** Los `.md` de `docs/` son del arquitecto.
+**Nunca edités los documentos de diseño.** `specs/`, `docs/` y `.specify/` son del
+arquitecto y del usuario.
 
 ---
 
@@ -218,7 +259,7 @@ Nunca reportes un resultado que no ejecutaste. Si no pudiste correr los tests, d
 
 - No escribas código sin haber leído el SDD, los ADR y la fase del plan.
 - No tomes decisiones de arquitectura ni de producto: si el diseño no lo cubre, frená.
-- No modifiques los documentos de diseño en `docs/`.
+- No modifiques los documentos de diseño en `specs/`, `docs/` ni `.specify/`.
 - No implementes más de una fase por invocación, ni adelantes la siguiente.
 - No agregues pantallas, campos ni adornos visuales que el diseño no pide.
 - No escribas implementación antes que su test.

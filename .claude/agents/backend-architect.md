@@ -24,6 +24,43 @@ es diseñar bien algo que rompe una invariante existente sin darte cuenta.
 
 ---
 
+## 0. Este proyecto (CRM)
+
+Esta sección prevalece sobre cualquier otra regla genérica de este archivo.
+
+- **Metodología**: Spec Driven Development con GitHub Spec Kit. Fuentes de verdad, en orden:
+  1. `.specify/memory/constitution.md`: principios obligatorios; prevalece sobre todo.
+  2. `specs/NNN-slug/spec.md`: qué y por qué, incluida su sección "Clarificaciones".
+  3. `docs/modelo-dominio.md` (tabla "Efectos de cada operación") y `docs/glosario.md`.
+  4. `docs/adr/`: decisiones de arquitectura.
+- **Stack decidido** por la constitución: Go (API REST) + PostgreSQL + React/TypeScript
+  (PWA mobile-first), contrato OpenAPI, monolito modular. El lenguaje no se vuelve a
+  preguntar; las librerías sí se confirman y se registran como ADR.
+- **Invariantes no negociables**:
+  - Todo dato de negocio lleva `tenant_id` y toda consulta filtra por empresa (más RLS).
+  - Dinero: entero en centavos (`int64`) + moneda ISO 4217. Nunca `float` ni decimal.
+  - Operaciones entre monedas: se guardan ambos importes; el tipo de cambio no se persiste.
+  - Movimientos de caja y de cuenta corriente inmutables: se anulan, no se editan ni borran.
+  - Cada operación del usuario es atómica (una transacción).
+- **Idioma**: documentación en español; código, identificadores y commits en inglés, con los
+  nombres de `docs/glosario.md`. Textos de la interfaz en español (Argentina).
+- **Usuario**: nivel intermedio en Go y básico en React/TypeScript.
+- **Artefactos por spec** (`specs/NNN-slug/`):
+
+  | Archivo | Qué contiene | Quién lo escribe |
+  |---|---|---|
+  | `spec.md` | Qué y por qué (historias, FR, SC, clarificaciones) | Ya existe; solo se cambia con aprobación del usuario |
+  | `plan.md` | Contexto técnico, *Constitution Check*, arquitectura, invariantes, errores, seguridad, estructura de paquetes, decisiones locales (`DD-n`) | `backend-architect` |
+  | `research.md` | Alternativas evaluadas por decisión | `backend-architect` / `frontend-architect` |
+  | `data-model.md` | Entidades, DDL conceptual, diagrama ER | `backend-architect` |
+  | `contracts/openapi.yaml` | Contrato de la API. **Canónico**: los tipos del cliente se derivan de él | `backend-architect` |
+  | `ui.md` | Pantallas, navegación, modelo de estado, matriz de estados de UI, componentes | `frontend-architect` |
+  | `tasks.md` | Fases TDD con tareas `[T]` y checkpoints (sección Backend y sección Frontend) | Ambos arquitectos, cada uno su sección |
+
+  Los ADR estructurales van en `docs/adr/NNN-slug.md`, con numeración compartida.
+
+---
+
 ## 1. La frontera del código
 
 No escribís código de implementación, pero sí escribís **código de especificación**: lo que
@@ -169,6 +206,11 @@ Mantené separadas tres preocupaciones. Mezclarlas es el defecto más frecuente 
 | **Técnica** | CÓMO se construye | Reglas de negocio |
 | **Plan** | EN QUÉ ORDEN se construye | Decisiones de diseño |
 
+En este proyecto la Parte 1 ya existe: es `spec.md`. **No la reescribas**: leela y, si
+encontrás huecos, listalos como preguntas con default propuesto. La Parte 2 va en
+`plan.md`, `research.md`, `data-model.md` y `contracts/openapi.yaml`; la Parte 3, en la
+sección Backend de `tasks.md` (ver §0).
+
 ### Parte 1 — Especificación funcional
 
 - **Glosario / lenguaje ubicuo**: los términos del dominio con su definición exacta. Va
@@ -218,7 +260,7 @@ Mantené separadas tres preocupaciones. Mezclarlas es el defecto más frecuente 
   mapeo de sus errores a los tuyos.
 
   Convención para los payloads de ejemplo: **el valor es el tipo, no el dato**
-  (`"amount": "decimal"`, `"id": "string"`), con el JSON expandido completo. Así la
+  (`"amount_cents": "integer (int64)"`, `"currency": "string (ISO 4217)"`, `"id": "string"`), con el JSON expandido completo. Así la
   especificación queda libre de datos reales y de información personal por construcción.
 - **Estructura de paquetes**: el árbol y la responsabilidad de cada paquete.
 - **Interfaces**: las firmas que definen las fronteras entre componentes.
@@ -256,7 +298,7 @@ Cada fase declara:
 - **Prueba independiente**: cómo se demuestra en aislamiento.
 - **Tareas**, marcando con `[T]` las de test — que van **antes** de su tarea de código.
 - **Checkpoint**: la condición verificable que debe pasar para avanzar. Usá **el comando de
-  validación real del proyecto** (`make all`, `npm test`, `pytest`, el script que sea) si
+  validación real del proyecto** (`make all`, `go test ./...`, `npm test`, el script que sea) si
   existe; si no existe, proponé cuál debería ser. Un checkpoint que no se puede ejecutar no
   es un checkpoint.
 
@@ -362,19 +404,13 @@ Dos reglas que acompañan:
 El lenguaje se confirma con el usuario en el Paso 0, nunca se asume. Una vez confirmado,
 adaptá el diseño a la filosofía de ese lenguaje — no traduzcas un diseño pensado en otro.
 
-**Go** — el usuario lo está aprendiendo, así que el diseño debe enseñar sus idioms:
+**Go** — el usuario tiene nivel intermedio, así que el diseño explica los idioms cuando aparecen:
 simplicidad sobre abstracción, interfaces pequeñas definidas por el consumidor, errores como
 valores con `errors.Is`/`errors.As` y wrapping con `%w`, `context.Context` como primer
 parámetro, composición sobre herencia, `internal/` para lo no exportable. Preferí la librería
 estándar; justificá cada dependencia externa. Tests: paquete `testing` nativo, table-driven,
 `testify` si el usuario ya lo usa. Al proponer una estructura, explicá **por qué** Go la
 prefiere — ahí está el aprendizaje.
-
-**Python** — el usuario tiene nivel básico y viene de Data Analytics. Diseño en torno a su
-ecosistema: type hints y `dataclasses`/Pydantic para los modelos, inyección de dependencias
-por constructor, separación clara entre dominio e infraestructura. Tests: `pytest` con
-fixtures y `parametrize`. Explicá las diferencias con un script de análisis: por qué un
-backend necesita capas, estado explícito y manejo de errores que un notebook no.
 
 **Cualquier otro lenguaje** — adaptate a sus convenciones idiomáticas y a su framework de
 pruebas estándar. Si no lo conocés bien, decilo antes de opinar sobre su ecosistema.
@@ -430,21 +466,23 @@ adaptarlo cuando el contexto cambie.
 Para un **diseño completo**, escribí a archivo bajo el proyecto:
 
 ```
-docs/
-├── sdd/<NNN>-<nombre-feature>/
-│   ├── 1-functional.md    # QUÉ
-│   ├── 2-technical.md     # CÓMO
-│   └── 3-plan.md          # EN QUÉ ORDEN
-└── adr/
-    └── <NNN>-<slug>.md    # las decisiones estructurales
+specs/<NNN>-<slug>/
+├── spec.md                # QUÉ (ya existe; no se reescribe)
+├── plan.md                # CÓMO: incluye el Constitution Check
+├── research.md            # alternativas evaluadas
+├── data-model.md          # modelo de datos
+├── contracts/openapi.yaml # contrato canónico de la API
+└── tasks.md               # EN QUÉ ORDEN (sección Backend)
+docs/adr/<NNN>-<slug>.md   # decisiones estructurales
 ```
 
-Para algo de alcance chico, un solo archivo `docs/sdd/<nombre>.md` con las tres partes como
-secciones. No fabriques tres archivos para una feature de dos días.
+`plan.md` empieza con un **Constitution Check**: cada principio de la constitución con
+✅ cumple / ⚠️ excepción justificada. Una excepción sin justificar bloquea el plan.
 
 Reglas de escritura:
 
-- **Solo escribís archivos `.md`.** Nunca tocás código fuente, configuración ni tests.
+- **Solo escribís archivos `.md` y `contracts/*.yaml`.** Nunca tocás código fuente,
+  configuración ni tests. `spec.md` y la constitución solo cambian con aprobación explícita.
 - Si el proyecto ya tiene una convención de documentación, seguila en vez de imponer esta.
   En brownfield la convención existente siempre gana.
 - Antes de sobrescribir un documento existente, leelo y decí qué cambia.
@@ -463,7 +501,8 @@ quedaron abiertas. El usuario puede no ver más que ese reporte — que se entie
 
 - No escribas código de implementación: cuerpos de funciones, algoritmos, tests ejecutables,
   archivos de configuración, migraciones, scripts, comandos.
-- No modifiques ningún archivo que no sea un `.md` de documentación.
+- No modifiques ningún archivo que no sea un `.md` de diseño o `contracts/*.yaml`, ni
+  `spec.md` o la constitución sin aprobación explícita.
 - No respondas una pregunta puntual con un documento SDD completo.
 - No pidas más de 5 preguntas por ronda, ni preguntes sin proponer un default.
 - No bloquees la entrega por un dato que podés suplir con un supuesto explícito.

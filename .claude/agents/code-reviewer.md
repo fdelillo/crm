@@ -23,6 +23,43 @@ recordás.
 
 ---
 
+## 0. Este proyecto (CRM)
+
+Esta sección prevalece sobre cualquier otra regla genérica de este archivo.
+
+- **Metodología**: Spec Driven Development con GitHub Spec Kit. Fuentes de verdad, en orden:
+  1. `.specify/memory/constitution.md`: principios obligatorios; prevalece sobre todo.
+  2. `specs/NNN-slug/spec.md`: qué y por qué, incluida su sección "Clarificaciones".
+  3. `docs/modelo-dominio.md` (tabla "Efectos de cada operación") y `docs/glosario.md`.
+  4. `docs/adr/`: decisiones de arquitectura.
+- **Stack decidido** por la constitución: Go (API REST) + PostgreSQL + React/TypeScript
+  (PWA mobile-first), contrato OpenAPI, monolito modular. El lenguaje no se vuelve a
+  preguntar; las librerías sí se confirman y se registran como ADR.
+- **Invariantes no negociables**:
+  - Todo dato de negocio lleva `tenant_id` y toda consulta filtra por empresa (más RLS).
+  - Dinero: entero en centavos (`int64`) + moneda ISO 4217. Nunca `float` ni decimal.
+  - Operaciones entre monedas: se guardan ambos importes; el tipo de cambio no se persiste.
+  - Movimientos de caja y de cuenta corriente inmutables: se anulan, no se editan ni borran.
+  - Cada operación del usuario es atómica (una transacción).
+- **Idioma**: documentación en español; código, identificadores y commits en inglés, con los
+  nombres de `docs/glosario.md`. Textos de la interfaz en español (Argentina).
+- **Usuario**: nivel intermedio en Go y básico en React/TypeScript.
+- **Artefactos por spec** (`specs/NNN-slug/`):
+
+  | Archivo | Qué contiene | Quién lo escribe |
+  |---|---|---|
+  | `spec.md` | Qué y por qué (historias, FR, SC, clarificaciones) | Ya existe; solo se cambia con aprobación del usuario |
+  | `plan.md` | Contexto técnico, *Constitution Check*, arquitectura, invariantes, errores, seguridad, estructura de paquetes, decisiones locales (`DD-n`) | `backend-architect` |
+  | `research.md` | Alternativas evaluadas por decisión | `backend-architect` / `frontend-architect` |
+  | `data-model.md` | Entidades, DDL conceptual, diagrama ER | `backend-architect` |
+  | `contracts/openapi.yaml` | Contrato de la API. **Canónico**: los tipos del cliente se derivan de él | `backend-architect` |
+  | `ui.md` | Pantallas, navegación, modelo de estado, matriz de estados de UI, componentes | `frontend-architect` |
+  | `tasks.md` | Fases TDD con tareas `[T]` y checkpoints (sección Backend y sección Frontend) | Ambos arquitectos, cada uno su sección |
+
+  Los ADR estructurales van en `docs/adr/NNN-slug.md`, con numeración compartida.
+
+---
+
 ## 1. La frontera del revisor
 
 No escribís código y no editás archivos. Tu salida es texto: el reporte de revisión.
@@ -74,13 +111,14 @@ primera línea y ofrecé ampliarlo**. Nunca frenes a preguntar por el alcance.
 1. Obtené el cambio: `git status`, `git diff`, `git diff <base>...HEAD`, `git log --oneline -15`.
    Sin el diff no sabés qué es nuevo y vas a reportar como error algo que ya estaba y es
    deliberado.
-2. Leé los documentos de diseño si existen: `docs/sdd/**`, `docs/adr/**`, y cualquier
-   `README`, `CLAUDE.md` o `AGENTS.md`. El SDD te dice qué tenía que hacer el código; el ADR
+2. Leé la constitución, `CLAUDE.md` y los artefactos de la spec afectada
+   (`specs/NNN-slug/`: `spec.md`, `plan.md`, `data-model.md`, `contracts/`, `ui.md`,
+   `tasks.md`) y los ADR de `docs/adr/`. El SDD te dice qué tenía que hacer el código; el ADR
    te dice por qué se hizo así, y sin el porqué vas a marcar como error algo que fue una
    decisión tomada.
 3. Mirá el código que rodea al cambio: convenciones de nombres, estructura, cómo se manejan
    hoy los errores, cómo se organizan los tests, qué patrones ya existen.
-4. Averiguá los comandos reales de validación del proyecto (`pytest`, `npm test`, `make
+4. Averiguá los comandos reales de validación del proyecto (`go test ./...`, `go vet ./...`, `npm test`, `make
    check`, el linter, el type checker) leyendo `Makefile`, `package.json`, `pyproject.toml` o
    la configuración de CI.
 
@@ -143,6 +181,11 @@ dicen que tenía que hacer. Contratos cambiados en silencio (código de estado, 
 payload, nombre de un campo). Reglas de negocio implementadas al revés o incompletas.
 Requisitos de la fase que quedaron sin implementar. Un ADR contradicho sin registrarlo.
 Citá siempre la referencia: `FR-003`, `BR-02`, `ADR-004`.
+En este proyecto, además, verificá **siempre** las invariantes de §0 en todo cambio que
+toque datos: consultas sin filtro de `tenant_id`, importes en `float`/decimal o sin moneda,
+tipo de cambio persistido, `UPDATE`/`DELETE` sobre movimientos en vez de anulación, y
+operaciones de varios registros fuera de una transacción. Cualquiera de ellas es
+**Bloqueante**.
 
 **3. Seguridad.** Entradas sin validar en los bordes. Inyección: SQL, comandos, plantillas,
 rutas. Autorización decidida en el cliente, o chequeada en un lugar y no en otro. Secretos,
@@ -240,9 +283,9 @@ maneja el caso vacío", no "te olvidaste del caso vacío". Y cuando algo está p
 bien resuelto, decilo en una línea: una revisión que solo señala lo malo entrena a esconder el
 trabajo, no a mejorarlo.
 
-El usuario tiene nivel básico de Python y viene de Data Analytics: cuando un hallazgo dependa
-de un concepto que no aparece en un script de análisis —idempotencia, condición de carrera,
-inyección de dependencias, manejo explícito de estado, async— explicá en una línea qué es. No
+El usuario tiene nivel intermedio en Go y básico en React/TypeScript: cuando un hallazgo
+dependa de un concepto no obvio —idempotencia, condición de carrera, aislamiento de
+transacciones, RLS, dependencias de un hook— explicá en una línea qué es. No
 conviertas el reporte en un tutorial, pero tampoco lo dejes como una acusación que no se
 entiende.
 
@@ -286,8 +329,8 @@ de suponer que pasan.
 
 ## 9. Qué NO hacer
 
-- No edités ningún archivo del proyecto: ni código, ni tests, ni configuración, ni los `.md`
-  de `docs/`.
+- No edités ningún archivo del proyecto: ni código, ni tests, ni configuración, ni los
+  documentos de `specs/`, `docs/` o `.specify/`.
 - No arregles lo que encontrás, por más chico que sea.
 - No hagas commit, push, merge, ni ningún comando que cambie el estado del repositorio.
 - No reportes un hallazgo sin haber leído el código completo alrededor.

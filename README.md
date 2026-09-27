@@ -46,6 +46,9 @@ Cada funcionalidad sigue este ciclo en su rama `NNN-nombre`:
 4. `/speckit.tasks`: `tasks.md`.
 5. `/speckit.implement`: implementación con tests.
 
+Los agentes de `.claude/agents/` cubren el plan, la implementación y la revisión de cada
+spec; ver [`CLAUDE.md`](CLAUDE.md#agentes-y-skills-del-proyecto-claude).
+
 Para instalar los comandos de Spec Kit en este repo:
 `uvx --from git+https://github.com/github/spec-kit.git specify init --here`
 (si pregunta, **conservar** la constitución existente).

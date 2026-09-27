@@ -21,15 +21,52 @@ mientras escribís código.
 
 ---
 
+## 0. Este proyecto (CRM)
+
+Esta sección prevalece sobre cualquier otra regla genérica de este archivo.
+
+- **Metodología**: Spec Driven Development con GitHub Spec Kit. Fuentes de verdad, en orden:
+  1. `.specify/memory/constitution.md`: principios obligatorios; prevalece sobre todo.
+  2. `specs/NNN-slug/spec.md`: qué y por qué, incluida su sección "Clarificaciones".
+  3. `docs/modelo-dominio.md` (tabla "Efectos de cada operación") y `docs/glosario.md`.
+  4. `docs/adr/`: decisiones de arquitectura.
+- **Stack decidido** por la constitución: Go (API REST) + PostgreSQL + React/TypeScript
+  (PWA mobile-first), contrato OpenAPI, monolito modular. El lenguaje no se vuelve a
+  preguntar; las librerías sí se confirman y se registran como ADR.
+- **Invariantes no negociables**:
+  - Todo dato de negocio lleva `tenant_id` y toda consulta filtra por empresa (más RLS).
+  - Dinero: entero en centavos (`int64`) + moneda ISO 4217. Nunca `float` ni decimal.
+  - Operaciones entre monedas: se guardan ambos importes; el tipo de cambio no se persiste.
+  - Movimientos de caja y de cuenta corriente inmutables: se anulan, no se editan ni borran.
+  - Cada operación del usuario es atómica (una transacción).
+- **Idioma**: documentación en español; código, identificadores y commits en inglés, con los
+  nombres de `docs/glosario.md`. Textos de la interfaz en español (Argentina).
+- **Usuario**: nivel intermedio en Go y básico en React/TypeScript.
+- **Artefactos por spec** (`specs/NNN-slug/`):
+
+  | Archivo | Qué contiene | Quién lo escribe |
+  |---|---|---|
+  | `spec.md` | Qué y por qué (historias, FR, SC, clarificaciones) | Ya existe; solo se cambia con aprobación del usuario |
+  | `plan.md` | Contexto técnico, *Constitution Check*, arquitectura, invariantes, errores, seguridad, estructura de paquetes, decisiones locales (`DD-n`) | `backend-architect` |
+  | `research.md` | Alternativas evaluadas por decisión | `backend-architect` / `frontend-architect` |
+  | `data-model.md` | Entidades, DDL conceptual, diagrama ER | `backend-architect` |
+  | `contracts/openapi.yaml` | Contrato de la API. **Canónico**: los tipos del cliente se derivan de él | `backend-architect` |
+  | `ui.md` | Pantallas, navegación, modelo de estado, matriz de estados de UI, componentes | `frontend-architect` |
+  | `tasks.md` | Fases TDD con tareas `[T]` y checkpoints (sección Backend y sección Frontend) | Ambos arquitectos, cada uno su sección |
+
+  Los ADR estructurales van en `docs/adr/NNN-slug.md`, con numeración compartida.
+
+---
+
 ## 1. Punto de partida: leer el diseño
 
 **No escribís una línea antes de haber leído el diseño.** Esto no es opcional ni se saltea
 porque la tarea parezca chica.
 
-1. Buscá y leé los documentos de diseño del proyecto: `docs/sdd/**`, `docs/adr/**`, y
-   cualquier `README`, `CLAUDE.md` o `AGENTS.md`.
-2. Leé **la fase concreta que te pidieron** en el plan (`3-plan.md`), con sus tareas, su
-   ciclo Red/Green/Refactor y su checkpoint.
+1. Leé la constitución, `CLAUDE.md` y, de la spec pedida (`specs/NNN-slug/`): `spec.md`,
+   `plan.md`, `data-model.md`, `contracts/openapi.yaml` y los ADR de `docs/adr/`.
+2. Leé **la fase concreta que te pidieron** en `tasks.md`, con sus tareas, su ciclo
+   Red/Green/Refactor y su checkpoint.
 3. Leé los ADR que esa fase referencia. El SDD te dice qué hacer; el ADR te dice por qué, y
    sin el porqué vas a "mejorar" cosas que eran deliberadas.
 4. Mirá el código ya existente: convenciones de nombres, estructura de carpetas,
@@ -76,7 +113,7 @@ Es la parte que más se presta a interpretación libre, así que la regla es con
 
 | Lo escribís vos (plomería) | Lo deja como TODO (dominio) |
 |---|---|
-| Configuración, settings, arranque de la app | Cálculo de puntaje, ranking, progresión de dificultad |
+| Configuración, settings, arranque de la app | Cálculo de saldos, aplicación de pagos, efectos de una operación financiera |
 | Modelos y esquemas, DTOs, serialización | Reglas de negocio y sus validaciones |
 | Migraciones, conexión y sesión de base de datos | Decisiones de autorización más allá de "hay sesión o no" |
 | Repositorios con CRUD directo | Queries de negocio no triviales y sus agregaciones |
@@ -148,8 +185,13 @@ unas pocas de integración en los bordes reales (persistencia, HTTP); muy pocas 
   reporte y seguís usándolo.
 - **Ninguna dependencia nueva que el diseño no haya aprobado.** Si hace falta una, frená y
   preguntá: agregar una librería es una decisión de arquitectura.
-- Type hints en todo lo que exponés. Modelos con Pydantic para los bordes de la API,
-  separados de las entidades del dominio si el diseño así lo establece.
+- Go idiomático: errores como valores con `%w`, `errors.Is`/`errors.As`; `context.Context`
+  como primer parámetro; interfaces chicas definidas por el consumidor; `internal/` para lo
+  no exportable. Tests con `testing` nativo, table-driven. `go vet` y `gofmt` limpios.
+- Los tipos de los bordes de la API se derivan de `contracts/openapi.yaml`, separados de
+  las entidades del dominio si el plan así lo establece.
+- Las invariantes de §0 se verifican con tests: aislamiento entre empresas, importes en
+  centavos, inmutabilidad (anular en vez de editar) y atomicidad de cada operación.
 - Inyección de dependencias explícita, separación entre dominio e infraestructura tal como
   el SDD la haya definido.
 - Los errores se manejan según la taxonomía del diseño. Distinguí siempre **error
@@ -158,9 +200,9 @@ unas pocas de integración en los bordes reales (persistencia, HTTP); muy pocas 
 - Nada de secretos, credenciales ni datos reales en el código, los tests o los fixtures.
 - Comentarios solo donde el porqué no sea evidente. No narres lo que el código ya dice.
 
-El usuario tiene nivel básico de Python y viene de Data Analytics: cuando uses un patrón que
-no aparece en un script de análisis — inyección de dependencias, capas, manejo explícito de
-estado, async — explicá en una línea del reporte por qué está ahí. No conviertas el código
+El usuario tiene nivel intermedio en Go: cuando uses un patrón no obvio —generics,
+concurrencia, manejo de transacciones, RLS, un idiom poco común— explicá en una línea del
+reporte por qué está ahí. No conviertas el código
 en un tutorial, pero tampoco lo dejes como magia.
 
 ---
@@ -179,7 +221,8 @@ tamaño:
   funcionar como está escrito: decilo en dos oraciones apenas lo veas, antes de escribir el
   código que lo implementa. Si el usuario confirma que siga igual, seguís.
 
-**Nunca edités los documentos de diseño.** Los `.md` de `docs/` son del arquitecto. Vos
+**Nunca edités los documentos de diseño.** `specs/`, `docs/` y `.specify/` son del
+arquitecto y del usuario. Vos
 reportás lo que habría que cambiar y el usuario decide si vuelve a invocarlo.
 
 ---
@@ -187,7 +230,7 @@ reportás lo que habría que cambiar y el usuario decide si vuelve a invocarlo.
 ## 7. Validación
 
 Antes de reportar, corrés el **checkpoint real de la fase** con el comando del proyecto
-(`pytest`, `make test`, el que el plan indique).
+(`go test ./...`, `make test`, el que el plan indique).
 
 - En **modo completo**, el checkpoint tiene que quedar en verde. Si no pasa, no reportás
   "listo": reportás qué falla y por qué.
@@ -219,7 +262,7 @@ El usuario puede no ver más que tu reporte. Incluí siempre:
 
 - No escribas código sin haber leído el SDD, los ADR y la fase del plan.
 - No tomes decisiones de arquitectura: si el diseño no lo cubre, frená y preguntá.
-- No modifiques los documentos de diseño en `docs/`.
+- No modifiques los documentos de diseño en `specs/`, `docs/` ni `.specify/`.
 - No implementes más de una fase por invocación, ni adelantes trabajo de la siguiente.
 - No escribas implementación antes que su test.
 - No declares una fase terminada sin haber corrido el checkpoint.

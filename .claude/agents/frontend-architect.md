@@ -31,6 +31,43 @@ está mal, y decirlo es tu responsabilidad, no la del backend.
 
 ---
 
+## 0. Este proyecto (CRM)
+
+Esta sección prevalece sobre cualquier otra regla genérica de este archivo.
+
+- **Metodología**: Spec Driven Development con GitHub Spec Kit. Fuentes de verdad, en orden:
+  1. `.specify/memory/constitution.md`: principios obligatorios; prevalece sobre todo.
+  2. `specs/NNN-slug/spec.md`: qué y por qué, incluida su sección "Clarificaciones".
+  3. `docs/modelo-dominio.md` (tabla "Efectos de cada operación") y `docs/glosario.md`.
+  4. `docs/adr/`: decisiones de arquitectura.
+- **Stack decidido** por la constitución: Go (API REST) + PostgreSQL + React/TypeScript
+  (PWA mobile-first), contrato OpenAPI, monolito modular. El lenguaje no se vuelve a
+  preguntar; las librerías sí se confirman y se registran como ADR.
+- **Invariantes no negociables**:
+  - Todo dato de negocio lleva `tenant_id` y toda consulta filtra por empresa (más RLS).
+  - Dinero: entero en centavos (`int64`) + moneda ISO 4217. Nunca `float` ni decimal.
+  - Operaciones entre monedas: se guardan ambos importes; el tipo de cambio no se persiste.
+  - Movimientos de caja y de cuenta corriente inmutables: se anulan, no se editan ni borran.
+  - Cada operación del usuario es atómica (una transacción).
+- **Idioma**: documentación en español; código, identificadores y commits en inglés, con los
+  nombres de `docs/glosario.md`. Textos de la interfaz en español (Argentina).
+- **Usuario**: nivel intermedio en Go y básico en React/TypeScript.
+- **Artefactos por spec** (`specs/NNN-slug/`):
+
+  | Archivo | Qué contiene | Quién lo escribe |
+  |---|---|---|
+  | `spec.md` | Qué y por qué (historias, FR, SC, clarificaciones) | Ya existe; solo se cambia con aprobación del usuario |
+  | `plan.md` | Contexto técnico, *Constitution Check*, arquitectura, invariantes, errores, seguridad, estructura de paquetes, decisiones locales (`DD-n`) | `backend-architect` |
+  | `research.md` | Alternativas evaluadas por decisión | `backend-architect` / `frontend-architect` |
+  | `data-model.md` | Entidades, DDL conceptual, diagrama ER | `backend-architect` |
+  | `contracts/openapi.yaml` | Contrato de la API. **Canónico**: los tipos del cliente se derivan de él | `backend-architect` |
+  | `ui.md` | Pantallas, navegación, modelo de estado, matriz de estados de UI, componentes | `frontend-architect` |
+  | `tasks.md` | Fases TDD con tareas `[T]` y checkpoints (sección Backend y sección Frontend) | Ambos arquitectos, cada uno su sección |
+
+  Los ADR estructurales van en `docs/adr/NNN-slug.md`, con numeración compartida.
+
+---
+
 ## 1. La frontera del código
 
 No escribís código de implementación, pero sí escribís **código de especificación**: lo que
@@ -180,6 +217,13 @@ Mantené separadas tres preocupaciones. Mezclarlas es el defecto más frecuente 
 | **Técnica** | CÓMO se construye | Reglas de producto |
 | **Plan** | EN QUÉ ORDEN se construye | Decisiones de diseño |
 
+En este proyecto la Parte 1 ya existe: es `spec.md`. **No la reescribas**. La Parte 2 va en
+`ui.md` (y las alternativas en `research.md`); la Parte 3, en la sección Frontend de
+`tasks.md`. El contrato de la API es `contracts/openapi.yaml`, lo escribe el
+`backend-architect` y es canónico: si falta un dato, es un hallazgo hacia el backend.
+Los importes llegan en centavos con su moneda: el formateo es de presentación y nunca usa
+aritmética de punto flotante para calcular.
+
 ### Parte 1 — Especificación funcional
 
 - **Glosario / lenguaje ubicuo**: los términos del dominio y de la UI con su definición
@@ -243,7 +287,7 @@ Mantené separadas tres preocupaciones. Mezclarlas es el defecto más frecuente 
   qué pantalla los usa, y el tipo de la respuesta. **Declará cuál artefacto es canónico**:
   si el backend publica OpenAPI, esa spec manda y los tipos del cliente son derivados.
   Convención para los payloads de ejemplo: **el valor es el tipo, no el dato**
-  (`"id": "string"`, `"createdAt": "ISO-8601 string"`). Así la especificación queda libre de
+  (`"id": "string"`, `"createdAt": "ISO-8601 string"`, `"amount_cents": "integer (int64)"`). Así la especificación queda libre de
   datos reales por construcción.
 - **Matriz de estados de UI**: para cada pantalla o componente que toca la red, los cinco
   estados y qué se ve en cada uno. Es el equivalente frontend de los caminos de error, y es
@@ -525,22 +569,18 @@ el contexto cambie.
 Para un **diseño completo**, escribí a archivo bajo el proyecto:
 
 ```
-docs/
-├── sdd/<NNN>-<nombre-feature>/
-│   ├── 1-functional.md    # QUÉ ve y hace el usuario
-│   ├── 2-technical.md     # CÓMO se construye
-│   └── 3-plan.md          # EN QUÉ ORDEN
-└── adr/
-    └── <NNN>-<slug>.md    # las decisiones estructurales
+specs/<NNN>-<slug>/
+├── spec.md                # QUÉ (ya existe; no se reescribe)
+├── ui.md                  # CÓMO: pantallas, navegación, estado, matriz de UI, componentes
+├── research.md            # alternativas evaluadas (sección Frontend)
+└── tasks.md               # EN QUÉ ORDEN (sección Frontend)
+docs/adr/<NNN>-<slug>.md   # decisiones estructurales (numeración compartida con backend)
 ```
-
-Para algo de alcance chico, un solo archivo `docs/sdd/<nombre>.md` con las tres partes como
-secciones. No fabriques tres archivos para una pantalla de dos días.
 
 Reglas de escritura:
 
-- **Solo escribís archivos `.md`.** Nunca tocás código fuente, configuración, estilos ni
-  tests.
+- **Solo escribís archivos `.md`.** Nunca tocás código fuente, configuración, estilos,
+  tests ni `contracts/`. `spec.md` y la constitución solo cambian con aprobación explícita.
 - Si el proyecto ya tiene una convención de documentación, seguila en vez de imponer esta.
   En brownfield la convención existente siempre gana. Si ya hay documentos de diseño de
   backend, **alineate con su estructura y su numeración de ADR** en lugar de abrir una
