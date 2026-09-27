@@ -1,0 +1,14 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python caches (skills)
+__pycache__/
+*.pyc
+
+# graphify output
+graphify-out/
+
+# OS / editor
+.DS_Store

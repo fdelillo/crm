@@ -7,6 +7,12 @@
 quién le debe y cómo se movió la caja en el tiempo, incluyendo lo que se espera cobrar
 y pagar.
 
+## Clarificaciones
+
+### Sesión 2026-09-27
+
+- P: ¿Qué usa la proyección de cobros? → R: El plan de cobros del proyecto si existe; si no, la fecha estimada de entrega.
+
 ## Escenarios de usuario y pruebas
 
 ### Historia 1: Saldos de caja por cuenta (Prioridad: P1)
@@ -32,8 +38,9 @@ y pagar.
    (proveedores, empleados, socios), por moneda y ordenadas por importe.
 2. **Dado** el reporte, **cuando** se filtra por rol (cliente, proveedor, empleado,
    socio), **entonces** se muestran solo esos terceros.
-3. **Dado** clientes deudores, **entonces** se muestra el detalle por proyecto y la
-   antigüedad del saldo (0–30, 31–60, 61–90, más de 90 días).
+3. **Dado** clientes deudores, **entonces** se muestra el detalle por proyecto, la
+   antigüedad del saldo (0–30, 31–60, 61–90, más de 90 días) y las cuotas vencidas
+   del plan de cobros.
 4. **Dado** compras con vencimiento, **entonces** se destacan las vencidas y las que
    vencen en los próximos 7 días.
 5. **Dado** un deudor, **cuando** se toca "Recordar por WhatsApp", **entonces** se abre
@@ -49,10 +56,15 @@ y pagar.
 2. **Dado** el reporte, **entonces** las transferencias entre cuentas propias y los
    movimientos anulados no se incluyen.
 3. **Dado** la opción "Incluir proyección", **entonces** se agregan los meses futuros con:
-   - **cobros esperados**: saldos pendientes de proyectos abiertos, en la fecha
-     estimada de entrega del proyecto o, si no la tiene, en el mes actual;
+   - **cobros esperados**: cuotas pendientes del plan de cobros de cada proyecto, en
+     su fecha; si el proyecto no tiene plan, su saldo pendiente en la fecha estimada
+     de entrega o, si no la tiene, en el mes actual;
    - **pagos esperados**: compras pendientes, en su fecha de vencimiento o, si no la
-     tiene, en el mes actual.
+     tiene, en el mes actual;
+   - **cheques**, en una sección informativa aparte: los de terceros en cartera por
+     fecha de pago y los propios emitidos por fecha de débito (ver
+     [010](../010-cheques/spec.md)). No suman a ingresos ni egresos, porque ya se
+     contaron al recibirlos o emitirlos.
 4. **Dado** el reporte, **cuando** se toca una celda (mes × categoría), **entonces** se
    ven los movimientos que la componen.
 5. **Dado** cualquier reporte, **entonces** se puede exportar a Excel/CSV.

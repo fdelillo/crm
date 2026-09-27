@@ -35,6 +35,9 @@ erDiagram
     DirectExpense ||--o{ CostAllocation : imputa
     CostAllocation }o--|| Project : "costo de"
 
+    Project ||--o{ PaymentScheduleItem : "plan de cobros"
+    Check }o--|| MoneyAccount : "está en (cartera / a debitar)"
+    Check ||--o{ CheckEvent : historial
     MoneyAccount ||--o{ BankStatement : importa
     BankStatement ||--o{ StatementLine : contiene
     StatementLine }o--o| CashMovement : concilia
@@ -45,7 +48,8 @@ erDiagram
 ### Tres "libros" separados
 
 1. **Cuentas de dinero** (`MoneyAccount` + `CashMovement`): dónde está la plata.
-   Cada cuenta tiene **una sola moneda**.
+   Cada cuenta tiene **una sola moneda**. Los cheques usan dos tipos especiales de
+   cuenta: "Cartera de cheques" y "Cheques propios a debitar".
 2. **Cuentas corrientes** (`PartyLedger` + `LedgerEntry`): quién nos debe y a quién
    le debemos. Hay una por **tercero, rol y moneda**, así el saldo de un socio que
    también es empleado no se mezcla.
@@ -73,6 +77,14 @@ Cada operación del usuario impacta uno o más de estos libros de forma **atómi
 | Ingreso directo (sin tercero) | **Entrada** | — | — |
 | Transferencia entre cuentas | Salida origen + entrada destino | — | — |
 | Saldo inicial de tercero (al migrar) | — | **±** según corresponda | — |
+| Alta de proyecto en curso (al migrar) | — | Cliente: **+ monto acordado** y **− cobrado previo** | — |
+| Cobro con cheque de terceros | **Entrada** en Cartera de cheques | Cliente: **−** | — |
+| Depósito / cobro de cheque | Transferencia: Cartera → banco o efectivo | — | — |
+| Endoso de cheque a proveedor | **Salida** de Cartera de cheques | Proveedor: **+** | — |
+| Pago con cheque propio | **Salida** de "Cheques propios a debitar" | Proveedor: **+** | — |
+| Débito de cheque propio | Transferencia: banco → "Cheques propios a debitar" | — | — |
+| Rechazo de cheque de terceros | **Salida** de donde esté el importe (cartera o banco); si estaba endosado, ninguna | Cliente: **+**; si estaba endosado, además Proveedor: **−** | — |
+| Rechazo de cheque propio | **Entrada** en "Cheques propios a debitar" | Proveedor: **−** | — |
 | Ajuste de arqueo | Entrada o salida por la diferencia | — | — |
 
 Regla: **el costo se imputa en el hecho que lo genera** (compra, cargo o gasto

@@ -8,6 +8,14 @@ tiene una cuenta corriente por rol y moneda, alimentada por cobros, compras, pag
 cargos a empleados, aportes y retiros de socios. Ver la
 [tabla de efectos](../../docs/modelo-dominio.md#efectos-de-cada-operación).
 
+## Clarificaciones
+
+### Sesión 2026-09-27
+
+- P: ¿Cómo se aplican los pagos a proveedores? → R: Automáticamente a las compras más antiguas, con opción de elegir a cuáles.
+- P: ¿Cómo se carga una compra? → R: Importe total más foto o PDF del comprobante; sin detalle de ítems.
+- P: ¿Se pueden usar cheques en cobros y pagos? → R: Sí, de terceros (recibir, endosar) y propios (spec 010).
+
 ## Escenarios de usuario y pruebas
 
 ### Historia 1: Cobrar a un cliente (Prioridad: P1)
@@ -37,13 +45,18 @@ pendiente y sube la caja.
    y, si se confirma, el cliente queda con saldo a favor.
 7. **Dado** un cobro, **cuando** se desea, **entonces** se puede compartir un
    comprobante simple (no fiscal) por WhatsApp.
+8. **Dado** un cobro, **entonces** el medio puede ser una cuenta de dinero, uno o más
+   cheques (ver [010](../010-cheques/spec.md)) o una combinación.
+9. **Dado** un proyecto con plan de cobros, **entonces** el cobro se aplica a sus
+   cuotas en orden de fecha (ver [004](../004-proyectos/spec.md)).
 
 ### Historia 2: Compras y pagos a proveedores (Prioridad: P1)
 
 **Escenarios de aceptación**:
 
 1. **Dado** un proveedor, **cuando** el Administrador registra una compra con fecha,
-   número de comprobante (opcional), importe, moneda, categoría, vencimiento (opcional)
+   número de comprobante (opcional), importe total, moneda, categoría, vencimiento
+   (opcional), foto o PDF del comprobante (opcional)
    y descripción, **entonces** la deuda con el proveedor aumenta ("Le debés").
 2. **Dado** una compra, **cuando** se imputa total o parcialmente a uno o más
    proyectos, **entonces** suma a sus costos.
@@ -156,6 +169,9 @@ pendiente y sube la caja.
 ## Supuestos
 
 - Los saldos iniciales de terceros al comenzar a usar el sistema se cargan como un
-  movimiento de tipo "Saldo inicial".
+  movimiento de tipo "Saldo inicial". Para clientes con proyectos en marcha se usa el
+  alta de proyecto en curso (ver [004](../004-proyectos/spec.md)), así el saldo queda
+  detallado por proyecto.
+- Las compras se cargan por importe total, sin detalle de ítems.
 - No se calculan intereses por mora.
 - No se reparten utilidades entre socios en el MVP.

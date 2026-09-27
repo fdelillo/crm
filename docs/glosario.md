@@ -37,6 +37,14 @@ Términos del negocio (usados en specs e interfaz) y su nombre en el código.
 | Equivalente de referencia | `ReferenceAmount` | Monto del proyecto expresado en la otra moneda al aprobarlo. Solo informativo. |
 | Tipo de cambio implícito | — | Cociente entre los dos importes de una operación. Se muestra como ayuda y **no se guarda**. |
 | Moneda base | `BaseCurrency` | Moneda principal de la empresa, usada para reportes consolidados. |
+| Cheque | `Check` | Cheque físico o e-cheq, de terceros (recibido) o propio (emitido). |
+| Cartera de cheques | `CheckPortfolio` (tipo de `MoneyAccount`) | Cheques de terceros en poder de la empresa. |
+| Cheques propios a debitar | `IssuedChecksAccount` (tipo de `MoneyAccount`) | Cheques emitidos que el banco todavía no debitó. |
+| Endoso | `Endorsement` | Entrega de un cheque de terceros a un proveedor como pago. |
+| Rechazo | `CheckBounce` | Cheque no pagado por el banco. Revierte sus efectos con una operación nueva (no es una anulación). |
+| Plan de cobros | `PaymentSchedule` | Cuotas acordadas con el cliente (fecha e importe). Opcional; no cambia la deuda. |
+| Cuota | `PaymentScheduleItem` | Una línea del plan de cobros. |
+| Proyecto en curso | `OngoingProject` (alta de `Project`) | Proyecto cargado al migrar, con monto acordado y cobrado previo, sin presupuesto. |
 | Anulación | `Void` | Invalidación de un movimiento, con motivo. Revierte sus efectos sin borrarlo. |
 | Extracto bancario | `BankStatement` | Archivo CSV/Excel con movimientos exportado del banco. |
 | Conciliación | `Reconciliation` | Vinculación de una línea de extracto con un movimiento del sistema. |

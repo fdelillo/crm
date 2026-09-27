@@ -28,6 +28,7 @@ de aluminio; el diseño es genérico y se adapta a otros rubros mediante configu
 | 007 | Cuentas corrientes | [spec](specs/007-cuentas-corrientes/spec.md) |
 | 008 | Importación de extractos | [spec](specs/008-importacion-extractos/spec.md) |
 | 009 | Reportes | [spec](specs/009-reportes/spec.md) |
+| 010 | Cheques | [spec](specs/010-cheques/spec.md) |
 
 ## Stack
 
@@ -38,11 +39,15 @@ Detalle y motivos en la [constitución](.specify/memory/constitution.md#stack-te
 
 Cada funcionalidad sigue este ciclo en su rama `NNN-nombre`:
 
-1. `/speckit.specify`: `spec.md` (qué y por qué). **Hecho para 001–009.**
-2. `/speckit.clarify`: resolver ambigüedades de la spec.
+1. `/speckit.specify`: `spec.md` (qué y por qué). **Hecho para 001–010.**
+2. `/speckit.clarify`: resolver ambigüedades de la spec. **Primera ronda hecha**
+   (ver sección "Clarificaciones" de cada spec).
 3. `/speckit.plan`: `plan.md`, `data-model.md` y `contracts/` (cómo), verificando la constitución.
 4. `/speckit.tasks`: `tasks.md`.
 5. `/speckit.implement`: implementación con tests.
+
+Los agentes de `.claude/agents/` cubren el plan, la implementación y la revisión de cada
+spec; ver [`CLAUDE.md`](CLAUDE.md#agentes-y-skills-del-proyecto-claude).
 
 Para instalar los comandos de Spec Kit en este repo:
 `uvx --from git+https://github.com/github/spec-kit.git specify init --here`

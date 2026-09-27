@@ -42,6 +42,8 @@ líneas listas para conciliar.
 3. **Dado** una línea sin movimiento, **cuando** el usuario elige "Crear movimiento",
    **entonces** se abre el formulario correspondiente (gasto directo, cobro, pago,
    etc.) precargado con fecha, importe y descripción.
+   Si la línea corresponde a un cheque propio pendiente del mismo importe, el sistema
+   sugiere marcarlo como *debitado* (ver [010](../010-cheques/spec.md)).
 4. **Dado** una línea irrelevante o ya registrada de otra forma, **cuando** el usuario
    elige "Ignorar", **entonces** se marca como ignorada.
 5. **Dado** un extracto, **entonces** se ve el avance: líneas conciliadas, pendientes e ignoradas.
