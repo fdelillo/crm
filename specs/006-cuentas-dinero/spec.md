@@ -7,6 +7,13 @@
 billeteras virtuales), en pesos y en dólares, y registrar ingresos, gastos y
 transferencias entre sus cuentas.
 
+## Clarificaciones
+
+### Sesión 2026-09-27
+
+- P: ¿Hay fecha de cierre que bloquee cargas o anulaciones? → R: No. Solo el Administrador anula, sin límite de antigüedad.
+- P: ¿Cómo se manejan los cheques? → R: Con una cartera de cheques; se modela con tipos especiales de cuenta de dinero (spec 010).
+
 ## Escenarios de usuario y pruebas
 
 ### Historia 1: Crear cuentas de dinero (Prioridad: P1)
@@ -24,6 +31,9 @@ listado de cuentas.
 2. **Dado** una cuenta con movimientos, **entonces** su moneda no se puede cambiar.
 3. **Dado** una cuenta que ya no se usa, **cuando** tiene saldo cero, **entonces** se
    puede archivar.
+4. **Dado** el uso de cheques, **entonces** existen además dos tipos especiales de
+   cuenta que crea el sistema: "Cartera de cheques" y "Cheques propios a debitar"
+   (ver [010](../010-cheques/spec.md)). No se crean a mano.
 
 ### Historia 2: Registrar gastos e ingresos directos (Prioridad: P1)
 

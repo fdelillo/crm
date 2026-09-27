@@ -7,6 +7,15 @@
 configuradas por la empresa. Tiene notas, adjuntos (fotos, planos, medidas), cobros,
 saldo pendiente y costos imputados para conocer su margen.
 
+## Clarificaciones
+
+### Sesión 2026-09-27
+
+- P: ¿Cuándo nace la deuda del cliente? → R: Al aprobar el presupuesto, por el total.
+- P: ¿Se acuerda un plan de pagos? → R: Sí, opcional: cuotas con fecha e importe, usadas para la proyección de cobros y para marcar vencidos. No cambia la deuda total.
+- P: ¿El margen separa el IVA? → R: No, se calcula con importes totales.
+- P: ¿Cómo se cargan los proyectos que ya están en curso al empezar? → R: Como proyecto en curso con monto acordado y cobrado previo, sin mover la caja.
+
 ## Escenarios de usuario y pruebas
 
 ### Historia 1: Crear un proyecto y seguir su avance (Prioridad: P1)
@@ -34,8 +43,8 @@ verlo en el tablero.
 
 **Escenarios de aceptación**:
 
-1. **Dado** un proyecto sin presupuesto aprobado, **entonces** su monto es cero y no
-   genera deuda del cliente.
+1. **Dado** un proyecto sin presupuesto aprobado (y que no es un proyecto en curso,
+   ver Historia 4), **entonces** su monto es cero y no genera deuda del cliente.
 2. **Dado** un presupuesto aprobado (ver [005](../005-presupuestos/spec.md)),
    **entonces** el monto del proyecto es el total de ese presupuesto, en la moneda
    del proyecto, y la cuenta corriente del cliente aumenta por ese importe.
@@ -52,7 +61,38 @@ verlo en el tablero.
 6. **Dado** un proyecto que pasa a una etapa de cierre *ganado* con saldo pendiente,
    **entonces** el sistema lo advierte, pero permite el cambio.
 
-### Historia 3: Costos y margen (Prioridad: P2)
+### Historia 3: Plan de cobros (Prioridad: P2)
+
+**Escenarios de aceptación**:
+
+1. **Dado** un proyecto con monto, **cuando** se carga un plan de cobros con cuotas
+   (descripción, fecha e importe o porcentaje; ej. "Seña 50 % hoy", "Saldo contra
+   entrega 15/11"), **entonces** queda asociado al proyecto. El plan es opcional y no
+   cambia la deuda del cliente.
+2. **Dado** un plan de cobros, **entonces** los cobros del proyecto se aplican a las
+   cuotas en orden de fecha, y cada cuota se ve como *pagada*, *parcial*, *pendiente*
+   o *vencida*.
+3. **Dado** una cuota vencida sin pagar, **entonces** el proyecto se destaca y la cuota
+   aparece en el reporte de deudores (ver [009](../009-reportes/spec.md)).
+4. **Dado** un plan cuya suma no coincide con el monto (ej. después de un adicional),
+   **entonces** el sistema lo advierte y proyecta la diferencia en la fecha estimada
+   de entrega.
+
+### Historia 4: Proyectos en curso al empezar a usar el sistema (Prioridad: P1)
+
+**Escenarios de aceptación**:
+
+1. **Dado** un proyecto que ya estaba en marcha, **cuando** el Administrador lo da de
+   alta como **proyecto en curso** con su monto acordado y lo **cobrado antes del
+   sistema**, **entonces** el proyecto queda con ese monto y ese saldo pendiente, sin
+   necesidad de un presupuesto detallado.
+2. **Dado** ese alta, **entonces** se generan en la cuenta corriente del cliente un
+   movimiento "Monto inicial" y otro "Cobrado antes del sistema", **sin** movimiento
+   de caja.
+3. **Dado** un proyecto en curso, **entonces** a partir de ahí funciona igual que
+   cualquier otro: cobros, ajustes, plan de cobros, costos.
+
+### Historia 5: Costos y margen (Prioridad: P2)
 
 **Escenarios de aceptación**:
 
@@ -64,7 +104,7 @@ verlo en el tablero.
    referencia, que se usa solo para esa consulta y no se guarda.
 3. **Dado** un Operador, **entonces** no ve costos ni margen.
 
-### Historia 4: Notas y adjuntos (Prioridad: P2)
+### Historia 6: Notas y adjuntos (Prioridad: P2)
 
 **Escenarios de aceptación**:
 
@@ -96,7 +136,8 @@ verlo en el tablero.
   indicando obligatoriamente la moneda del proyecto (ARS o USD).
 - **FR-002**: El sistema DEBE mantener la etapa actual y el historial de cambios de etapa.
 - **FR-003**: El sistema DEBE calcular el monto del proyecto como total del presupuesto
-  aprobado más adicionales menos bonificaciones.
+  aprobado (o monto acordado, en un proyecto en curso) más adicionales menos
+  bonificaciones.
 - **FR-004**: El sistema DEBE calcular cobrado y saldo pendiente a partir de la cuenta
   corriente del cliente imputada al proyecto.
 - **FR-005**: El sistema DEBE calcular costos (a partir de imputaciones) y margen,
@@ -106,6 +147,10 @@ verlo en el tablero.
 - **FR-007**: El sistema DEBE ofrecer vistas de tablero y de lista con filtros y búsqueda.
 - **FR-008**: El sistema DEBE numerar los proyectos correlativamente por empresa
   (ej. P-0001).
+- **FR-009**: El sistema DEBE permitir un plan de cobros opcional por proyecto y
+  aplicar los cobros a sus cuotas por orden de fecha.
+- **FR-010**: El sistema DEBE permitir dar de alta proyectos en curso con monto
+  acordado y cobrado previo, sin afectar cuentas de dinero.
 
 ### Entidades clave
 
@@ -114,6 +159,7 @@ verlo en el tablero.
   (opcional, informativo: importe en la otra moneda).
 - **Ajuste de proyecto (ProjectAdjustment)**: tipo (adicional/bonificación),
   descripción, importe.
+- **Cuota del plan de cobros (PaymentScheduleItem)**: descripción, fecha, importe.
 - **Nota (Note)**, **Adjunto (Attachment)**, **Historial de etapas (StageChange)**.
 
 ## Criterios de éxito

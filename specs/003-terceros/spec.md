@@ -6,6 +6,12 @@
 **Entrada**: Una agenda única de personas y empresas con las que se opera. Cada
 tercero puede cumplir uno o más roles: cliente, proveedor, empleado o socio.
 
+## Clarificaciones
+
+### Sesión 2026-09-27
+
+- P: ¿El Operador ve proveedores? → R: Sí, solo sus datos de contacto, sin saldos ni movimientos.
+
 ## Escenarios de usuario y pruebas
 
 ### Historia 1: Cargar y buscar clientes (Prioridad: P1)
@@ -51,8 +57,9 @@ después por nombre o teléfono.
 
 1. **Dado** un Administrador, **cuando** da de alta un proveedor, empleado o socio,
    **entonces** se crea con su rol y queda disponible para operaciones de cuenta corriente.
-2. **Dado** un Operador, **entonces** no ve proveedores, empleados ni socios (ver
-   matriz de permisos en [001](../001-empresas-usuarios/spec.md)).
+2. **Dado** un Operador, **entonces** ve los datos de contacto de los proveedores,
+   pero no su cuenta corriente, y no ve empleados ni socios (ver matriz de permisos en
+   [001](../001-empresas-usuarios/spec.md)).
 
 ### Casos borde
 

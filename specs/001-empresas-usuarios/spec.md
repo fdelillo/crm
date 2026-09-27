@@ -7,6 +7,14 @@
 equipo y controla qué ve cada usuario (Administrador / Operador). El acceso es con
 email y contraseña.
 
+## Clarificaciones
+
+### Sesión 2026-09-27
+
+- P: ¿Qué puede hacer el Operador además de clientes, proyectos y presupuestos? → R: Registrar cobros de clientes, ver saldos de clientes y proyectos, y ver los datos de contacto de proveedores (sin saldos). No carga gastos ni compras.
+- P: ¿Un usuario puede pertenecer a varias empresas? → R: No, a una sola en el MVP.
+- P: ¿La anulación tiene límite de antigüedad? → R: No. Solo un Administrador anula, siempre con motivo y auditoría; no hay fecha de cierre.
+
 ## Escenarios de usuario y pruebas
 
 ### Historia 1: Registrar una empresa (Prioridad: P1)
@@ -89,16 +97,18 @@ El Administrador invita a un empleado administrativo como Operador.
 | Clientes (alta, edición, consulta) | ✔ | ✔ |
 | Proyectos, notas, adjuntos, cambio de etapa | ✔ | ✔ |
 | Presupuestos (crear, PDF, enviar, aprobar) | ✔ | ✔ |
-| Registrar cobros de clientes | ✔ | ✔ |
+| Registrar cobros de clientes (incluso con cheques) | ✔ | ✔ |
 | Ver saldo de un cliente o proyecto | ✔ | ✔ |
 | Ver costos y margen de un proyecto | ✔ | ✗ |
-| Proveedores, empleados y socios | ✔ | ✗ |
+| Proveedores: datos de contacto (sin saldos ni movimientos) | ✔ | ✔ |
+| Proveedores (cuenta corriente), empleados y socios | ✔ | ✗ |
 | Cuentas de dinero (saldos y movimientos) | ✔ | ✗ |
 | Compras, pagos, cargos, aportes, retiros, gastos | ✔ | ✗ |
+| Cartera de cheques y cheques propios | ✔ | ✗ |
 | Importación de extractos | ✔ | ✗ |
 | Reportes | ✔ | ✗ |
 | Configuración y usuarios | ✔ | ✗ |
-| Anular movimientos | ✔ | ✗ |
+| Anular movimientos (sin límite de antigüedad) | ✔ | ✗ |
 
 - **FR-008**: El sistema DEBE registrar en la auditoría los inicios de sesión, las
   invitaciones y los cambios de rol.

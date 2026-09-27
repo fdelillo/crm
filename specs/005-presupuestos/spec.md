@@ -8,6 +8,13 @@ Cada uno tiene ítems con medidas, cantidades y precios, IVA opcional, y genera 
 con el logo de la empresa que se envía por WhatsApp o email. Al aprobar uno, se fija
 el monto del proyecto.
 
+## Clarificaciones
+
+### Sesión 2026-09-27
+
+- P: ¿El cliente puede aceptar el presupuesto desde el enlace? → R: No. El cliente confirma por WhatsApp o en persona y un usuario registra la aprobación.
+- P: ¿Se carga un plan de pagos? → R: Sí, opcional, al aprobar. Vive en el proyecto (ver 004).
+
 ## Escenarios de usuario y pruebas
 
 ### Historia 1: Armar un presupuesto (Prioridad: P1)
@@ -69,6 +76,9 @@ el monto del proyecto.
 3. **Dado** la aprobación, **cuando** el usuario lo desea, **entonces** puede anotar el
    **equivalente de referencia** en la otra moneda (ej. USD 1.000 ≈ ARS 1.200.000).
    Es informativo: no genera movimientos ni se usa para calcular cobros.
+   En el mismo paso se puede cargar el **plan de cobros** del proyecto (ver
+   [004](../004-proyectos/spec.md)), precargado desde las condiciones comerciales si
+   estas indican porcentajes (ej. 50 % seña, 50 % contra entrega).
 4. **Dado** un presupuesto aprobado, **entonces** no se puede editar. Para cambiarlo
    se registran adicionales/bonificaciones en el proyecto o se anula la aprobación.
 5. **Dado** un presupuesto aprobado sin cobros imputados al proyecto, **cuando** un

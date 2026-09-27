@@ -59,6 +59,7 @@ dinero. Se opera en pesos y en dólares.
 | Cuentas corrientes: cobros, compras, pagos, cargos, aportes y retiros | [007](../specs/007-cuentas-corrientes/spec.md) |
 | Importación de extractos bancarios (CSV/Excel) | [008](../specs/008-importacion-extractos/spec.md) |
 | Reportes: saldos, deudores/acreedores, flujo de caja | [009](../specs/009-reportes/spec.md) |
+| Cheques: cartera de terceros, cheques propios, endoso y rechazo | [010](../specs/010-cheques/spec.md) |
 
 ### Fuera del MVP
 
@@ -72,6 +73,11 @@ dinero. Se opera en pesos y en dólares.
 - Roles configurables (solo Administrador y Operador).
 - Cotización automática del dólar desde fuentes externas.
 - Cobro de la suscripción SaaS a las empresas.
+- Aceptación online de presupuestos por el cliente (la aprobación la registra un usuario).
+- Usuarios que pertenecen a más de una empresa.
+- Cierre de períodos (bloqueo de cargas o anulaciones por fecha).
+- Detalle de ítems en compras a proveedores (se cargan por importe total).
+- Integración con bancos para emitir o consultar e-cheq.
 
 ## Orden de construcción sugerido
 
@@ -79,7 +85,7 @@ Cada paso deja algo usable:
 
 1. **001 → 002 → 003**: la empresa se registra, se configura y carga su agenda de terceros.
 2. **004 → 005**: gestión comercial (proyectos y presupuestos con PDF). Ya aporta valor sin finanzas.
-3. **006 → 007**: núcleo financiero.
+3. **006 → 007 → 010**: núcleo financiero, incluidos los cheques.
 4. **009**: reportes.
 5. **008**: importación de extractos.
 
