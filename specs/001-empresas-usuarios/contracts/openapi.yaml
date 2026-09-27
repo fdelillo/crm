@@ -1,0 +1,1345 @@
+openapi: 3.1.0
+info:
+  title: CRM - API 001 Empresas, usuarios y roles
+  version: 0.2.0
+  summary: Registro de empresas, autenticación, sesiones, invitaciones, usuarios y datos de la empresa.
+  description: |
+    Contrato **canónico** de la spec 001 (`specs/001-empresas-usuarios/spec.md`).
+    Los tipos del cliente se derivan de este archivo. Los handlers Go se escriben a mano y los
+    tests de contrato validan cada request y response contra este documento (ADR-014).
+
+    Convenciones:
+    - Base: `/api/v1`. JSON en `snake_case`. Fechas ISO 8601 en UTC.
+    - Autenticación: cookie de sesión `__Host-crm_session` (HttpOnly, Secure, SameSite=Lax).
+      El cliente no la lee ni la manipula: el navegador la envía sola. La sesión vence tras
+      24 h sin uso o 7 días desde el inicio, lo primero que ocurra (DD-10).
+    - Todo endpoint con body JSON exige `Content-Type: application/json` (si no, 415).
+    - Errores: RFC 9457 `application/problem+json` con el campo `code` estable (ADR-009) y,
+      cuando corresponde, `suggested_action`. El frontend decide el texto a mostrar a partir de
+      `code`.
+    - Un recurso de otra empresa responde 404, nunca 403 (INV-12).
+    - Los componentes `Problem`, `ValidationProblem`, `ErrorCode`, `SuggestedAction`, `Role` y
+      `Permission` son la fuente para las specs siguientes, que los referencian con `$ref` (DD-17).
+
+    Historial: 0.2.0 incorpora las respuestas P-2 a P-5 (`email_already_registered`,
+    `suggested_action`, reactivación confirmada, reset para invitados, duración de sesión).
+servers:
+  - url: /api/v1
+tags:
+  - name: catalog
+    description: Datos públicos para el registro
+  - name: auth
+    description: Registro, sesión, contraseña, verificación de email e invitaciones (lado invitado)
+  - name: me
+    description: Sesión actual
+  - name: tenant
+    description: Datos de la empresa
+  - name: users
+    description: Gestión de usuarios (Administrador)
+  - name: ops
+    description: Salud del servicio
+
+paths:
+  /industry-templates:
+    get:
+      tags: [catalog]
+      operationId: listIndustryTemplates
+      summary: Listar plantillas de rubro (FR-002)
+      security: []
+      responses:
+        '200':
+          description: Plantillas disponibles
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                additionalProperties: false
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/IndustryTemplate'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /auth/signup:
+    post:
+      tags: [auth]
+      operationId: signup
+      summary: Registrar empresa y primer Administrador (Historia 1, FR-001, FR-002)
+      description: |
+        Crea la empresa, su rol de base de datos, el usuario Administrador, aplica la plantilla,
+        encola el email de verificación e inicia sesión, todo en una transacción (INV-14).
+
+        Si ya existe un usuario con ese email (en cualquier empresa y en cualquier estado)
+        responde 409 `email_already_registered` con `suggested_action: password_reset`. La
+        respuesta confirma que el email existe (enumeración aceptada, DD-19) pero **no** incluye
+        empresa, nombre, estado ni ningún otro dato de la cuenta (INV-20).
+
+        Rate limit: 5 intentos por hora por IP, contando éxitos y rechazos (DD-9).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupRequest'
+      responses:
+        '201':
+          description: Empresa creada y sesión iniciada
+          headers:
+            Set-Cookie:
+              $ref: '#/components/headers/SetSessionCookie'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionInfo'
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '409':
+          description: |
+            Ya existe un usuario con ese email (`code` = `email_already_registered`).
+            `title`: "Ya existe un usuario con ese email".
+            `detail`: "Ya existe un usuario con ese email. ¿Querés recuperar la contraseña?".
+            La UI usa `suggested_action` para ofrecer el flujo de `POST /auth/password-reset`
+            con el email que el visitante ya escribió.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/EmailAlreadyRegisteredProblem'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: Iniciar sesión (Historia 2, FR-003)
+      description: |
+        Mismo status y cuerpo exista o no el email (INV-13; se mantiene aunque el registro
+        confirme la existencia de un email, DD-19). Tras 5 fallos seguidos el siguiente intento
+        responde 429 `login_locked` durante 15 minutos, exista o no la cuenta.
+        Un usuario desactivado con contraseña correcta recibe 403 `account_disabled` (DD-8).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Sesión iniciada
+          headers:
+            Set-Cookie:
+              $ref: '#/components/headers/SetSessionCookie'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionInfo'
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '401':
+          description: Email o contraseña incorrectos (`code` = `invalid_credentials`)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Usuario desactivado (`code` = `account_disabled`)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          description: Bloqueo temporal (`login_locked`) o límite por IP (`rate_limited`)
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: Cerrar la sesión actual
+      description: Idempotente. Revoca la sesión de la cookie si existe y borra la cookie. Siempre 204.
+      security:
+        - {}
+        - sessionCookie: []
+      responses:
+        '204':
+          description: Sesión cerrada (o no había sesión)
+          headers:
+            Set-Cookie:
+              $ref: '#/components/headers/ClearSessionCookie'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /auth/password-reset:
+    post:
+      tags: [auth]
+      operationId: requestPasswordReset
+      summary: Pedir enlace para restablecer la contraseña (Historia 2.3, FR-004)
+      description: |
+        Siempre 202 con cuerpo vacío, exista o no el email y cualquiera sea su estado (INV-13).
+        - Usuario activo: se envía un enlace de un solo uso válido por 1 hora.
+        - Usuario invitado (nunca aceptó): se reemite su invitación por 7 días y se le envía el
+          email de invitación (DD-20).
+        - Usuario desactivado o email inexistente: no se envía nada.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+      responses:
+        '202':
+          description: Pedido aceptado
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /auth/password-reset/confirm:
+    post:
+      tags: [auth]
+      operationId: confirmPasswordReset
+      summary: Definir una nueva contraseña con el token recibido por email
+      description: |
+        Consume el token, cambia la contraseña, cierra todas las sesiones del usuario y levanta el
+        bloqueo por intentos. No inicia sesión.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetConfirmRequest'
+      responses:
+        '204':
+          description: Contraseña cambiada
+        '400':
+          $ref: '#/components/responses/TokenInvalidOrMalformed'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /auth/email-verification/confirm:
+    post:
+      tags: [auth]
+      operationId: confirmEmailVerification
+      summary: Verificar el email con el token recibido (Historia 1.3)
+      description: La verificación no bloquea ninguna funcionalidad (P-2); solo quita el aviso de la UI.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+      responses:
+        '204':
+          description: Email verificado
+        '400':
+          $ref: '#/components/responses/TokenInvalidOrMalformed'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /auth/email-verification/resend:
+    post:
+      tags: [auth]
+      operationId: resendEmailVerification
+      summary: Reenviar el email de verificación al usuario de la sesión
+      description: Si el email ya está verificado no envía nada. Siempre 202.
+      security:
+        - sessionCookie: []
+      responses:
+        '202':
+          description: Pedido aceptado
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /auth/invitations/preview:
+    post:
+      tags: [auth]
+      operationId: previewInvitation
+      summary: Ver los datos de una invitación antes de aceptarla
+      description: El token viaja en el body (no en la URL) para que no quede en logs.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+      responses:
+        '200':
+          description: Invitación vigente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationPreview'
+        '400':
+          $ref: '#/components/responses/TokenInvalidOrMalformed'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /auth/invitations/accept:
+    post:
+      tags: [auth]
+      operationId: acceptInvitation
+      summary: Aceptar una invitación y definir nombre y contraseña (Historia 3.2)
+      description: Activa al usuario, marca su email como verificado e inicia sesión.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvitationAcceptRequest'
+      responses:
+        '201':
+          description: Invitación aceptada y sesión iniciada
+          headers:
+            Set-Cookie:
+              $ref: '#/components/headers/SetSessionCookie'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionInfo'
+        '400':
+          $ref: '#/components/responses/TokenInvalidOrMalformed'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /me:
+    get:
+      tags: [me]
+      operationId: getMe
+      summary: Usuario, empresa y permisos de la sesión actual
+      description: |
+        `permissions` es la lista de FR-007 que corresponde al rol. El frontend la usa solo para
+        mostrar u ocultar opciones (UX); la autorización real la hace el servidor en cada endpoint.
+        `user.email_verified` = false indica a la UI que muestre el aviso de verificación (P-2).
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Sesión vigente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionInfo'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /tenant:
+    get:
+      tags: [tenant]
+      operationId: getTenant
+      summary: Datos de la empresa de la sesión
+      description: Disponible para cualquier rol (el encabezado de la app muestra nombre y logo).
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Datos de la empresa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+    patch:
+      tags: [tenant]
+      operationId: updateTenant
+      summary: Editar datos de la empresa (Historia 4)
+      description: |
+        Requiere `settings.manage`. Solo se modifican los campos presentes. En los campos
+        opcionales, `null` los borra. `base_currency` no es editable (DD-15).
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantUpdate'
+      responses:
+        '200':
+          description: Datos actualizados
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /tenant/logo:
+    get:
+      tags: [tenant]
+      operationId: getTenantLogo
+      summary: Imagen del logo de la empresa
+      description: Se sirve por el backend con tipo fijo y `X-Content-Type-Options nosniff` (DD-11).
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Imagen
+          headers:
+            Cache-Control:
+              description: '`private, max-age=300`'
+              schema:
+                type: string
+          content:
+            image/png:
+              schema:
+                type: string
+                contentMediaType: image/png
+            image/jpeg:
+              schema:
+                type: string
+                contentMediaType: image/jpeg
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+    put:
+      tags: [tenant]
+      operationId: putTenantLogo
+      summary: Subir o reemplazar el logo (Historia 4)
+      description: |
+        Requiere `settings.manage`. Solo PNG o JPEG (detectado por contenido), hasta 2 MB y
+        2000x2000 px (DD-11).
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  contentMediaType: application/octet-stream
+                  description: Archivo de imagen PNG o JPEG
+            encoding:
+              file:
+                contentType: image/png, image/jpeg
+      responses:
+        '200':
+          description: Logo guardado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+    delete:
+      tags: [tenant]
+      operationId: deleteTenantLogo
+      summary: Quitar el logo
+      description: Requiere `settings.manage`. Idempotente.
+      security:
+        - sessionCookie: []
+      responses:
+        '204':
+          description: Logo quitado (o no había)
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /users:
+    get:
+      tags: [users]
+      operationId: listUsers
+      summary: Listar los usuarios de la empresa
+      description: Requiere `settings.manage`. Incluye invitados y desactivados. Orden por alta.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Usuarios de la empresa
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                additionalProperties: false
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /users/invitations:
+    post:
+      tags: [users]
+      operationId: inviteUser
+      summary: Invitar un usuario, o reinvitar si ya está invitado en esta empresa (Historia 3.1, FR-005)
+      description: |
+        Requiere `settings.manage`. Crea el usuario en estado `invited` y envía una invitación
+        válida por 7 días (201). Si el email ya está `invited` en esta misma empresa, revoca la
+        invitación anterior y envía una nueva (200, DD-5). Si el email ya pertenece a un usuario
+        activo o desactivado de cualquier empresa, responde 409 `email_taken` (sin
+        `suggested_action`: el Administrador no puede recuperar la cuenta de otra persona, DD-21).
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvitationRequest'
+      responses:
+        '201':
+          description: Usuario invitado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '200':
+          description: Invitación reemitida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: El email ya está en uso (`code` = `email_taken`)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /users/{userId}/role:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    put:
+      tags: [users]
+      operationId: changeUserRole
+      summary: Cambiar el rol de un usuario (FR-005, FR-008)
+      description: |
+        Requiere `settings.manage`. Rechaza bajar a Operador al último Administrador activo
+        (409 `last_admin`, Historia 3.4). Asignar el mismo rol que ya tiene es un no-op (200).
+        No cierra sesiones: el rol se lee en cada request. Auditado (`user.role_changed`).
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoleChangeRequest'
+      responses:
+        '200':
+          description: Rol actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /users/{userId}/deactivate:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    post:
+      tags: [users]
+      operationId: deactivateUser
+      summary: Desactivar un usuario y cerrar sus sesiones (Historia 3.3 y 3.4)
+      description: |
+        Requiere `settings.manage`. Revoca todas las sesiones y tokens pendientes del usuario en
+        la misma transacción. Rechaza desactivar al último Administrador activo (409 `last_admin`).
+        Desactivar un usuario ya desactivado responde 409 `invalid_state`. Auditado
+        (`user.deactivated`).
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Usuario desactivado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /users/{userId}/reactivate:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    post:
+      tags: [users]
+      operationId: reactivateUser
+      summary: Reactivar un usuario desactivado (FR-005, decisión P-3)
+      description: |
+        Solo Administrador (`settings.manage`). Si el usuario tenía contraseña vuelve a `active`
+        (debe iniciar sesión de nuevo: las sesiones revocadas no se reabren); si nunca aceptó su
+        invitación vuelve a `invited` con una invitación nueva de 7 días.
+        Reactivar un usuario que no está `disabled` responde 409 `invalid_state`.
+        Auditado en la misma transacción (`user.reactivated`, con `data.to_status`).
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Usuario reactivado (`status` = `active` o `invited`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /healthz:
+    servers:
+      - url: /
+    get:
+      tags: [ops]
+      operationId: liveness
+      summary: Liveness (no consulta la base)
+      security: []
+      responses:
+        '200':
+          description: El proceso atiende
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+
+  /readyz:
+    servers:
+      - url: /
+    get:
+      tags: [ops]
+      operationId: readiness
+      summary: Readiness (base alcanzable y migraciones al día)
+      security: []
+      responses:
+        '200':
+          description: Listo para recibir tráfico
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '503':
+          description: No listo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: __Host-crm_session
+      description: |
+        Token opaco de sesión. HttpOnly, Secure, SameSite=Lax, Path=/ (ADR-006).
+        Vence tras 24 h sin uso o 7 días desde el inicio de sesión.
+
+  parameters:
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  headers:
+    SetSessionCookie:
+      description: '`__Host-crm_session=<token>; Path=/; Max-Age=604800; HttpOnly; Secure; SameSite=Lax` (7 días; además vence tras 24 h sin uso)'
+      schema:
+        type: string
+    ClearSessionCookie:
+      description: '`__Host-crm_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`'
+      schema:
+        type: string
+    RetryAfter:
+      description: Segundos a esperar antes de reintentar
+      schema:
+        type: integer
+        minimum: 1
+
+  responses:
+    MalformedRequest:
+      description: JSON inválido o con campos desconocidos (`code` = `malformed_request`)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    TokenInvalidOrMalformed:
+      description: |
+        Token inexistente, vencido, usado o revocado (`code` = `token_invalid`, un solo código para
+        no revelar cuál), o JSON inválido (`code` = `malformed_request`)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthenticated:
+      description: Sin sesión o sesión inválida, vencida o revocada (`code` = `unauthenticated`). Borra la cookie.
+      headers:
+        Set-Cookie:
+          $ref: '#/components/headers/ClearSessionCookie'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: El rol no tiene el permiso requerido (`code` = `forbidden`)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: No existe o pertenece a otra empresa (`code` = `not_found`)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: Regla de negocio violada (`code` = `last_admin` o `invalid_state`)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    PayloadTooLarge:
+      description: Body demasiado grande (`code` = `payload_too_large`)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    UnsupportedMediaType:
+      description: Content-Type no soportado o imagen que no es PNG/JPEG (`code` = `unsupported_media_type`)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    ValidationFailed:
+      description: Datos inválidos (`code` = `validation_failed`), con el detalle por campo
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ValidationProblem'
+    RateLimited:
+      description: Demasiados pedidos (`code` = `rate_limited`)
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    ServerError:
+      description: |
+        500 `internal` (bug, incluida una violación de RLS) o 503 `service_unavailable`
+        (base u otra dependencia no disponible; se puede reintentar con backoff)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+  schemas:
+    ErrorCode:
+      type: string
+      description: Código estable del error. El frontend mapea cada código a un texto en español.
+      enum:
+        - malformed_request
+        - validation_failed
+        - unsupported_media_type
+        - payload_too_large
+        - unauthenticated
+        - invalid_credentials
+        - account_disabled
+        - forbidden
+        - not_found
+        - email_already_registered
+        - email_taken
+        - last_admin
+        - invalid_state
+        - token_invalid
+        - login_locked
+        - rate_limited
+        - service_unavailable
+        - internal
+
+    SuggestedAction:
+      type: string
+      description: |
+        Acción que la UI puede ofrecer para salir del error. Estable; se amplía con cada spec.
+        - password_reset: ofrecer "¿Querés recuperar la contraseña?" y llamar a
+          `POST /auth/password-reset` con el email ya ingresado.
+      enum:
+        - password_reset
+
+    Problem:
+      type: object
+      description: RFC 9457 Problem Details
+      required: [type, title, status, code]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+          description: '`/problems/{code}`'
+        title:
+          type: string
+          description: Resumen genérico en español
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+          description: Explicación en español sin datos internos
+        instance:
+          type: string
+          description: Request id para correlacionar con los logs
+        code:
+          $ref: '#/components/schemas/ErrorCode'
+        suggested_action:
+          $ref: '#/components/schemas/SuggestedAction'
+
+    EmailAlreadyRegisteredProblem:
+      description: |
+        409 del registro cuando ya existe un usuario con ese email (DD-19, DD-21, INV-20).
+        No contiene ningún dato de la cuenta existente.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          required: [code, suggested_action, detail]
+          properties:
+            code:
+              const: email_already_registered
+            status:
+              const: 409
+            suggested_action:
+              const: password_reset
+
+    ValidationProblem:
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          required: [errors]
+          properties:
+            errors:
+              type: array
+              minItems: 1
+              items:
+                $ref: '#/components/schemas/FieldError'
+
+    FieldError:
+      type: object
+      required: [field, code]
+      additionalProperties: false
+      properties:
+        field:
+          type: string
+          description: Nombre del campo del request (snake_case), p. ej. `email` o `tax_id`
+        code:
+          type: string
+          enum:
+            - required
+            - invalid_format
+            - too_short
+            - too_long
+            - invalid_value
+            - invalid_tax_id
+            - same_as_email
+            - unknown_template
+            - invalid_timezone
+
+    Role:
+      type: string
+      description: '`admin` = Administrador, `operator` = Operador'
+      enum: [admin, operator]
+
+    UserStatus:
+      type: string
+      enum: [invited, active, disabled]
+
+    Currency:
+      type: string
+      description: ISO 4217. Monedas del MVP.
+      enum: [ARS, USD]
+
+    Permission:
+      type: string
+      description: |
+        Permisos de la matriz FR-007 (una fila de la tabla = un permiso). Fuente: `internal/authz`.
+        - customers.manage: clientes (alta, edición, consulta)
+        - projects.manage: proyectos, notas, adjuntos, cambio de etapa
+        - quotes.manage: presupuestos (crear, PDF, enviar, aprobar)
+        - customer_receipts.create: registrar cobros de clientes (incluso con cheques)
+        - balances.view: ver saldo de un cliente o proyecto
+        - project_costs.view: ver costos y margen de un proyecto
+        - suppliers.view_contact: proveedores, datos de contacto
+        - party_finances.manage: proveedores (cuenta corriente), empleados y socios
+        - money_accounts.manage: cuentas de dinero (saldos y movimientos)
+        - financial_operations.manage: compras, pagos, cargos, aportes, retiros, gastos
+        - checks.manage: cartera de cheques y cheques propios
+        - bank_statements.import: importación de extractos
+        - reports.view: reportes
+        - settings.manage: configuración y usuarios
+        - movements.void: anular movimientos
+      enum:
+        - customers.manage
+        - projects.manage
+        - quotes.manage
+        - customer_receipts.create
+        - balances.view
+        - project_costs.view
+        - suppliers.view_contact
+        - party_finances.manage
+        - money_accounts.manage
+        - financial_operations.manage
+        - checks.manage
+        - bank_statements.import
+        - reports.view
+        - settings.manage
+        - movements.void
+
+    Email:
+      type: string
+      format: email
+      maxLength: 254
+      description: Se normaliza a minúsculas y sin espacios en los extremos.
+
+    Password:
+      type: string
+      minLength: 10
+      maxLength: 128
+      description: Sin reglas de composición; no puede ser igual al email (DD-6).
+
+    IndustryTemplate:
+      type: object
+      required: [code, name]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          description: Código estable, p. ej. `aluminum_carpentry` o `generic`
+        name:
+          type: string
+          description: Nombre para mostrar, en español
+
+    SignupRequest:
+      type: object
+      required: [name, email, password, company_name, base_currency, industry_template_code]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+          description: Nombre de la persona que se registra
+        email:
+          $ref: '#/components/schemas/Email'
+        password:
+          $ref: '#/components/schemas/Password'
+        company_name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        base_currency:
+          $ref: '#/components/schemas/Currency'
+        industry_template_code:
+          type: string
+          maxLength: 64
+        timezone:
+          type: string
+          maxLength: 64
+          description: Zona IANA del navegador. Si falta, `America/Argentina/Buenos_Aires`.
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      additionalProperties: false
+      properties:
+        email:
+          $ref: '#/components/schemas/Email'
+        password:
+          type: string
+          minLength: 1
+          maxLength: 128
+
+    PasswordResetRequest:
+      type: object
+      required: [email]
+      additionalProperties: false
+      properties:
+        email:
+          $ref: '#/components/schemas/Email'
+
+    TokenRequest:
+      type: object
+      required: [token]
+      additionalProperties: false
+      properties:
+        token:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Token en claro recibido por email (base64url)
+
+    PasswordResetConfirmRequest:
+      type: object
+      required: [token, password]
+      additionalProperties: false
+      properties:
+        token:
+          type: string
+          minLength: 1
+          maxLength: 128
+        password:
+          $ref: '#/components/schemas/Password'
+
+    InvitationPreview:
+      type: object
+      required: [tenant_name, email, role, expires_at]
+      additionalProperties: false
+      properties:
+        tenant_name:
+          type: string
+        email:
+          $ref: '#/components/schemas/Email'
+        role:
+          $ref: '#/components/schemas/Role'
+        expires_at:
+          type: string
+          format: date-time
+
+    InvitationAcceptRequest:
+      type: object
+      required: [token, name, password]
+      additionalProperties: false
+      properties:
+        token:
+          type: string
+          minLength: 1
+          maxLength: 128
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        password:
+          $ref: '#/components/schemas/Password'
+
+    InvitationRequest:
+      type: object
+      required: [email, role]
+      additionalProperties: false
+      properties:
+        email:
+          $ref: '#/components/schemas/Email'
+        role:
+          $ref: '#/components/schemas/Role'
+
+    RoleChangeRequest:
+      type: object
+      required: [role]
+      additionalProperties: false
+      properties:
+        role:
+          $ref: '#/components/schemas/Role'
+
+    CurrentUser:
+      type: object
+      required: [id, name, email, role, status, email_verified]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          $ref: '#/components/schemas/Email'
+        role:
+          $ref: '#/components/schemas/Role'
+        status:
+          $ref: '#/components/schemas/UserStatus'
+        email_verified:
+          type: boolean
+          description: Si es false, la UI muestra un aviso para verificar; no bloquea nada (P-2)
+
+    TenantSummary:
+      type: object
+      required: [id, name, base_currency, timezone, has_logo]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        base_currency:
+          $ref: '#/components/schemas/Currency'
+        timezone:
+          type: string
+        has_logo:
+          type: boolean
+
+    SessionInfo:
+      type: object
+      required: [user, tenant, permissions]
+      additionalProperties: false
+      properties:
+        user:
+          $ref: '#/components/schemas/CurrentUser'
+        tenant:
+          $ref: '#/components/schemas/TenantSummary'
+        permissions:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Permission'
+
+    Tenant:
+      type: object
+      required:
+        - id
+        - name
+        - legal_name
+        - tax_id
+        - address
+        - phone
+        - email
+        - has_logo
+        - base_currency
+        - timezone
+        - industry_template_code
+        - created_at
+        - updated_at
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        legal_name:
+          type: [string, 'null']
+          description: Razón social
+        tax_id:
+          type: [string, 'null']
+          pattern: '^[0-9]{11}$'
+          description: CUIT sin guiones
+        address:
+          type: [string, 'null']
+        phone:
+          type: [string, 'null']
+        email:
+          type: [string, 'null']
+          format: email
+        has_logo:
+          type: boolean
+          description: Si es true, la imagen está en `GET /tenant/logo`
+        base_currency:
+          $ref: '#/components/schemas/Currency'
+        timezone:
+          type: string
+        industry_template_code:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    TenantUpdate:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      description: Solo se modifican los campos presentes; `null` borra un campo opcional.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        legal_name:
+          type: [string, 'null']
+          maxLength: 200
+        tax_id:
+          type: [string, 'null']
+          description: CUIT; se aceptan guiones y se guardan solo los 11 dígitos (DD-16)
+          maxLength: 13
+        address:
+          type: [string, 'null']
+          maxLength: 300
+        phone:
+          type: [string, 'null']
+          maxLength: 50
+        email:
+          type: [string, 'null']
+          format: email
+          maxLength: 254
+        timezone:
+          type: string
+          maxLength: 64
+
+    User:
+      type: object
+      required: [id, email, name, role, status, email_verified, created_at, invitation_expires_at]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          $ref: '#/components/schemas/Email'
+        name:
+          type: [string, 'null']
+          description: '`null` mientras el usuario está invitado'
+        role:
+          $ref: '#/components/schemas/Role'
+        status:
+          $ref: '#/components/schemas/UserStatus'
+        email_verified:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        invitation_expires_at:
+          type: [string, 'null']
+          format: date-time
+          description: Vencimiento de la invitación vigente si `status` = `invited`; si no, `null`
+
+    Health:
+      type: object
+      required: [status]
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum: [ok, unavailable]
