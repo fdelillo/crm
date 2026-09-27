@@ -14,9 +14,10 @@ gestión usa el proyecto.
 ## Acceso — modo `conector`
 
 - **Cómo buscar las tools**: `ToolSearch` con la palabra `notion`
-- **Dónde viven las tareas**: base de datos "Tareas · CRM" — **PENDIENTE DE CREAR**.
-  Hasta que exista, la skill debe frenar y avisarlo (no buscar en otras bases del workspace).
-  <!-- Al crearla, reemplazar por: base de datos "Tareas · CRM" (id: xxxxxxxx-...) -->
+- **Dónde viven las tareas**: base de datos "Tareas · CRM", dentro de la página "CRM"
+  - Base de datos: `0a5fca8d77744c379165296a005b35fc`
+  - Data source: `collection://3bcbed95-c92b-413d-a9ed-2b1da4674467`
+  - Usar solo esta base; no buscar tareas en otras bases del workspace.
 
 ## Estados
 
@@ -30,7 +31,7 @@ gestión usa el proyecto.
 En orden de preferencia:
 
 1. Propiedad `Rama` de la tarea (texto).
-2. Rama del repo cuyo nombre contenga el id corto de la tarea (ej. `CRM-012`).
+2. Rama del repo cuyo nombre contenga el `ID` de la tarea (ej. `CRM-012`).
 3. PR abierto en `fdelillo/crm` que mencione el id de la tarea.
 
 - **Rama base para el diff**: `main`
@@ -46,4 +47,8 @@ En orden de preferencia:
   (`mcp__github__*`, vía `ToolSearch` con la palabra `github`).
 - El revisor contrasta cada tarea contra `specs/NNN-*/` (spec, plan, tasks) y la constitución
   (`.specify/memory/constitution.md`).
-- La columna `Spec` de la tarea, si existe, indica a qué spec pertenece (ej. `001`).
+- Propiedades de la base: `Tarea` (título), `ID` (id corto, ej. `CRM-012`), `Status`,
+  `Spec` (ej. `001 · Empresas y usuarios`), `Fase` (fase de `tasks.md`), `Orden`, `Rama`,
+  `Cierra` (FR/US que cierra). Estados: Pending, In Progress, In Review,
+  Changes Requested, Done, Blocked.
+- `Spec` y `Cierra` indican contra qué `specs/NNN-*/` y requisitos revisar la tarea.
