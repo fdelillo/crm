@@ -18,9 +18,10 @@ verlo en el tablero.
 
 **Escenarios de aceptación**:
 
-1. **Dado** un cliente, **cuando** se crea un proyecto con nombre, cliente y
-   (opcionalmente) dirección de obra, fecha estimada de entrega y descripción,
-   **entonces** queda en la etapa inicial.
+1. **Dado** un cliente, **cuando** se crea un proyecto con nombre, cliente, **moneda
+   del proyecto** (ARS o USD) y, opcionalmente, dirección de obra, fecha estimada de
+   entrega y descripción, **entonces** queda en la etapa inicial. La moneda indica en
+   qué se lleva el monto y el saldo; el cliente igual puede pagar en ambas monedas.
 2. **Dado** un proyecto, **cuando** se cambia su etapa, **entonces** el cambio queda
    en su historial con usuario y fecha.
 3. **Dado** la lista de proyectos, **cuando** se abre, **entonces** se ven agrupados
@@ -36,14 +37,19 @@ verlo en el tablero.
 1. **Dado** un proyecto sin presupuesto aprobado, **entonces** su monto es cero y no
    genera deuda del cliente.
 2. **Dado** un presupuesto aprobado (ver [005](../005-presupuestos/spec.md)),
-   **entonces** el monto del proyecto es el total de ese presupuesto, en su moneda, y
-   la cuenta corriente del cliente aumenta por ese importe.
-3. **Dado** un proyecto con monto, **cuando** se registra un **adicional** o una
+   **entonces** el monto del proyecto es el total de ese presupuesto, en la moneda
+   del proyecto, y la cuenta corriente del cliente aumenta por ese importe.
+3. **Dado** un proyecto con equivalente de referencia (ej. USD 1.000 ≈ ARS 1.200.000),
+   **entonces** la ficha lo muestra como dato informativo junto al monto.
+4. **Dado** un proyecto con monto, **cuando** se registra un **adicional** o una
    **bonificación** con descripción e importe, **entonces** el monto y la cuenta
    corriente del cliente se ajustan.
-4. **Dado** cobros imputados al proyecto (ver [007](../007-cuentas-corrientes/spec.md)),
-   **entonces** la ficha muestra: monto, cobrado, **saldo pendiente** y porcentaje cobrado.
-5. **Dado** un proyecto que pasa a una etapa de cierre *ganado* con saldo pendiente,
+5. **Dado** cobros imputados al proyecto, en cualquier moneda (ver
+   [007](../007-cuentas-corrientes/spec.md)), **entonces** la ficha muestra, en la
+   moneda del proyecto: monto, cobrado, **saldo pendiente** y porcentaje cobrado; y
+   el detalle de cada cobro con lo que se recibió realmente (ej. ARS 600.000 →
+   cancela USD 500).
+6. **Dado** un proyecto que pasa a una etapa de cierre *ganado* con saldo pendiente,
    **entonces** el sistema lo advierte, pero permite el cambio.
 
 ### Historia 3: Costos y margen (Prioridad: P2)
@@ -54,7 +60,8 @@ verlo en el tablero.
    **cuando** el Administrador abre la ficha, **entonces** ve la lista de costos por
    categoría, el total de costos y el **margen** (monto − costos) en importe y porcentaje.
 2. **Dado** costos en una moneda distinta de la del proyecto, **entonces** se muestran
-   agrupados por moneda y el margen consolidado solicita un tipo de cambio de referencia.
+   agrupados por moneda y el margen consolidado solicita un tipo de cambio de
+   referencia, que se usa solo para esa consulta y no se guarda.
 3. **Dado** un Operador, **entonces** no ve costos ni margen.
 
 ### Historia 4: Notas y adjuntos (Prioridad: P2)
@@ -75,6 +82,9 @@ verlo en el tablero.
 - Un proyecto con movimientos de cuenta corriente o costos no se puede eliminar; solo
   pasarlo a una etapa de cierre *perdido* o archivarlo.
 - Cambiar el cliente de un proyecto con cobros o presupuesto aprobado no está permitido.
+- La moneda del proyecto solo puede cambiarse mientras no tenga presupuesto aprobado
+  ni cobros; al cambiarla, los presupuestos en borrador pasan a la nueva moneda sin
+  convertir sus precios, y el sistema lo advierte.
 - Pasar un proyecto con presupuesto aprobado a *perdido* no elimina la deuda: el
   sistema sugiere registrar una bonificación o anular la aprobación.
 
@@ -82,7 +92,8 @@ verlo en el tablero.
 
 ### Requisitos funcionales
 
-- **FR-001**: El sistema DEBE permitir crear proyectos asociados a un cliente.
+- **FR-001**: El sistema DEBE permitir crear proyectos asociados a un cliente,
+  indicando obligatoriamente la moneda del proyecto (ARS o USD).
 - **FR-002**: El sistema DEBE mantener la etapa actual y el historial de cambios de etapa.
 - **FR-003**: El sistema DEBE calcular el monto del proyecto como total del presupuesto
   aprobado más adicionales menos bonificaciones.
@@ -99,7 +110,8 @@ verlo en el tablero.
 ### Entidades clave
 
 - **Proyecto (Project)**: número, nombre, cliente, etapa, dirección de obra, fecha
-  estimada de entrega, descripción, moneda (la del presupuesto aprobado).
+  estimada de entrega, descripción, moneda del proyecto, equivalente de referencia
+  (opcional, informativo: importe en la otra moneda).
 - **Ajuste de proyecto (ProjectAdjustment)**: tipo (adicional/bonificación),
   descripción, importe.
 - **Nota (Note)**, **Adjunto (Attachment)**, **Historial de etapas (StageChange)**.
@@ -113,4 +125,5 @@ verlo en el tablero.
 ## Supuestos
 
 - El IVA no se discrimina en costos: el margen se calcula con importes totales.
-- Un proyecto tiene una sola moneda, la de su presupuesto aprobado.
+- Un proyecto tiene una sola moneda para su monto y su saldo, aunque se cobre en
+  ambas monedas.

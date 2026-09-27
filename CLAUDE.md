@@ -8,5 +8,7 @@ Proyecto desarrollado con **Spec Driven Development** (GitHub Spec Kit).
   nombres de `docs/glosario.md`.
 - Dinero: enteros en centavos y moneda explícita; nunca `float`. Movimientos
   inmutables (se anulan, no se editan ni se borran). Operaciones atómicas.
+- Operaciones entre monedas: se guardan ambos importes informados por el usuario;
+  el tipo de cambio no se persiste.
 - Toda consulta se filtra por `tenant_id`.
 - Semántica de cada operación financiera: `docs/modelo-dominio.md` → "Efectos de cada operación".

@@ -40,7 +40,12 @@ cualquier rubro que gestione clientes, proyectos y flujo de caja.
 
 - Los importes se guardan como **enteros en la unidad mínima** (centavos) junto con
   su **moneda** (ISO 4217). Está prohibido usar punto flotante para dinero.
-- Toda operación entre monedas distintas registra el **tipo de cambio** usado.
+- Toda operación que vincula dos monedas registra **ambos importes**, cada uno en su
+  moneda, tal como los informa el usuario (ej. "recibí ARS 1.200.000, cancela
+  USD 1.000"). **No se registra el tipo de cambio**: si hace falta, se deduce de los
+  dos importes solo como ayuda visual, y nunca se guarda.
+- Nunca se suman importes de distinta moneda. Un consolidado usa un tipo de cambio
+  que el usuario ingresa al consultar y que no se persiste.
 - Los movimientos de dinero y de cuentas corrientes son **inmutables**: no se editan
   ni se borran. Se corrigen **anulando** (con motivo) y registrando uno nuevo.
 - Los saldos se **derivan** de los movimientos. Si se cachean, deben poder
@@ -59,7 +64,7 @@ cualquier rubro que gestione clientes, proyectos y flujo de caja.
 
 ### VI. Tests primero en el núcleo financiero
 
-- El dominio financiero (saldos, cuentas corrientes, tipo de cambio, anulaciones,
+- El dominio financiero (saldos, cuentas corrientes, operaciones entre monedas, anulaciones,
   imputación de costos) se desarrolla con tests escritos antes que el código.
 - Los contratos de API (OpenAPI) se validan con tests de contrato.
 
@@ -98,4 +103,10 @@ Las librerías concretas (router, acceso a datos, migraciones, UI) se eligen en 
 - Versionado semántico: MAJOR si se elimina o redefine un principio, MINOR si se
   agrega uno, PATCH para aclaraciones.
 
-**Versión**: 1.0.0 | **Ratificada**: 2026-09-27 | **Última modificación**: 2026-09-27
+**Versión**: 1.1.0 | **Ratificada**: 2026-09-27 | **Última modificación**: 2026-09-27
+
+### Historial
+
+- **1.1.0**: Principio IV. Las operaciones entre monedas guardan ambos importes
+  informados por el usuario en lugar del tipo de cambio.
+- **1.0.0**: Versión inicial.

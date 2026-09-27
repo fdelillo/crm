@@ -48,9 +48,11 @@ impuestos, alquiler pagado en el momento, una venta de rezago).
 
 1. **Dado** dos cuentas de la misma moneda, **cuando** se transfiere un importe,
    **entonces** baja el saldo del origen y sube el del destino en el mismo importe.
-2. **Dado** una cuenta en ARS y otra en USD, **cuando** se registra una compra de
-   dólares con importe de origen y tipo de cambio, **entonces** el sistema calcula el
-   importe de destino (editable, ajustando el tipo de cambio) y registra ambos movimientos.
+2. **Dado** una cuenta en ARS y otra en USD, **cuando** se registra una compra o venta
+   de dólares indicando el **importe que sale** y el **importe que entra** (ej. salen
+   ARS 1.200.000, entran USD 1.000), **entonces** se registran ambos movimientos con
+   esos importes. Mientras se carga, el sistema muestra el tipo de cambio implícito
+   (≈ 1.200 ARS/USD) como control, sin guardarlo.
 3. **Dado** una transferencia, **entonces** no aparece como ingreso ni gasto en los
    reportes de flujo de caja.
 
@@ -97,8 +99,9 @@ impuestos, alquiler pagado en el momento, una venta de rezago).
 - **FR-002**: El sistema DEBE registrar movimientos con: fecha, cuenta, sentido
   (entrada/salida), importe, moneda, categoría, descripción, tercero y proyecto
   opcionales, usuario y adjunto opcional.
-- **FR-003**: El sistema DEBE soportar transferencias entre cuentas propias, con tipo
-  de cambio cuando las monedas difieren.
+- **FR-003**: El sistema DEBE soportar transferencias entre cuentas propias. Si las
+  monedas difieren, el usuario informa el importe de salida y el de entrada; no se
+  registra tipo de cambio (Constitución, principio IV).
 - **FR-004**: El sistema DEBE permitir imputar gastos directos a uno o más proyectos.
 - **FR-005**: El sistema DEBE derivar los saldos de los movimientos no anulados
   (Constitución, principio IV).

@@ -82,16 +82,26 @@ directo), nunca en el pago que lo cancela. Así no se cuenta dos veces.
 
 - Monedas del MVP: **ARS y USD**. La empresa define una **moneda base** para
   reportes consolidados.
-- Un presupuesto, y por lo tanto el proyecto, tiene una moneda.
+- **Moneda del proyecto**: se elige (ARS o USD) al crear el proyecto y es la moneda
+  en la que se lleva su monto y su saldo. Todos sus presupuestos la heredan.
+- **Equivalente de referencia**: al aprobar un presupuesto se puede anotar cuánto
+  representa el monto en la otra moneda (ej. USD 1.000 ≈ ARS 1.200.000). Es solo
+  informativo: no afecta saldos ni cobros.
 - Un movimiento de caja siempre está en la moneda de su cuenta de dinero.
-- Si un movimiento de caja cancela una cuenta corriente de **otra moneda**
-  (ej. cobro en ARS de un proyecto en USD), se exige **tipo de cambio** y se guardan
-  ambos importes. Ejemplo: se cobran ARS 1.200.000 con TC 1.200, la cuenta corriente
-  en USD baja USD 1.000.
-- Una transferencia entre cuentas de distinta moneda (compra/venta de dólares) exige
-  tipo de cambio.
+- Un cliente puede pagar un mismo proyecto en **ambas monedas**. Si un movimiento de
+  caja cancela una cuenta corriente de **otra moneda**, el usuario informa los **dos
+  importes**: lo que entra o sale de la caja y lo que cancela en la cuenta corriente.
+  Ejemplo: se cobran ARS 1.200.000 y el usuario indica que cancelan USD 1.000; la
+  cuenta de dinero en ARS sube ARS 1.200.000 y la cuenta corriente en USD baja
+  USD 1.000.
+- **No se registra tipo de cambio.** Mientras el usuario carga, el sistema muestra el
+  tipo de cambio implícito (ej. "≈ 1.200 ARS/USD") como control visual para detectar
+  errores de tipeo, pero no lo guarda.
+- La misma regla aplica a pagos a proveedores, pagos a empleados, aportes y retiros de
+  socios, y a la compra/venta de dólares entre cuentas propias (importe que sale e
+  importe que entra).
 - No hay diferencias de cambio automáticas. Los reportes consolidados usan un tipo
-  de cambio que el usuario ingresa al consultarlos.
+  de cambio que el usuario ingresa al consultarlos y que no se guarda.
 
 ### Inmutabilidad y anulación
 

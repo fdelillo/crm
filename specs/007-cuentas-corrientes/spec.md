@@ -23,13 +23,19 @@ pendiente y sube la caja.
    con fecha, cuenta de dinero de destino, importe y proyecto, **entonces** la cuenta
    de dinero aumenta y la cuenta corriente del cliente y el saldo del proyecto disminuyen.
 2. **Dado** un proyecto en USD, **cuando** se cobra en una cuenta en ARS, **entonces**
-   el sistema exige tipo de cambio, muestra el equivalente en USD que se cancela y
-   guarda ambos importes.
-3. **Dado** un cobro sin proyecto, **entonces** se registra "a cuenta" del cliente y
+   el usuario indica el importe recibido (ARS 1.200.000) y **cuántos dólares
+   representa** (USD 1.000). La caja en ARS sube ARS 1.200.000 y el saldo del proyecto
+   baja USD 1.000. Vale igual a la inversa (proyecto en ARS cobrado en USD).
+3. **Dado** un cobro en otra moneda, **mientras** el usuario carga los importes,
+   **entonces** el sistema muestra el tipo de cambio implícito (≈ 1.200 ARS/USD) como
+   control para detectar errores de tipeo. Ese valor no se guarda.
+4. **Dado** un mismo proyecto, **entonces** puede recibir cobros en ARS y en USD, en
+   cualquier combinación; todos se descuentan del saldo en la moneda del proyecto.
+5. **Dado** un cobro sin proyecto, **entonces** se registra "a cuenta" del cliente y
    disminuye su saldo general.
-4. **Dado** un cobro mayor que el saldo pendiente, **entonces** el sistema lo advierte
+6. **Dado** un cobro mayor que el saldo pendiente, **entonces** el sistema lo advierte
    y, si se confirma, el cliente queda con saldo a favor.
-5. **Dado** un cobro, **cuando** se desea, **entonces** se puede compartir un
+7. **Dado** un cobro, **cuando** se desea, **entonces** se puede compartir un
    comprobante simple (no fiscal) por WhatsApp.
 
 ### Historia 2: Compras y pagos a proveedores (Prioridad: P1)
@@ -46,8 +52,9 @@ pendiente y sube la caja.
    compras pendientes más antiguas, salvo que el usuario elija a cuáles.
 4. **Dado** una compra pagada en el momento, **cuando** se usa "Compra de contado",
    **entonces** en un solo paso se registran la compra y el pago.
-5. **Dado** una compra en USD pagada desde una cuenta en ARS, **entonces** se exige
-   tipo de cambio.
+5. **Dado** una compra en USD pagada desde una cuenta en ARS, **entonces** el usuario
+   indica el importe pagado en ARS y cuántos USD cancela, con la misma ayuda visual
+   del tipo de cambio implícito.
 
 ### Historia 3: Empleados: cargos, pagos y adelantos (Prioridad: P1)
 
@@ -72,6 +79,9 @@ pendiente y sube la caja.
    disminuye su saldo aportado neto.
 3. **Dado** la ficha del socio, **entonces** se muestran total aportado, total retirado
    y neto, por moneda.
+4. **Dado** un pago a empleado, aporte o retiro desde una cuenta de dinero de otra
+   moneda que la cuenta corriente, **entonces** el usuario informa ambos importes,
+   igual que en un cobro.
 
 ### Historia 5: Consultar una cuenta corriente (Prioridad: P1)
 
@@ -95,10 +105,10 @@ pendiente y sube la caja.
 ### Casos borde
 
 - Un cobro no puede imputarse a un proyecto de otro cliente.
-- Un cobro en la misma moneda que el proyecto no pide tipo de cambio.
+- Un cobro en la misma moneda que el proyecto no pide importe equivalente.
 - Una compra imputada a un proyecto de otra moneda: la imputación queda en la moneda
   de la compra (ver margen en [004](../004-proyectos/spec.md)).
-- Los saldos se calculan por moneda: nunca se suman ARS y USD sin tipo de cambio explícito.
+- Los saldos se calculan por moneda: nunca se suman ARS y USD.
 
 ## Requisitos
 
@@ -111,8 +121,10 @@ pendiente y sube la caja.
   empleado, pago a empleado, pago directo a empleado, aporte y retiro.
 - **FR-003**: Cada operación DEBE generar, de forma atómica, los registros indicados en
   la [tabla de efectos](../../docs/modelo-dominio.md#efectos-de-cada-operación).
-- **FR-004**: Toda operación que vincule importes de distinta moneda DEBE registrar el
-  tipo de cambio y ambos importes.
+- **FR-004**: Toda operación que vincule una cuenta de dinero y una cuenta corriente
+  de distinta moneda DEBE registrar **ambos importes** informados por el usuario: el
+  movido en la caja y el cancelado en la cuenta corriente. NO DEBE registrar tipo de
+  cambio; solo lo muestra, implícito, como ayuda durante la carga.
 - **FR-005**: El sistema DEBE permitir imputar compras y cargos a uno o más proyectos
   sin superar su importe.
 - **FR-006**: El sistema DEBE aplicar los pagos a compras pendientes por antigüedad
@@ -127,7 +139,9 @@ pendiente y sube la caja.
 
 - **Cuenta corriente (PartyLedger)**: tercero, rol, moneda.
 - **Movimiento de cuenta corriente (LedgerEntry)**: cuenta corriente, fecha, tipo de
-  operación, importe con signo, proyecto (opcional), operación de origen, estado.
+  operación, importe con signo en la moneda de la cuenta corriente, proyecto
+  (opcional), operación de origen, estado. Si la operación involucró otra moneda, el
+  importe en esa moneda está en el movimiento de caja vinculado.
 - **Compra (Purchase)**: proveedor, fecha, comprobante, importe, moneda, categoría,
   vencimiento, saldo pendiente derivado.
 - **Cargo a empleado (EmployeeCharge)**: empleado, fecha, concepto, importe, categoría.

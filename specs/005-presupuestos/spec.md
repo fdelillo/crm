@@ -18,8 +18,8 @@ el monto del proyecto.
 
 **Escenarios de aceptación**:
 
-1. **Dado** un proyecto, **cuando** se crea un presupuesto, **entonces** se elige su
-   moneda (ARS o USD) y queda en estado *borrador* con numeración correlativa
+1. **Dado** un proyecto, **cuando** se crea un presupuesto, **entonces** toma la
+   moneda del proyecto y queda en estado *borrador* con numeración correlativa
    (ej. PR-0001).
 2. **Dado** un presupuesto, **cuando** se agrega un ítem desde el catálogo, **entonces**
    se copian descripción, unidad y precio de referencia, que luego pueden editarse.
@@ -28,8 +28,9 @@ el monto del proyecto.
 4. **Dado** un ítem con unidad m², **cuando** se ingresan ancho y alto (en metros),
    **entonces** la superficie se calcula como ancho × alto × cantidad y el subtotal
    como superficie × precio.
-5. **Dado** un ítem con precio en otra moneda que la del presupuesto, **entonces** el
-   sistema pide un tipo de cambio para convertirlo.
+5. **Dado** un ítem del catálogo con precio en otra moneda que la del presupuesto,
+   **entonces** el sistema pide un tipo de cambio para convertir el precio sugerido.
+   Es solo una ayuda de cálculo: se guarda el precio resultante, no el tipo de cambio.
 6. **Dado** un presupuesto, **cuando** se aplica un descuento general (porcentaje o
    importe), **entonces** se descuenta del subtotal.
 
@@ -65,14 +66,17 @@ el monto del proyecto.
 2. **Dado** un proyecto con varios presupuestos, **cuando** se aprueba uno, **entonces**
    queda *aprobado*, los demás pasan a *descartado*, el monto del proyecto se fija y la
    cuenta corriente del cliente aumenta por el total.
-3. **Dado** un presupuesto aprobado, **entonces** no se puede editar. Para cambiarlo
+3. **Dado** la aprobación, **cuando** el usuario lo desea, **entonces** puede anotar el
+   **equivalente de referencia** en la otra moneda (ej. USD 1.000 ≈ ARS 1.200.000).
+   Es informativo: no genera movimientos ni se usa para calcular cobros.
+4. **Dado** un presupuesto aprobado, **entonces** no se puede editar. Para cambiarlo
    se registran adicionales/bonificaciones en el proyecto o se anula la aprobación.
-4. **Dado** un presupuesto aprobado sin cobros imputados al proyecto, **cuando** un
+5. **Dado** un presupuesto aprobado sin cobros imputados al proyecto, **cuando** un
    Administrador anula la aprobación indicando un motivo, **entonces** se revierte el
    movimiento de cuenta corriente y el presupuesto vuelve a *enviado*.
-5. **Dado** un presupuesto aprobado con cobros, **cuando** se intenta anular la
+6. **Dado** un presupuesto aprobado con cobros, **cuando** se intenta anular la
    aprobación, **entonces** el sistema lo impide hasta anular o reimputar los cobros.
-6. **Dado** la aprobación, **entonces** el sistema ofrece mover el proyecto a la
+7. **Dado** la aprobación, **entonces** el sistema ofrece mover el proyecto a la
    siguiente etapa.
 
 ### Casos borde
@@ -101,10 +105,13 @@ el monto del proyecto.
 - **FR-008**: La aprobación DEBE generar, de forma atómica, el movimiento en la cuenta
   corriente del cliente en la moneda del presupuesto.
 - **FR-009**: El sistema DEBE permitir duplicar presupuestos.
+- **FR-010**: Los presupuestos DEBEN usar la moneda del proyecto.
+- **FR-011**: El sistema DEBE permitir registrar, al aprobar, un equivalente de
+  referencia opcional en la otra moneda, sin efecto sobre saldos.
 
 ### Entidades clave
 
-- **Presupuesto (Quote)**: número, proyecto, moneda, estado, fecha, validez, descuento,
+- **Presupuesto (Quote)**: número, proyecto, moneda (la del proyecto), estado, fecha, validez, descuento,
   alícuota IVA, condiciones, observaciones, totales.
 - **Ítem (QuoteItem)**: descripción, ítem de catálogo de origen (opcional), unidad,
   cantidad, ancho, alto, precio unitario, subtotal, orden.

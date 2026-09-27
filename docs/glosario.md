@@ -33,7 +33,9 @@ Términos del negocio (usados en specs e interfaz) y su nombre en el código.
 | Gasto directo | `DirectExpense` | Egreso sin tercero con cuenta corriente (ej. combustible, impuestos). |
 | Ajuste de proyecto | `ProjectAdjustment` | Adicional o bonificación sobre el monto aprobado de un proyecto. |
 | Imputación de costo | `CostAllocation` | Asignación total o parcial de un costo a uno o más proyectos. |
-| Tipo de cambio | `ExchangeRate` | Relación entre dos monedas usada en una operación puntual. |
+| Importe equivalente | `CounterAmount` | En una operación entre dos monedas, el importe en la otra moneda informado por el usuario (ej. los USD que cancela un cobro en ARS). |
+| Equivalente de referencia | `ReferenceAmount` | Monto del proyecto expresado en la otra moneda al aprobarlo. Solo informativo. |
+| Tipo de cambio implícito | — | Cociente entre los dos importes de una operación. Se muestra como ayuda y **no se guarda**. |
 | Moneda base | `BaseCurrency` | Moneda principal de la empresa, usada para reportes consolidados. |
 | Anulación | `Void` | Invalidación de un movimiento, con motivo. Revierte sus efectos sin borrarlo. |
 | Extracto bancario | `BankStatement` | Archivo CSV/Excel con movimientos exportado del banco. |

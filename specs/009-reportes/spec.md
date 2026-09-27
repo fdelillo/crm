@@ -20,7 +20,8 @@ y pagar.
 1. **Dado** cuentas de dinero con movimientos, **cuando** se abre el reporte, **entonces**
    se ve el saldo de cada cuenta y el total por moneda, a hoy o a una fecha elegida.
 2. **Dado** un tipo de cambio ingresado por el usuario, **entonces** se muestra además
-   un total consolidado en la moneda base.
+   un total consolidado en la moneda base. Ese tipo de cambio se usa solo para la
+   consulta y no se guarda.
 
 ### Historia 2: Deudores y acreedores (Prioridad: P1)
 
@@ -69,7 +70,7 @@ y pagar.
 - **FR-001**: El sistema DEBE ofrecer los reportes: saldos por cuenta, deudores y
   acreedores, y flujo de caja por período con proyección opcional.
 - **FR-002**: Todos los reportes DEBEN separar por moneda y permitir un consolidado en
-  la moneda base con tipo de cambio ingresado por el usuario.
+  la moneda base con tipo de cambio ingresado por el usuario al consultar (no se guarda).
 - **FR-003**: Todos los reportes DEBEN permitir ver el detalle de los movimientos que
   componen cada cifra.
 - **FR-004**: Todos los reportes DEBEN poder exportarse a Excel/CSV.
