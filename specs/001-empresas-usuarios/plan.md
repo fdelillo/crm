@@ -1,7 +1,7 @@
 # Plan técnico (backend): Empresas, usuarios y roles
 
 **Spec**: [`spec.md`](spec.md) · **Rama**: `001-empresas-usuarios` · **Fecha**: 2026-09-27
-**Autor**: `backend-architect` · **Estado**: Propuesto (pendiente de aprobación del usuario)
+**Autor**: `backend-architect` · **Estado**: Aprobado (2026-09-29)
 **Revisión 2026-09-27**: incorporadas las respuestas del usuario a P-2, P-3, P-4 y P-5 (§14.2).
 
 Artefactos de esta spec:
@@ -68,7 +68,7 @@ asíncrono** (outbox de emails: idempotencia, reintentos, estados terminales) y 
 | **VI. Tests primero** | ✅ | Todas las fases son TDD. El contrato OpenAPI se valida con tests de contrato sobre cada respuesta de los tests HTTP (ADR-014). |
 | **VII. Mobile-first** | ✅ (N/A backend) | Sesiones con expiración por inactividad, payloads chicos, logo acotado en tamaño. PWA servida desde el mismo origen que la API (S-2). |
 | **Stack** | ✅ | Go, PostgreSQL, OpenAPI, monolito modular, S3 compatible. Librerías registradas como ADR, como pide la constitución. |
-| **Convenciones** | ✅ | Documentación en español; tablas, columnas, endpoints e identificadores en inglés con nombres del glosario (`Tenant`, `User`, `Role`, `IndustryTemplate`, `AuditLog`). Fechas `timestamptz` en UTC; `tenants.timezone` para mostrar. Términos nuevos propuestos para el glosario en §17. |
+| **Convenciones** | ✅ | Documentación en español; tablas, columnas, endpoints e identificadores en inglés con nombres del glosario (`Tenant`, `User`, `Role`, `IndustryTemplate`, `AuditLog`). Fechas `timestamptz` en UTC; `tenants.timezone` para mostrar. Términos nuevos incorporados al glosario (§17). |
 
 Ninguna excepción queda sin justificar: el plan no está bloqueado por la constitución.
 
@@ -1197,9 +1197,9 @@ La actualización de la documentación va **en el mismo cambio** que el código.
 
 ---
 
-## 17. Propuesta para el glosario (requiere aprobación)
+## 17. Términos agregados al glosario
 
-`docs/glosario.md` no tiene estos términos, que 001 introduce. No lo edité; propongo agregarlos:
+001 introduce estos términos. Se aprobaron el 2026-09-29 y ya están en `docs/glosario.md`:
 
 | Término (ES) | Código (EN) | Definición |
 |---|---|---|

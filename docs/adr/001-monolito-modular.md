@@ -1,6 +1,6 @@
 # ADR-001: Estructura del monolito modular (layout, módulos por dominio y fronteras)
 
-**Status**: Proposed
+**Status**: Accepted (aprobado por el usuario con el plan de 001, 2026-09-29)
 **Fecha**: 2026-09-27
 **Origen**: spec 001 (`specs/001-empresas-usuarios/plan.md` §4.1 y §11)
 

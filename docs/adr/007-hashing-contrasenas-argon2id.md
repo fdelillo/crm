@@ -1,6 +1,6 @@
 # ADR-007: Hashing de contraseñas con argon2id
 
-**Status**: Proposed
+**Status**: Accepted (aprobado por el usuario con el plan de 001, 2026-09-29)
 **Fecha**: 2026-09-27
 **Origen**: spec 001 (FR-003)
 

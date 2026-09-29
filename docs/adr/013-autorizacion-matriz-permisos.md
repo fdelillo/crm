@@ -1,6 +1,6 @@
 # ADR-013: Autorización con una matriz estática de permisos por rol
 
-**Status**: Proposed
+**Status**: Accepted (aprobado por el usuario con el plan de 001, 2026-09-29)
 **Fecha**: 2026-09-27
 **Origen**: spec 001 (FR-007); lo usan todas las specs
 

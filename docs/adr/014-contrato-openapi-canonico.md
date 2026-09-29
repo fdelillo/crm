@@ -1,6 +1,6 @@
 # ADR-014: Contrato OpenAPI 3.1 canónico, handlers escritos a mano y validación en tests
 
-**Status**: Proposed
+**Status**: Accepted (aprobado por el usuario con el plan de 001, 2026-09-29)
 **Fecha**: 2026-09-27
 **Origen**: spec 001
 

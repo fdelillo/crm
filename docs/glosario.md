@@ -7,6 +7,10 @@ Términos del negocio (usados en specs e interfaz) y su nombre en el código.
 | Empresa | `Tenant` | Organización que usa el sistema. Sus datos están aislados de otras empresas. |
 | Usuario | `User` | Persona que inicia sesión. Pertenece a una empresa con un rol. |
 | Rol | `Role` | `admin` (Administrador) u `operator` (Operador). |
+| Invitación | `Invitation` | Enlace de un solo uso, válido 7 días, para que un usuario invitado defina su contraseña. |
+| Sesión | `Session` | Acceso iniciado desde un dispositivo; vence tras 24 h sin uso o 7 días, y se cierra al salir, al desactivar el usuario o al cambiar la contraseña. |
+| Token de un solo uso | `UserToken` | Secreto enviado por email para verificar el email, restablecer la contraseña o aceptar una invitación. |
+| Permiso | `Permission` | Capacidad concreta de la matriz de permisos de la spec 001 (FR-007), p. ej. `settings.manage`. |
 | Plantilla de rubro | `IndustryTemplate` | Configuración inicial precargada (etapas, categorías, nombres, catálogo). |
 | Tercero | `Party` | Persona o empresa con la que se opera. Puede tener uno o más roles. |
 | Cliente | `Customer` (rol de `Party`) | Tercero al que se le hacen proyectos. |
@@ -51,6 +55,7 @@ Términos del negocio (usados en specs e interfaz) y su nombre en el código.
 | Adjunto | `Attachment` | Archivo (foto, plano, PDF) asociado a un proyecto. |
 | Nota | `Note` | Comentario en la bitácora de un proyecto. |
 | Auditoría | `AuditLog` | Registro de quién hizo qué y cuándo. |
+| Mensaje saliente | `OutboxMessage` | Email pendiente de envío, guardado junto con la operación que lo originó. |
 
 ## Convención de signos en cuentas corrientes
 
