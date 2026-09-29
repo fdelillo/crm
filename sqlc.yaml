@@ -1,0 +1,53 @@
+# sqlc configuration (ADR-003). One block per module store package; the schema is the goose
+# migrations directory, which sqlc reads up to each "-- +goose Down".
+version: "2"
+
+sql:
+  # Spike T-B008: parsing of CREATE POLICY and column-level GRANT. Removed once Phase 1 has real queries.
+  - name: spike
+    engine: postgresql
+    schema:
+      - db/migrations
+      - internal/testsupport/sqlcspike/schema.sql
+    queries: internal/testsupport/sqlcspike/queries.sql
+    gen:
+      go:
+        package: sqlcspike
+        out: internal/testsupport/sqlcspike
+        sql_package: pgx/v5
+        # Overrides of ADR-003 and data-model.md §4: uuid -> google/uuid, inet -> netip.Addr,
+        # timestamptz -> time.Time; each nullable variant is explicit.
+        overrides: &overrides
+          - db_type: uuid
+            go_type: github.com/google/uuid.UUID
+          - db_type: uuid
+            nullable: true
+            go_type: github.com/google/uuid.NullUUID
+          - db_type: timestamptz
+            go_type: time.Time
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              import: time
+              type: Time
+              pointer: true
+          - db_type: inet
+            go_type: net/netip.Addr
+          - db_type: inet
+            nullable: true
+            go_type:
+              import: net/netip
+              type: Addr
+              pointer: true
+
+  # One block per module goes here as soon as the module has its first query (sqlc fails on an
+  # empty queries directory, so they cannot exist before). Same shape as the spike block:
+  #
+  # - name: identity
+  #   engine: postgresql
+  #   schema: db/migrations
+  #   queries: internal/identity/store
+  #   gen:
+  #     go: {package: store, out: internal/identity/store, sql_package: pgx/v5, overrides: *overrides}
+  # - name: tenant
+  #   ... internal/tenant/store

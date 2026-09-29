@@ -12,3 +12,6 @@ graphify-out/
 
 # OS / editor
 .DS_Store
+
+# Local HTTPS development certificate (make dev-certs, mkcert)
+.certs/

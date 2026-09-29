@@ -1,0 +1,36 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: make check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # Go 1.27: the version comes from go.mod (go + toolchain lines). The module cache and the
+      # build cache (which also holds the dev tools built from tools.mod) are restored between runs.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            tools.sum
+
+      # Docker is preinstalled on ubuntu-latest: the integration tests start postgres:18 with
+      # testcontainers. `make check` needs no mkcert and no certificates (HTTP tests use
+      # httptest.NewTLSServer). The E2E job with mkcert is added by T-F009/T-F701.
+      - name: Docker version
+        run: docker version
+
+      - name: make check
+        run: make check
