@@ -4,6 +4,8 @@
 **Revisión 2026-09-27**: R-06 (duración de sesión, P-5) y R-15 (enumeración en el registro, P-4)
 actualizadas con las respuestas del usuario.
 **Revisión 2026-09-29**: R-19 a R-23 agregadas por los hallazgos H-1 a H-9 del frontend (plan §18).
+**Segunda revisión 2026-09-29**: R-23 reescrita por el hallazgo H-10 (HTTPS local con mkcert,
+decisión del usuario); R-24 agregada por H-11 (límite exacto del logo y del cuerpo multipart).
 
 Alternativas evaluadas por decisión. Las marcadas **(usuario)** las tomó el usuario antes del
 plan: acá se documenta por qué son razonables y qué cuestan. Las demás son defaults del
@@ -188,7 +190,7 @@ depende de mantener una conexión dedicada. `NOTIFY` queda como optimización fu
 
 | Opción de subida | A favor | En contra | Veredicto |
 |---|---|---|---|
-| **Vía backend (multipart), con validación por contenido** | Validación de tipo, tamaño y dimensiones antes de guardar; bucket privado; sin CORS | El backend transfiere los bytes | **Elegida** (logos de ≤ 2 MB) |
+| **Vía backend (multipart), con validación por contenido** | Validación de tipo, tamaño y dimensiones antes de guardar; bucket privado; sin CORS | El backend transfiere los bytes | **Elegida** (logos de ≤ 2 MiB, R-24) |
 | URL prefirmada de subida directa | El backend no transfiere bytes | Validación posterior (el archivo ya está en el bucket); CORS en el bucket | Descartada para 001; 004 (adjuntos de 15 MB) puede reevaluarla |
 
 ## R-13 Estrategia de tests → ADR-012
@@ -313,7 +315,7 @@ tipo de archivo, gzip) dentro de `web`.
 |---|---|---|---|
 | **`private, no-cache` + `ETag` = UUID del objeto; `304` sin leer S3; parámetro `v` declarado e ignorado** | Nunca se muestra un logo sin preguntarle al servidor con la sesión actual (el `ETag` de otra empresa no coincide); revalidar cuesta un `304`; la UI puede cambiar la URL para refrescar el `<img>` al instante | Una revalidación por uso del logo | **Elegida** |
 | `private, max-age=300` (diseño anterior) | Menos requests | En un celular compartido se ve hasta 5 min el logo de la empresa anterior, y el viejo tras reemplazarlo | Descartada (hallazgo H-2) |
-| `no-store` | Lo más simple | Descarga el logo completo en cada uso (hasta 2 MB por pantalla con encabezado) | Descartada |
+| `no-store` | Lo más simple | Descarga el logo completo en cada uso (hasta 2 MiB por pantalla con encabezado) | Descartada |
 | URL por empresa y versión (`/tenant/logo/{object_id}`) con `immutable` | Caché perfecta | Otro endpoint o un `logo_url` en `Tenant`; si la URL se filtra, el logo queda cacheado aunque la sesión cambie (sigue exigiendo sesión para descargarlo, pero el navegador no revalida) | Descartada: más contrato para un beneficio chico |
 | Exponer `logo_version` en `Tenant` en vez del parámetro `v` | La UI no inventa la versión | Cambia `Tenant` y `TenantSummary`; la UI ya resuelve con `?v={id}-{updated_at}` | Descartada por ahora (se puede agregar sin romper) |
 | Agregar `Vary: Cookie` | Separa entradas de caché por sesión | Con `no-cache` la revalidación ya consulta al servidor con la cookie; `Vary: Cookie` suele desactivar la caché en algunos navegadores | Descartada (innecesaria) |
@@ -340,14 +342,86 @@ la documentación consultada; si no lo hace, se agrega en el handler).
 | Solo embeber `tzdata`, sin default | Acepta todas las zonas reales | Un valor basura sigue dando `422` en un campo que no se ve | Descartada |
 | Depender del `zoneinfo` del sistema | Binario más chico | En imágenes `distroless`/`scratch` falla toda zona salvo UTC | Descartada |
 
-## R-23 `APP_BASE_URL` y cookie `Secure` en desarrollo (H-3) → DD-24
+## R-23 HTTPS en desarrollo y cookie `__Host-` (H-3, H-10) → DD-24, nota en ADR-006
+
+**Reescrita el 2026-09-29 (H-10).** La versión anterior elegía "`http://` solo para `localhost` y
+`127.0.0.1`, con `COOKIE_SECURE=true`" y afirmaba que se podía desarrollar con Chrome o Firefox.
+Es incorrecto: **Chrome/Chromium acepta cookies `Secure` en `http://localhost` pero rechaza el
+prefijo `__Host-`**; Firefox la acepta; Safari no acepta ni `Secure` en `http://localhost` (fuentes
+abajo y R-F15). Con esa regla no había sesión en Chrome ni en los E2E de Chromium.
+
+### Cómo se obtiene la misma cookie que en producción en desarrollo y E2E (**usuario: HTTPS local**)
 
 | Opción | A favor | En contra | Veredicto |
 |---|---|---|---|
-| **`http://` solo para `localhost` y `127.0.0.1`, con `COOKIE_SECURE=true`; `false` solo con esos orígenes y para clientes no navegador** | Desarrollo con navegador real (Vite o el binario) con la misma cookie que producción; imposible configurar `http://` o cookie sin `Secure` para un dominio real | Safari de escritorio puede rechazar la cookie `Secure` en `localhost` (se desarrolla con Chrome o Firefox) | **Elegida** |
-| Regla anterior (`http://` solo con `COOKIE_SECURE=false`) | Estricta | Un navegador rechaza la cookie `__Host-` sin `Secure`: el desarrollo local no funcionaba | Descartada (hallazgo H-3) |
-| TLS local obligatorio (certificado de desarrollo) | Idéntico a producción | Paso extra de instalación para un equipo que aprende | Respaldo si falla S-F3 |
-| Cambiar el nombre de la cookie en desarrollo (sin `__Host-`) | Funciona sin `Secure` | Dos comportamientos de cookie; los tests dejan de probar el real | Descartada |
+| **HTTPS local con un certificado de `mkcert`** (CA local instalada en el equipo; `crm serve` con TLS solo en modo local; Vite con `server.https` y el mismo certificado) | La cookie es **la misma** que en producción (`__Host-crm_session`, siempre `Secure`) en Chrome, Firefox y Safari; los E2E prueban lo real; no hay ninguna configuración que permita emitir la cookie sin `Secure` | Un paso de instalación por equipo (`mkcert -install` + `make dev-certs`), dos variables (`TLS_CERT_FILE`/`TLS_KEY_FILE`) y la CA a instalar también en CI | **Elegida por el usuario** (era el respaldo previsto en la versión anterior de esta sección) |
+| `http://localhost` con `COOKIE_SECURE=true` (regla anterior, H-3) | Cero instalación | Sin sesión en Chrome/Chromium ni Safari; los E2E en Chromium (P-F5) no funcionan | Descartada (H-10) |
+| Cookie sin prefijo (`crm_session`) cuando `APP_BASE_URL` es `http://localhost` | Cero instalación | Dos comportamientos de cookie; los tests dejan de probar la cookie real; una regla de configuración más que puede filtrarse a otro entorno | Descartada |
+| Desarrollar y correr E2E solo con Firefox | Cero cambios | Contradice P-F5; el navegador más usado queda sin E2E | Descartada |
+
+### ¿Se sigue aceptando `APP_BASE_URL=http://localhost`?
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **No: `APP_BASE_URL` siempre `https://`; se elimina `COOKIE_SECURE`** | Una regla de una línea; ninguna combinación de variables emite la cookie sin `Secure` (la amenaza A05 "cookie sin `Secure` en producción" desaparece por construcción); nada que la necesite (ver tests Go abajo) | Quien corra `crm serve` sin TLS en su equipo no puede abrirlo con el navegador (igual no tendría sesión) | **Elegida** |
+| Mantener la excepción `http://localhost` para quien no instale mkcert | Arranque sin certificados | Configuración que "funciona a medias" (sin sesión en Chrome y Safari); dos caminos que documentar y probar | Descartada |
+| Mantener `COOKIE_SECURE=false` para clientes no navegador | Tests sin TLS | Innecesario: los tests usan `httptest.NewTLSServer` o `httptest.NewRecorder`, y `curl` también puede usar HTTPS | Descartada |
+
+### Tests de integración de la API que encadenan requests con la cookie
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **`httptest.NewTLSServer(root)` + `srv.Client()` con un `cookiejar`** | El cliente ya confía en el certificado del servidor de test (sin mkcert en CI para `make check`); la cookie viaja por HTTPS como en producción; el jar aplica `Secure` y `Path` | No verifica el prefijo `__Host-` (el `cookiejar` de Go no implementa prefijos): se cubre con una aserción explícita sobre `Set-Cookie` | **Elegida** |
+| `httptest.NewServer` (HTTP) + `cookiejar` | Igual de simple | Funciona solo porque el `cookiejar` de Go trata `localhost`/loopback como seguro (detalle de la librería, verificado en su código fuente actual); el test dependería de esa excepción | Descartada |
+| `httptest.NewRecorder` copiando `Set-Cookie` a `Cookie` a mano | Sin servidor | Helper propio; no ejercita `Secure` ni `Path` | Se mantiene para tests de un solo request (handlers y middlewares) |
+| `COOKIE_SECURE=false` | — | Variable eliminada | Descartada |
+
+### Certificado en CI para los E2E
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **`mkcert` en el job de E2E** (binario de una versión fijada con checksum verificado, `certutil` instalado, `mkcert -install`, `mkcert -cert-file … -key-file … localhost 127.0.0.1`), CA nueva por corrida | Mismo mecanismo que en desarrollo; los navegadores confían en el certificado (sin errores de certificado que puedan afectar al service worker); la CA muere con el runner | Pasos extra en el job; que Chromium y WebKit de Playwright usen los almacenes donde instala mkcert es un supuesto (8) | **Elegida** |
+| Playwright con `ignoreHTTPSErrors` y un certificado sin CA de confianza | Sin instalar CA | Con errores de certificado el service worker podría no registrarse (supuesto sin verificar); no es lo que ve un usuario | Respaldo si falla el supuesto 8, solo si T-F703 (PWA) pasa igual |
+| Certificado y clave versionados en el repo | Cero pasos | Una clave privada en el repositorio, aunque sea de desarrollo; la CA igual hay que instalarla | Descartada |
+| Generar CA y certificado con `openssl` | Sin herramienta extra | Más pasos y más fácil equivocarse (SAN, extensiones) | Descartada |
+
+### HSTS en modo local
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **No enviar `Strict-Transport-Security` cuando el host de `APP_BASE_URL` es `localhost`/`127.0.0.1`** | Evita que el navegador del desarrollador registre HSTS para `localhost` y fuerce HTTPS en otros proyectos locales (supuesto 9) | Una rama por modo en el middleware de cabeceras | **Elegida** |
+| Enviarlo siempre | Sin ramas | Riesgo de "romper" `http://localhost` para otros proyectos del desarrollador | Descartada |
+
+## R-24 Límite exacto del logo y del cuerpo multipart (H-11) → DD-31, DD-11, nota en ADR-011
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **2 MiB = 2 097 152 bytes, medidos sobre el contenido del archivo (la parte `file`)** | Decisión del usuario; el cliente puede apuntar a un número exacto sin adivinar el costo de los encabezados multipart | "2 MB" en textos de la UI es una aproximación (aceptable para el usuario final) | **Elegida por el usuario** |
+| 2 000 000 bytes | Coincide con el "MB" decimal | Otro número; el usuario eligió MiB | Descartada |
+| Limitar solo el cuerpo multipart completo | Una sola medida | El límite del archivo pasaría a depender del largo del nombre de archivo y del *boundary* que elige el navegador | Descartada |
+
+Límite del cuerpo:
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Cuerpo ≤ 2 097 152 + 65 536 = 2 162 688 bytes (`http.MaxBytesReader`), aparte del límite del archivo** | Acota lo que se lee de la red antes de mirar las partes; 64 KiB alcanzan para *boundary*, encabezados de la parte y un nombre de archivo largo | Dos constantes | **Elegida** |
+| Sin límite de cuerpo, solo del archivo | Una constante | Un cliente puede enviar partes extra o encabezados enormes antes de la parte `file` | Descartada |
+
+Cómo se lee:
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **`r.MultipartReader()` + exactamente una parte `file`, leída con un tope de `LogoMaxBytes + 1` bytes en memoria** | Sin archivos temporales; control exacto de qué partes se aceptan; saber que se superó el límite cuesta leer un byte de más; los bytes quedan en memoria para validar (firma, `image.DecodeConfig`) y subir a S3 con tamaño conocido | Hasta ~2 MiB por subida concurrente en memoria (irrelevante a la escala S-3) | **Elegida** |
+| `r.ParseMultipartForm(maxMemory)` | Una llamada | Guarda en disco temporal lo que supera `maxMemory`; acepta partes extra sin avisar; más difícil de acotar con precisión | Descartada |
+| *Streaming* directo a S3 mientras se valida | Sin buffer | La validación de tipo y dimensiones necesita el principio del archivo antes de decidir; complica el orden "validar antes de guardar" (ADR-011) | Descartada |
+
+Metadatos EXIF en el servidor:
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Guardar los bytes validados sin modificarlos; no depender de que el cliente quite EXIF** | El backend no cambia (el usuario lo pidió); no se decodifica la imagen completa en el servidor | Un cliente que no sea la SPA podría subir un JPEG con EXIF (ubicación, orientación) | **Elegida** (riesgo aceptado R-13 del plan; la SPA siempre vuelve a codificar, DD-F21) |
+| Quitar los segmentos EXIF en Go sin decodificar | Sin GPS en el bucket | Se pierde la orientación sin aplicarla (la foto queda de costado); código de parseo de JPEG propio | Descartada |
+| Decodificar y volver a codificar en Go | Limpieza total | Decodificar imágenes en el servidor es superficie de DoS; pérdida de calidad; cambia el comportamiento del backend | Descartada |
 
 ---
 
@@ -366,6 +440,9 @@ la documentación consultada; si no lo hace, se agrega en el handler).
 - libopenapi-validator: <https://github.com/pb33f/libopenapi-validator>
 - oapi-codegen v2.8.0 (OpenAPI 3.1 inicial): <https://github.com/oapi-codegen/oapi-codegen/releases/tag/v2.8.0>
 - go-mail: <https://github.com/wneessen/go-mail>
+- Cookies `Secure` y con prefijo en `http://localhost` por navegador (H-10, aportadas por el frontend): <https://github.com/httpwg/http-extensions/issues/2605>, <https://issues.chromium.org/issues/40202941>, <https://bugzilla.mozilla.org/show_bug.cgi?id=1618113>
+- `net/http/cookiejar` (trata `localhost`/loopback como seguro; no implementa prefijos `__Host-`/`__Secure-`): <https://raw.githubusercontent.com/golang/go/master/src/net/http/cookiejar/jar.go>
+- mkcert (almacenes de confianza en Linux con `certutil`, `-cert-file`/`-key-file`, `-CAROOT`, `NODE_EXTRA_CA_CERTS` para Node, advertencia sobre `rootCA-key.pem`): <https://github.com/FiloSottile/mkcert>
 
 Supuestos a validar durante la implementación (no verificados con documentación primaria):
 
@@ -381,8 +458,16 @@ Supuestos a validar durante la implementación (no verificados con documentació
    con RLS (aplica también las políticas de `UPDATE`) se comportan como describe
    `data-model.md` §3.4: los tests T-B109, T-B110 y T-B211 lo confirman.
 6. `gzhttp` agrega `Vary: Accept-Encoding` a las respuestas comprimibles (T-F007).
-7. Con el *proxy* de Vite, el navegador envía `Sec-Fetch-Site: same-origin` en los `POST` a
-   `/api` y `CrossOriginProtection` los acepta sin `AddTrustedOrigin` (spike S-F3 de T-F006).
+7. Con el *proxy* de Vite (ahora en `https://localhost:5173`), el navegador envía
+   `Sec-Fetch-Site: same-origin` en los `POST` a `/api` y `CrossOriginProtection` los acepta sin
+   `AddTrustedOrigin` (spike de T-F006).
+8. En CI, tras `mkcert -install` con `certutil` disponible, Chromium y WebKit de Playwright confían
+   en el certificado de `localhost` (mkcert documenta el almacén del sistema y NSS; que los
+   navegadores de Playwright los usen no está verificado). Se valida en la primera corrida de
+   T-F701; respaldo: `ignoreHTTPSErrors` si T-F703 pasa igual.
+9. Un navegador que recibe `Strict-Transport-Security` por HTTPS en `localhost` puede registrarlo
+   y forzar HTTPS en otros puertos de `localhost` (no verificado con fuente primaria; omitirlo en
+   modo local no tiene costo, así que se omite igual).
 
 ---
 

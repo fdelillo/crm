@@ -8,6 +8,9 @@ de reemisión de invitación por pedido de reset (DD-20). Sin cambios de columna
 conservación de la invitación abierta en la limpieza (§2.4, §3.4), auditoría de cambios de rol de
 invitados (§2.6). Sin columnas, tablas ni índices nuevos; cambian la política `worker_cleanup` de
 `user_tokens` y los privilegios por columna de `crm_worker` sobre esa tabla.
+**Segunda revisión 2026-09-29**: hallazgo H-11 (plan §18): límites exactos del archivo del logo
+(§2.1) y tratamiento de sus metadatos (§5). Sin cambios de esquema: el tamaño no se guarda en la
+base.
 
 DDL **conceptual**: define tablas, tipos, constraints, índices, políticas y privilegios. No es
 una migración ejecutable: las migraciones goose las escribe quien implementa, respetando esto.
@@ -166,6 +169,12 @@ Constraints de tabla:
 
 Índices: solo la PK. Toda lectura es por `id` (incluida la revalidación del logo, que solo lee
 esta fila para comparar el `ETag` y no toca S3).
+
+**Objeto referido por `logo_object_key` (DD-11, DD-31, H-11)**: PNG o JPEG de **hasta 2 097 152
+bytes** (2 MiB, medidos sobre el archivo) y hasta 2000×2000 px. Lo valida `tenant.Service` antes
+de subirlo a S3; la base no guarda el tamaño ni las dimensiones porque el objeto no cambia después
+de subido (reemplazarlo crea otra clave). Los bytes se guardan **tal como llegaron** una vez
+validados: el servidor no quita metadatos ni aplica la orientación EXIF (ver §5).
 
 ### 2.2 `app.users` — Usuario (`User`)
 
@@ -513,7 +522,7 @@ filtra hasta el JSON.
 | Token en claro | `outbox_messages.payload` (solo `pending`) | Secreto | Borrado obligatorio al terminar (`outbox_scrub_chk`) |
 | IP y user agent | `sessions`, `audit_log` | Personal | Retención: sesiones hasta la limpieza; auditoría indefinida (S-5) |
 | CUIT, dirección, teléfono, email de la empresa | `tenants` | Comercial; personal si es persona humana | Solo visible dentro de la empresa; las respuestas de la API llevan `Cache-Control: no-store` (DD-28) |
-| Logo de la empresa | S3 (clave en `tenants.logo_object_key`) | Comercial | `private, no-cache` + `ETag` por objeto: nunca se reutiliza sin revalidar con la sesión actual (DD-23) |
+| Logo de la empresa | S3 (clave en `tenants.logo_object_key`) | Comercial; **personal si un JPEG conserva metadatos EXIF** (ubicación GPS, datos del dispositivo) | `private, no-cache` + `ETag` por objeto: nunca se reutiliza sin revalidar con la sesión actual (DD-23). El servidor guarda los bytes sin modificar: la SPA vuelve a codificar todo JPEG y así quita el EXIF (DD-F21 de `ui.md`), pero un cliente que no sea la SPA podría subir un JPEG con EXIF. Riesgo aceptado (R-13 del plan): solo lo sube un Administrador de la empresa y solo lo ve esa empresa |
 | HMAC de email | `login_throttles.email_hmac` | Seudónimo | Borrado a las 24 h sin fallos |
 
 ---
@@ -551,4 +560,5 @@ y lo reactiva antes de terminar (ADR-004): queda explícito y versionado.
    anulación).
 5. Agregar la tabla a la lista esperada del test de catálogo (T-B107).
 6. Si la tabla referencia un archivo que se sirve por el backend (adjuntos de 004, PDF de 005), la
-   respuesta que lo sirve sigue la política de caché del logo (DD-23, nota en ADR-011).
+   respuesta que lo sirve sigue la política de caché del logo (DD-23, nota en ADR-011), y la
+   subida define su límite de archivo y de cuerpo como el logo (DD-31).

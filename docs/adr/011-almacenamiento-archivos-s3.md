@@ -15,6 +15,25 @@
 > porque el almacenamiento, el bucket privado y la subida vía backend no cambian: se fija la
 > política de caché de la respuesta.
 
+> **Nota 2026-09-29 (b) (detalle; precisa las reglas del logo; no cambia la decisión)**, por el
+> hallazgo H-11 y la confirmación del usuario de que el navegador vuelve a codificar todo JPEG:
+>
+> 1. **Límite exacto** (decisión del usuario): el "≤ 2 MB" de las reglas del logo es **2 MiB =
+>    2 097 152 bytes**, medidos sobre el contenido del archivo (la parte `file`), no sobre el
+>    cuerpo `multipart/form-data`. El cuerpo completo tiene su propio límite, **2 162 688 bytes**
+>    (archivo + 64 KiB para *boundary*, encabezados y nombre), aplicado con `http.MaxBytesReader`;
+>    se acepta exactamente una parte `file` y se lee con un tope de `2 097 152 + 1` bytes (DD-31 del
+>    plan de 001).
+> 2. **Metadatos**: el servidor guarda los bytes validados **sin modificarlos**; no quita EXIF ni
+>    aplica la orientación. La SPA vuelve a codificar todo JPEG (y así quita la ubicación), pero la
+>    validación del backend no depende de eso: un cliente que no sea la SPA puede subir un JPEG con
+>    EXIF (riesgo aceptado R-13 del plan de 001). Las specs que reusan este ADR (004, 005) definen
+>    sus propios límites de archivo y de cuerpo del mismo modo.
+>
+> No se crea un ADR nuevo porque el tipo de almacenamiento, el bucket privado, la subida vía
+> backend y la validación antes de guardar no cambian: se fija el valor exacto de una regla que ya
+> estaba y cómo se mide.
+
 ## Contexto
 
 La constitución fija almacenamiento compatible con S3 para logos, adjuntos y PDFs. En 001 se sube

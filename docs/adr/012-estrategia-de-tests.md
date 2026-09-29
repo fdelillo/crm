@@ -4,6 +4,18 @@
 **Fecha**: 2026-09-27
 **Origen**: spec 001; aplica a todas las specs
 
+> **Nota 2026-09-29 (detalle; no cambia la decisión)**, por el hallazgo H-10: la cookie de sesión
+> es siempre `__Host-crm_session` con `Secure` y ya no existe `COOKIE_SECURE` (nota (b) en
+> ADR-006). Por eso los tests **HTTP** que encadenan requests con la cookie (registro → `/me`,
+> login → logout) corren sobre `httptest.NewTLSServer` con el handler raíz real, usando
+> `srv.Client()` (ya confía en el certificado de prueba) con un `cookiejar`; el helper vive en
+> `internal/testsupport/apitest`. Los tests de un solo request siguen con `httptest.NewRecorder`.
+> Ninguno necesita mkcert, así que `make check` no cambia. Como el `cookiejar` de Go no verifica
+> el prefijo `__Host-`, los atributos de la cookie se afirman explícitamente sobre `Set-Cookie`.
+> El certificado de mkcert solo lo usan el desarrollo con navegador y el job de E2E (DD-24 del
+> plan de 001). No se crea un ADR nuevo: la pirámide, lo que se sustituye y el checkpoint no
+> cambian; se fija cómo se levanta el servidor en los tests HTTP.
+
 ## Contexto
 
 La constitución pide tests antes que código en el núcleo financiero (principio VI), tests de

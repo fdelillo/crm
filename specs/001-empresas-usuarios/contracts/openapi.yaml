@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CRM - API 001 Empresas, usuarios y roles
-  version: 0.3.0
+  version: 0.3.1
   summary: Registro de empresas, autenticación, sesiones, invitaciones, usuarios y datos de la empresa.
   description: |
     Contrato **canónico** de la spec 001 (`specs/001-empresas-usuarios/spec.md`).
@@ -12,7 +12,9 @@ info:
     - Base: `/api/v1`. JSON en `snake_case`. Fechas ISO 8601 en UTC.
     - Autenticación: cookie de sesión `__Host-crm_session` (HttpOnly, Secure, SameSite=Lax).
       El cliente no la lee ni la manipula: el navegador la envía sola. La sesión vence tras
-      24 h sin uso o 7 días desde el inicio, lo primero que ocurra (DD-10).
+      24 h sin uso o 7 días desde el inicio, lo primero que ocurra (DD-10). La cookie lleva
+      `Secure` en todos los entornos: la API solo se usa por HTTPS, también en desarrollo y en
+      los E2E (HTTPS local con un certificado de mkcert, DD-24).
     - Todo endpoint con body JSON exige `Content-Type: application/json` (si no, 415).
     - Errores: RFC 9457 `application/problem+json` con el campo `code` estable (ADR-009) y,
       cuando corresponde, `suggested_action`. El frontend decide el texto a mostrar a partir de
@@ -33,6 +35,11 @@ info:
     - 0.3.0: hallazgos del frontend (plan §18): caché del logo (`v`, `If-None-Match`, `ETag`,
       `304`), `no-store` en toda la API, `invitation_expires_at` aunque haya vencido, cambio de
       rol de invitados y por reinvitación, zona horaria del registro con default, `403` de CSRF.
+    - 0.3.1: límites exactos de `PUT /tenant/logo` (H-11): archivo de hasta 2 097 152 bytes,
+      cuerpo multipart de hasta 2 162 688 bytes, una sola parte `file`, y qué error corresponde a
+      cada caso; la cookie es `Secure` en todos los entornos (H-10). Son precisiones: el único
+      cambio de esquema es `additionalProperties: false` en el cuerpo multipart de
+      `PUT /tenant/logo`, que declara la regla de una sola parte.
 servers:
   - url: /api/v1
 tags:
@@ -477,7 +484,9 @@ paths:
       operationId: getTenantLogo
       summary: Imagen del logo de la empresa
       description: |
-        Se sirve por el backend con tipo fijo y `X-Content-Type-Options: nosniff` (DD-11).
+        Se sirve por el backend con tipo fijo y `X-Content-Type-Options: nosniff` (DD-11). Los
+        bytes son exactamente los que se subieron y validaron: el servidor no los modifica (no
+        quita metadatos ni aplica la orientación EXIF).
 
         Caché (DD-23): la URL es la misma para todas las empresas, así que la respuesta lleva
         `Cache-Control: private, no-cache` (el navegador revalida en cada uso) y un `ETag` que
@@ -537,9 +546,28 @@ paths:
       operationId: putTenantLogo
       summary: Subir o reemplazar el logo (Historia 4)
       description: |
-        Requiere `settings.manage`. Solo PNG o JPEG (detectado por contenido), hasta 2 MB y
-        2000x2000 px (DD-11). La UI achica las fotos grandes antes de subirlas; estos límites
-        siguen siendo la autoridad.
+        Requiere `settings.manage`. Límites (DD-11, DD-31); son la autoridad aunque la UI achique
+        y vuelva a codificar la imagen antes de subirla:
+
+        - **Archivo**: PNG o JPEG (detectado por los primeros bytes, no por la extensión ni por el
+          `Content-Type` de la parte), de hasta **2 097 152 bytes** (2 MiB) medidos sobre el
+          contenido de la parte `file`, y de hasta 2000 x 2000 px (leídos del encabezado).
+        - **Cuerpo** `multipart/form-data` completo (*boundary*, encabezados de la parte y
+          archivo): hasta **2 162 688 bytes** (2 MiB + 64 KiB).
+        - Exactamente **una** parte, llamada `file`.
+
+        Errores:
+        - `413 payload_too_large`: el archivo supera 2 097 152 bytes o el cuerpo supera
+          2 162 688 bytes. El servidor deja de leer al superar el límite.
+        - `415 unsupported_media_type`: el archivo no es PNG ni JPEG (p. ej. GIF, WebP, SVG),
+          o el request no es `multipart/form-data`.
+        - `422 validation_failed` con `errors[].field = file`: `code = required` si falta la
+          parte `file` o está vacía; `code = invalid_value` si la imagen no se puede leer o
+          supera 2000 x 2000 px.
+        - `400 malformed_request`: cuerpo multipart mal formado, una parte con otro nombre o
+          más de una parte `file`.
+
+        Los bytes validados se guardan sin modificar (el servidor no quita metadatos EXIF).
       security:
         - sessionCookie: []
       requestBody:
@@ -549,11 +577,12 @@ paths:
             schema:
               type: object
               required: [file]
+              additionalProperties: false
               properties:
                 file:
                   type: string
                   contentMediaType: application/octet-stream
-                  description: Archivo de imagen PNG o JPEG
+                  description: Archivo de imagen PNG o JPEG de hasta 2 097 152 bytes y 2000 x 2000 px
             encoding:
               file:
                 contentType: image/png, image/jpeg
@@ -575,7 +604,14 @@ paths:
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
-          $ref: '#/components/responses/ValidationFailed'
+          description: |
+            Falta la parte `file` (`errors[].code` = `required`) o la imagen no se puede leer o
+            supera 2000 x 2000 px (`errors[].code` = `invalid_value`); en ambos casos
+            `errors[].field` = `file`
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblem'
         5XX:
           $ref: '#/components/responses/ServerError'
     delete:
@@ -836,7 +872,8 @@ components:
       name: __Host-crm_session
       description: |
         Token opaco de sesión. HttpOnly, Secure, SameSite=Lax, Path=/ (ADR-006).
-        Vence tras 24 h sin uso o 7 días desde el inicio de sesión.
+        Vence tras 24 h sin uso o 7 días desde el inicio de sesión. `Secure` en todos los
+        entornos (no hay configuración que lo quite, DD-24).
 
   parameters:
     UserId:
@@ -873,7 +910,7 @@ components:
 
   responses:
     MalformedRequest:
-      description: JSON inválido o con campos desconocidos (`code` = `malformed_request`)
+      description: JSON inválido o con campos desconocidos, o cuerpo multipart mal formado (`code` = `malformed_request`)
       content:
         application/problem+json:
           schema:
@@ -916,7 +953,9 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
     PayloadTooLarge:
-      description: Body demasiado grande (`code` = `payload_too_large`)
+      description: |
+        Body demasiado grande (`code` = `payload_too_large`). En `PUT /tenant/logo`: archivo de más
+        de 2 097 152 bytes o cuerpo multipart de más de 2 162 688 bytes (DD-31).
       content:
         application/problem+json:
           schema:
@@ -1046,10 +1085,12 @@ components:
       properties:
         field:
           type: string
-          description: Nombre del campo del request (snake_case), p. ej. `email` o `tax_id`
+          description: Nombre del campo del request (snake_case), p. ej. `email`, `tax_id` o `file` (logo)
         code:
           type: string
-          description: '`invalid_timezone` solo aparece en `PATCH /tenant` (el registro usa el default, DD-27).'
+          description: |
+            `invalid_timezone` solo aparece en `PATCH /tenant` (el registro usa el default, DD-27).
+            En `PUT /tenant/logo`, `field` = `file` con `required` o `invalid_value` (DD-31).
           enum:
             - required
             - invalid_format

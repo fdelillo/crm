@@ -8,6 +8,9 @@ T-B307, T-B402, T-B501, T-B506, T-B604, T-B606, T-B903).
 sección Backend (tareas afectadas: T-B002, T-B004, T-B005, T-B011, T-B203, T-B204, T-B213,
 T-B303, T-B305, T-B601, T-B603, T-B605, T-B606, T-B702, T-B703, T-B705, T-B801, T-B901, T-B903).
 La sección Frontend se revisó aparte (ver su nota de revisión).
+**Segunda revisión 2026-09-29**: hallazgos H-10 (HTTPS local con mkcert) y H-11 (límite exacto del
+logo) en la sección Backend (plan §18; tareas afectadas: T-B002, T-B004, T-B005, T-B013, T-B014
+nueva, T-B203, T-B213, T-B305, T-B404, T-B703, T-B705, T-B706). La sección Frontend no se tocó.
 
 ---
 
@@ -35,6 +38,13 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
   | `industrytemplate.Seeder` solo en el test de rollback (para forzar un fallo) | El router, el mux raíz y los middlewares en los tests HTTP (`httptest` sobre el handler real) |
   | El handler de la SPA (`RootDeps.SPA`) en los tests del backend, por un stub que registra lo que recibe | El paquete `web` en T-F007 (se prueba con `fstest.MapFS`) |
 
+- **Tests HTTP con cookie** (H-10, nota en ADR-012): los que encadenan requests con la cookie de
+  sesión (registro → `/me`, login → logout → `/me`) usan `internal/testsupport/apitest`:
+  `httptest.NewTLSServer` sobre el handler raíz real + `srv.Client()` con un `cookiejar`. La cookie
+  viaja por HTTPS como en producción y el cliente ya confía en el certificado de prueba: **ningún
+  test necesita mkcert**. Los tests de un solo request siguen con `httptest.NewRecorder`. Como el
+  `cookiejar` de Go no verifica el prefijo `__Host-`, los atributos de la cookie se afirman
+  explícitamente sobre `Set-Cookie` (INV-23).
 - Los tests de integración se conectan **como `crm_app`** (INV-18). Cada test crea sus propias
   empresas con UUID y emails aleatorios: pueden correr en paralelo (`t.Parallel()`) sobre el mismo
   contenedor sin limpiar tablas.
@@ -51,6 +61,7 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
 | `make test-int` | `go test -race -tags=integration ./...` (necesita Docker) |
 | `make check` | `lint` + `test` + `test-int`. **Es el checkpoint de cada fase** |
 | `make db-reset` | Solo desarrollo: recrea la base local y corre bootstrap + migraciones |
+| `make dev-certs` | Solo desarrollo y job de E2E: genera `.certs/localhost.pem` y `.certs/localhost-key.pem` con `mkcert` (T-B014). **No** lo necesita `make check` |
 
 Los targets del frontend (`web-build`, `web-check`, `build`, `check-all`) los agrega T-F009; el
 backend compila y testea sin el frontend gracias al marcador `web/dist/.gitkeep` (ADR-019).
@@ -63,9 +74,12 @@ duplican acá**. Dependen de:
 
 | Tarea del frontend | Necesita del backend | Por qué |
 |---|---|---|
-| T-F007 | T-B005 (mux raíz con `RootDeps.SPA`) y T-B204 (middlewares comunes) | El test del mux completo verifica `/api/…` → problem+json, `/healthz` y las cabeceras comunes sobre la SPA |
+| T-F006 (proxy de Vite y spike de la cookie) | T-B005 (TLS local en `serve`) y T-B014 (`make dev-certs`) | Con H-10 resuelto, Vite corre con `server.https` y hace *proxy* a `https://localhost:8443` (plan §10.5.1) |
+| T-F007 | T-B005 (mux raíz con `RootDeps.SPA`) y T-B204 (middlewares comunes) | El test del mux completo verifica `/api/…` → problem+json, `/healthz` y las cabeceras comunes sobre la SPA (HSTS presente con configuración no local, DD-24) |
 | T-F008 | T-B005, T-B204 y la aprobación de `gzhttp` (DD-29, ya aprobada) | Reemplaza el stub de `RootDeps.SPA` por `web.NewHandler(web.DistFS())` |
 | T-F009 | T-B013 | Agrega targets y el job de frontend al Makefile y a la CI del backend |
+| T-F701 (Playwright) | T-B014 y la receta de CI de plan §10.5.1 | El E2E corre contra `https://localhost:8443` con la CA de mkcert instalada en el runner (supuesto S-12) |
+| T-F604/T-F605 (preparación del logo) | T-B706 (límites de DD-31) | `LOGO_TARGET_MAX_BYTES` puede ser el límite exacto del archivo, 2 097 152 bytes (H-11) |
 
 Orden sugerido: Fase 0 del backend completa → T-F007/T-F008 (en la misma rama o la siguiente) →
 T-F009.
@@ -74,13 +88,14 @@ T-F009.
 
 ### Fase 0 — Esqueleto del monolito (Setup)
 
-**Objetivo**: el binario compila, sirve `/healthz` desde el mux raíz, corre migraciones
-embebidas, genera código sqlc y hay un harness que levanta PostgreSQL 18 real con los roles del
-proyecto. CI corre todo.
+**Objetivo**: el binario compila, sirve `/healthz` desde el mux raíz (por HTTP plano o, en modo
+local, por HTTPS), corre migraciones embebidas, genera código sqlc y hay un harness que levanta
+PostgreSQL 18 real con los roles del proyecto. CI corre todo.
 
 **Prueba independiente**: `make check` en verde en CI; `docker compose up` + `crm migrate up` +
 `crm serve` y `curl /healthz` responde `200 {"status":"ok"}`; `curl /api/v1/no-existe` responde
-`404` problem+json.
+`404` problem+json. Con los certificados de T-B014 y la configuración del modo "Binario completo"
+(plan §10.5.1), `curl https://localhost:8443/healthz` **sin** `-k` responde `200`.
 
 **T-B001 — Módulo Go y estructura de directorios** · ADR-001
 - `go mod init github.com/fdelillo/crm` con Go 1.27. Árbol de `plan.md` §11 con paquetes vacíos
@@ -89,29 +104,34 @@ proyecto. CI corre todo.
   (este último vacío hasta la Fase 9), usando `flag` de la librería estándar. `cmd/crm` importa
   `_ "time/tzdata"` (DD-27).
 
-**T-B002 [T] — Configuración** · ADR-001, plan §10.5, DD-10, DD-14, DD-24, P-5, H-3
+**T-B002 [T] — Configuración** · ADR-001, ADR-006, plan §10.5, DD-10, DD-14, DD-24, INV-23, P-5, H-3, H-10
 - **Red**:
 
   | Entrada (env) | Resultado esperado |
   |---|---|
-  | Todas las variables obligatorias válidas | `Config` poblado; defaults: `HTTP_ADDR=:8080`, `METRICS_ADDR=127.0.0.1:9090`, `SESSION_IDLE=24h`, `SESSION_ABSOLUTE=168h`, `COOKIE_SECURE=true`, `APP_LINK_RESET=/reset-password`, `APP_LINK_VERIFY=/verify-email`, `APP_LINK_INVITATION=/accept-invitation` |
+  | Todas las variables obligatorias válidas, `APP_BASE_URL=https://crm.example` | `Config` poblado; `TLS == nil`; `IsLocal() == false`; defaults: `HTTP_ADDR=:8080`, `METRICS_ADDR=127.0.0.1:9090`, `SESSION_IDLE=24h`, `SESSION_ABSOLUTE=168h`, `APP_LINK_RESET=/reset-password`, `APP_LINK_VERIFY=/verify-email`, `APP_LINK_INVITATION=/accept-invitation` |
   | Falta `DATABASE_URL` | error que nombra la variable |
   | `AUTH_HMAC_KEY` de menos de 32 bytes (decodificada) | error |
-  | `APP_BASE_URL=https://crm.example` con `COOKIE_SECURE` `true` / `false` | válido / error |
-  | `APP_BASE_URL=http://localhost:5173`, `http://localhost:8080`, `http://127.0.0.1:8080` con `COOKIE_SECURE=true` | válido (desarrollo con navegador, H-3) |
-  | Esos mismos orígenes con `COOKIE_SECURE=false` | válido (solo clientes no navegador) |
-  | `APP_BASE_URL=http://crm.example` o `http://192.168.0.10:8080` con cualquier `COOKIE_SECURE` | error |
+  | `APP_BASE_URL=https://localhost:8443`, `https://localhost:5173`, `https://127.0.0.1:8443` sin `TLS_*` | válido; `IsLocal() == true`; `TLS == nil` |
+  | Esos mismos orígenes con `TLS_CERT_FILE` y `TLS_KEY_FILE` | válido; `TLS` con ambas rutas (la configuración **no** lee los archivos) |
+  | `APP_BASE_URL=https://crm.example` con `TLS_CERT_FILE` y `TLS_KEY_FILE` | error: TLS propio solo en modo local |
+  | Solo `TLS_CERT_FILE` o solo `TLS_KEY_FILE` (en modo local) | error que nombra la variable que falta |
+  | `APP_BASE_URL=http://localhost:8080`, `http://127.0.0.1:8080`, `http://crm.example` | error (H-10: `http://` ya no se acepta en ningún caso) |
+  | `APP_BASE_URL=https://localhost.crm.example` o `https://192.168.0.10:8443` | válido pero `IsLocal() == false` (solo `localhost` y `127.0.0.1` exactos) |
+  | `COOKIE_SECURE` definida con cualquier valor | se ignora: no existe la variable y la cookie sigue siendo `Secure` (el `Config` no tiene ningún campo para desactivarlo) |
   | `APP_BASE_URL` sin esquema o con otro esquema (`ftp://…`) | error |
   | `APP_LINK_*` sin `/` inicial o con `#`/`?` | error que nombra la variable |
   | `SESSION_IDLE` > `SESSION_ABSOLUTE` | error |
   | Duración mal formada | error que nombra la variable |
   | El error nunca incluye el **valor** de una variable secreta | aserción sobre el texto |
-- **Green**: `config.Load(getenv func(string) string) (Config, error)` pasa la tabla.
-- **Refactor**: una sola función de validación por campo; nada de variables globales.
+- **Green**: `config.Load(getenv func(string) string) (Config, error)` y `Config.IsLocal()` pasan la
+  tabla.
+- **Refactor**: una sola función de validación por campo; nada de variables globales; la
+  detección de modo local en un solo lugar (la usan TLS y HSTS).
 
 **T-B003 — Implementar `platform/config`**.
 
-**T-B004 [T] — Mux raíz y servidor HTTP mínimo** · ADR-002, ADR-019, DD-12, DD-22, INV-22, H-1
+**T-B004 [T] — Mux raíz, servidor HTTP/HTTPS y harness `apitest`** · ADR-002, ADR-006, ADR-019, DD-12, DD-22, DD-24, INV-22, H-1, H-10
 - **Red** (`httptest` sobre `app.NewRootHandler` con un router chi de prueba y un **stub** en
   `RootDeps.SPA` que responde `200 text/plain "spa"` y registra la ruta recibida):
 
@@ -126,16 +146,24 @@ proyecto. CI corre todo.
   | `GET /`, `GET /login`, `GET /settings/users`, `GET /assets/x.js` | los atiende el stub (ruta registrada igual a la pedida) |
   | Un handler de la API que hace *panic* | `500` problem+json `code=internal`, el proceso sigue vivo, log `ERROR` con `request_id` |
   | Un stub de SPA que hace *panic* | `500` (el recover es común), proceso vivo |
-  | Toda respuesta (API, ops y SPA) | `X-Request-Id`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Strict-Transport-Security` |
+  | Toda respuesta (API, ops y SPA) con configuración **no local** | `X-Request-Id`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Strict-Transport-Security` |
+  | Toda respuesta con configuración **local** (`APP_BASE_URL=https://localhost:8443`) | las mismas cabeceras **sin** `Strict-Transport-Security` (DD-24) |
   | Log de un request a la SPA | `route=spa` (no la URL cruda); a ops, `route=ops`; a la API, el patrón chi |
+  | `app.NewServer` con `cfg.TLS` apuntando a un certificado y una clave generados en el test (`crypto/x509`, autofirmado para `127.0.0.1`; nada se versiona) | el servidor atiende por HTTPS: un cliente que confía en ese certificado recibe `200` en `/healthz`; log de arranque `listen=https_local` |
+  | `app.NewServer` con `cfg.TLS` apuntando a archivos inexistentes o a un par que no coincide | error **antes** de escuchar, que nombra `TLS_CERT_FILE`/`TLS_KEY_FILE` y no incluye el contenido |
+  | `app.NewServer` sin `cfg.TLS` | escucha HTTP plano; log `listen=http` |
+  | `apitest.NewServer(t, root)` con un handler de prueba que fija `__Host-x=1; Secure; HttpOnly; Path=/` y otro que la lee | el `Client` del harness la reenvía en el segundo request (HTTPS + `cookiejar`) |
 - **Green**: `app.NewRootHandler(RootDeps, CommonMiddleware) http.Handler` con `http.ServeMux`
   (`/api/` → chi, `GET /healthz`, `GET /readyz`, `/` → SPA) envuelto por los middlewares
-  comunes; timeouts de §10.3 del plan; apagado ordenado con `context` al recibir SIGTERM.
+  comunes (HSTS según el modo); `app.NewServer(cfg, root)` con los timeouts de §10.3 del plan y
+  TLS local cuando `cfg.TLS != nil`; `internal/testsupport/apitest.NewServer`; apagado ordenado
+  con `context` al recibir SIGTERM.
 
 **T-B005 — Implementar el mux raíz, el router chi de la API (con `NotFound`/`MethodNotAllowed`
-problem+json), logging `slog` JSON y `serve`**. Hasta T-F008, `serve` usa como `RootDeps.SPA` un
-handler que responde `503 text/plain` "La interfaz no está compilada (correr `make web-build`)"
-(el mismo mensaje que usará el paquete `web` sin `index.html`, ADR-019).
+problem+json), logging `slog` JSON, `app.NewServer` (HTTP plano o HTTPS local según `cfg.TLS`,
+DD-24), `apitest` y `serve`**. Hasta T-F008, `serve` usa como `RootDeps.SPA` un handler que
+responde `503 text/plain` "La interfaz no está compilada (correr `make web-build`)" (el mismo
+mensaje que usará el paquete `web` sin `index.html`, ADR-019).
 
 **T-B006 — Bootstrap de roles y entorno local** · ADR-004, ADR-005, `data-model.md` §3.1
 - `db/bootstrap/`: SQL idempotente que crea los roles de §3.1 con sus atributos y membresías
@@ -200,11 +228,28 @@ handler que responde `503 text/plain` "La interfaz no está compilada (correr `m
 
 **T-B013 — Makefile y CI** · ADR-012
 - Targets de la tabla de comandos. `.github/workflows/ci.yml`: Go 1.27, Docker disponible,
-  `make check`. Cachés de módulos. (T-F009 agrega después los targets y el job del frontend.)
+  `make check`. Cachés de módulos. `make check` **no** instala mkcert ni genera certificados (los
+  tests HTTP usan `httptest.NewTLSServer`). El job de E2E, con los pasos de mkcert de plan
+  §10.5.1, lo agregan T-F009/T-F701. (T-F009 agrega después los targets y el job del frontend.)
+
+**T-B014 — HTTPS local de desarrollo** · DD-24, H-10, plan §10.5.1, R-14
+- `make dev-certs`: verifica que `mkcert` esté instalado (si no, mensaje con el enlace de
+  instalación y el recordatorio de `certutil` en Linux), genera `.certs/localhost.pem` y
+  `.certs/localhost-key.pem` para `localhost` y `127.0.0.1`; idempotente.
+- `.gitignore`: `.certs/`.
+- `.env.example` (sin secretos reales, solo marcadores) con los valores del modo "Binario
+  completo" de plan §10.5.1 (`APP_BASE_URL=https://localhost:8443`, `HTTP_ADDR=:8443`,
+  `TLS_CERT_FILE`, `TLS_KEY_FILE`).
+- README, sección de desarrollo: instalar mkcert (y `certutil` en Linux), `mkcert -install`,
+  `make dev-certs`, los tres modos de plan §10.5.1, `NODE_EXTRA_CA_CERTS`, y la advertencia de no
+  compartir `rootCA-key.pem`.
+- **Verificación** (manual, en el checkpoint): con esos valores, `crm serve` loguea
+  `listen=https_local`; `curl https://localhost:8443/healthz` sin `-k` → `200`; Chrome abre
+  `https://localhost:8443/healthz` sin aviso de certificado.
 
 **Checkpoint Fase 0**: `make check` en verde local y en CI; resultados de los spikes T-B008 y
-T-B012 reportados. **No avanzar a la Fase 1 si T-B012 falla.** Con la Fase 0 cerrada se pueden
-hacer T-F007/T-F008 (sección Frontend).
+T-B012 reportados; verificación de T-B014 hecha. **No avanzar a la Fase 1 si T-B012 falla.** Con
+la Fase 0 cerrada se pueden hacer T-F007/T-F008 (sección Frontend).
 
 ---
 
@@ -374,7 +419,7 @@ FR-007.
 
 **T-B202 — Implementar `platform/httpx` (problem+json con `suggested_action` opcional, DecodeJSON, mapeo por defecto de errores)**.
 
-**T-B203 [T] — Middlewares de seguridad y observabilidad** · ADR-006, plan §10.2–10.3, §10.7, DD-12, DD-28, DD-30, INV-21, H-7, H-9
+**T-B203 [T] — Middlewares de seguridad y observabilidad** · ADR-006, plan §10.2–10.3, §10.7, DD-12, DD-24, DD-28, DD-30, INV-21, H-7, H-9, H-10
 - **Red** (unitario, `httptest` sobre el mux raíz de T-B005 con stub de SPA):
 
   | Caso | Esperado |
@@ -382,19 +427,21 @@ FR-007.
   | `POST /api/v1/...` con `Sec-Fetch-Site: cross-site` | `403 application/problem+json` con `code: forbidden` (*deny handler*, H-9); el handler de la API no se ejecutó; log `security_event=csrf_rejected`; `csrf_rejected_total` +1 |
   | `POST` con `Origin` de otro host y sin `Sec-Fetch-Site` | `403` problem+json `forbidden` |
   | `POST` con `Sec-Fetch-Site: same-origin` | pasa |
-  | `POST` con `Origin: http://localhost:5173`, `Host: localhost:5173` y `Sec-Fetch-Site: same-origin` (proxy de Vite) | pasa |
+  | `POST` con `Origin: https://localhost:5173`, `Host: localhost:5173` y `Sec-Fetch-Site: same-origin` (proxy de Vite con HTTPS local, plan §10.5.1) | pasa |
   | `GET` con `Sec-Fetch-Site: cross-site` | pasa (método seguro) |
   | **Toda** respuesta de `/api/v1/*`: `200` JSON, `201`, `202`, `204`, `4xx` y `5xx` problem+json (H-7) | `Cache-Control: no-store` |
   | Un handler de prueba registrado como `GET /api/v1/tenant/logo` que fija su propio `Cache-Control` | el middleware no lo pisa (la excepción de DD-23 queda en manos del handler del logo) |
-  | Toda respuesta (API, ops y SPA) | `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` |
+  | Toda respuesta (API, ops y SPA) con configuración no local | `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` |
+  | Toda respuesta con configuración local | `X-Content-Type-Options` y `Referrer-Policy` presentes; `Strict-Transport-Security` **ausente** (DD-24) |
   | Respuesta del stub de SPA | **sin** `no-store` agregado por la API (la caché de la SPA la decide `web`, T-F007) |
   | Log de un request con body `{"password": "..."}` y cookie de sesión | el log no contiene la contraseña, el token ni el header `Cookie` |
   | Log de request | contiene `request_id`, `route` (patrón chi, `ops` o `spa`), `status`, `duration_ms` |
 - **Green**: pasa la tabla.
 
 **T-B204 — Implementar middlewares** (comunes, en el mux raíz: request id → recover → logging →
-security headers → `CrossOriginProtection` con `SetDenyHandler(httpx.CSRFDenyHandler)`; de la API,
-dentro de chi: `no-store` → rate limit por ruta → autenticación por grupo).
+security headers (HSTS según el modo, DD-24) → `CrossOriginProtection` con
+`SetDenyHandler(httpx.CSRFDenyHandler)`; de la API, dentro de chi: `no-store` → rate limit por
+ruta → autenticación por grupo).
 
 **T-B205 [T] — Tokens y contraseñas** · ADR-007, INV-09, DD-6
 - **Red** (unitario):
@@ -464,14 +511,14 @@ dentro de chi: `no-store` → rate limit por ruta → autenticación por grupo).
 
 **T-B212 — Implementar `platform/outbox` (`Enqueue`, `Dispatcher` con *polling* de 2 s y lote de 10, arranque y parada con `context`)**.
 
-**T-B213 [T] — Adaptador SMTP y plantillas** · ADR-010, DD-14
+**T-B213 [T] — Adaptador SMTP y plantillas** · ADR-010, DD-14, DD-24
 - **Red** (integración contra Mailpit en contenedor; su API HTTP para leer lo recibido):
 
   | Caso | Esperado |
   |---|---|
   | Enviar `password_reset` con `{link}` y `APP_BASE_URL=https://crm.example` | llega a Mailpit con asunto en español, partes texto y HTML, enlace `https://crm.example/reset-password#token=…` (token en el **fragmento**, DD-14) |
   | Plantillas `email_verification` e `invitation` | enlaces `…/verify-email#token=…` y `…/accept-invitation#token=…`; nombre de empresa y rol en español ("Administrador"/"Operador"); sin campos vacíos |
-  | `APP_BASE_URL=http://localhost:5173` | enlaces a `http://localhost:5173/…` (desarrollo con Vite) |
+  | `APP_BASE_URL=https://localhost:5173` | enlaces a `https://localhost:5173/…` (desarrollo con Vite y HTTPS local, plan §10.5.1) |
   | Destinatario con `\r\n` | error antes de conectar |
   | SMTP inalcanzable (puerto cerrado) | error recuperable (no `PermanentError`), respeta timeout de `context` |
   | Respuesta `5xx` simulada | `PermanentError` (si Mailpit no permite simularla, test unitario del clasificador de códigos) |
@@ -551,12 +598,14 @@ de verificación. Repetir el registro con el mismo email → `409 email_already_
 **T-B304 — Implementar `tenant.Service.Register` y en `identity`: `CreateFirstAdmin`,
 `CreateSession`, `IssueEmailVerification`**.
 
-**T-B305 [T] — `POST /auth/signup`** · US-1, SC-001, P-4, P-5, DD-9, DD-19, DD-21, DD-27, DD-28, INV-20
-- **Red** (integración HTTP, contrato validado en cada respuesta):
+**T-B305 [T] — `POST /auth/signup`** · US-1, SC-001, P-4, P-5, DD-9, DD-19, DD-21, DD-24, DD-27, DD-28, INV-20, INV-23
+- **Red** (integración HTTP con `apitest` (HTTPS + `cookiejar`), contrato validado en cada
+  respuesta):
 
   | Caso | Esperado |
   |---|---|
-  | Payload válido | `201` `SessionInfo`; `Set-Cookie: __Host-crm_session=…; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=604800`; `Cache-Control: no-store` |
+  | Payload válido | `201` `SessionInfo`; `Set-Cookie: __Host-crm_session=…; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=604800`, **sin** `Domain` (aserción explícita de cada atributo, INV-23); `Cache-Control: no-store` |
+  | Registro válido y luego `GET /me` con el mismo cliente | `200`: la cookie viajó sola por HTTPS (el `cookiejar` la reenvió) |
   | Email existente | `409`, `code: email_already_registered`, `suggested_action: password_reset`, `title` "Ya existe un usuario con ese email", `detail` "Ya existe un usuario con ese email. ¿Querés recuperar la contraseña?"; valida contra `EmailAlreadyRegisteredProblem` |
   | Email existente de un usuario `invited`, `active` y `disabled` (tres cuentas distintas) | los tres cuerpos son **idénticos byte a byte** salvo `instance` (INV-20) |
   | Cuerpo del `409` | no contiene el nombre ni el id de la otra empresa, ni el nombre, id, rol o estado del usuario existente (búsqueda de esos valores en el cuerpo crudo) |
@@ -645,16 +694,16 @@ autenticadas dentro de chi, worker arrancado por `serve`).
 
 **T-B403 — Implementar `Login` y `Logout`**.
 
-**T-B404 [T] — `POST /auth/login` y `POST /auth/logout`** · US-2, INV-13
-- **Red** (HTTP + contrato):
+**T-B404 [T] — `POST /auth/login` y `POST /auth/logout`** · US-2, INV-13, INV-23
+- **Red** (HTTP + contrato; los casos con cookie usan `apitest`):
 
   | Caso | Esperado |
   |---|---|
-  | Login correcto | `200` `SessionInfo` + cookie con `Max-Age=604800` |
+  | Login correcto | `200` `SessionInfo` + cookie con `Max-Age=604800`, `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`, sin `Domain` (INV-23) |
   | Incorrecto / inexistente | `401 invalid_credentials`, **cuerpos idénticos byte a byte** salvo `instance` |
   | Bloqueado | `429 login_locked` + `Retry-After` en segundos |
   | Desactivado con contraseña correcta | `403 account_disabled` |
-  | Logout con sesión | `204`, cookie borrada, la cookie anterior da `401` en `/me`; auditoría `auth.logout` |
+  | Logout con sesión | `204`, `Set-Cookie` que borra la cookie (`Max-Age=0`, mismos atributos, `Secure`); la cookie anterior da `401` en `/me`; auditoría `auth.logout` |
   | Logout sin cookie o con cookie inválida | `204` |
   | 21.º login en un minuto desde la misma IP | `429 rate_limited` |
 - **Green**: pasa la tabla.
@@ -845,11 +894,13 @@ de cada invitado, aunque haya vencido (DD-25).
 ### Fase 7 — Historia 4: Datos de la empresa y logo (P2)
 
 **Objetivo**: el admin edita los datos de la empresa y sube el logo; cualquier usuario los ve; el
-logo nunca se muestra desde la caché de otra empresa o de una versión anterior.
+logo nunca se muestra desde la caché de otra empresa o de una versión anterior; la subida respeta
+los límites exactos de DD-31 sea cual sea el cliente.
 
 **Prueba independiente**: el admin sube un PNG y edita el CUIT; el operador ve el logo en
 `GET /tenant/logo` y recibe `403` al intentar `PATCH /tenant`; con `curl`, un segundo `GET` con
-`If-None-Match` responde `304`; tras reemplazar el logo, el mismo `If-None-Match` responde `200`.
+`If-None-Match` responde `304`; tras reemplazar el logo, el mismo `If-None-Match` responde `200`;
+con `curl`, un archivo de 2 097 153 bytes recibe `413`.
 
 **T-B701 [T] — Validaciones puras de la empresa** · DD-16, DD-15
 - **Red** (unitario):
@@ -871,17 +922,21 @@ logo nunca se muestra desde la caché de otra empresa o de una versión anterior
   `timezone: "Marte/Olympus"` → validación `invalid_timezone` (acá **sí** es error, a diferencia
   del registro).
 
-**T-B703 [T] — Logo** · US-4, DD-11, DD-23, INV-17, H-2
-- **Red** (integración con `ObjectStorage` falso instrumentado):
+**T-B703 [T] — Logo (servicio)** · US-4, DD-11, DD-23, DD-31, INV-17, INV-24, H-2, H-11
+- **Red** (integración con `ObjectStorage` falso instrumentado; `SetLogo` recibe `[]byte`):
 
   | Caso | Esperado |
   |---|---|
   | PNG válido de 1 MB | objeto guardado con clave `tenants/{A}/logo/{uuid}.png`; `logo_object_key` y `logo_content_type` actualizados; `updated_at` avanza; auditoría `tenant.logo_updated` |
+  | PNG válido de **exactamente 2 097 152 bytes** (relleno con un chunk auxiliar) | aceptado |
+  | Datos de **2 097 153 bytes** | `ErrLogoTooLarge`; el fake de S3 **no** recibió `Put` |
   | Reemplazar logo | objeto nuevo guardado **antes** del `COMMIT`; el viejo borrado **después**; clave (y por lo tanto `ETag`) distinta |
   | JPEG válido | aceptado |
+  | JPEG válido con segmento EXIF (orientación y coordenadas ficticias) | aceptado; el `Put` recibió **exactamente** los mismos bytes (el servidor no modifica ni quita metadatos, DD-11) |
   | GIF, WebP, SVG (aunque la extensión o el `Content-Type` digan `png`) | `ErrLogoUnsupportedType` |
-  | 2 MB + 1 byte | `ErrLogoTooLarge` (el body se corta: no se lee entero en memoria) |
-  | PNG de 4000×10 px o con encabezado que declara 50000×50000 | `ErrLogoInvalidImage` (sin decodificar la imagen entera) |
+  | PNG de 2001×10 o con encabezado que declara 50000×50000 | `ErrLogoInvalidImage` (sin decodificar la imagen entera) |
+  | PNG de 2000×2000 | aceptado |
+  | Bytes truncados después de la firma PNG | `ErrLogoInvalidImage` |
   | `Put` falla | `503`; la fila de la empresa sin cambios |
   | La transacción falla después del `Put` | el objeto nuevo se borra (mejor esfuerzo, logueado si falla) |
   | Borrar el objeto viejo falla | la operación igual responde éxito; log `WARN` (objeto huérfano aceptado) |
@@ -891,16 +946,26 @@ logo nunca se muestra desde la caché de otra empresa o de una versión anterior
   | `GetLogo` con un `ifNoneMatch` viejo o de otra empresa | cuerpo completo con el `ETag` vigente |
 - **Green**: pasa la tabla.
 
-**T-B704 — Implementar `tenant.Service.Update`, `SetLogo`, `RemoveLogo`, `GetLogo`**.
+**T-B704 — Implementar `tenant.Service.Update`, `SetLogo`, `RemoveLogo`, `GetLogo`** y las
+constantes `LogoMaxBytes`, `LogoMaxBodyBytes`, `LogoMaxSide` (plan §11.1).
 
-**T-B705 [T] — Endpoints de empresa** · contrato, FR-007, DD-23, DD-28, INV-21, H-2, H-7
+**T-B705 [T] — Endpoints de empresa** · contrato, FR-007, DD-23, DD-28, DD-31, INV-21, INV-24, H-2, H-7, H-11
 - **Red** (HTTP + contrato):
 
   | Caso | Esperado |
   |---|---|
   | `GET /tenant` como admin y como operador | `200`; `Cache-Control: no-store` |
   | `PATCH /tenant` | `200` admin, `403` operador, `422` CUIT inválido o `timezone` desconocida; `no-store` |
-  | `PUT /tenant/logo` multipart | `200` (el `Tenant` devuelto tiene `updated_at` nuevo) / `413` / `415` / `403` |
+  | `PUT /tenant/logo` multipart con un PNG válido | `200` (el `Tenant` devuelto tiene `updated_at` nuevo); `403` para el operador |
+  | Parte `file` de **exactamente 2 097 152 bytes** con un nombre de archivo de 200 caracteres | `200` (el límite es del archivo, no del cuerpo) |
+  | Parte `file` de **2 097 153 bytes** | `413 payload_too_large`; el handler dejó de leer: un lector instrumentado del cuerpo registra como máximo `LogoMaxBodyBytes` bytes leídos |
+  | Cuerpo de más de 2 162 688 bytes (una parte `file` chica precedida de relleno en su encabezado o en el preámbulo) | `413 payload_too_large` |
+  | Sin parte `file`, o con la parte `file` vacía | `422` con `errors: [{field: file, code: required}]` |
+  | Parte `file` más otra parte `foo`, o dos partes `file` | `400 malformed_request` |
+  | Cuerpo multipart mal formado (sin *boundary* de cierre) | `400 malformed_request` |
+  | `Content-Type: application/json` | `415` |
+  | GIF con `Content-Type: image/png` en la parte | `415 unsupported_media_type` |
+  | PNG de 2001×10 | `422` con `errors: [{field: file, code: invalid_value}]` |
   | `GET /tenant/logo` | `200` con `Content-Type` exacto, `X-Content-Type-Options: nosniff`, `Cache-Control: private, no-cache`, `ETag` entre comillas; **sin** `no-store` |
   | `GET /tenant/logo?v=cualquier-cosa` | misma respuesta que sin `v` (el parámetro se ignora y es válido para el contrato) |
   | `GET /tenant/logo` con `If-None-Match` igual al `ETag` | `304` sin cuerpo, con `ETag` y `Cache-Control: private, no-cache` |
@@ -909,7 +974,9 @@ logo nunca se muestra desde la caché de otra empresa o de una versión anterior
   | `DELETE /tenant/logo` | `204` con `no-store`; un `GET` posterior con el `If-None-Match` viejo → `404` (nunca `304`) |
 - **Green**: pasa la tabla.
 
-**T-B706 — Implementar los handlers**.
+**T-B706 — Implementar los handlers** (en `tenant/http.go`: `http.MaxBytesReader` con
+`LogoMaxBodyBytes`, `r.MultipartReader()` con exactamente una parte `file` leída con tope de
+`LogoMaxBytes + 1` bytes, y el mapeo de errores de DD-31 y plan §9.2).
 
 **Checkpoint Fase 7**: `make check` en verde + prueba independiente con MinIO de `docker compose`.
 
@@ -1050,7 +1117,7 @@ llama a la función como `crm_signup`).
 | US-1 (1, 2, 3) | T-B303 (1, 2), T-B305 (2), T-B303/T-B504 (3) |
 | US-2 (1, 2, 3) | T-B402 (1, 2), T-B501/T-B502 (3) |
 | US-3 (1, 2, 3, 4) | T-B601 (1), T-B602 (2), T-B604 (3), T-B603/T-B604 (4) |
-| US-4 (1) | T-B702, T-B703 |
+| US-4 (1) | T-B702, T-B703, T-B705 |
 | Casos borde (404 de otra empresa, 403 de operador) | T-B606, T-B801, T-B802 |
 | SC-001 Panel en < 3 min | T-B305 (un request), T-B905 (latencia de signup) |
 | SC-002 0 accesos cruzados | T-B110, T-B801..T-B804 |
@@ -1060,13 +1127,15 @@ llama a la función como `crm_signup`).
 | P-5 Sesión 24 h / 7 días | T-B002, T-B305, T-B307, T-B402, T-B404 |
 | H-1 Mux raíz (DD-22, INV-22) | T-B004, T-B005, T-B011, T-B801; T-F007, T-F008 |
 | H-2 Caché del logo (DD-23, INV-21) | T-B703, T-B705, T-B801 |
-| H-3 `APP_BASE_URL` en desarrollo (DD-24) | T-B002 |
+| H-3 / H-10 HTTPS en todos los entornos, TLS local, sin HSTS en modo local (DD-24, INV-23) | T-B002, T-B004, T-B005, T-B013, T-B014, T-B203, T-B204, T-B213, T-B305, T-B404; T-F006, T-F701 |
 | H-4 `invitation_expires_at` vencida (DD-25) | T-B605, T-B606, T-B901 |
 | H-5 Rol de invitados (DD-26) | T-B601, T-B603, T-B605, T-B606 |
 | H-6 Zona horaria del registro (DD-27) | T-B001, T-B303, T-B305, T-B702 |
 | H-7 `no-store` en la API (DD-28) | T-B203, T-B305, T-B705 |
 | H-8 Cabeceras y gzip de la SPA (DD-29) | T-B004 (cabeceras comunes); T-F007, T-F008 (CSP, caché, gzip) |
 | H-9 CSRF en problem+json (DD-30) | T-B203, T-B204, T-B903 |
+| H-11 Límites exactos del logo (DD-31, INV-24) | T-B703, T-B704, T-B705, T-B706 |
+| JPEG re-codificado en el navegador (DD-F21): el backend no depende de eso (DD-11, INV-24) | T-B703 |
 | Rutas de la SPA en inglés (DD-14) | T-B002, T-B213 |
 
 ---

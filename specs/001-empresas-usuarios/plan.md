@@ -6,6 +6,9 @@
 **Revisión 2026-09-29 (posterior a la aprobación)**: incorporados los hallazgos H-1 a H-9 del
 `frontend-architect` (`ui.md` §27), aprobados por el usuario, y las rutas de la SPA confirmadas.
 Detalle en §18.
+**Segunda revisión 2026-09-29**: hallazgos H-10 (HTTPS local con mkcert en desarrollo y E2E) y
+H-11 (límite exacto del logo), resueltos por el usuario; re-codificación de todo JPEG en el
+navegador confirmada. Cambian DD-11 y DD-24; se agregan DD-31, INV-23 e INV-24. Detalle en §18.
 
 Artefactos de esta spec:
 
@@ -34,14 +37,14 @@ además de diseñar la funcionalidad fija las decisiones base del proyecto (ADR-
 | Acceso a datos | `sqlc` (generador) + `github.com/jackc/pgx/v5` (`pgxpool`) | ADR-003 (decisión del usuario) |
 | Migraciones | `github.com/pressly/goose/v3`, SQL versionado embebido con `embed.FS` | ADR-004 (decisión del usuario) |
 | Aislamiento | **Un rol de PostgreSQL por empresa** + RLS forzada + filtro explícito | ADR-005 (decisión del usuario) |
-| Sesiones | Tabla `sessions` + token opaco en cookie `__Host-crm_session`; 24 h de inactividad / 7 días máximo | ADR-006 (decisión del usuario) |
+| Sesiones | Tabla `sessions` + token opaco en cookie `__Host-crm_session`, siempre `Secure`; 24 h de inactividad / 7 días máximo | ADR-006 (decisión del usuario), DD-24 |
 | CSRF | `net/http.CrossOriginProtection` (Go ≥1.25) con *deny handler* problem+json + `SameSite=Lax` + JSON obligatorio | ADR-006, DD-30 |
 | Contraseñas | argon2id (`golang.org/x/crypto/argon2`), formato PHC | ADR-007 |
 | Identificadores | UUIDv7 (`uuidv7()` de PG 18 y `github.com/google/uuid` en Go) | ADR-008 |
 | Errores HTTP | RFC 9457 `application/problem+json` con `code` estable | ADR-009 |
 | Email | Outbox transaccional + worker en el mismo binario; puerto `Mailer`, adaptador SMTP con `github.com/wneessen/go-mail` | ADR-010 |
 | Archivos | S3 compatible (MinIO en desarrollo) con `github.com/minio/minio-go/v7` | ADR-011 |
-| Tests | `testing` nativo, table-driven; integración con PostgreSQL real vía `testcontainers-go`; contrato con `libopenapi-validator` | ADR-012 |
+| Tests | `testing` nativo, table-driven; integración con PostgreSQL real vía `testcontainers-go`; contrato con `libopenapi-validator`; HTTP con `httptest.NewTLSServer` cuando hay cookie | ADR-012 |
 | Autorización | Matriz estática rol → permisos (FR-007) en `internal/authz` | ADR-013 |
 | Contrato | OpenAPI 3.1 canónico; handlers y DTOs escritos a mano; validación en tests | ADR-014 |
 | Frontend servido | SPA embebida en el binario (paquete `web`, `go:embed`), mismo origen | ADR-019 (decisión del usuario) |
@@ -49,7 +52,7 @@ además de diseñar la funcionalidad fija las decisiones base del proyecto (ADR-
 | Zonas horarias | Base IANA embebida con `time/tzdata` (librería estándar) | DD-27 |
 | Logs | `log/slog` (JSON) de la librería estándar | DD-12 |
 | Rate limit | `golang.org/x/time/rate`, en memoria | DD-9 |
-| Desarrollo local | PostgreSQL 18 + Mailpit + MinIO (`compose.yaml`); Vite con *proxy* de `/api` | ADR-010, ADR-011, ADR-019 |
+| Desarrollo local | PostgreSQL 18 + Mailpit + MinIO (`compose.yaml`); **HTTPS local** con un certificado de `mkcert` (herramienta de desarrollo, no dependencia del binario); Vite con *proxy* de `/api` | ADR-010, ADR-011, ADR-019, DD-24 |
 
 **Validación del stack**: detecté un repo sin código, con la constitución fijando Go +
 PostgreSQL + OpenAPI + monolito modular y las librerías que eligió el usuario. Diseño sobre eso.
@@ -68,7 +71,7 @@ como archivos estáticos embebidos (ADR-019).
 
 | Principio | Estado | Cómo se cumple / justificación |
 |---|:---:|---|
-| **I. Simplicidad primero** | ✅ | Se construye solo lo que pide la spec. Registro y aceptación de invitación son una sola pantalla y un solo request. Un único binario (API + worker + SPA). Sin colas externas, sin caché, sin microservicios. Las únicas adiciones fuera del texto literal de la spec son consecuencias necesarias, marcadas y **confirmadas por el usuario**: reemisión de invitación (DD-5), reactivación de usuarios (P-3) y los ajustes H-1 a H-9 (§18). |
+| **I. Simplicidad primero** | ✅ | Se construye solo lo que pide la spec. Registro y aceptación de invitación son una sola pantalla y un solo request. Un único binario (API + worker + SPA). Sin colas externas, sin caché, sin microservicios. Las únicas adiciones fuera del texto literal de la spec son consecuencias necesarias, marcadas y **confirmadas por el usuario**: reemisión de invitación (DD-5), reactivación de usuarios (P-3) y los ajustes H-1 a H-11 (§18). El TLS local es una herramienta de desarrollo (mkcert), no una dependencia del binario. |
 | **II. Genérico por configuración** | ✅ | Las plantillas de rubro son **datos** embebidos (catálogo), no código por rubro. 001 define el catálogo mínimo (código y nombre) y el puerto `industrytemplate.Seeder`; el contenido lo define 002 (DD-3). |
 | **III. Aislamiento entre empresas** | ✅ / ⚠️ | Toda tabla de negocio tiene `tenant_id NOT NULL`, RLS habilitada y **forzada**, política por rol de empresa y filtro explícito en cada query (INV-01 a INV-07). Tests de aislamiento en BD y HTTP (Fases 1 y 8). Ninguna respuesta con datos de una empresa se reutiliza desde la caché del navegador sin revalidar (INV-21, H-2, H-7). ⚠️ **Excepciones justificadas**: (a) `tenants` no tiene `tenant_id` porque *es* la empresa: su política usa `id`; (b) `login_throttles` no tiene `tenant_id` porque se indexa por email **exista o no la cuenta** (anti-enumeración, DD-7): no es dato de negocio ni pertenece a una empresa; solo lo ve el rol `crm_auth`. |
 | **IV. Integridad del dinero** | ✅ (N/A) | 001 no maneja importes. `tenants.base_currency` es ISO 4217 restringido a `ARS`/`USD`. Quedan listas la auditoría append-only (`audit_log`) y la atomicidad por operación (`TxRunner`) que usarán las specs financieras; el checklist de tablas nuevas (`data-model.md` §6) ya prevé tablas inmutables sin `DELETE`. |
@@ -478,6 +481,39 @@ lock de `tenants`, búsqueda del usuario (`404` si no es de la empresa), transic
 de §4.6 (`409 invalid_state` si no está `disabled`), y auditoría `user.reactivated` en la misma
 transacción. Las sesiones revocadas al desactivar **no** se reabren.
 
+#### Subida del logo (Historia 4; DD-11, DD-31)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor A as Administrador
+    participant H as tenant HTTP
+    participant S as tenant.Service
+    participant O as ObjectStorage
+    participant DB as PostgreSQL
+
+    A->>H: PUT /api/v1/tenant/logo (multipart, parte file)
+    H->>H: MaxBytesReader de 2162688 bytes y MultipartReader
+    alt cuerpo o archivo sobre el límite
+        H-->>A: 413 code payload_too_large (deja de leer)
+    else falta la parte file o hay partes inesperadas
+        H-->>A: 422 file required o 400 malformed_request
+    else archivo leído (hasta 2097152 bytes en memoria)
+        H->>S: SetLogo(principal, bytes)
+        S->>S: firma PNG o JPEG y DecodeConfig hasta 2000 x 2000
+        alt tipo no permitido
+            H-->>A: 415 code unsupported_media_type
+        else imagen ilegible o dimensiones excedidas
+            H-->>A: 422 file invalid_value
+        else válida
+            S->>O: Put(clave nueva) antes de la transacción
+            S->>DB: BEGIN, UPDATE tenants logo, audit tenant.logo_updated, COMMIT
+            S->>O: Delete(clave anterior) después del COMMIT
+            H-->>A: 200 Tenant
+        end
+    end
+```
+
 ### 4.6 Máquinas de estado
 
 #### Estado del usuario (`users.status`)
@@ -574,6 +610,8 @@ la vigila.
 | INV-20 | El `409 email_already_registered` del registro nunca incluye datos de la cuenta existente (empresa, nombre, estado, fechas) y es idéntico byte a byte (salvo `instance`) cualquiera sea el estado del usuario existente. | `tenant` HTTP | T-B305 |
 | INV-21 | Ninguna respuesta con datos de una empresa se reutiliza desde la caché del navegador sin preguntarle al servidor: todo `/api/v1` lleva `Cache-Control: no-store`, salvo `GET /tenant/logo`, que lleva `private, no-cache` con un `ETag` distinto por objeto (y por lo tanto por empresa). | Router chi, `tenant` HTTP | T-B203, T-B705, T-B801 |
 | INV-22 | Una ruta bajo `/api/` nunca llega al handler de la SPA (un `/api/…` inexistente es `404 problem+json`), y la SPA nunca queda registrada en el router chi. | `internal/app` (mux raíz) | T-B004, T-F007 |
+| INV-23 | La cookie de sesión se emite **siempre** como `__Host-crm_session` con `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/` y sin `Domain`, en todos los entornos: no existe configuración que la emita de otra forma, y `APP_BASE_URL` siempre es `https://` (DD-24). | `platform/config`, `identity` HTTP | T-B002, T-B305, T-B404 |
+| INV-24 | Ningún logo guardado supera 2 097 152 bytes ni 2000×2000 px, ni es de otro tipo que PNG o JPEG, lo haya subido la SPA u otro cliente: el servidor valida por sí mismo y no depende de que el navegador haya achicado o vuelto a codificar la imagen (DD-11, DD-31). | `tenant` (HTTP y servicio) | T-B703, T-B705 |
 
 ---
 
@@ -594,7 +632,7 @@ son locales a 001.
 | **DD-8** | Login de usuario `disabled` con contraseña **correcta** → `403 account_disabled`; con contraseña incorrecta → `401` genérico. Usuario `invited` → siempre `401` genérico. | Quien conoce la contraseña merece saber por qué no entra; no filtra nada a quien no la conoce. | — |
 | **DD-9** | Rate limit en memoria por IP (token bucket, `golang.org/x/time/rate`): **signup 5/h por IP, contando éxitos y rechazos** (es la mitigación principal de la enumeración aceptada en DD-19), login 20/min, password-reset 5/h (y 3/h por email), invitations/preview y accept 20/h, email-verification 20/h. Excedido → `429 rate_limited` + `Retry-After`. | Una sola instancia (S-1); cero infraestructura extra. | Con varias instancias el límite es por instancia; un atacante con muchas IPs enumera más rápido (se detecta con la métrica de DD-19). Valores ajustables por configuración. |
 | **DD-10** | Sesión: expira a las **24 h sin uso** o a los **7 días** desde el login, lo que ocurra primero (P-5, elección del usuario). `last_seen_at` se actualiza como máximo cada 5 minutos. Cookie con `Max-Age = 604800`. | Ventana de exposición corta ante un dispositivo perdido o compartido en obra/taller. | Quien no usa la app un día vuelve a iniciar sesión; la expiración por inactividad tiene una tolerancia de hasta 5 min. |
-| **DD-11** | Logo: solo PNG y JPEG (detección por *magic bytes*, no por extensión ni `Content-Type`), máximo 2 MB y 2000×2000 px, subido como `multipart/form-data`. Se sirve por el backend (`GET /tenant/logo`) con `Content-Type` fijo y `nosniff`, sin URLs prefirmadas, con la política de caché de DD-23. Clave: `tenants/{tenant_id}/logo/{uuidv7}.{png\|jpg}`. El navegador achica las fotos de más de 2 MB antes de subirlas (decisión del usuario sobre el frontend); **los límites del backend no cambian**: son la autoridad. | SVG permite scripts; las librerías de PDF (005) soportan PNG/JPEG; servir por backend mantiene el bucket privado y sin CORS. | El backend transfiere los bytes del logo (volumen despreciable). |
+| **DD-11** | Logo: solo PNG y JPEG (detección por *magic bytes*, no por extensión ni `Content-Type`), archivo de **hasta 2 097 152 bytes (2 MiB)** y 2000×2000 px, subido como `multipart/form-data` (límites exactos y del cuerpo en DD-31, H-11). Se sirve por el backend (`GET /tenant/logo`) con `Content-Type` fijo y `nosniff`, sin URLs prefirmadas, con la política de caché de DD-23. Clave: `tenants/{tenant_id}/logo/{uuidv7}.{png\|jpg}`. El navegador achica las fotos grandes y **vuelve a codificar todo JPEG** antes de subirlo (decisiones del usuario sobre el frontend, DD-F11 y DD-F21 de `ui.md`); **los límites del backend no cambian** y el servidor valida por sí mismo sin depender de eso (INV-24). Los bytes validados se guardan **sin modificar**: el servidor no quita metadatos EXIF ni aplica la orientación (R-13). | SVG permite scripts; las librerías de PDF (005) soportan PNG/JPEG; servir por backend mantiene el bucket privado y sin CORS. No decodificar la imagen completa en el servidor evita superficie de DoS. | El backend transfiere los bytes del logo (volumen despreciable); un cliente que no sea la SPA puede subir un JPEG con EXIF. |
 | **DD-12** | Logs estructurados con `log/slog` en JSON; cada request lleva `request_id`, `tenant_id`, `user_id`, `route`, `status`, `duration_ms`. `route` es el patrón chi en la API, `ops` en health checks y `spa` en el resto (nunca la URL cruda). Nunca se loguean contraseñas, tokens, cookies ni payloads del outbox. | Librería estándar; operable. | Sin trazas distribuidas (un solo proceso). |
 | **DD-13** | Verificación de email: token de 48 h; reenviable con `POST /auth/email-verification/resend` (autenticado). Aceptar una invitación marca el email como verificado (el token llegó a ese email). | Cierra Historia 1.3 sin bloquear el uso. | 48 h es un supuesto. |
 | **DD-14** | Los enlaces de los emails llevan el token en el **fragmento** (`{APP_BASE_URL}{APP_LINK_*}#token=…`), y la SPA lo envía en el body de un `POST`. Rutas confirmadas por el usuario (en inglés): `APP_LINK_RESET=/reset-password`, `APP_LINK_VERIFY=/verify-email`, `APP_LINK_INVITATION=/accept-invitation`; son los defaults de la configuración. | El fragmento no viaja al servidor ni en `Referer`: el token no queda en logs de acceso ni de proxies. | Si `ui.md` cambia una ruta, cambia el default y T-B002/T-B213. |
@@ -607,13 +645,14 @@ son locales a 001.
 | **DD-21** | Mismo error de dominio (`identity.ErrEmailTaken`), **distinto `code` HTTP por endpoint**: registro → `409 email_already_registered` con `suggested_action: "password_reset"`; invitación → `409 email_taken` sin acción sugerida. | Semánticas distintas para la UI: el visitante probablemente ya tiene cuenta y puede recuperarla; el Administrador no puede recuperar la cuenta de otra persona. | Dos códigos para la misma condición de base; el mapeo vive en el `http.go` de cada módulo. |
 | **DD-22** | **Mux raíz** (H-1): `internal/app` arma un `http.ServeMux` con `/api/` → router chi, `GET /healthz` y `GET /readyz` → ops, `/` → `web.NewHandler(dist)`. Los middlewares comunes (request id, recover, logging, cabeceras de seguridad, `CrossOriginProtection`) envuelven al mux raíz; `no-store`, rate limit, autenticación y autorización quedan dentro de chi. `/api` sin barra final lo redirige el propio `ServeMux` a `/api/`. | Registrar la SPA como `/*` en chi rompería T-B004, T-B801 y el test de rutas contra el contrato, y convertiría un `/api/…` inexistente en `index.html`. | Un nivel más de ruteo; dos formas de declarar rutas (stdlib para 3 destinos fijos, chi para la API). |
 | **DD-23** | **Caché del logo** (H-2): `GET /tenant/logo` responde `Cache-Control: private, no-cache` y `ETag: "<uuid del objeto>"` (el UUIDv7 de `logo_object_key`, distinto por subida y por empresa). Con `If-None-Match` igual responde `304` sin leer S3. Acepta un parámetro de query opcional `v` que el servidor **ignora** (lo usa la UI para cambiar la URL cuando cambia el logo: `?v={id}-{updated_at}`). | La URL es la misma para todas las empresas: con `max-age` un celular compartido mostraba el logo de la empresa anterior o el viejo tras reemplazarlo. `no-cache` obliga a revalidar siempre; el `ETag` hace que revalidar cueste un `304` sin bytes. | Un request de revalidación por carga del logo (liviano: solo lee la fila de la empresa). |
-| **DD-24** | **`APP_BASE_URL` en desarrollo** (H-3): se acepta `http://` **solo** para `localhost` y `127.0.0.1` (cualquier puerto), con `COOKIE_SECURE=true`; los navegadores aceptan cookies `Secure` en esos orígenes. `COOKIE_SECURE=false` solo se permite con esos mismos orígenes y sirve **únicamente** para clientes que no son navegador (tests Go sobre `http://`): un navegador rechaza una cookie `__Host-` sin `Secure`. Cualquier otro `http://` es error de configuración. | El desarrollo con Vite (`http://localhost:5173`) necesita la cookie real; la regla anterior lo impedía. | Safari de escritorio puede no aceptar la cookie `Secure` en `localhost` (S-F3 de `ui.md`): se desarrolla con Chrome o Firefox. |
+| **DD-24** | **HTTPS en todos los entornos; TLS propio solo en modo local** (H-3, **revisada por H-10**; decisión del usuario). `APP_BASE_URL` debe ser `https://` (cualquier `http://` es error de configuración) y la cookie es siempre `__Host-crm_session` con `Secure` (INV-23): se **eliminan** la excepción `http://localhost` y la variable `COOKIE_SECURE`. **Modo local** = el host de `APP_BASE_URL` es `localhost` o `127.0.0.1`. Solo en modo local se aceptan `TLS_CERT_FILE` y `TLS_KEY_FILE` (las dos o ninguna): con ellas `crm serve` escucha **HTTPS** en `HTTP_ADDR` con ese certificado (de `mkcert`, §10.5.1); sin ellas escucha HTTP plano (producción detrás del proxy TLS del hosting; `curl` y tests en desarrollo). En modo local **no** se envía `Strict-Transport-Security`. *Versión anterior (reemplazada)*: aceptaba `http://localhost`/`127.0.0.1` con `COOKIE_SECURE=true` y afirmaba que se podía desarrollar con Chrome o Firefox. | Chrome/Chromium rechaza una cookie `__Host-` servida por `http://localhost` y Safari rechaza `Secure` allí (H-10, R-23): la regla anterior no daba sesión en esos navegadores ni en los E2E de Chromium. Con HTTPS local la cookie es la misma que en producción en todos los navegadores, y sin excepciones no hay combinación de variables que emita la cookie sin `Secure`. El TLS de producción es del hosting (P-1): aceptar un certificado solo en modo local evita desplegar uno de desarrollo por error. HSTS en `localhost` podría forzar HTTPS en otros proyectos del desarrollador (S-13). | Instalar mkcert y generar el certificado una vez por equipo (`make dev-certs`), y la CA también en el job de E2E. Sin `TLS_*`, el navegador no tiene sesión en desarrollo (a propósito). |
 | **DD-25** | **`User.invitation_expires_at`** (H-4): para un usuario `invited` es el vencimiento de su **última** invitación, **aunque ya haya pasado**; para los demás estados, `null`. La limpieza periódica no borra la invitación abierta de un usuario invitado (solo invitaciones usadas o revocadas, `data-model.md` §3.4). | La UI muestra "Invitación vencida" y ofrece reenviar; sin la fecha no puede distinguir vencida de vigente. | Una fila de `user_tokens` por invitado que nunca aceptó queda sin limpiar mientras siga invitado (volumen despreciable). |
 | **DD-26** | **Rol de un invitado** (H-5): reinvitar con otro rol **cambia el rol** (auditoría `user.invitation_reissued` con `data.role` y, además, `user.role_changed {from, to}`); `PUT /users/{id}/role` vale para usuarios `invited` y `active`; para `disabled` responde `409 invalid_state` (se reactiva primero). Todas estas operaciones toman el lock de `tenants`; los invitados no cuentan como Administradores activos, así que cambiar el rol de un invitado nunca dispara `last_admin`. | El Administrador corrige el rol de una invitación sin desactivar y volver a invitar; FR-008 exige auditar todo cambio de rol. | Dos filas de auditoría para una reinvitación con cambio de rol. |
 | **DD-27** | **Zona horaria en el registro** (H-6): si `timezone` falta o no es una zona IANA conocida, el registro usa `America/Argentina/Buenos_Aires` en lugar de responder `422`, y lo loguea (`level=INFO`, `event=signup_timezone_defaulted`, sin datos personales). `PATCH /tenant` sigue respondiendo `422 invalid_timezone` (ahí el campo es visible). El binario importa `time/tzdata` (en `cmd/crm`) para conocer todas las zonas aunque el contenedor no tenga `/usr/share/zoneinfo`. | El usuario no puede corregir un campo que no ve; sin `tzdata` embebido, `time.LoadLocation` fallaría para todas las zonas en imágenes mínimas. | Una empresa de otra zona que llega con un navegador mal configurado arranca en la zona por defecto (la corrige en Datos de la empresa); el binario crece unos cientos de KB. |
 | **DD-28** | **`Cache-Control: no-store` en toda la API** (H-7): un middleware del router chi lo pone en **todas** las respuestas de `/api/v1` (JSON, problem+json y `204`); la única excepción es `GET /tenant/logo` (`200` y `304`), que usa DD-23. | `/users` y `/tenant` tienen datos personales; en un dispositivo compartido nada de la API debe quedar en la caché del navegador. | Ninguno práctico: la SPA ya cachea en memoria con TanStack Query. |
 | **DD-29** | **Cabeceras y compresión de la SPA** (H-8): se adoptan las reglas de ADR-019 / `ui.md` §21.2 (tabla en §10.7). Se **aprueba** `github.com/klauspost/compress/gzhttp` para comprimir con gzip **solo** el handler de la SPA (HTML, JS, CSS, manifest), con el umbral por defecto (1 KB). La API **no** se comprime. Si el hosting pone un proxy que comprime, se quita. | La librería estándar no trae compresión HTTP; `gzhttp` es mantenida, maneja `ETag` y tipos ya comprimidos. Comprimir solo estáticos públicos evita tener que analizar ataques tipo BREACH sobre respuestas con datos personales, y las respuestas JSON de 001 son chicas. | Una dependencia más (aprobada por el usuario) y CPU por request de la SPA (bajo: pocos usuarios, archivos chicos). |
 | **DD-30** | **Rechazo de CSRF en problem+json** (H-9): `CrossOriginProtection.SetDenyHandler` responde `403 problem+json` con `code: forbidden` y loguea `security_event=csrf_rejected` (con `ip` y `route`, sin cuerpo). | El frontend trata cualquier `403` con el mismo mapa de errores; el texto plano por defecto caía como "respuesta inesperada". | La UI no distingue un rechazo de CSRF de un permiso faltante (no debería ocurrir con la SPA en el mismo origen). |
+| **DD-31** | **Límites exactos de la subida del logo** (H-11, decisión del usuario). Archivo ≤ `LogoMaxBytes` = **2 097 152 bytes** (2 MiB), medido sobre el contenido de la parte `file`. Cuerpo `multipart/form-data` completo ≤ `LogoMaxBodyBytes` = **2 162 688 bytes** (archivo + 64 KiB para *boundary*, encabezados de la parte y nombre de archivo), aplicado con `http.MaxBytesReader` antes de leer. El handler lee con `r.MultipartReader()` **exactamente una** parte `file`: otra parte o una segunda `file` → `400 malformed_request`; sin `file` o vacía → `422` (`file`, `required`). La parte se lee con un tope de `LogoMaxBytes + 1` bytes en memoria: si se llega al byte extra → `413 payload_too_large` sin leer el resto. `tenant.Service.SetLogo` recibe los bytes, vuelve a verificar el tamaño (defensa en profundidad), valida el tipo por firma (`415`) y las dimensiones con `image.DecodeConfig` (`422`, `file`, `invalid_value`). Las constantes viven en `internal/tenant` y **no son configurables**: son parte del contrato. | El cliente necesita un número exacto al que apuntar (hoy usa 1 900 000 bytes por las dudas); medir el archivo y no el cuerpo hace que el límite no dependa del nombre de archivo ni del *boundary* que elige el navegador; `MultipartReader` evita archivos temporales en disco y partes inesperadas (R-24). | Hasta ~2 MiB en memoria por subida concurrente (irrelevante a la escala S-3); tres lugares que mantener alineados: constantes, contrato y la constante del cliente en `ui.md` (matriz §16). |
 
 ---
 
@@ -635,13 +674,13 @@ Detalle completo en [`data-model.md`](data-model.md).
 
 ## 8. Contrato de API
 
-**Canónico**: [`contracts/openapi.yaml`](contracts/openapi.yaml) (OpenAPI 3.1, versión 0.3.0). Los
+**Canónico**: [`contracts/openapi.yaml`](contracts/openapi.yaml) (OpenAPI 3.1, versión 0.3.1). Los
 tipos del cliente se derivan de él; los handlers Go se escriben a mano y los tests validan cada
 request y response contra el contrato (ADR-014). Si este plan y el YAML se contradicen, **manda
 el YAML** y este plan está desactualizado.
 
-Base: `/api/v1`. Cookie de sesión: `__Host-crm_session`. Todas las respuestas de la API llevan
-`Cache-Control: no-store`, salvo el logo (DD-28, DD-23).
+Base: `/api/v1`. Cookie de sesión: `__Host-crm_session`, siempre `Secure`. Todas las respuestas de
+la API llevan `Cache-Control: no-store`, salvo el logo (DD-28, DD-23).
 
 | Método | Ruta | Propósito | Auth | Permiso | Éxito | Errores |
 |---|---|---|---|---|---|---|
@@ -659,7 +698,7 @@ Base: `/api/v1`. Cookie de sesión: `__Host-crm_session`. Todas las respuestas d
 | GET | `/tenant` | Datos de la empresa | sí | — | 200 | 401 |
 | PATCH | `/tenant` | Editar datos de la empresa | sí | `settings.manage` | 200 | 401, 403, 422 |
 | GET | `/tenant/logo` | Imagen del logo (`?v=` opcional e ignorado; `If-None-Match`) | sí | — | 200 / 304 | 401, 404 |
-| PUT | `/tenant/logo` | Subir/reemplazar logo | sí | `settings.manage` | 200 | 401, 403, 413, 415, 422 |
+| PUT | `/tenant/logo` | Subir/reemplazar logo (archivo ≤ 2 097 152 bytes, cuerpo ≤ 2 162 688, DD-31) | sí | `settings.manage` | 200 | 400, 401, 403, 413, 415, 422 |
 | DELETE | `/tenant/logo` | Quitar logo | sí | `settings.manage` | 204 | 401, 403 |
 | GET | `/users` | Listar usuarios de la empresa | sí | `settings.manage` | 200 | 401, 403 |
 | POST | `/users/invitations` | Invitar (o reinvitar, con cambio de rol si corresponde) | sí | `settings.manage` | 201 / 200 | 401, 403, 409 `email_taken`, 422 |
@@ -690,10 +729,10 @@ salida, **`suggested_action`** (enum estable; en 001 solo `password_reset`).
 
 | `code` | HTTP | Tipo | Cuándo | ¿Reintentar? |
 |---|---|---|---|---|
-| `malformed_request` | 400 | Rechazo definitivo | JSON inválido, campos desconocidos | No, corregir |
-| `validation_failed` | 422 | Rechazo definitivo | Payload bien formado pero inválido (email, contraseña corta, CUIT, zona horaria en `PATCH /tenant`) | No, corregir |
+| `malformed_request` | 400 | Rechazo definitivo | JSON inválido, campos desconocidos; multipart mal formado o con partes distintas de una sola `file` (DD-31) | No, corregir |
+| `validation_failed` | 422 | Rechazo definitivo | Payload bien formado pero inválido (email, contraseña corta, CUIT, zona horaria en `PATCH /tenant`; logo sin archivo, ilegible o de más de 2000×2000 px con `field = file`) | No, corregir |
 | `unsupported_media_type` | 415 | Rechazo definitivo | Falta `Content-Type: application/json`, o logo no PNG/JPEG | No |
-| `payload_too_large` | 413 | Rechazo definitivo | Body > límite (logo > 2 MB, JSON > 64 KB) | No |
+| `payload_too_large` | 413 | Rechazo definitivo | Body > límite: logo con archivo > 2 097 152 bytes o cuerpo multipart > 2 162 688 bytes (DD-31); JSON > 64 KB | No |
 | `unauthenticated` | 401 | Rechazo definitivo | Sin sesión, sesión inválida, vencida o revocada | Iniciar sesión |
 | `invalid_credentials` | 401 | Rechazo definitivo | Email o contraseña incorrectos (mensaje único) | Sí, con otros datos |
 | `account_disabled` | 403 | Rechazo definitivo | Usuario desactivado con contraseña correcta | No |
@@ -727,6 +766,8 @@ store (sqlc/pgx) ──► platform/db.MapError ──► errores de dominio ─
   una tabla de mapeo **por endpoint** cuando el mismo error de dominio tiene distinto significado
   para la UI (DD-21); `platform/httpx` escribe el problem+json y tiene el mapeo por defecto de los
   errores de `platform/db`, el `404`/`405` del router chi y el rechazo de CSRF (DD-30).
+- En la subida del logo, el `*http.MaxBytesError` del cuerpo y el tope de lectura de la parte se
+  mapean a `413` en `tenant/http.go`; `ErrLogoTooLarge` del servicio también (DD-31).
 - Los errores se envuelven con `fmt.Errorf("...: %w", err)` para conservar la causa en los logs;
   la respuesta HTTP nunca incluye el mensaje envuelto.
 - Fuera de `/api/`, el handler de la SPA responde texto plano (`404` de un archivo inexistente,
@@ -764,9 +805,9 @@ type LockedError struct{ RetryAfter time.Duration }
 // internal/tenant
 var (
     ErrUnknownTemplate     = errors.New("tenant: unknown industry template")
-    ErrLogoTooLarge        = errors.New("tenant: logo too large")
-    ErrLogoUnsupportedType = errors.New("tenant: logo type not allowed")
-    ErrLogoInvalidImage    = errors.New("tenant: logo is not a valid image or exceeds dimensions")
+    ErrLogoTooLarge        = errors.New("tenant: logo too large")                                   // 413
+    ErrLogoUnsupportedType = errors.New("tenant: logo type not allowed")                             // 415
+    ErrLogoInvalidImage    = errors.New("tenant: logo is not a valid image or exceeds dimensions")  // 422 file invalid_value
     ErrLogoNotFound        = errors.New("tenant: no logo")
 )
 
@@ -805,7 +846,8 @@ func CSRFDenyHandler(log *slog.Logger) http.Handler // 403 problem+json code for
   concurrencia (default 4) para que una ráfaga de logins no agote la memoria (19 MiB por hash).
 - Token de sesión: 32 bytes de `crypto/rand`, base64url en la cookie; en la base, SHA-256.
 - Cookie: `__Host-crm_session`; `HttpOnly; Secure; SameSite=Lax; Path=/`, sin `Domain`,
-  `Max-Age=604800` (7 días, el vencimiento absoluto).
+  `Max-Age=604800` (7 días, el vencimiento absoluto). `Secure` **siempre**, en todos los entornos:
+  no hay variable que lo quite (INV-23, DD-24).
 - Vencimiento: **24 h sin uso** o **7 días** desde el login, lo primero que ocurra (DD-10, P-5).
 - Sin fijación de sesión: el token siempre lo genera el servidor al autenticar; una cookie
   entrante nunca se reutiliza como sesión nueva.
@@ -826,8 +868,9 @@ La capa 1 deja pasar requests sin `Sec-Fetch-Site` ni `Origin` (navegadores muy 
 no navegador); las capas 2 y 3 cubren ese hueco. `PUT /tenant/logo` es `multipart` (enviable
 desde un formulario), así que depende de las capas 1 y 2.
 
-En desarrollo con el *proxy* de Vite, el navegador ve un solo origen (`http://localhost:5173`) y
-envía `Sec-Fetch-Site: same-origin`, que la capa 1 acepta sin configurar orígenes de confianza.
+En desarrollo con el *proxy* de Vite, el navegador ve un solo origen (`https://localhost:5173`,
+§10.5.1) y envía `Sec-Fetch-Site: same-origin`, que la capa 1 acepta sin configurar orígenes de
+confianza.
 
 ### 10.3 Amenazas y mitigaciones
 
@@ -837,22 +880,24 @@ envía `Sec-Fetch-Site: same-origin`, que la capa 1 acepta sin configurar oríge
 | A01 | Operador invita, cambia roles, reactiva o edita la empresa | `RequirePermission(settings.manage)` por grupo de rutas; test de matriz (T-B207) y por endpoint (T-B802) |
 | A01 | Dejar la empresa sin administrador por concurrencia | Lock de la fila `tenants` (INV-10) + tests concurrentes (T-B603, T-B604) |
 | A01 | Datos de otra empresa desde la caché del navegador en un celular compartido (logo con URL fija, JSON cacheado) | `no-store` en toda la API (DD-28); logo con `private, no-cache` + `ETag` por objeto (DD-23); INV-21; tests T-B203, T-B705, T-B801 |
+| A02 Cryptographic Failures | Clave de la CA local de `mkcert` de un desarrollador (permite interceptar HTTPS de ese equipo) | La CA es por equipo, queda en el directorio de mkcert y nunca se versiona ni comparte; `.certs/` (certificado y clave del servidor de desarrollo) está en `.gitignore`; en CI la CA se crea en el runner y muere con él (R-14) |
 | A07 Identification & Auth Failures | Fuerza bruta / *credential stuffing* | Bloqueo 5/15 min por email + rate limit por IP + argon2id |
 | A07 | Enumeración de cuentas | **Aceptada solo en el registro** (P-4, DD-19): `409 email_already_registered` confirma la existencia, sin otros datos (INV-20). Mitigación: rate limit de signup 5/h por IP contando rechazos (DD-9), costo de argon2id por intento, métrica y evento `signup_email_exists` para detectar barridos. Login y reset **siguen no enumerables** (INV-13): mensajes idénticos, hash ficticio, bloqueo también para emails inexistentes, `202` constante |
-| A07 | Robo de sesión | `HttpOnly`, `Secure`, `__Host-`, revocación inmediata, 24 h de inactividad / 7 días de vida |
+| A07 | Robo de sesión | `HttpOnly`, `Secure` siempre, `__Host-`, revocación inmediata, 24 h de inactividad / 7 días de vida |
 | A07 | Token de reset/invitación filtrado | Un solo uso, vencimiento corto, hash en base, fragmento en el enlace (DD-14), borrado del payload del outbox (INV-09) |
 | A03 Injection | SQL | Solo queries parametrizadas de sqlc; el único identificador dinámico (nombre de rol) se deriva de un UUID y se sanea con `pgx.Identifier`; la función de aprovisionamiento recibe `uuid` tipado y usa `format('%I')` |
 | A03 | XSS en la SPA | CSP con `script-src 'self'` sin inline en todo documento HTML (§10.7, ADR-019); la cookie de sesión es `HttpOnly` |
 | A03 | Inyección de cabeceras de email | Emails validados con `net/mail.ParseAddress` y sin `\r`/`\n`; el nombre del invitado no va en cabeceras |
 | A04 Insecure Design | CSRF | §10.2 |
-| A05 Security Misconfiguration | Errores con detalles internos | problem+json sin stack ni SQL; headers `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` en **todas** las respuestas (API, ops y SPA); `Cache-Control: no-store` en toda la API (DD-28) |
-| A05 | `http://` o cookie sin `Secure` en producción | La configuración solo acepta `http://` para `localhost`/`127.0.0.1` y `COOKIE_SECURE=false` solo con esos orígenes (DD-24, T-B002) |
+| A05 Security Misconfiguration | Errores con detalles internos | problem+json sin stack ni SQL; headers `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` en **todas** las respuestas (API, ops y SPA) y `Strict-Transport-Security` en todas salvo en modo local (DD-24); `Cache-Control: no-store` en toda la API (DD-28) |
+| A05 | Cookie sin `Secure` o `http://` en producción | Imposible por construcción: `APP_BASE_URL` solo acepta `https://` y no existe variable que quite `Secure` (DD-24, INV-23, T-B002) |
+| A05 | Certificado de desarrollo desplegado en producción | `TLS_CERT_FILE`/`TLS_KEY_FILE` solo se aceptan en modo local; con un `APP_BASE_URL` real, el binario no arranca (DD-24, T-B002) |
 | A05 | Privilegios excesivos en BD | `crm_app` sin privilegios; roles por columna; `CREATEROLE` aislado en una función `SECURITY DEFINER` (§10.4) |
 | A05 | SPA desactualizada o HTML cacheado como JS | `index.html` con `no-cache`; archivos inexistentes con extensión → `404` (nunca `index.html`); assets con hash `immutable` (§10.7) |
-| A08 Software & Data Integrity | Subida de archivo malicioso (SVG con script, bomba de descompresión) | Solo PNG/JPEG por *magic bytes*, 2 MB, `image.DecodeConfig` ≤ 2000×2000, se sirve con tipo fijo y `nosniff` |
+| A08 Software & Data Integrity | Subida de archivo malicioso (SVG con script, bomba de descompresión, cuerpo gigante) | Solo PNG/JPEG por *magic bytes*; archivo ≤ 2 097 152 bytes y cuerpo ≤ 2 162 688 bytes con lectura acotada (DD-31); `image.DecodeConfig` ≤ 2000×2000 sin decodificar la imagen; se sirve con tipo fijo y `nosniff` (INV-24) |
 | A09 Logging Failures | Falta de trazas de seguridad | `audit_log` (FR-008) + logs con `security_event` (login fallido, bloqueo, violación RLS, email existente en registro, CSRF rechazado) |
 | A09 | Secretos en logs | Redacción de `password`, `token`, `Cookie`, `Set-Cookie`, payload del outbox |
-| DoS de aplicación | Ráfaga de hashes, bodies grandes | Semáforo de argon2id, `http.MaxBytesReader`, timeouts de servidor (`ReadHeaderTimeout` 5 s, `ReadTimeout` 15 s, `WriteTimeout` 30 s), `statement_timeout` 5 s en `crm_app` |
+| DoS de aplicación | Ráfaga de hashes, bodies grandes | Semáforo de argon2id, `http.MaxBytesReader` (JSON 64 KB, logo DD-31), timeouts de servidor (`ReadHeaderTimeout` 5 s, `ReadTimeout` 15 s, `WriteTimeout` 30 s), `statement_timeout` 5 s en `crm_app` |
 
 ### 10.4 El riesgo de `CREATEROLE` y cómo se acota
 
@@ -878,31 +923,69 @@ envía `Sec-Fetch-Site: same-origin`, que la capa 1 acepta sin configurar oríge
 Variables de entorno (nunca en el repo, nunca en logs): `DATABASE_URL` (`crm_app`),
 `DATABASE_MIGRATION_URL` (`crm_owner`, solo para `crm migrate`), `AUTH_HMAC_KEY` (≥ 32 bytes,
 para `login_throttles`), `SMTP_HOST/PORT/USERNAME/PASSWORD/FROM`, `S3_ENDPOINT/BUCKET/ACCESS_KEY/
-SECRET_KEY/USE_SSL`, `APP_BASE_URL`, `APP_LINK_RESET` (default `/reset-password`),
-`APP_LINK_VERIFY` (default `/verify-email`), `APP_LINK_INVITATION` (default `/accept-invitation`),
-`SESSION_IDLE` (default `24h`), `SESSION_ABSOLUTE` (default `168h`), `COOKIE_SECURE` (default
-`true`).
+SECRET_KEY/USE_SSL`, `APP_BASE_URL` (obligatoria, `https://`), `APP_LINK_RESET` (default
+`/reset-password`), `APP_LINK_VERIFY` (default `/verify-email`), `APP_LINK_INVITATION` (default
+`/accept-invitation`), `SESSION_IDLE` (default `24h`), `SESSION_ABSOLUTE` (default `168h`),
+`HTTP_ADDR` (default `:8080`), `METRICS_ADDR` (default `127.0.0.1:9090`), y **solo en modo
+local** `TLS_CERT_FILE` / `TLS_KEY_FILE` (rutas a archivos PEM). **`COOKIE_SECURE` no existe**
+(DD-24): la cookie es siempre `Secure`.
 
-Reglas de validación de `APP_BASE_URL` y `COOKIE_SECURE` (DD-24):
+Reglas de validación (DD-24). **Modo local** = el host de `APP_BASE_URL` es `localhost` o
+`127.0.0.1` (cualquier puerto):
 
-| `APP_BASE_URL` | `COOKIE_SECURE=true` | `COOKIE_SECURE=false` |
+| `APP_BASE_URL` | Sin `TLS_*` | Con `TLS_CERT_FILE` y `TLS_KEY_FILE` |
 |---|---|---|
-| `https://…` | válido (producción) | error |
-| `http://localhost[:puerto]` o `http://127.0.0.1[:puerto]` | válido (desarrollo con navegador: Vite o el binario) | válido solo para clientes no navegador (tests Go sobre `http://`) |
-| cualquier otro `http://` | error | error |
+| `https://<dominio real>` | válido (producción: el TLS lo termina el hosting; `crm serve` escucha HTTP plano en `HTTP_ADDR`) | **error**: TLS propio solo en modo local |
+| `https://localhost[:puerto]` o `https://127.0.0.1[:puerto]` | válido (HTTP plano: tests y `curl`; un navegador no tendrá sesión) | válido: `crm serve` escucha **HTTPS** en `HTTP_ADDR` (desarrollo y E2E con navegador) |
+| cualquier `http://` | error | error |
+
+Además: solo una de las dos `TLS_*` → error que nombra la que falta; `APP_BASE_URL` sin esquema o
+con otro esquema → error. Que los archivos existan y formen un par válido lo verifica `crm serve`
+**al arrancar, antes de escuchar** (error que nombra la variable, nunca el contenido). En modo
+local no se envía `Strict-Transport-Security` (DD-24).
+
+#### 10.5.1 Desarrollo local y E2E con HTTPS (H-10)
+
+**Una vez por equipo**: instalar `mkcert` (en Linux, también `certutil`: paquete `libnss3-tools`
+o equivalente), correr `mkcert -install` (crea una CA local y la agrega a los almacenes de
+confianza del sistema y de los navegadores) y `make dev-certs`, que genera
+`.certs/localhost.pem` y `.certs/localhost-key.pem` para `localhost` y `127.0.0.1`. `.certs/`
+está en `.gitignore`. La clave de la CA (`rootCA-key.pem`, en `mkcert -CAROOT`) **no se comparte
+ni se copia al repo**: con ella se puede interceptar HTTPS de ese equipo (R-14).
+
+| Modo | `crm serve` | El navegador abre | `APP_BASE_URL` |
+|---|---|---|---|
+| Binario completo (y E2E) | `HTTP_ADDR=:8443`, `TLS_CERT_FILE=.certs/localhost.pem`, `TLS_KEY_FILE=.certs/localhost-key.pem` | `https://localhost:8443` | `https://localhost:8443` |
+| Vite + API | Igual que arriba | `https://localhost:5173` (Vite con `server.https` y el mismo certificado; *proxy* de `/api` a `https://localhost:8443` **sin** `changeOrigin`) | `https://localhost:5173` (los enlaces de email abren Vite) |
+| Solo backend (`curl`, sin navegador) | Sin `TLS_*` (HTTP plano en `:8080`) | — | `https://localhost:8080` (los enlaces de email no se abren) |
+
+Node no usa el almacén del sistema: para que el *proxy* de Vite (y cualquier script de Node que
+llame al backend) confíe en el certificado, `NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem"`
+(documentado por mkcert). La configuración de Vite y Playwright la define `ui.md` §21.3.
+
+**En CI**:
+
+- `make check` (backend) **no** necesita certificados: los tests HTTP que encadenan requests con
+  la cookie usan `httptest.NewTLSServer`, cuyo cliente (`srv.Client()`) ya confía en el
+  certificado de prueba (nota en ADR-012).
+- **Job de E2E**: instalar `mkcert` (versión fijada, checksum verificado) y `certutil`;
+  `mkcert -install`; `make dev-certs`; levantar `crm serve` como en el modo "Binario completo";
+  `NODE_EXTRA_CA_CERTS` para el proceso de Playwright si lo necesita. La CA se crea en el runner y
+  muere con él. Que Chromium y WebKit de Playwright confíen en esa CA es el supuesto S-12;
+  respaldo: `ignoreHTTPSErrors`, solo si el service worker registra igual (T-F703).
 
 ### 10.6 Datos personales
 
 Marcados en `data-model.md` §5: `users.email`, `users.name`, `sessions.ip`, `sessions.user_agent`,
 `audit_log.ip`, `audit_log.user_agent`, `outbox_messages.recipient`/`payload`, datos de contacto de
-`tenants` (el CUIT de un monotributista identifica a una persona). Secretos derivados:
-`users.password_hash`, `*.token_hash`.
+`tenants` (el CUIT de un monotributista identifica a una persona) y, si conserva metadatos EXIF, el
+logo (R-13). Secretos derivados: `users.password_hash`, `*.token_hash`.
 
 ### 10.7 Cabeceras y caché por tipo de respuesta (DD-22, DD-23, DD-28, DD-29; ADR-019)
 
 | Respuesta | `Cache-Control` | Otras cabeceras | Compresión |
 |---|---|---|---|
-| Toda respuesta (API, ops, SPA) | — | `X-Request-Id`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Strict-Transport-Security` | — |
+| Toda respuesta (API, ops, SPA) | — | `X-Request-Id`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Strict-Transport-Security` (**salvo en modo local**, DD-24) | — |
 | `/api/v1/*` (JSON, problem+json, `202`, `204`) | `no-store` | — | No |
 | `GET /api/v1/tenant/logo` (`200`, `304`) | `private, no-cache` | `ETag`, `Content-Type` fijo (`image/png` o `image/jpeg`) | No (imagen ya comprimida) |
 | `/healthz`, `/readyz` | `no-store` | — | No |
@@ -931,7 +1014,7 @@ Las reglas del handler de la SPA (métodos, *fallback*, `503` sin `index.html`) 
 crm/
 ├── cmd/crm/                    # main: subcomandos `serve`, `migrate`, `tenants reprovision-roles`; importa time/tzdata
 ├── internal/
-│   ├── app/                    # composition root: dependencias, mux raíz (API, ops, SPA), arranca el worker
+│   ├── app/                    # composition root: dependencias, mux raíz (API, ops, SPA), servidor HTTP o HTTPS local, arranca el worker
 │   ├── platform/               # técnico, sin dominio
 │   │   ├── config/             # env → struct tipado; valida al arrancar (DD-24)
 │   │   ├── db/                 # pgxpool, TxRunner/Tx, roles, MapError, interfaz DBTX de sqlc
@@ -958,20 +1041,22 @@ crm/
 │   │   └── store/              # *.sql (incluido auth_lookup.sql) + código generado por sqlc
 │   ├── tenant/                 # módulo: empresa (registro, datos, logo)
 │   │   ├── tenant.go           # tipo Tenant, validaciones (CUIT, zona horaria)
+│   │   ├── logo.go             # límites del logo (DD-31), firma y dimensiones
 │   │   ├── service.go          # Register, Update, SetLogo, RemoveLogo, GetLogo
-│   │   ├── http.go
+│   │   ├── http.go             # incluye la lectura acotada del multipart (DD-31)
 │   │   └── store/
-│   └── testsupport/            # solo tests: pgtest (contenedor + bootstrap + migraciones), fixture, contrato
+│   └── testsupport/            # solo tests: pgtest (contenedor + bootstrap + migraciones), apitest (httptest.NewTLSServer + cookiejar), fixture, contrato
 ├── web/                        # frontend (ADR-015, ADR-019); en Go, solo el paquete `web`:
 │   ├── embed.go                #   //go:embed all:dist + NewHandler (T-F007/T-F008)
 │   └── dist/                   #   build de Vite (ignorado por git salvo .gitkeep)
 ├── db/
 │   ├── bootstrap/              # SQL de roles de clúster (lo corre el DBA una vez por clúster)
 │   └── migrations/             # goose, SQL versionado; paquete Go con //go:embed
+├── .certs/                     # solo desarrollo: certificado de mkcert (`make dev-certs`); ignorado por git
 ├── sqlc.yaml
-├── Makefile                    # generate, lint, test, test-int, check, db-reset (+ web-build, build, check-all: T-F009)
+├── Makefile                    # generate, lint, test, test-int, check, db-reset, dev-certs (+ web-build, build, check-all: T-F009)
 ├── compose.yaml                # dev: postgres:18, mailpit, minio
-└── .github/workflows/ci.yml    # make check con Docker disponible (+ job de frontend: T-F009)
+└── .github/workflows/ci.yml    # make check con Docker disponible (+ job de frontend y E2E: T-F009, T-F701)
 ```
 
 Por qué así en Go (resumen de ADR-001):
@@ -992,10 +1077,27 @@ Por qué así en Go (resumen de ADR-001):
   que la operación es parte de algo atómico más grande (INV-14).
 - **Mux raíz de la librería estándar + chi para la API**: el `ServeMux` alcanza para tres destinos
   fijos; chi sigue siendo el router de la API por los grupos con permisos y `chi.Walk` (ADR-002).
+- **Constantes del contrato como `const` sin exportar configuración** (`tenant.LogoMaxBytes`): en
+  Go una constante tipada no se puede cambiar en runtime; que el límite no sea variable de entorno
+  lo mantiene igual al contrato en todos los entornos.
 
 ### 11.1 Interfaces que definen las fronteras (firmas)
 
 ```go
+// ---------- internal/platform/config ----------
+type TLSFiles struct {
+    CertFile string // TLS_CERT_FILE
+    KeyFile  string // TLS_KEY_FILE
+}
+type Config struct {
+    // … resto de las variables de §10.5 (DATABASE_URL, SMTP_*, S3_*, APP_LINK_*, SESSION_*, …)
+    AppBaseURL *url.URL  // siempre https (DD-24)
+    HTTPAddr   string    // HTTP_ADDR
+    TLS        *TLSFiles // nil salvo modo local con TLS_* (DD-24)
+}
+func Load(getenv func(string) string) (Config, error) // valida las reglas de §10.5; no lee archivos
+func (c Config) IsLocal() bool                        // host de APP_BASE_URL es localhost o 127.0.0.1
+
 // ---------- internal/app ----------
 type RootDeps struct {
     API       http.Handler // router chi montado en /api/ (con no-store, rate limit, auth)
@@ -1004,7 +1106,11 @@ type RootDeps struct {
     SPA       http.Handler // web.NewHandler(dist); en tests del backend, un stub
 }
 // NewRootHandler arma el mux raíz y lo envuelve con los middlewares comunes (DD-22).
+// CommonMiddleware recibe si el modo es local para omitir HSTS (DD-24).
 func NewRootHandler(deps RootDeps, common CommonMiddleware) http.Handler
+// NewServer arma el *http.Server con los timeouts de §10.3 y, si cfg.TLS != nil, carga el par de
+// certificados antes de escuchar (error que nombra la variable si falla).
+func NewServer(cfg config.Config, root http.Handler) (*http.Server, error)
 
 // ---------- web (paquete en la raíz del repo) ----------
 func DistFS() fs.FS                     // sub-FS "dist" del embed
@@ -1162,6 +1268,16 @@ type AdminOnboarding interface {
     IssueEmailVerification(ctx context.Context, tx db.Tx, tenantID, userID uuid.UUID) error // token + outbox
 }
 
+// Límites de la subida del logo (DD-31). Parte del contrato: no son configurables.
+const (
+    LogoMaxBytes     = 2_097_152             // 2 MiB: contenido de la parte `file`
+    LogoMaxBodyBytes = LogoMaxBytes + 65_536 // 2 162 688: cuerpo multipart completo
+    LogoMaxSide      = 2000                  // px por lado
+)
+
+// SetLogo(ctx, p authz.Principal, data []byte, meta identity.RequestMeta) (Tenant, error)
+//   // ErrLogoTooLarge (len > LogoMaxBytes), ErrLogoUnsupportedType, ErrLogoInvalidImage
+
 // Logo con validador de caché (DD-23): el ETag es el UUID del objeto.
 type LogoResult struct {
     ETag        string        // `"<uuid>"`
@@ -1192,6 +1308,15 @@ type IdentityUseCases interface {
     Reactivate(ctx context.Context, p authz.Principal, userID uuid.UUID, meta RequestMeta) (User, error)
     Me(ctx context.Context, p authz.Principal) (MeView, error)
 }
+
+// ---------- internal/testsupport/apitest (solo tests) ----------
+// Servidor HTTPS de prueba sobre el handler raíz real; el cliente trae un cookiejar y confía en el
+// certificado de prueba (ADR-012, nota 2026-09-29).
+type Server struct {
+    URL    string
+    Client *http.Client
+}
+func NewServer(t testing.TB, root http.Handler) *Server
 ```
 
 ---
@@ -1214,7 +1339,7 @@ type IdentityUseCases interface {
 - `GET /healthz`: 200 si el proceso atiende (no toca la base).
 - `GET /readyz`: 200 si `SELECT 1` bajo `crm_auth` responde en < 1 s y la versión de migración
   en la base es la que espera el binario; si no, 503. Al arrancar se loguea `server_version`
-  (control de R-4).
+  (control de R-4) y el modo de escucha (`listen=http` o `listen=https_local`, DD-24).
 - Ambos están en el mux raíz, fuera de `/api/` y fuera del handler de la SPA (DD-22).
 
 ### 12.3 Runbook: señal → qué mirar primero
@@ -1229,6 +1354,8 @@ type IdentityUseCases interface {
 | Posible barrido de emails por el registro | `signup_email_exists_total` crece sin registros exitosos equivalentes | IPs de los eventos `signup_email_exists`; bajar el límite de signup o bloquear en el proxy (DD-19) |
 | `403 forbidden` en masa desde la SPA | `csrf_rejected_total` | El proxy o el hosting está cambiando `Host`/`Origin` o quitando `Sec-Fetch-Site`; revisar su configuración antes de tocar CSRF |
 | La app muestra "La interfaz no está compilada" | `503` de la SPA | El binario se compiló sin `make web-build` (ADR-019) |
+| En desarrollo o E2E el navegador no guarda la sesión (todo da `401` después de ingresar) | `Set-Cookie` en la respuesta pero la cookie no aparece en el navegador | Que se abra `https://…` y no `http://`; que el navegador no muestre aviso de certificado (`mkcert -install`, o la CA en CI); que `crm serve` haya logueado `listen=https_local`; que `APP_BASE_URL` coincida con el origen abierto (§10.5.1) |
+| `crm serve` no arranca con "TLS solo en modo local" | error de configuración | Se configuraron `TLS_*` con un `APP_BASE_URL` que no es `localhost`/`127.0.0.1`: en producción el TLS lo termina el hosting (DD-24) |
 | Latencia alta generalizada | `duration_ms` p95, `db_pool_acquire_wait_ms` | Pool agotado (transacciones largas); `pg_stat_activity`: cada empresa aparece con su rol (`crm_t_…`), lo que ubica la empresa |
 | Registro lento | `duration_ms` de `/auth/signup` | Costo de `CREATE ROLE`/`GRANT` con muchos roles (riesgo R-2); `tenant_roles_total` |
 
@@ -1254,7 +1381,7 @@ type IdentityUseCases interface {
 | Revalidación del logo (`304`) | < 50 ms | Solo lee la fila de la empresa y compara el `ETag`; no toca S3 (DD-23) |
 | Login | < 400 ms | Dominado por argon2id; el semáforo evita degradación por concurrencia |
 | Registro (`/auth/signup`) | < 1 s | argon2id + `CREATE ROLE` + inserts. SC-001 (3 min) es de punta a punta y tiene margen de sobra |
-| Subida de logo (2 MB) | < 2 s | Subida en streaming a S3 antes de la transacción |
+| Subida de logo (2 MiB) | < 2 s | Lectura acotada en memoria (DD-31) y subida a S3 antes de la transacción |
 | Worker: demora de envío | 95 % de los emails despachados < 30 s tras el `COMMIT` | *Polling* cada 2 s, lote de 10, `FOR UPDATE SKIP LOCKED` |
 
 Con sesiones de 24 h de inactividad (DD-10) habrá más logins que con el diseño anterior; a la
@@ -1284,7 +1411,8 @@ ADR-005.
 | S-9 | Pedir reset para un usuario `disabled` o un email inexistente no envía nada; para un `invited` reemite la invitación (DD-20). La respuesta siempre es `202` | — |
 | S-10 | Las rutas de la SPA para los enlaces de email son `/reset-password`, `/verify-email` y `/accept-invitation` (confirmadas por el usuario; defaults de `APP_LINK_*`, DD-14) | Si `ui.md` las cambia, se cambian los defaults |
 | S-11 | El hosting no comprime las respuestas por su cuenta; si lo hace, se quita `gzhttp` (DD-29) | Doble compresión evitada quitando el wrapper |
-| S-12 | Los navegadores de desarrollo (Chrome, Firefox) aceptan la cookie `Secure` servida por `http://localhost` (S-F3 de `ui.md`, lo valida T-F006) | Desarrollo con TLS local |
+| S-12 | *(Reescrito por H-10; el anterior suponía que Chrome aceptaba la cookie en `http://localhost`, y era falso.)* Tras `mkcert -install` (con `certutil` en Linux), Chrome, Firefox y Safari en desarrollo, y Chromium y WebKit de Playwright en CI, confían en el certificado de `localhost`. Lo valida la primera corrida de T-F701 | Respaldo en CI: `ignoreHTTPSErrors`, solo si el service worker registra igual (T-F703); si tampoco, volver al arquitecto |
+| S-13 | Un navegador que recibe HSTS por HTTPS en `localhost` puede registrarlo y forzar HTTPS en otros proyectos locales (no verificado con fuente primaria) | Ninguno: omitir HSTS en modo local no tiene costo, así que se omite igual |
 
 ### 14.2 Preguntas
 
@@ -1314,6 +1442,8 @@ ADR-005.
 | R-10 | Dependencias con soporte OpenAPI 3.1 todavía jóvenes | Baja | Bajo | Validación en tests con `libopenapi-validator`; sin generación de servidor (ADR-014) |
 | R-11 | Enumeración masiva de emails por el registro (aceptada en P-4) usando muchas IPs | Media | Bajo | Rate limit por IP contando rechazos, costo de argon2id por intento, métrica `signup_email_exists_total` y runbook (§12.3); si se vuelve un problema, CAPTCHA o límite en el proxy (spec futura) |
 | R-12 | Un proxy del hosting reescribe `Host` u `Origin` y `CrossOriginProtection` rechaza la SPA | Baja | Medio | Evento `csrf_rejected` y runbook (§12.3); si hace falta, `AddTrustedOrigin` con el origen público (cambio de configuración, no de diseño) |
+| R-13 | Un JPEG de logo subido por un cliente que no es la SPA conserva metadatos EXIF (ubicación, dispositivo) o una orientación sin aplicar | Baja | Bajo | Solo un Administrador de la empresa puede subirlo y solo lo ve esa empresa; la SPA siempre vuelve a codificar (DD-F21); el plan de 005 debe tratar la orientación del logo en el PDF; si hiciera falta limpiar en el servidor, se evalúa con las alternativas de research R-24 |
+| R-14 | Se filtra la clave de la CA local de mkcert de un desarrollador | Baja | Medio (permite interceptar HTTPS de ese equipo) | CA por equipo, fuera del repo; `.certs/` en `.gitignore`; en CI la CA es efímera (§10.5.1) |
 
 ---
 
@@ -1334,7 +1464,8 @@ La actualización de la documentación va **en el mismo cambio** que el código.
 | La postura de enumeración (registro, login, reset) | DD-19 + INV-13/INV-20 + research R-15 + tests T-B305/T-B402/T-B404/T-B501/T-B506 |
 | Las cabeceras de caché de la API o del logo | DD-23/DD-28 + INV-21 + §10.7 + contrato (`/tenant/logo`, descripción general) + T-B203/T-B705 + nota de ADR-011 si cambia la política para archivos |
 | El montaje del mux raíz, las cabeceras o la CSP de la SPA | DD-22/DD-29 + §10.7 + ADR-019 + `ui.md` §21 + T-B004/T-F007 |
-| Las reglas de `APP_BASE_URL`/`COOKIE_SECURE` o los `APP_LINK_*` | DD-14/DD-24 + §10.5 + T-B002 + `ui.md` §6.2/§21.3 |
+| Las reglas de `APP_BASE_URL`, el TLS local (`TLS_*`), el HSTS por modo o los `APP_LINK_*` | DD-14/DD-24 + INV-23 + §10.5/§10.5.1 + T-B002/T-B004/T-B014 + nota en ADR-006 + `ui.md` §6.2/§21.3 + README (desarrollo) + job de E2E |
+| Los límites del logo (archivo, cuerpo, dimensiones, partes) | DD-11/DD-31 + INV-24 + contrato (`PUT /tenant/logo`, `PayloadTooLarge`) + `data-model.md` §2.1 + constantes de `internal/tenant` + T-B703/T-B705 + la constante del cliente en `ui.md` + nota en ADR-011 |
 | Estrategia de aislamiento, sesiones, email, archivos | ADR nuevo que reemplace al vigente (nunca editar uno aceptado; solo notas fechadas de detalle) |
 | El bootstrap de roles o la operación de backups | `db/bootstrap/` + §12.4 + ADR-004/005 + README (operación) |
 | Un término nuevo | `docs/glosario.md` |
@@ -1353,6 +1484,8 @@ La actualización de la documentación va **en el mismo cambio** que el código.
 | Permiso | `Permission` | Capacidad concreta de la matriz de FR-007 (p. ej. `settings.manage`). |
 | Mensaje saliente | `OutboxMessage` | Email pendiente de envío, guardado junto con la operación que lo originó. |
 
+"Modo local" (DD-24) es un término técnico de configuración, no del dominio: no va al glosario.
+
 ---
 
 ## 18. Cambios posteriores a la aprobación (2026-09-29)
@@ -1367,7 +1500,7 @@ como `DD-n` y, donde corresponde, como **notas fechadas** en los ADR (regla de
 |---|---|---|---|
 | H-1 Montaje de la SPA | Mux raíz: `/api/` → chi, ops, resto → `web` | DD-22, INV-22, §4.1, §11, §11.1; T-B004/T-B005/T-B011 | Notas en ADR-001 y ADR-002; decisión en ADR-019 |
 | H-2 Caché del logo | `private, no-cache` + `ETag` por objeto; parámetro `v` ignorado; `304` | DD-23, INV-21, §10.7; contrato; T-B703/T-B705/T-B801 | Nota en ADR-011 |
-| H-3 Desarrollo local | `http://localhost`/`127.0.0.1` con `COOKIE_SECURE=true` | DD-24, §10.5; T-B002 | Nota en ADR-006 |
+| H-3 Desarrollo local | *(Reemplazado por H-10.)* `http://localhost`/`127.0.0.1` con `COOKIE_SECURE=true` | DD-24 (versión anterior) | Nota en ADR-006 (corregida por la del H-10) |
 | H-4 Invitación vencida | `invitation_expires_at` informa la última aunque haya vencido; la limpieza la conserva | DD-25; contrato; `data-model.md` §2.4/§3.4; T-B606/T-B901 | — |
 | H-5 Rol de un invitado | Reinvitar con otro rol lo cambia; `PUT …/role` para `invited`; `disabled` → `invalid_state` | DD-26, §4.6; contrato; `data-model.md` §2.6; T-B601/T-B603/T-B606 | — |
 | H-6 Zona horaria del registro | Desconocida → default; `time/tzdata` embebido | DD-27; contrato; T-B303 | — |
@@ -1377,7 +1510,36 @@ como `DD-n` y, donde corresponde, como **notas fechadas** en los ADR (regla de
 | Rutas en inglés | Defaults de `APP_LINK_*` confirmados | DD-14, §10.5, S-10; T-B002/T-B213 | — |
 | Logo grande | El navegador lo achica; los límites del backend no cambian | DD-11 | — |
 
+### Segunda tanda (2026-09-29): H-10, H-11 y re-codificación de JPEG
+
+| Hallazgo | Qué cambió | Dónde | ADR |
+|---|---|---|---|
+| H-10 Cookie `__Host-` en `http://localhost` | Chrome/Chromium la rechaza (Safari rechaza `Secure`), así que DD-24 y R-23 estaban mal. Decisión del usuario: **HTTPS local con mkcert** en desarrollo y E2E. `APP_BASE_URL` siempre `https://`; se eliminan la excepción `http://localhost` y `COOKIE_SECURE`; `TLS_CERT_FILE`/`TLS_KEY_FILE` solo en modo local; sin HSTS en modo local; tests HTTP con `httptest.NewTLSServer`; mkcert en el job de E2E | DD-24 (reescrita), INV-23, §10.1, §10.2, §10.3, §10.5, §10.5.1, §10.7, §11, §11.1, §12.2, §12.3, S-12, S-13, R-14; research R-23; T-B002, T-B004, T-B005, T-B014 (nueva), T-B203, T-B213, T-B305, T-B404 | Nota 2026-09-29 (b) en ADR-006 (corrige la nota de H-3); nota en ADR-012 |
+| H-11 Tamaño exacto del logo | Archivo ≤ 2 097 152 bytes (2 MiB, decisión del usuario), medido sobre la parte `file`; cuerpo multipart ≤ 2 162 688 bytes; una sola parte `file`; errores por caso | DD-11, DD-31 (nueva), INV-24, §4.5 (diagrama de subida), §9, §10.3, §11.1, §13; contrato v0.3.1; `data-model.md` §2.1; research R-24; T-B703, T-B705, T-B706 | Nota 2026-09-29 (b) en ADR-011 |
+| JPEG siempre re-codificado en el navegador | Confirmado por el usuario (DD-F21). **El backend no cambia**: sigue validando por sí mismo y guarda los bytes sin modificar; se documenta que no quita EXIF y el riesgo residual | DD-11, INV-24, R-13; `data-model.md` §5; research R-24 | Nota 2026-09-29 (b) en ADR-011 |
+
+**Por qué no hay ADR nuevo tampoco en esta tanda**: H-10 no cambia la decisión de ADR-006 (sesión
+en base, cookie `__Host-` `HttpOnly; Secure; SameSite=Lax`, tres capas de CSRF): corrige una regla
+de configuración que era detalle (y que ya estaba registrada como nota) y **quita** una vía de
+escape (`COOKIE_SECURE=false`), lo que endurece la decisión en vez de cambiarla. H-11 fija el valor
+exacto de una regla que ADR-011 ya enunciaba ("≤ 2 MB") y cómo se mide. Ambas van como notas
+fechadas que corrigen o precisan, sin editar el texto aceptado.
+
 Coordinación con la sección Frontend de `tasks.md`: T-F007 y T-F008 son código Go (paquete `web` y
 cableado de la SPA en el mux raíz), las implementa `backend-developer` y dependen de T-B005 (mux
 raíz con el punto de inyección `RootDeps.SPA`) y T-B204 (middlewares comunes). La numeración no
 cambia.
+
+Lo que la segunda tanda le pide al frontend (lo actualiza el `frontend-architect` en `ui.md` y en
+su sección de `tasks.md`; este plan no lo toca):
+
+- Vite con `server.https` usando `.certs/localhost.pem`/`.certs/localhost-key.pem` y *proxy* de
+  `/api` a `https://localhost:8443` sin `changeOrigin`; `APP_BASE_URL=https://localhost:5173` en
+  ese modo; `NODE_EXTRA_CA_CERTS` para que Node confíe en la CA (§10.5.1).
+- E2E contra `https://localhost:8443`; en CI, los pasos de mkcert de §10.5.1 (supuesto S-12).
+- T-F007: en su configuración de prueba (no local) sigue esperando `Strict-Transport-Security`; en
+  modo local no se envía.
+- `LOGO_TARGET_MAX_BYTES` puede apuntar al límite exacto del archivo (2 097 152 bytes): ya no
+  depende de los encabezados multipart (DD-31).
+- Dejar de recomendar Firefox como condición para desarrollar: con HTTPS local funciona en Chrome,
+  Firefox y Safari.
