@@ -15,6 +15,32 @@
 > corrigen los otros en el mismo cambio). Queda abierto el hallazgo H-10 (la cookie `__Host-`
 > en `http://localhost` con Chrome), que afecta el desarrollo local, no esta decisión.
 
+> **Nota 2026-09-29 (b) (revisión 2 de `ui.md`; corrige la viñeta "Desarrollo" y cierra lo que
+> la nota anterior dejaba abierto; no cambia la decisión)**: el usuario resolvió H-10 con **HTTPS
+> local con mkcert** y el backend lo incorporó (`plan.md` DD-24 reescrita, INV-23, §10.5.1, §10.7;
+> nota (b) en ADR-006). La viñeta "Desarrollo" de la sección Decisión queda así (el texto original
+> se conserva abajo sin editar):
+>
+> 1. Vite corre en **`https://localhost:5173`** con `server.https` y el certificado de
+>    `localhost` que genera `make dev-certs` (`.certs/localhost.pem`, `.certs/localhost-key.pem`,
+>    el mismo que usa `crm serve`), con `strictPort`.
+> 2. El *proxy* de `/api` apunta a **`https://localhost:8443`** (`crm serve` con `TLS_CERT_FILE` y
+>    `TLS_KEY_FILE`, solo en modo local), sigue **sin** `changeOrigin` y verifica el certificado:
+>    Node confía en la CA con `NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem"`.
+> 3. `APP_BASE_URL=https://localhost:5173` en ese modo (los enlaces de email abren Vite). Ya no
+>    existe `COOKIE_SECURE` ni se acepta `APP_BASE_URL` con `http://`: la cookie es siempre
+>    `__Host-crm_session` con `Secure`, en Chrome, Firefox y Safari.
+> 4. Para probar como en producción (y en los E2E): `make build` y `crm serve` en
+>    **`https://localhost:8443`**.
+> 5. **HSTS**: la fila "toda respuesta" de la tabla de cabeceras (`plan.md` §10.7) lleva
+>    `Strict-Transport-Security` **salvo en modo local** (host de `APP_BASE_URL` `localhost` o
+>    `127.0.0.1`), para que el navegador del desarrollador no registre HSTS para `localhost`. Lo
+>    prueban T-B203/T-B004 y T-F007 en ambos modos.
+>
+> Detalle operativo (tabla de modos, configuración de Vite, diagnóstico y receta de CI de los E2E)
+> en `ui.md` §21.3 y `plan.md` §10.5.1. El trade-off nuevo: un paso de instalación por equipo
+> (`mkcert -install`, `make dev-certs`) y la CA local instalada también en el runner de E2E.
+
 ## Contexto
 
 La sesión es una cookie `__Host-` `HttpOnly` con protección CSRF basada en mismo origen (ADR-006):

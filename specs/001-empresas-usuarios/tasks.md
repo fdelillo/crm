@@ -10,7 +10,7 @@ T-B303, T-B305, T-B601, T-B603, T-B605, T-B606, T-B702, T-B703, T-B705, T-B801, 
 La sección Frontend se revisó aparte (ver su nota de revisión).
 **Segunda revisión 2026-09-29**: hallazgos H-10 (HTTPS local con mkcert) y H-11 (límite exacto del
 logo) en la sección Backend (plan §18; tareas afectadas: T-B002, T-B004, T-B005, T-B013, T-B014
-nueva, T-B203, T-B213, T-B305, T-B404, T-B703, T-B705, T-B706). La sección Frontend no se tocó.
+nueva, T-B203, T-B213, T-B305, T-B404, T-B703, T-B705, T-B706). La sección Frontend se actualizó en la misma ronda (ver su nota de revisión).
 
 ---
 
@@ -1150,8 +1150,16 @@ S-F3 refutado para Chrome), T-F007/T-F008 (firmas `web.DistFS`/`web.NewHandler`,
 aprobado), T-F202 (sin reintento por zona horaria), T-F502/T-F503/T-F504 (invitación vencida, rol
 de invitados, reinvitación con otro rol), Fase F6 (preparación del logo: T-F603 a T-F605 nuevas o
 reescritas), Fase F7 (T-F706 nueva: logo en navegadores reales; correcciones pasan a T-F707).
-Hallazgos nuevos que condicionan tareas: H-10 (cookie `__Host-` en Chrome sobre `http://localhost`)
-y H-11 (valor exacto del límite de 2 MB), en `ui.md` §27.2.
+**Segunda revisión 2026-09-29**: decisiones del usuario sobre H-10 (HTTPS local con mkcert), H-11
+(archivo ≤ 2 097 152 bytes) y P-F6 (todo JPEG se re-codifica), incorporadas por el backend
+(plan DD-24, DD-31, §10.5.1; contrato v0.3.1). Tareas afectadas: comandos (`npm run dev` y
+`npm run e2e` sobre HTTPS), tabla de dependencias, T-F004 (contrato v0.3.1), T-F006 (Vite con
+`server.https`, proxy a `https://localhost:8443`, spike de la cookie en Chrome, Firefox y Safari),
+T-F007 (HSTS según el modo), T-F009 (README y job de E2E con mkcert), T-F101 (errores `400`/`422`
+del logo), T-F603/T-F604 (límite exacto 2 097 152), F7 (sin precondición de H-10; T-F701 con la
+receta de CI y el supuesto S-12), T-F702/T-F703 (cookie real, respaldo `ignoreHTTPSErrors`),
+T-F706, pruebas independientes de F0, F1, F2 y F6 (sin Firefox ni `http://`). Hallazgo nuevo H-12
+(prueba en un celular real) en `ui.md` §27.2: no bloquea.
 
 ### Convenciones de esta sección
 
@@ -1174,11 +1182,14 @@ y H-11 (valor exacto del límite de 2 MB), en `ui.md` §27.2.
   | `window.location.reload` (espía) en el test de `vite:preloadError` | El backend en los E2E (Fase F7) |
   | `Intl.DateTimeFormat().resolvedOptions().timeZone` en el test del registro | Las funciones puras de preparación del logo (firma, dimensiones, plan) |
   | El adaptador de canvas del logo (`decodeImage`, `encodeBitmap`): como parámetro de `prepareLogo` en sus tests y con `vi.mock` del módulo `features/tenant/logo/canvas.ts` en los de pantalla (jsdom no tiene `createImageBitmap` ni canvas) | El adaptador de canvas real en los E2E (T-F706) |
+  | — | El certificado y la cookie en los E2E: HTTPS real con la CA de mkcert (`ui.md` §21.3) |
 
 - En jsdom la barra inferior y la lateral están ambas en el DOM (no hay CSS aplicado): los tests
   eligen con `within(getAllByRole('navigation', …)[0])` o equivalente.
-- Los tests con MSW **no** necesitan el backend. La **prueba independiente** de cada fase sí:
-  columna "Backend necesario" de la tabla de dependencias.
+- Los tests con MSW **no** necesitan el backend ni certificados. La **prueba independiente** de
+  cada fase sí: columna "Backend necesario" de la tabla de dependencias, y la preparación de HTTPS
+  local de `ui.md` §21.3 (`mkcert -install`, `make dev-certs`, `NODE_EXTRA_CA_CERTS`). Cualquier
+  navegador del piso de NFR-F02 sirve para desarrollar.
 - Versiones: la última estable de cada librería al arrancar la Fase F0, fijadas en
   `package-lock.json`; T-F001 reporta las versiones elegidas.
 
@@ -1188,31 +1199,32 @@ Se corren en `web/` salvo los de `make`.
 
 | Comando | Qué corre |
 |---|---|
-| `npm run dev` | Vite en `:5173` con *proxy* de `/api` a `http://localhost:8080` (sin `changeOrigin`) |
+| `npm run dev` | Vite en `https://localhost:5173` (`server.https` con `../.certs/`, `strictPort`) con *proxy* de `/api` a `https://localhost:8443` (sin `changeOrigin`, con verificación de certificado). Requiere `make dev-certs`, `crm serve` en HTTPS local con `APP_BASE_URL=https://localhost:5173` y `NODE_EXTRA_CA_CERTS` exportada (`ui.md` §21.3) |
 | `npm run gen:api` | `openapi-typescript` con `redocly.yaml` → `src/api/generated/NNN.ts` |
 | `npm run lint` | ESLint + `prettier --check` + verificación de que `gen:api` no produce diferencias |
 | `npm run typecheck` | `tsc -b` |
 | `npm test` | `vitest run --typecheck` (unitarios, pantallas con MSW y tests de tipos `*.test-d.ts`) |
 | `npm run build` | `tsc -b && vite build` (imprime tamaños gzip de cada chunk) |
-| `npm run check` | `lint` + `typecheck` + `test` + `build`. **Es el checkpoint de cada fase** |
-| `npm run e2e` | Playwright contra el binario (`make build`, `docker compose up`, `crm serve`) |
+| `npm run check` | `lint` + `typecheck` + `test` + `build`. **Es el checkpoint de cada fase** (no necesita certificados) |
+| `npm run e2e` | Playwright contra el binario en `https://localhost:8443` (`make build`, `make dev-certs`, `docker compose up`, `crm serve` en el modo "Binario completo" de plan §10.5.1; `NODE_EXTRA_CA_CERTS` exportada) |
 | `make web-build` | `cd web && npm ci && npm run build` |
 | `make web-check` | `cd web && npm ci && npm run check` |
 | `make build` | `web-build` y después `go build` (binario con la SPA embebida) |
 | `make check-all` | `make check` (backend) + `make web-check` |
+| `make dev-certs` | (del backend, T-B014) genera `.certs/localhost.pem` y `.certs/localhost-key.pem` con mkcert |
 
 ### Dependencias con el backend
 
 | Fase | Necesita del backend (prueba independiente) | Hallazgos |
 |---|---|---|
-| F0 | T-B005 (mux raíz con `RootDeps.SPA`) y T-B204 (middlewares comunes) para T-F007/T-F008; T-B013 para T-F009 | H-1 y H-8 resueltos (DD-22, DD-29) |
+| F0 | T-B005 (mux raíz con `RootDeps.SPA`, TLS local en `serve`) y T-B204 (middlewares comunes) para T-F007/T-F008; T-B014 (`make dev-certs`) para T-F006; T-B013 para T-F009 | H-1, H-8 y H-10 resueltos (DD-22, DD-29, DD-24) |
 | F1 | T-B310 (`/me`) | — |
-| F2 | T-B302, T-B306, T-B310 | H-3 resuelto (DD-24); **H-10 abierto**: hasta resolverlo, la prueba independiente se hace con Firefox |
+| F2 | T-B302, T-B306, T-B310 | H-3/H-10 resueltos (DD-24): HTTPS local en cualquier navegador |
 | F3 | T-B405 | — |
 | F4 | T-B507; `APP_LINK_*` con los defaults de DD-14 | — |
 | F5 | T-B607 | H-4, H-5 resueltos (DD-25, DD-26) |
-| F6 | T-B706 | H-2 resuelto (DD-23); **H-11 abierto** (el cliente usa margen: no bloquea) |
-| F7 | Todas las fases del backend hasta la 7 + `compose.yaml` | H-7, H-9 resueltos (DD-28, DD-30); **H-10 bloquea los E2E en Chromium** |
+| F6 | T-B706 (límites de DD-31) | H-2 y H-11 resueltos (DD-23, DD-31); **H-12 abierto** (prueba en un celular real): no bloquea |
+| F7 | Todas las fases del backend hasta la 7 + `compose.yaml` + T-B014 y la receta de CI de plan §10.5.1 | H-7, H-9, H-10 resueltos (DD-28, DD-30, DD-24); supuesto S-12 se valida en T-F701 |
 
 ---
 
@@ -1220,13 +1232,15 @@ Se corren en `web/` salvo los de `make`.
 
 **Objetivo**: existe `web/` con Vite + React + TypeScript, Tailwind + shadcn, router, TanStack
 Query, tipos generados del contrato, cliente HTTP con errores normalizados, harness de tests con
-MSW, lint; el binario Go embebe y sirve la SPA con las cabeceras de `plan.md` §10.7; CI corre
-todo.
+MSW, lint; el desarrollo corre sobre HTTPS local; el binario Go embebe y sirve la SPA con las
+cabeceras de `plan.md` §10.7; CI corre todo.
 
-**Prueba independiente**: `make check-all` en verde en CI; `make build` + `crm serve` y abrir
-`http://localhost:8080/login` muestra la pantalla provisoria de Ingresar; `curl -I` sobre `/`,
+**Prueba independiente**: `make check-all` en verde en CI; `make build` + `crm serve` en el modo
+"Binario completo" (plan §10.5.1) y abrir `https://localhost:8443/login` sin aviso de certificado
+muestra la pantalla provisoria de Ingresar; `npm run dev` y abrir `https://localhost:5173/login`
+muestra lo mismo con recarga en caliente; `curl -I` (sin `-k`) sobre `https://localhost:8443/`,
 `/settings/users`, un asset con hash, un asset inexistente y `/api/v1/no-existe` devuelve las
-respuestas de `ui.md` §21.1–21.2.
+respuestas de `ui.md` §21.1–21.2 (sin `Strict-Transport-Security`, porque es modo local).
 
 **T-F001 — Proyecto `web/`, TypeScript y lint** · ADR-015, `ui.md` §9.1, §22
 - Plantilla Vite React + TypeScript en `web/`; React 19; `strict` y `noUncheckedIndexedAccess`;
@@ -1238,7 +1252,8 @@ respuestas de `ui.md` §21.1–21.2.
   `features/tenant/logo/canvas.ts`.
 - `index.html` base: `lang="es-AR"`, viewport sin bloquear zoom, `theme-color`, `manifest`,
   `apple-touch-icon`, `<noscript>` (`ui.md` §19.3).
-- `.gitignore`: `web/node_modules`, `web/dist/*` salvo `web/dist/.gitkeep`, `web/.api-bundle`.
+- `.gitignore`: `web/node_modules`, `web/dist/*` salvo `web/dist/.gitkeep`, `web/.api-bundle`
+  (`.certs/` ya lo ignora T-B014).
 - Reportar las versiones elegidas de Vite, React, TypeScript, Tailwind, CLI de shadcn, React
   Router, TanStack Query, openapi-fetch, openapi-typescript, React Hook Form, Zod,
   `@hookform/resolvers` (≥ 5.1), Vitest, MSW, Playwright (RF-1).
@@ -1272,14 +1287,16 @@ respuestas de `ui.md` §21.1–21.2.
 - Si S-F2 falla: probar `happy-dom` y reportar (no cambia código de la app).
 
 **T-F004 [T] — Tipos generados del contrato y paso multi-spec** · ADR-018, ADR-014, DD-17, INV-F05, supuesto S-F1
-- **Red** (tests de tipos `src/api/schema.test-d.ts` y un spike):
+- **Red** (tests de tipos `src/api/schema.test-d.ts` y un spike), contra el contrato **v0.3.1**:
 
   | Caso | Esperado |
   |---|---|
   | Tipo de la respuesta `200` de `paths['/me']['get']` | igual a `SessionInfo` |
-  | `ErrorCode` | incluye `email_already_registered`, `email_taken`, `last_admin`, `token_invalid` |
+  | `ErrorCode` | incluye `email_already_registered`, `email_taken`, `last_admin`, `token_invalid`, `payload_too_large`, `unsupported_media_type` |
   | `User['name']` | `string \| null` |
-  | Parámetros de query de `paths['/tenant/logo']['get']` | incluyen `v?: string` (contrato v0.3.0) |
+  | Parámetros de query de `paths['/tenant/logo']['get']` | incluyen `v?: string` |
+  | Body de `paths['/tenant/logo']['put']` | `multipart/form-data` con la propiedad `file` (el test documenta el tipo generado; si no acepta un `File`, `putTenantLogo` usa `fetch` nativo, `ui.md` §11.3) |
+  | `FieldErrorCode` | incluye `required` e `invalid_value` (los que usa el `422` del logo con `field: file`) |
   | Utilidad de tipos `AssertDisjoint<keyof Paths001, keyof PathsOtra>` con claves disjuntas | compila |
   | La misma utilidad con una ruta repetida (fixture de tipos) | error de compilación (`@ts-expect-error`) |
   | **Spike S-F1**: contrato de prueba `web/test-fixtures/openapi/999.yaml` con `$ref` externo a `Problem` de 001 generado con `gen:api` | el tipo generado tiene `code: ErrorCode`; si no, aplicar el respaldo `redocly bundle` (`ui.md` §11.4) y reportar |
@@ -1310,7 +1327,8 @@ respuestas de `ui.md` §21.1–21.2.
 - **Green**: `src/api/client.ts`, `errors.ts`, `queryKeys.ts` (`ui.md` §10.3).
 - **Refactor**: `toApiError` es una función pura sin dependencias de React.
 
-**T-F006 — Esqueleto de rutas, providers y proxy de desarrollo** · ADR-017, ADR-019, `ui.md` §6.1, §10.2, §21.3, S-F3, H-10
+**T-F006 — Esqueleto de rutas, providers y desarrollo con HTTPS local** · ADR-017, ADR-019, DD-24, DD-F23, `ui.md` §6.1, §10.2, §21.3, H-10
+- Depende de T-B005 (TLS local en `serve`) y T-B014 (`make dev-certs`).
 - `src/app/router.tsx` con el árbol completo de `ui.md` §6.1 y **pantallas provisorias** (solo su
   `<h1>`), guards provisorios que dejan pasar, `lazy` por grupo de rutas; `RootLayout` con
   `<Toaster/>` y `<ScrollRestoration/>`; `createAppQueryClient` con los defaults de `ui.md` §10.2
@@ -1318,16 +1336,25 @@ respuestas de `ui.md` §21.1–21.2.
   (`createMemoryRouter` con el mismo árbol).
 - Test de humo: cada ruta del árbol muestra su `<h1>` provisorio; una ruta inexistente muestra
   "No encontramos esta página."
-- `vite.config.ts`: *proxy* de `/api` a `http://localhost:8080` **sin** `changeOrigin` (el `Host`
-  sigue siendo `localhost:5173`, como espera T-B203).
-- **Spike de la cookie** (manual, cuando el backend tenga T-B306): en `http://localhost:5173`,
-  registrarse con `fetch('/api/v1/auth/signup', …)` desde la consola y verificar si
-  `fetch('/api/v1/me')` responde `200`, en **Firefox** (esperado: sí) y en **Chrome** (esperado,
-  según H-10: no, porque rechaza la cookie `__Host-` en `http://localhost`). Reportar el resultado
-  de cada navegador: confirma o descarta H-10. Si el backend todavía no está, se ejecuta en el
-  checkpoint de F2.
+- `vite.config.ts` según la tabla de `ui.md` §21.3: `server.https` con `../.certs/localhost.pem` y
+  `../.certs/localhost-key.pem`; si faltan, `npm run dev` termina con "Faltan los certificados de
+  desarrollo: corré `make dev-certs` (ver README)."; `server.port: 5173` con `strictPort`;
+  *proxy* de `/api` a `https://localhost:8443` **sin** `changeOrigin` (el `Host` sigue siendo
+  `localhost:5173`, como espera T-B203) y **sin** `secure: false`.
+- **Verificación manual**: sin `NODE_EXTRA_CA_CERTS`, `npm run dev` arranca pero el *proxy* falla
+  con un error de certificado (se ve en la consola de Vite); con la variable exportada,
+  `fetch('/api/v1/healthz')`… no existe bajo `/api` → `404` problem+json desde la consola del
+  navegador en `https://localhost:5173` (demuestra que el *proxy* llega al backend por HTTPS).
+- **Spike de la cookie** (manual, cuando el backend tenga T-B306; si no, en el checkpoint de F2):
+  con `crm serve` en HTTPS local y `APP_BASE_URL=https://localhost:5173`, en
+  `https://localhost:5173` registrarse con `fetch('/api/v1/auth/signup', …)` desde la consola y
+  verificar que `fetch('/api/v1/me')` responde `200`, en **Chrome**, **Firefox** y, si hay una Mac,
+  **Safari** (esperado: sí en los tres, S-12 del plan). En DevTools, la cookie
+  `__Host-crm_session` aparece con `Secure`, `HttpOnly` y `SameSite=Lax`. Reportar el resultado de
+  cada navegador; si alguno falla, revisar la tabla de diagnóstico de `ui.md` §21.3 antes de
+  volver al arquitecto.
 
-**T-F007 [T] — Handler Go de la SPA** · ADR-019, plan DD-22, DD-29, §10.7, INV-22, DD-14, NFR-F10, `ui.md` §21
+**T-F007 [T] — Handler Go de la SPA** · ADR-019, plan DD-22, DD-24, DD-29, §10.7, INV-22, DD-14, NFR-F10, `ui.md` §21
 - Implementa: `backend-developer` (código Go, `testing` nativo, table-driven, ADR-012). Depende de
   T-B005 (mux raíz con `RootDeps.SPA`) y T-B204 (middlewares comunes). Firmas (plan §11.1):
   `func DistFS() fs.FS` y `func NewHandler(dist fs.FS) http.Handler` en el paquete `web` (raíz del
@@ -1349,7 +1376,8 @@ respuestas de `ui.md` §21.1–21.2.
   | `GET /api/v1/me` con `Accept-Encoding: gzip` (mux completo) | **sin** `Content-Encoding: gzip` (la API no se comprime, DD-29) |
   | `GET /healthz` (mux completo) | `200` `{"status":"ok"}` del backend |
   | `dist` sin `index.html` (solo `.gitkeep`) | `503` `text/plain` "La interfaz no está compilada (correr `make web-build`)" |
-  | Toda respuesta de la SPA | `X-Request-Id`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Strict-Transport-Security` (middlewares comunes) |
+  | Toda respuesta de la SPA con configuración **no local** (`APP_BASE_URL=https://crm.example`) | `X-Request-Id`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Strict-Transport-Security` (middlewares comunes) |
+  | Toda respuesta de la SPA con configuración **local** (`APP_BASE_URL=https://localhost:8443`) | las mismas cabeceras **sin** `Strict-Transport-Security` (DD-24) |
   | `Accept-Encoding: gzip` en un asset JS, en `index.html` y en el manifest (de más de 1 KB) | `Content-Encoding: gzip` y `Vary: Accept-Encoding` (supuesto 6 del `research.md` del backend) |
   | `chi.Walk` sobre el router de la API | no incluye rutas de la SPA (T-B801 y el test de rutas contra el contrato siguen igual) |
 - **Green**: pasa la tabla.
@@ -1363,17 +1391,21 @@ respuestas de `ui.md` §21.1–21.2.
   `web.NewHandler(web.DistFS())`. `depguard`: `web` solo importa la librería estándar y `gzhttp`
   (T-B011).
 
-**T-F009 — Makefile y CI** · ADR-019, ADR-022
+**T-F009 — Makefile, CI y README del frontend** · ADR-019, ADR-022, DD-24
 - Targets `web-build`, `web-check`, `build`, `check-all` (tabla de comandos). CI: job de frontend
-  con Node LTS y caché de npm que corre `make web-check`; el job de backend no necesita el
-  frontend (usa el marcador de `dist`); un job de build que corre `make build` y guarda el binario
-  como artefacto para los E2E (Fase F7). Depende de T-B013.
-- `README` (sección de desarrollo): los dos modos de `ui.md` §21.3, `APP_BASE_URL` / `APP_LINK_*`
-  de desarrollo y la nota de H-10 (usar Firefox hasta que se resuelva).
+  con Node LTS y caché de npm que corre `make web-check` (sin certificados); el job de backend no
+  necesita el frontend (usa el marcador de `dist`); un job de build que corre `make build` y guarda
+  el binario como artefacto para los E2E (el job de E2E con mkcert lo agrega T-F701). Depende de
+  T-B013.
+- `README`, sección de desarrollo (complementa lo que escribe T-B014: mkcert, `make dev-certs`,
+  los tres modos): cómo correr `npm run dev` en `https://localhost:5173` con `crm serve` en
+  `:8443` y `APP_BASE_URL=https://localhost:5173`; exportar `NODE_EXTRA_CA_CERTS` antes de
+  `npm run dev` y `npm run e2e`; cómo correr el E2E local contra `https://localhost:8443`; la
+  tabla de diagnóstico de `ui.md` §21.3. Sin recomendar un navegador en particular.
 
-**Checkpoint Fase F0**: `make check-all` en verde local y en CI; la prueba independiente
-ejecutada con `curl`; resultados de los spikes S-F1 y S-F2 reportados (y el de la cookie, si el
-backend ya tiene T-B306).
+**Checkpoint Fase F0**: `make check-all` en verde local y en CI; la prueba independiente ejecutada
+(navegador y `curl` sobre HTTPS); resultados de los spikes S-F1 y S-F2 reportados (y el de la
+cookie de T-F006, si el backend ya tiene T-B306).
 
 ---
 
@@ -1383,10 +1415,11 @@ backend ya tiene T-B306).
 con aviso; los permisos ocultan lo que no corresponde; el shell es navegable por teclado y la PWA
 es instalable.
 
-**Prueba independiente**: con el backend (T-B310) y Firefox: abrir `/settings/users` sin sesión
-redirige a `/login?next=%2Fsettings%2Fusers`; con una sesión creada por `curl` (cookie pegada en
-el navegador) se ve el shell; borrar la sesión en la base y navegar vuelve al login con "Tu sesión
-se cerró"; Chrome ofrece "Instalar app" sobre el binario.
+**Prueba independiente**: con el backend (T-B310) en HTTPS local, en cualquier navegador con la CA
+de mkcert instalada: abrir `https://localhost:5173/settings/users` sin sesión redirige a
+`/login?next=%2Fsettings%2Fusers`; con una sesión creada por `curl` (cookie pegada en el
+navegador) se ve el shell; borrar la sesión en la base y navegar vuelve al login con "Tu sesión se
+cerró"; Chrome ofrece "Instalar app" sobre el binario en `https://localhost:8443`.
 
 **T-F101 [T] — Mensajes por `code` y por campo** · ADR-009, INV-F05, `ui.md` §12.2–12.3
 - **Red**:
@@ -1396,12 +1429,12 @@ se cerró"; Chrome ofrece "Instalar app" sobre el binario.
   | Test de tipos: el mapa de mensajes es `Record<ErrorCode, …>` | un `ErrorCode` agregado en un fixture de tipos sin mensaje no compila |
   | `messageForError` para cada `code` de §12.2 en contexto `generic` | título y descripción de la tabla |
   | `token_invalid` en `resetConfirm`, `verifyEmail`, `invitationPreview` | los tres textos de §12.2 |
-  | `unsupported_media_type` y `payload_too_large` en `logo` | textos del logo |
+  | `unsupported_media_type`, `payload_too_large` y `malformed_request` en `logo` | textos del logo ("No pudimos subir el logo." con `requestId` para el `400`) |
   | `rate_limited` con `retryAfterSeconds` 61 / 1800 / `null` | "2 minutos" / "30 minutos" / "unos minutos" |
   | `internal` con `requestId` | la descripción incluye el código |
   | `kind: 'network'` | "No hay conexión." y `retryable: true` |
   | `kind: 'unexpected'` con `502` / `418` | como `service_unavailable` / como `internal` |
-  | `fieldErrorMessage` para cada `FieldError.code` y cada variante por campo de §12.3 | textos de la tabla |
+  | `fieldErrorMessage` para cada `FieldError.code` y cada variante por campo de §12.3, incluidas `file` + `required` y `file` + `invalid_value` | textos de la tabla |
   | `logoRejectMessage` para cada `LogoRejectReason` | textos de §13.11.1 |
   | `applyServerFieldErrors` con un campo conocido y uno desconocido | `setError` en el conocido; devuelve el desconocido |
 - **Green**: pasa la tabla.
@@ -1473,8 +1506,9 @@ se cerró"; Chrome ofrece "Instalar app" sobre el binario.
 **T-F108 — PWA base** · ADR-020, `ui.md` §20
 - `public/manifest.webmanifest` (`name`/`short_name` "CRM"), íconos genéricos provisorios (P-F1),
   `public/sw.js` y `public/offline.html` según ADR-020; registro en `main.tsx` solo en producción.
-  Verificación manual en el binario (Chrome DevTools → Application: manifest sin errores, SW
-  activo, Cache Storage con solo `crm-offline-v1`); la verificación automática es T-F703.
+  Verificación manual en el binario en `https://localhost:8443` (Chrome DevTools → Application:
+  manifest sin errores, SW activo, Cache Storage con solo `crm-offline-v1`); la verificación
+  automática es T-F703.
 
 **Checkpoint Fase F1**: `npm run check` en verde + prueba independiente contra el backend.
 
@@ -1485,11 +1519,12 @@ se cerró"; Chrome ofrece "Instalar app" sobre el binario.
 **Objetivo**: un visitante se registra desde el celular en una sola pantalla y llega al panel con
 su empresa, rubro y moneda base.
 
-**Prueba independiente**: con el backend (T-B306, T-B310) y Mailpit, en Firefox (hasta resolver
-H-10): en `http://localhost:5173/signup` (o el binario), completar el formulario → panel con
-"Hola, {nombre}" y el rubro elegido; el email de verificación está en Mailpit; repetir con el
-mismo email → "Ya existe un usuario con ese email." y "Recuperar contraseña". Spike de la cookie
-(T-F006) reportado para Firefox y Chrome.
+**Prueba independiente**: con el backend (T-B306, T-B310) en HTTPS local y Mailpit, en cualquier
+navegador con la CA de mkcert instalada: en `https://localhost:5173/signup` (o el binario en
+`https://localhost:8443/signup`), completar el formulario → panel con "Hola, {nombre}" y el rubro
+elegido; el email de verificación está en Mailpit con un enlace a `https://localhost:5173/…`;
+repetir con el mismo email → "Ya existe un usuario con ese email." y "Recuperar contraseña". Spike
+de la cookie (T-F006) reportado para Chrome, Firefox y, si hay, Safari.
 
 **T-F201 [T] — Esquema del registro** · ADR-021, DD-6, `ui.md` §13.1, §16
 - **Red** (unitario sobre el esquema Zod):
@@ -1784,13 +1819,16 @@ desactivar a un usuario y ver que su ventana vuelve al login con "Tu sesión se 
 desde una foto del celular (que se achica y se endereza en el navegador), y el encabezado se
 actualiza sin recargar.
 
-**Prueba independiente**: con el backend (T-B706) y MinIO: cargar un CUIT válido; subir una foto
-JPEG grande (> 2 MB, > 2000 px, sacada con un celular) y ver "Preparando la imagen…", luego "Logo
-actualizado. Lo achicamos para que pese menos." y el logo nuevo en el encabezado; subir un PNG con
-transparencia chico y verlo tal cual; cerrar sesión, entrar con otra empresa en el mismo navegador
-y verificar que **no** se ve el logo anterior. En un celular real (Android y, si hay, iPhone), elegir
-una foto de la galería contra un entorno con HTTPS (el backend no acepta `http://` fuera de
-`localhost`), para validar S-F8 y NFR-F13.
+**Prueba independiente**: con el backend (T-B706) y MinIO, en HTTPS local: cargar un CUIT válido;
+subir una foto JPEG grande (> 2 MiB, > 2000 px, sacada con un celular y copiada a la computadora) y
+ver "Preparando la imagen…", luego "Logo actualizado. Lo achicamos para que pese menos." y el logo
+nuevo en el encabezado; subir un PNG con transparencia chico y verlo tal cual; cerrar sesión,
+entrar con otra empresa en el mismo navegador y verificar que **no** se ve el logo anterior.
+**En un celular real** (Android y, si hay, iPhone), elegir una foto de la galería: necesita un
+origen HTTPS accesible desde el teléfono (hallazgo H-12, `ui.md` §27.2): un entorno de *staging*
+si existe; si no, en Android, reenvío de puertos de Chrome (`chrome://inspect` → *Port
+forwarding* `8443` → `localhost:8443`) con la CA de mkcert instalada en el teléfono (supuesto
+S-F10). Valida S-F8 y NFR-F13; si no hay forma de hacerla, se reporta como pendiente.
 
 **T-F601 [T] — CUIT** · DD-16, `ui.md` §13.11
 - **Red**: la **misma tabla de casos que T-B701** (con la misma fuente citada): válido con y sin
@@ -1816,7 +1854,7 @@ una foto de la galería contra un entorno con HTTPS (el backend no acepta `http:
   | `503` al guardar | mensaje con "Reintentar"; valores intactos |
 - **Green**: pasa la tabla.
 
-**T-F603 [T] — Logo en la pantalla y en el encabezado** · US-4, DD-11, DD-23, DD-F11, DD-F12, BR-F13, INV-F14, `ui.md` §13.11, §14.4
+**T-F603 [T] — Logo en la pantalla y en el encabezado** · US-4, DD-11, DD-23, DD-31, DD-F11, DD-F12, DD-F22, BR-F13, INV-F14, `ui.md` §11.1, §13.11, §14.4
 - **Red** (pantalla con MSW; el módulo `features/tenant/logo/canvas.ts` con `vi.mock`: `decodeImage`
   devuelve un bitmap falso con el tamaño pedido y `encodeBitmap` un `Blob` del tamaño que fija cada
   caso):
@@ -1825,20 +1863,24 @@ una foto de la galería contra un entorno con HTTPS (el backend no acepta `http:
   |---|---|
   | `has_logo: false` | iniciales + "Todavía no subiste un logo"; encabezado con iniciales |
   | `has_logo: true` | `<img alt="Logo de {empresa}">` con `src` = `/api/v1/tenant/logo?v=` + `encodeURIComponent(id-updated_at)` en S-11 y en el encabezado |
-  | Elegir un PNG chico dentro de los límites | sin "Preparando…" visible más de un instante; `PUT /tenant/logo` con los **mismos bytes** del archivo; toast "Logo actualizado." |
-  | Elegir un JPEG de 5 MB y 4000×3000 (bytes de fixture con encabezado real) | "Preparando la imagen…" anunciado; "Cambiar logo" y "Quitar" deshabilitados; luego "Subiendo logo…"; `PUT` con un archivo `image/jpeg` ≤ `LOGO_TARGET_MAX_BYTES`; toast "Logo actualizado. Lo achicamos para que pese menos."; `src` con el `updated_at` nuevo en S-11 y en el encabezado |
+  | Elegir un PNG chico dentro de los límites | sin "Preparando…" visible más de un instante; `PUT /tenant/logo` multipart con **una sola** parte `file` con los **mismos bytes** del archivo; toast "Logo actualizado." |
+  | Elegir un PNG de 1000×1000 de **exactamente 2 097 152 bytes** (encabezado real + relleno) | se sube tal cual (mismos bytes); los falsos del canvas no se llamaron |
+  | Elegir un JPEG de 5 MB y 4000×3000 (bytes de fixture con encabezado real) | "Preparando la imagen…" anunciado; "Cambiar logo" y "Quitar" deshabilitados; luego "Subiendo logo…"; `PUT` con un archivo `image/jpeg` ≤ 2 097 152 bytes; toast "Logo actualizado. Lo achicamos para que pese menos."; `src` con el `updated_at` nuevo en S-11 y en el encabezado |
   | Elegir un SVG / un GIF / un WebP | mensaje de §13.11.1 para cada uno; **ningún** request |
   | Elegir un archivo con bytes que no son imagen | "No pudimos leer la imagen. Probá con otro archivo PNG o JPG."; ningún request |
   | El adaptador falla al decodificar | mismo mensaje de "no pudimos leer"; ningún request |
   | Ningún paso de la escalera entra (el adaptador falso devuelve siempre 3 MB) | "No pudimos achicar la imagen lo suficiente…"; ningún request |
-  | `413` / `415` / `422` del servidor | mensajes de §12.2 y §13.11 en el control del logo |
+  | `413` / `415` del servidor | mensajes de §12.2 en el control del logo |
+  | `422` con `errors: [{field: 'file', code: 'invalid_value'}]` / `[{field: 'file', code: 'required'}]` | "No pudimos leer la imagen o mide más de 2000 × 2000 px. Probá con otra imagen del logo." / "Elegí una imagen para el logo." en el control del logo (no en un campo del formulario de datos) |
+  | `400 malformed_request` con `instance` | "No pudimos subir el logo." + "Recargá la página y probá de nuevo." + código |
+  | `503` / sin red al subir | mensaje con "Reintentar" en el control del logo |
   | Salir mientras se prepara o sube | pide confirmación (BR-F10) |
   | "Quitar" → confirmar → `204` | iniciales; toast "Quitamos el logo." |
   | La imagen falla al cargar | iniciales |
   | Control de archivo | etiqueta accesible "Cambiar logo"; `accept="image/png,image/jpeg"`; operable con teclado |
 - **Green**: pasa la tabla.
 
-**T-F604 [T] — Preparación del logo: funciones puras y orquestación** · DD-11, DD-F20, DD-F21, INV-F13, H-11, `ui.md` §13.11.1
+**T-F604 [T] — Preparación del logo: funciones puras y orquestación** · DD-11, DD-31, DD-F20, DD-F21, DD-F22, INV-F13, H-11, `ui.md` §13.11.1
 - **Red** (unitario; bytes de prueba armados en el test, sin imágenes reales):
 
   | `sniffImageType` | Esperado |
@@ -1861,6 +1903,8 @@ una foto de la galería contra un entorno con HTTPS (el backend no acepta `http:
   | `planLogoProcessing` | Esperado |
   |---|---|
   | PNG de 800×400 y 300 KB | `upload_original` |
+  | PNG de 1000×1000 y **2 097 152** bytes | `upload_original` (el límite es inclusivo, igual que en el servidor) |
+  | PNG de 1000×1000 y **2 097 153** bytes | `reencode` `image/png` con la escalera PNG |
   | PNG de 3000×3000 (o de 1500×1500 y 2,5 MB) | `reencode` `image/png` con la escalera PNG; ningún `maxSide` mayor al lado original |
   | JPEG de 1200×800 y 200 KB | `reencode` `image/jpeg` (DD-F21) con primer paso (1200, 0,90) |
   | JPEG de 4000×3000 y 5 MB | `reencode` `image/jpeg` con la escalera JPEG completa |
@@ -1876,53 +1920,69 @@ una foto de la galería contra un entorno con HTTPS (el backend no acepta `http:
   |---|---|
   | PNG dentro de los límites | `ok`, mismo `File`, `reencoded: false`; los falsos no se llamaron |
   | JPEG grande; el falso devuelve 2,4 MB, 2,1 MB y después 1,5 MB | `ok`, `resized: true`, archivo `image/jpeg` de 1,5 MB; `decodeImage` llamado **una** vez; `encodeBitmap` tres veces con los pasos de la escalera en orden |
+  | JPEG grande; el falso devuelve **2 097 153** bytes y después **2 097 152** | `ok` con el segundo (el borde exacto entra) |
   | Ningún paso entra | `{ ok: false, reason: 'cannot_shrink' }` |
   | `decodeImage` rechaza | `{ ok: false, reason: 'unreadable' }` |
   | En todos los caminos con decodificación | el bitmap se cierra (`close` del falso llamado) |
+  | Constante | `LOGO_TARGET_MAX_BYTES === 2_097_152` (igual a `LogoMaxBytes` del backend, DD-31) |
 - **Green**: pasa la tabla.
 - **Refactor**: las constantes (`limits.ts`) en un solo lugar; `prepareLogo` sin ramas de formato
   que no estén en `planLogoProcessing`.
 
 **T-F605 — Implementar** `CompanyPage`, `LogoUploader`, `useUpdateTenant`, `useUploadLogo`
-(`putTenantLogo`), `useDeleteLogo`, `logoUrl`, `lib/cuit.ts`, `features/tenant/logo/`
-(`limits.ts`, `sniff.ts`, `plan.ts`, `canvas.ts`, `prepareLogo.ts`); el encabezado pasa a mostrar
-el logo.
+(`putTenantLogo`, con una sola parte `file`), `useDeleteLogo`, `logoUrl`, `lib/cuit.ts`,
+`features/tenant/logo/` (`limits.ts`, `sniff.ts`, `plan.ts`, `canvas.ts`, `prepareLogo.ts`); el
+encabezado pasa a mostrar el logo.
 
-**Checkpoint Fase F6**: `npm run check` en verde + prueba independiente (incluida la prueba en un
-celular real, con su resultado para S-F8 y NFR-F13).
+**Checkpoint Fase F6**: `npm run check` en verde + prueba independiente (la prueba en un celular
+real, con su resultado para S-F8, S-F10 y NFR-F13, o reportada como pendiente por H-12).
 
 ---
 
 ### Fase F7 — End-to-end, PWA, accesibilidad y performance (verificación)
 
-**Objetivo**: los flujos críticos funcionan de punta a punta sobre el binario real; la PWA, la CSP,
-la preparación del logo y la accesibilidad están verificadas; los objetivos de performance están
-medidos. Esta fase **verifica y cierra huecos**: cada pantalla ya llegó con sus estados y su
-accesibilidad.
+**Objetivo**: los flujos críticos funcionan de punta a punta sobre el binario real servido por
+HTTPS local; la PWA, la CSP, la cookie de sesión real, la preparación del logo y la accesibilidad
+están verificadas; los objetivos de performance están medidos. Esta fase **verifica y cierra
+huecos**: cada pantalla ya llegó con sus estados y su accesibilidad.
 
-**Prueba independiente**: `npm run e2e` en verde en CI (Chromium); corrida en WebKit reportada;
-reporte con tamaños de bundle y métricas de Lighthouse.
+**Prueba independiente**: `npm run e2e` en verde en CI (Chromium, contra `https://localhost:8443`
+con la CA de mkcert del runner); corrida en WebKit reportada; reporte con tamaños de bundle,
+métricas de Lighthouse y el resultado del supuesto S-12.
 
-**Precondición**: H-10 resuelto por el backend (Chromium necesita poder guardar la cookie de sesión
-en el entorno de E2E). Si no lo está, se corre en Firefox y se reporta el bloqueo; no se cambia el
-diseño de la cookie desde el frontend.
+**T-F701 — Playwright y job de E2E** · ADR-022, DD-24, plan §10.5.1, S-12
+- `playwright.config.ts`: Chromium en cada PR; WebKit en la corrida previa a liberar;
+  `use.baseURL = 'https://localhost:8443'`; **sin** `ignoreHTTPSErrors` (ver respaldo abajo).
+- *Global setup*: verifica, con Node y `NODE_EXTRA_CA_CERTS`, que `https://localhost:8443/healthz`
+  responde `200` **sin** error de certificado y que `docker compose` está arriba; si falla, un
+  mensaje que remite a `make dev-certs`, `mkcert -install` y la tabla de diagnóstico de `ui.md`
+  §21.3.
+- Helpers: leer emails y extraer el enlace desde la API HTTP de Mailpit (los enlaces apuntan a
+  `https://localhost:8443/…`, porque `APP_BASE_URL` es ese origen); axe (`@axe-core/playwright`,
+  reglas WCAG 2.x AA); captura de eventos `securitypolicyviolation` y errores de consola.
+- **Job de E2E en CI** (receta de plan §10.5.1): instalar mkcert de una versión fijada con checksum
+  verificado y `certutil`; `mkcert -install`; `make dev-certs`; `docker compose up`;
+  `crm migrate up`; `crm serve` con `HTTP_ADDR=:8443`, `TLS_CERT_FILE`, `TLS_KEY_FILE` y
+  `APP_BASE_URL=https://localhost:8443` (el binario viene del artefacto de T-F009);
+  `NODE_EXTRA_CA_CERTS` para el proceso de Playwright. La CA se crea en el runner y muere con él;
+  nunca se sube como artefacto.
+- **Supuesto S-12** (se valida en la primera corrida): Chromium y WebKit de Playwright abren
+  `https://localhost:8443` sin error de certificado. Si alguno falla: respaldo
+  `ignoreHTTPSErrors: true` **solo para ese navegador** y **solo si** T-F703 muestra que el
+  service worker se registra igual; si no, frenar y volver al arquitecto. El resultado va al
+  reporte de la fase.
+- Fixtures de imágenes en `web/e2e/fixtures/` generadas para la prueba (sin fotos reales de
+  personas ni lugares): JPEG 4000×3000 de ~5 MB con EXIF de orientación 6 y coordenadas GPS
+  ficticias; PNG 3000×3000 con zonas transparentes; PNG 800×400 < 1 MB; PNG ≤ 2000 px de entre
+  1 900 000 y 2 097 152 bytes; SVG; GIF.
 
-**T-F701 — Playwright** · ADR-022, H-10
-- `playwright.config.ts` (Chromium en cada PR; WebKit en la corrida previa a liberar), *global
-  setup* que verifica el binario y `docker compose` arriba, el origen de E2E según la resolución de
-  H-10 (p. ej. `https://localhost:8443` con TLS local), helper para leer emails y extraer el enlace
-  desde la API HTTP de Mailpit, helper de axe (`@axe-core/playwright`, reglas WCAG 2.x AA),
-  captura de eventos `securitypolicyviolation` y errores de consola. Fixtures de imágenes en
-  `web/e2e/fixtures/` generadas para la prueba (sin fotos reales de personas ni lugares): JPEG
-  4000×3000 de ~5 MB con EXIF de orientación 6 y coordenadas GPS ficticias; PNG 3000×3000 con zonas
-  transparentes; PNG 800×400 < 1 MB; SVG; GIF.
-
-**T-F702 [T] — Flujos críticos** · SC-001, US-1..US-4, NFR-F01, NFR-F06, NFR-F10, P-5
+**T-F702 [T] — Flujos críticos** · SC-001, US-1..US-4, NFR-F01, NFR-F06, NFR-F10, P-5, INV-23 (plan)
 - **Red**:
 
   | Flujo | Resultado observable |
   |---|---|
   | Registro → panel → cerrar sesión → ingresar → panel | cada paso visible; registro completo < 10 s automatizado (SC-001) |
+  | Tras el registro, las cookies del contexto (`context.cookies()`) | `__Host-crm_session` con `secure: true`, `httpOnly: true`, `sameSite: 'Lax'`, `path: '/'` y dominio `localhost` sin punto inicial (es la cookie real, H-10) |
   | Registro con un email existente → "Recuperar contraseña" → enviar | "Revisá tu email"; llega el email |
   | Admin invita → enlace de Mailpit → invitado acepta → panel de Operador → `/settings/users` | "Sin permiso" |
   | Admin reinvita a un invitado con otro rol → el invitado acepta | entra con el rol nuevo |
@@ -1930,6 +1990,7 @@ diseño de la cookie desde el frontend.
   | Admin desactiva al operador (otro contexto de navegador) → el operador navega | login con "Tu sesión se cerró." |
   | 5 contraseñas incorrectas → 6.º intento | estado Bloqueado con la hora |
   | En cada pantalla visitada | axe sin violaciones *serious*/*critical*; a 320 px de ancho, `scrollWidth ≤ innerWidth`; 0 violaciones de CSP; 0 errores de consola |
+  | Cabeceras de `/` en el binario local | CSP de §10.7 presente; `Strict-Transport-Security` **ausente** (modo local, DD-24) |
 - **Green**: todos los flujos pasan en Chromium; WebKit reportado.
 
 **T-F703 [T] — PWA y service worker** · ADR-020, INV-F09, NFR-F09, NFR-F11
@@ -1943,29 +2004,34 @@ diseño de la cookie desde el frontend.
   | Cache Storage | solo `crm-offline-v1` con `offline.html`; ninguna URL `/api/` ni `/assets/` |
   | Sin conexión, `fetch('/api/v1/me')` desde la página | falla (el SW no lo sirve) |
   | Después de cerrar sesión | `localStorage` e IndexedDB sin datos; `sessionStorage` solo con marcas de UI |
+  | Solo si se aplicó el respaldo de S-12 (`ignoreHTTPSErrors`) en algún navegador | en ese navegador el SW también queda activo; si no, el respaldo no es válido y se vuelve al arquitecto |
 - **Green**: pasa la tabla.
 
 **T-F704 — Performance** · NFR-F03, NFR-F04, NFR-F05
 - Reportar los tamaños gzip de `vite build` por chunk frente al presupuesto de NFR-F05 y
-  Lighthouse *mobile* sobre el binario en `/login` y `/` (LCP, CLS; INP en un Android de gama media
-  a mano). **Si un objetivo no se cumple, frenar y volver al arquitecto** con los números.
+  Lighthouse *mobile* sobre el binario en `https://localhost:8443` en `/login` y `/` (LCP, CLS; INP
+  en un Android de gama media a mano, con el origen de H-12). **Si un objetivo no se cumple, frenar
+  y volver al arquitecto** con los números.
 
 **T-F705 — Verificación manual de accesibilidad** · NFR-F06, NFR-F07, NFR-F08, `ui.md` §18
 - Checklist: todos los flujos solo con teclado; TalkBack (Chrome Android) y VoiceOver (Safari
   iOS) en registro, ingresar, usuarios y datos de la empresa (incluida la subida del logo y el
-  anuncio "Preparando la imagen…"); zoom al 200 %; `prefers-reduced-motion`; contraste de cada par
-  de tokens de §19.1 con una herramienta; objetivos táctiles ≥ 44 px; foco nunca tapado por la
-  barra inferior. Resultado en el reporte de la fase, con cada hallazgo y su corrección.
+  anuncio "Preparando la imagen…"), con el origen HTTPS de H-12 (si no hay, VoiceOver de macOS y
+  NVDA en escritorio, y el celular queda pendiente); zoom al 200 %; `prefers-reduced-motion`;
+  contraste de cada par de tokens de §19.1 con una herramienta; objetivos táctiles ≥ 44 px; foco
+  nunca tapado por la barra inferior. Resultado en el reporte de la fase, con cada hallazgo y su
+  corrección.
 
-**T-F706 [T] — Preparación del logo en navegadores reales** · DD-F20, DD-F21, INV-F13, NFR-F13, S-F7, S-F9, `ui.md` §13.11.1
+**T-F706 [T] — Preparación del logo en navegadores reales** · DD-F20, DD-F21, DD-F22, INV-F13, NFR-F13, S-F7, S-F9, `ui.md` §13.11.1
 - **Red** (Playwright, Chromium y WebKit; cada caso sube por la UI y después descarga
   `/api/v1/tenant/logo` desde la página para inspeccionar lo que guardó el servidor):
 
   | Fixture | Esperado |
   |---|---|
-  | JPEG 4000×3000, ~5 MB, EXIF orientación 6 y GPS | se sube; el logo guardado es JPEG ≤ `LOGO_TARGET_MAX_BYTES`, **vertical** (alto > ancho: se aplicó la orientación), lado mayor ≤ 2000, **sin** segmento `APP1`/`Exif` (sin GPS); tiempo de preparación reportado (NFR-F13) |
-  | PNG 3000×3000 con transparencia | se sube como PNG ≤ 2000 px; el píxel de una esquina transparente tiene alfa 0 (se lee dibujando el logo guardado en un canvas de la página) |
+  | JPEG 4000×3000, ~5 MB, EXIF orientación 6 y GPS | se sube; el logo guardado es JPEG ≤ 2 097 152 bytes (`LOGO_TARGET_MAX_BYTES`), **vertical** (alto > ancho: se aplicó la orientación), lado mayor ≤ 2000, **sin** segmento `APP1`/`Exif` (sin GPS); tiempo de preparación reportado (NFR-F13) |
+  | PNG 3000×3000 con transparencia | se sube como PNG ≤ 2000 px y ≤ 2 097 152 bytes; el píxel de una esquina transparente tiene alfa 0 (se lee dibujando el logo guardado en un canvas de la página) |
   | PNG 800×400 < 1 MB | los bytes guardados son **idénticos** a los del archivo |
+  | PNG ≤ 2000 px de entre 1 900 000 y 2 097 152 bytes | los bytes guardados son **idénticos** (sin margen: DD-F22) |
   | SVG / GIF | mensaje de §13.11.1; ningún `PUT` en la red |
 - **Green**: pasa en Chromium y WebKit; si S-F7 falla en algún navegador (foto horizontal), frenar
   y volver al arquitecto con el resultado (respaldo previsto: leer la orientación del EXIF y rotar
@@ -1974,7 +2040,8 @@ diseño de la cookie desde el frontend.
 **T-F707 — Correcciones** que surjan de T-F702..T-F706, cada una con su test de regresión.
 
 **Checkpoint Fase F7**: `npm run check` y `npm run e2e` en verde (Chromium en CI; WebKit
-reportado); reportes de T-F704, T-F705 y T-F706 adjuntos.
+reportado); reportes de T-F704, T-F705 y T-F706 adjuntos; resultado de S-12 (y del respaldo, si se
+usó) reportado.
 
 ---
 
@@ -2000,7 +2067,7 @@ reportado); reportes de T-F704, T-F705 y T-F706 adjuntos.
 | P-4 `email_already_registered` | T-F202, T-F702 |
 | P-5 Sesión 24 h / 7 días (401 global) | T-F104, T-F702 |
 | P-F2 Logo achicado en el navegador (DD-F11, DD-F20) | T-F603, T-F604, T-F706 |
-| P-F6 / DD-F21 JPEG siempre re-codificado | T-F604, T-F706 |
+| P-F6 (resuelta) / DD-F21 JPEG siempre re-codificado | T-F604, T-F706 |
 | DD-14 Token en el fragmento | T-F401, T-F007 |
 | DD-17 *Bundle* multi-spec | T-F004 |
 | DD-23 Caché del logo (`v`, `ETag`) | T-F004, T-F603 |
@@ -2010,5 +2077,7 @@ reportado); reportes de T-F704, T-F705 y T-F706 adjuntos.
 | ADR-006 (401 en cualquier request vuelve al login) | T-F104 |
 | ADR-019 (SPA embebida, cabeceras, CSP, gzip) | T-F007, T-F008, T-F702 |
 | ADR-020 (PWA sin offline) | T-F108, T-F703 |
-| H-10 Cookie `__Host-` en `http://localhost` | T-F006 (spike), T-F701 (precondición) |
+| H-10 (resuelto) HTTPS local con mkcert, sin HSTS en modo local (DD-24, INV-23, DD-F23) | T-F006, T-F007, T-F009, T-F701, T-F702, T-F703 |
+| H-11 (resuelto) Límites exactos del logo (DD-31, DD-F22) | T-F004, T-F101, T-F603, T-F604, T-F706 |
+| H-12 Prueba en un celular real (abierto, no bloquea) | Checkpoint F6, T-F704, T-F705 |
 | NFR-F01..F13 | T-F002 (F02, F07, F08), T-F702 (F01, F06, F10, F12), T-F703 (F09, F11), T-F704 (F03..F05), T-F705 (F06..F08), T-F706 (F13) |

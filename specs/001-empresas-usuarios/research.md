@@ -479,6 +479,11 @@ arquitecto pendientes de aprobación.
 **Revisión 2026-09-29**: respuestas del usuario a P-F1 a P-F5; R-F08 (compresión aprobada,
 desarrollo local y H-10), R-F13 (DD-F10, DD-F11, DD-F21) actualizadas; R-F14 (preparación del logo
 en el navegador) y R-F15 (cookie de sesión en `http://localhost`, H-10) agregadas.
+**Segunda revisión 2026-09-29**: decisiones del usuario sobre H-10 (HTTPS local con mkcert), H-11
+(archivo ≤ 2 097 152 bytes) y P-F6 (todo JPEG se re-codifica). R-F08 (desarrollo local sobre
+HTTPS), R-F11 (E2E con la CA de mkcert), R-F13 (DD-F21 confirmada, DD-F22 nueva), R-F14 (tope de
+bytes del archivo preparado) y R-F15 (resuelta) actualizadas; R-F16 (prueba en un celular real,
+H-12) agregada.
 
 Criterios que se repiten: (1) simplicidad para un usuario con nivel básico en React/TypeScript
 (pocas abstracciones propias, patrones de la documentación oficial); (2) accesibilidad y uso desde
@@ -611,11 +616,15 @@ CSP:
 | CSP estricta con *nonces* | Máxima | Requiere HTML generado por request | Descartada |
 | Sin CSP | Nada que mantener | Sin defensa en profundidad ante XSS | Descartada |
 
-Desarrollo local:
+Desarrollo local (**revisado en la segunda revisión**: HTTPS local, decisión del usuario sobre
+H-10):
 
 | Opción | A favor | En contra | Veredicto |
 |---|---|---|---|
-| **Proxy de Vite (`/api` → `:8080`, sin `changeOrigin`)** | Incluido en Vite; mismo origen para el navegador | Con `http://localhost`, Chrome rechaza la cookie `__Host-` (H-10, R-F15); hoy solo funciona en Firefox | **Elegida por el usuario** (con H-10 pendiente) |
+| **Proxy de Vite sobre HTTPS**: Vite en `https://localhost:5173` con `server.https` y el certificado de mkcert de `.certs/` (el mismo de `crm serve`); `/api` → `https://localhost:8443` sin `changeOrigin` y con verificación de certificado; Node confía en la CA con `NODE_EXTRA_CA_CERTS`; `strictPort` | Incluido en Vite; mismo origen para el navegador; la cookie `__Host-` real en cualquier navegador; una configuración rota se ve (error de certificado) en vez de quedar escondida | Exportar una variable de entorno por shell; un paso de instalación por equipo (lo pide igual el backend) | **Elegida** (proxy: usuario; HTTPS: usuario, H-10; detalle: DD-F23) |
+| Proxy de Vite por HTTP a `http://localhost:8080` (versión anterior) | Cero instalación | Chrome rechaza la cookie `__Host-` en `http://localhost` y Safari rechaza `Secure` (H-10); el backend ya no acepta `APP_BASE_URL` con `http://` | Descartada |
+| Proxy con `secure: false` (sin verificar el certificado del backend) | No hace falta `NODE_EXTRA_CA_CERTS` | Acostumbra a ignorar errores de certificado; un certificado vencido o equivocado pasa inadvertido; diferente de lo que hace el navegador | Descartada |
+| `@vitejs/plugin-basic-ssl` (certificado autofirmado propio de Vite) | Sin mkcert para el frontend | Otro certificado distinto del de `crm serve`; el navegador muestra un aviso cada vez; una dependencia más | Descartada |
 | Go reenvía a Vite | Un solo puerto | Código Go solo para desarrollo | Descartada |
 
 Compresión:
@@ -668,9 +677,17 @@ End-to-end:
 
 | Opción | A favor | En contra | Veredicto |
 |---|---|---|---|
-| **Playwright contra el binario + `docker compose` + axe** | Prueba SW, CSP, cookies, cabeceras y canvas reales; Chromium y WebKit | Necesita Docker; minutos de CI; Chromium necesita resolver H-10 para tener sesión | **Elegida**; Chromium en cada PR, WebKit antes de liberar (**usuario, P-F5**) |
+| **Playwright contra el binario en `https://localhost:8443` + `docker compose` + axe** | Prueba SW, CSP, la cookie `__Host-` real, cabeceras y canvas reales; Chromium y WebKit | Necesita Docker, minutos de CI y la CA de mkcert en el runner (receta de plan §10.5.1; supuesto S-12) | **Elegida**; Chromium en cada PR, WebKit antes de liberar (**usuario, P-F5**) |
 | Cypress | Buena experiencia | Sin WebKit | Descartada |
 | Solo pruebas manuales | Nada que mantener | Sin regresión automática en flujos críticos | Descartada |
+
+Certificado en los E2E (complementa R-23 del backend):
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **CA de mkcert instalada en el runner; Playwright sin `ignoreHTTPSErrors`** | Lo mismo que ve un usuario; el service worker se registra sin dudas; el E2E detecta un certificado mal armado | Depende de que los navegadores de Playwright usen los almacenes donde instala mkcert (S-12) | **Elegida** |
+| `ignoreHTTPSErrors: true` | Sin depender de S-12 | Con errores de certificado el service worker podría no registrarse; esconde problemas reales | **Respaldo** solo para el navegador que falle S-12 y solo si T-F703 pasa |
+| E2E por HTTP plano | Sin certificados | Sin sesión en Chromium (H-10); el backend ya no lo permite | Descartada |
 
 ## R-F12 Idioma y formato de fechas y dinero → ADR-023
 
@@ -704,13 +721,15 @@ pantallas sin sesión.
 | Email entre pantallas (DD-F9) | `location.state` | Query string: el email quedaría en logs de acceso del servidor |
 | Zona horaria en el registro (DD-F10, revisada) | La del navegador, sin validar ni reintentar (el backend usa la default si no la conoce, DD-27) | Reintento sin `timezone` ante `422` (versión anterior): innecesario desde DD-27; no enviarla: la empresa arrancaría en Buenos Aires aunque esté en otra zona |
 | Logo grande (DD-F11, revisada) | Achicarlo en el navegador (**usuario, P-F2**; detalle en R-F14) | Rechazarlo con una indicación (default anterior): el usuario pidió que las fotos del celular se puedan subir |
-| JPEG dentro de los límites (DD-F21, a aprobar P-F6) | Volver a codificarlo siempre | Subirlo tal cual: conserva la ubicación GPS de la foto y puede quedar de costado en el PDF |
+| JPEG dentro de los límites (DD-F21) | Volver a codificarlo siempre (**usuario, P-F6**) | Subirlo tal cual: conserva la ubicación GPS de la foto y puede quedar de costado en el PDF |
+| Tope de bytes del archivo preparado (DD-F22, nueva) | 2 097 152 bytes, el límite exacto del servidor (detalle en R-F14) | Dejar un margen (1 900 000): solo tenía sentido mientras no se sabía qué medía el servidor (H-11) |
+| Desarrollo con Vite (DD-F23, nueva) | HTTPS con el certificado de mkcert y *proxy* verificado (detalle en R-F08) | *Proxy* HTTP o `secure: false` (R-F08) |
 | Tema (DD-F13) | Solo claro (**usuario, P-F4**) | Claro + oscuro: el doble de verificación de contraste sin pedido de la spec |
 | Navegación (DD-F15) | Barra inferior (celular) + lateral (escritorio) | Menú hamburguesa: oculta la navegación y queda lejos del pulgar |
 | Repetir contraseña (DD-F16) | No, con mostrar/ocultar | Campo de confirmación: un campo más sin beneficio con el control de visibilidad |
 | Bloqueo (DD-F17) | Estado de `/login` | Ruta propia: pierde el email y no hay nada que enlazar |
 
-## R-F14 Preparación del logo en el navegador **(usuario: achicar, P-F2)** → DD-F11, DD-F20, DD-F21
+## R-F14 Preparación del logo en el navegador **(usuario: achicar, P-F2)** → DD-F11, DD-F20, DD-F21, DD-F22
 
 Dónde se achica:
 
@@ -728,6 +747,15 @@ Cómo se detecta el formato y el tamaño:
 | **Firma de los primeros bytes y dimensiones del encabezado (PNG `IHDR`, JPEG `SOF`), funciones puras** | No se decodifica una imagen enorme para descubrir que es enorme; se prueba con tablas de bytes en Vitest; no depende de `file.type` (que puede venir vacío o mal) | Parsers chicos propios | **Elegida** |
 | `file.type` y extensión | Trivial | Se puede equivocar (fotos sin tipo, extensiones cambiadas) | Descartada (solo se usa `file.type` como pista para SVG) |
 | Decodificar siempre y leer `bitmap.width` | Sin parsers | Una foto de 48 MP puede agotar la memoria de un celular antes de saber que había que rechazarla | Descartada como primer paso |
+
+Tope de bytes del archivo preparado (**segunda revisión**: el usuario fijó el límite en 2 MiB del
+archivo, H-11, DD-31):
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **2 097 152 bytes, el límite exacto del servidor, comparado con `≤`** | El servidor mide el contenido de la parte `file`, que es exactamente el `size` del archivo preparado; los encabezados multipart tienen su propio margen (cuerpo ≤ 2 162 688); un PNG que el servidor acepta se sube sin tocar; la mejor calidad posible dentro del límite | Si el backend baja el límite y el cliente no se actualiza, aparece un `413` (se detecta; la matriz de mantenimiento lo cubre) | **Elegida** (DD-F22) |
+| 1 900 000 bytes (margen de la revisión anterior) | Tolera diferencias de medición | Ya no hay diferencia que tolerar (H-11 resuelto); re-codifica PNG de 1,9–2 MiB que el servidor aceptaría y baja la calidad de los JPEG sin motivo | Descartada |
+| 2 000 000 bytes | "2 MB" decimal | No coincide con el límite elegido por el usuario; mismo problema que el margen | Descartada |
 
 Formato de salida:
 
@@ -749,7 +777,7 @@ Metadatos y orientación de los JPEG:
 
 | Opción | A favor | En contra | Veredicto |
 |---|---|---|---|
-| **Volver a codificar todo JPEG (aplicando la orientación con `imageOrientation: 'from-image'`)** | Quita GPS y datos del dispositivo; el logo queda derecho en cualquier visor y en el PDF | Una re-codificación con calidad 0,90 aunque no hiciera falta achicar | **Elegida** (DD-F21, a aprobar P-F6) |
+| **Volver a codificar todo JPEG (aplicando la orientación con `imageOrientation: 'from-image'`)** | Quita GPS y datos del dispositivo; el logo queda derecho en cualquier visor y en el PDF; el servidor no lo hace (guarda los bytes tal cual, INV-24 del plan) | Una re-codificación con calidad 0,90 aunque no hiciera falta achicar | **Elegida** (DD-F21, **confirmada por el usuario, P-F6**) |
 | Solo volver a codificar cuando supera los límites | Sin re-codificación innecesaria | Un JPEG chico de celular sube con GPS y puede quedar de costado en el PDF | Descartada |
 | Borrar los segmentos EXIF por bytes, sin re-codificar | Sin pérdida | Se pierde la orientación sin aplicarla: la foto queda de costado | Descartada |
 
@@ -760,16 +788,31 @@ Dónde se procesa:
 | **Hilo principal con `<canvas>`; `toBlob` asíncrono; estado "Preparando la imagen…"** | Lo más simple; funciona en todos los navegadores del piso | La decodificación puede trabar la UI unos cientos de ms en celulares lentos | **Elegida** |
 | Web Worker con `OffscreenCanvas` | UI siempre fluida | Más piezas (worker, mensajes) para una acción que se hace una vez | Descartada por ahora (se reevalúa si NFR-F13 no se cumple) |
 
-## R-F15 Cookie de sesión en `http://localhost` (H-10) → decisión del backend
+## R-F15 Cookie de sesión en `http://localhost` (H-10) → **resuelta por el usuario: HTTPS local con mkcert** (DD-24 del plan)
 
-Vista del frontend; la decisión es del backend (afecta `platform/config`, ADR-006, DD-24).
+Vista del frontend; la decisión la tomó el usuario y la incorporó el backend (`platform/config`,
+nota (b) en ADR-006, DD-24, R-23).
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **TLS local para desarrollo y E2E** (certificado de `localhost` de una CA local de `mkcert`, `crm serve` con TLS solo en modo local, Vite con `server.https` y el mismo certificado, la CA instalada en el runner de CI) | La misma cookie `__Host-` que producción en todos los navegadores; los E2E prueban lo real | Un paso de instalación por equipo y dos variables de configuración | **Elegida por el usuario** |
+| Cookie sin prefijo solo con `APP_BASE_URL` `http://localhost` | Cero instalación | Dos comportamientos de cookie; los E2E dejan de probar la real | Descartada |
+| Desarrollar y correr los E2E solo con Firefox | Cero cambios | Contradice P-F5 (Chromium en cada PR); el navegador más usado queda sin E2E | Descartada |
+| Esperar a que Chrome acepte `__Host-` en `localhost` | Cero cambios | Sin fecha conocida | Descartada |
+
+## R-F16 Prueba en un celular real con HTTPS (H-12) → hallazgo hacia el backend
+
+El checkpoint F6 (foto de la galería, S-F8, NFR-F13), NFR-F11 (instalar la PWA) y T-F705
+(TalkBack/VoiceOver) necesitan un origen HTTPS en el que confíe el teléfono y al que el teléfono
+llegue. `localhost` no sirve desde el celular y DD-24 solo permite TLS propio con
+`localhost`/`127.0.0.1`.
 
 | Opción | A favor | En contra | Veredicto del frontend |
 |---|---|---|---|
-| **TLS local para desarrollo y E2E** (certificado de desarrollo con `mkcert`, `crm serve` con TLS solo para `localhost`, Vite con `server.https` y el mismo certificado, Playwright con `ignoreHTTPSErrors` o la CA instalada en CI) | La misma cookie `__Host-` que producción en todos los navegadores; los E2E prueban lo real | Un paso de instalación y dos variables de configuración | **Recomendada** (es el respaldo que ya prevé R-23) |
-| Cookie sin prefijo solo con `APP_BASE_URL` `http://localhost` | Cero instalación | Dos comportamientos de cookie; los E2E dejan de probar la real (R-23 la descartó por eso) | Aceptable si el backend prioriza la simplicidad |
-| Desarrollar y correr los E2E solo con Firefox | Cero cambios | Contradice P-F5 (Chromium en cada PR); el navegador más usado queda sin E2E | Descartada |
-| Esperar a que Chrome acepte `__Host-` en `localhost` | Cero cambios | Sin fecha conocida | Descartada |
+| **Entorno de *staging* con dominio y HTTPS del hosting** | Es el modo normal de producción (sin TLS propio); sirve para Android e iPhone; sin tocar DD-24 | Depende de elegir hosting (P-1) | **Recomendada** |
+| Android: reenvío de puertos de Chrome (`chrome://inspect` → *Port forwarding*) a `localhost:8443` + la CA de mkcert instalada en el teléfono | Sin tocar DD-24: el teléfono abre `https://localhost:8443`, que es modo local; documentado por Chrome y mkcert | Solo Android y con cable USB; que Chrome en Android confíe en una CA instalada por el usuario para navegar no está verificado (S-F10) | **Respaldo** hasta tener *staging* |
+| Ampliar el modo local de DD-24 a IPs de la red local | Android e iPhone por Wi-Fi | Más reglas en `platform/config`; certificados por IP; el binario de desarrollo queda expuesto a la red; decisión del backend | No recomendada |
+| Túnel público (servicios que publican el puerto local en un dominio con HTTPS) | Rápido, cualquier teléfono | Expone el entorno de desarrollo a internet; dependencia externa; `APP_BASE_URL` con un dominio del túnel deja de ser modo local | Descartada |
 
 ## Fuentes consultadas (frontend)
 
@@ -784,9 +827,14 @@ Vista del frontend; la decisión es del backend (afecta `platform/config`, ADR-0
 - Chrome, criterios de instalación: <https://developer.chrome.com/blog/update-install-criteria>
 - `Intl.NumberFormat.prototype.format` con strings decimales exactos: <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/NumberFormat/format>
 - Cookies `Secure` y con prefijo en `http://localhost` por navegador: <https://github.com/httpwg/http-extensions/issues/2605>, <https://issues.chromium.org/issues/40202941>, <https://bugzilla.mozilla.org/show_bug.cgi?id=1618113>
+- mkcert (almacenes soportados, Firefox solo en macOS y Linux, `certutil` en Linux, `NODE_EXTRA_CA_CERTS` porque Node no usa el almacén del sistema, CA en iOS y Android, advertencia sobre `rootCA-key.pem`): <https://github.com/FiloSottile/mkcert>
+- Chrome DevTools, reenvío de puertos a un Android para abrir un servidor local: <https://developer.chrome.com/docs/devtools/remote-debugging/local-server>
 - `createImageBitmap` y `imageOrientation: 'from-image'`: <https://developer.mozilla.org/en-US/docs/Web/API/Window/createImageBitmap>, <https://caniuse.com/mdn-api_createimagebitmap_options_imageorientation_parameter_from-image>, <https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html>
 
 Supuestos a validar durante la implementación (detalle en `ui.md` §25): S-F1 (`$ref` externos en
 openapi-typescript, T-F004), S-F2 (openapi-fetch + MSW en jsdom, T-F003), S-F7 (orientación EXIF
-en `createImageBitmap`, T-F706), S-F8 (iOS convierte HEIC a JPEG al elegir, checkpoint F6), S-F9
-(codificación PNG/JPEG del canvas, T-F706). S-F3 quedó refutado para Chrome (H-10).
+en `createImageBitmap`, T-F706), S-F8 (iOS convierte HEIC a JPEG al elegir, checkpoint F6, depende
+de H-12), S-F9 (codificación PNG/JPEG del canvas, T-F706), S-F10 (reenvío de puertos en Android con
+la CA de mkcert, respaldo de H-12) y S-12 del plan (Chromium y WebKit de Playwright confían en la CA
+de mkcert, primera corrida de T-F701). S-F3 quedó refutado y ya no aplica: lo resolvió H-10 (HTTPS
+local).

@@ -2,15 +2,24 @@
 
 **Spec**: [`spec.md`](spec.md) · **Rama**: `001-empresas-usuarios` · **Fecha**: 2026-09-29
 **Autor**: `frontend-architect` · **Estado**: Propuesto (pendiente de aprobación del usuario)
-**Contrato consumido**: [`contracts/openapi.yaml`](contracts/openapi.yaml) v0.3.0 (**canónico**)
+**Contrato consumido**: [`contracts/openapi.yaml`](contracts/openapi.yaml) v0.3.1 (**canónico**)
 **Revisión 1 (2026-09-29)**: respuestas del usuario a P-F1 a P-F5 (§26) y resolución de los
 hallazgos H-1 a H-9 por el backend (`plan.md` §18, DD-22 a DD-30, §10.7, contrato v0.3.0). Cambios:
 el logo grande se achica en el navegador (§13.11.1, DD-F11, DD-F20, DD-F21); el registro ya no
 reintenta sin zona horaria (DD-F10); el `403` de CSRF entra al mapa de errores (§12.2);
 invitación vencida, rol de invitados y reinvitación con otro rol (§13.9, §13.10); distribución
 alineada con el mux raíz y la tabla de cabeceras del plan (§21); piso de Chrome 112 (NFR-F02).
-**Hallazgos nuevos** H-10 (Chrome rechaza la cookie `__Host-` en `http://localhost`; refuta S-F3
-para Chrome) y H-11 (tamaño exacto del límite de 2 MB), en §27.
+En esa revisión se reportaron H-10 (cookie `__Host-` en `http://localhost`) y H-11 (tamaño exacto
+del límite del logo).
+**Revisión 2 (2026-09-29)**: decisiones del usuario sobre H-10 (**HTTPS local con mkcert** en
+desarrollo y E2E), H-11 (**2 MiB = 2 097 152 bytes del archivo**) y P-F6 (**todo JPEG se vuelve a
+codificar**), ya incorporadas por el backend (`plan.md` DD-24 reescrita, DD-31, INV-23, INV-24,
+§10.5.1, §18 segunda tanda; contrato v0.3.1). Cambios: desarrollo y E2E sobre HTTPS, sin
+recomendar un navegador (§17, §21.3, DD-F23); sin HSTS en modo local (§21.2);
+`LOGO_TARGET_MAX_BYTES` = 2 097 152, el límite exacto (§13.11.1, DD-F22); errores `422`/`400` del
+logo por campo `file` (§12.2, §12.3); DD-F21 confirmada (§24); S-F3, P-F6, H-10 y H-11 cerrados
+(§25–§27). **Hallazgo nuevo** H-12 (la prueba en un celular real necesita un origen HTTPS accesible
+desde el teléfono), en §27.2.
 
 | Archivo | Contenido |
 |---|---|
@@ -37,7 +46,7 @@ propuestos, cada uno con su ADR):
 | Componentes y estilos | **shadcn/ui (sobre Radix) + Tailwind CSS v4 (u)** | ADR-016 |
 | Router | **React Router v7 en modo SPA/librería (u)**, variante *data* (`createBrowserRouter`) | ADR-017 |
 | Server state y cliente | **TanStack Query v5 + openapi-fetch, tipos con openapi-typescript (u)** | ADR-018 |
-| Distribución | **SPA embebida en el binario Go (`go:embed`), mismo origen que `/api/v1`; proxy de Vite en desarrollo (u)**; montaje, cabeceras y gzip aprobados (plan DD-22, DD-29) | ADR-019 |
+| Distribución | **SPA embebida en el binario Go (`go:embed`), mismo origen que `/api/v1`; proxy de Vite en desarrollo (u)**; montaje, cabeceras y gzip aprobados (plan DD-22, DD-29); **desarrollo y E2E sobre HTTPS local con mkcert (u, H-10, plan DD-24)** | ADR-019 |
 | PWA | Manifest + service worker mínimo escrito a mano, sin offline | ADR-020 |
 | Formularios | React Hook Form + Zod | ADR-021 |
 | Tests | Vitest + Testing Library + MSW; Playwright para E2E (Chromium en cada PR, WebKit antes de liberar) | ADR-022 |
@@ -61,7 +70,8 @@ obliga a cubrir los códigos nuevos. La interfaz es mobile-first (barra de naveg
 celular, lateral en escritorio), accesible (WCAG 2.2 AA) e instalable como PWA, con un service
 worker que **nunca** cachea la API y solo muestra una página de "sin conexión". El logo se prepara
 en el navegador (se achica si hace falta y se le quitan los metadatos de la foto) antes de subirlo;
-los límites del servidor siguen siendo la autoridad.
+los límites del servidor siguen siendo la autoridad. Desarrollo y E2E corren sobre HTTPS local, así
+la cookie es la misma que en producción en cualquier navegador.
 
 ---
 
@@ -272,7 +282,7 @@ después de 24 h), se trata igual que el `401` global (§12.4): caché vacía y 
 | BR-F10 | Todo botón de envío queda deshabilitado y con texto de progreso mientras la operación está en curso (sin doble envío). Salir de Datos de la empresa con cambios sin guardar, o mientras se prepara o sube el logo, pide confirmación. | Casos borde |
 | BR-F11 | Si el email de una invitación rechazada con `409 email_taken` coincide con un usuario **desactivado** de la lista, se sugiere "Es de {nombre}, que está desactivado. Podés reactivarlo desde la lista". | DD-21 |
 | BR-F12 | Al aceptar una invitación con otra sesión abierta en el navegador se avisa: "Tenés una sesión abierta como {email}. Si aceptás, se va a cerrar." | Casos borde |
-| BR-F13 | Un logo que supera los límites del servidor (tamaño o dimensiones) se achica en el navegador antes de subirlo; un JPEG siempre se vuelve a codificar para aplicar la orientación y quitar los metadatos de la foto (ubicación GPS, modelo del celular). El usuario ve "Preparando la imagen…" y, si se achicó, "Lo achicamos para que pese menos". El servidor sigue siendo quien acepta o rechaza. | P-F2, DD-11, DD-F20, DD-F21 |
+| BR-F13 | Un logo que supera los límites del servidor (tamaño o dimensiones) se achica en el navegador antes de subirlo; un JPEG siempre se vuelve a codificar para aplicar la orientación y quitar los metadatos de la foto (ubicación GPS, modelo del celular). El usuario ve "Preparando la imagen…" y, si se achicó, "Lo achicamos para que pese menos". El servidor sigue siendo quien acepta o rechaza. | P-F2, P-F6, DD-11, DD-31, DD-F20, DD-F21 |
 
 ---
 
@@ -290,9 +300,9 @@ después de 24 h), se trata igual que el `401` global (§12.4): caché vacía y 
 | NFR-F08 | Texto | Cuerpo 16 px; inputs ≥ 16 px (evita el zoom automático de iOS); zoom del navegador nunca bloqueado | Tokens + E2E |
 | NFR-F09 | Almacenamiento local | Ningún dato de negocio ni token en `localStorage`, `IndexedDB` ni Cache Storage. `sessionStorage` solo para marcas de UI (aviso ocultado, recarga por versión nueva) | Revisión + test de SW (T-F703) |
 | NFR-F10 | Seguridad del documento | CSP con `script-src 'self'` sin scripts inline (ADR-019, plan §10.7) | E2E sin violaciones de CSP (T-F702) |
-| NFR-F11 | Instalable | Chrome Android: "Instalar app"; iOS: "Agregar a inicio" con ícono y nombre "CRM" (provisorios, P-F1) | T-F703 + prueba manual |
+| NFR-F11 | Instalable | Chrome Android: "Instalar app"; iOS: "Agregar a inicio" con ícono y nombre "CRM" (provisorios, P-F1) | T-F703 + prueba manual (necesita un origen HTTPS accesible desde el teléfono, H-12) |
 | NFR-F12 | SC-001 | Registro en una pantalla, 6 campos, 1 request | E2E cronometrado (< 10 s automatizado) + prueba con un usuario real (< 3 min) |
-| NFR-F13 | Preparación del logo | Una foto de celular de 12 MP (≈ 4000×3000, 3–6 MB) queda lista para subir en ≤ 3 s en un Android de gama media; el procesamiento nunca decodifica imágenes de más de 25 MP. **Objetivo, no medición** | E2E con fixture (T-F706) + prueba manual en el celular (checkpoint F6) |
+| NFR-F13 | Preparación del logo | Una foto de celular de 12 MP (≈ 4000×3000, 3–6 MB) queda lista para subir en ≤ 3 s en un Android de gama media; el procesamiento nunca decodifica imágenes de más de 25 MP. **Objetivo, no medición** | E2E con fixture (T-F706) + prueba manual en el celular (checkpoint F6, H-12) |
 
 ---
 
@@ -370,7 +380,7 @@ Propiedades que se rompen **sin que falle la compilación**. Cada una tiene un t
 | INV-F10 | Al cerrar un diálogo o menú, el foco vuelve al control que lo abrió; al cambiar de ruta, el foco va al `<h1>` de la pantalla nueva. | T-F106, T-F503 |
 | INV-F11 | Todo campo tiene `<label>` asociado; todo error de campo está enlazado con `aria-describedby`; los errores generales se anuncian (`role="alert"`). | Tests por rol/nombre accesible + axe |
 | INV-F12 | Ningún componente formatea fechas o dinero por su cuenta: usa `lib/format` con la zona horaria de la empresa (ADR-023). | Revisión + T-F501 |
-| INV-F13 | Lo que la UI sube como logo es PNG o JPEG, ≤ 2000 px por lado y ≤ `LOGO_TARGET_MAX_BYTES`; un JPEG subido nunca conserva metadatos EXIF (se vuelve a codificar). El cliente es igual o más estricto que el servidor, que igual decide. | T-F604, T-F706 |
+| INV-F13 | Lo que la UI sube como logo es PNG o JPEG, ≤ 2000 px por lado y ≤ `LOGO_TARGET_MAX_BYTES` (2 097 152 bytes, el límite exacto del archivo en el servidor, DD-31); un JPEG subido nunca conserva metadatos EXIF (se vuelve a codificar). El cliente usa los mismos límites que el servidor, que igual decide (INV-24 del plan). | T-F604, T-F706 |
 | INV-F14 | El logo se muestra siempre con la URL versionada `/api/v1/tenant/logo?v={id}-{updated_at}` (parámetro `v` del contrato, ignorado por el servidor): al cambiar el logo o la empresa, cambia la URL. | T-F603 |
 
 ---
@@ -452,7 +462,7 @@ export const queryKeys = {
 
 ## 11. Contrato de consumo del API
 
-**Canónico**: `specs/001-empresas-usuarios/contracts/openapi.yaml` **v0.3.0**. Los tipos del
+**Canónico**: `specs/001-empresas-usuarios/contracts/openapi.yaml` **v0.3.1**. Los tipos del
 cliente se **generan** de él (ADR-018); si este documento y el YAML difieren, manda el YAML y este
 documento quedó desactualizado. Convención de los ejemplos: el valor es el tipo.
 
@@ -484,12 +494,22 @@ documento quedó desactualizado. Convención de los ejemplos: el valor es el tip
 
 No se consumen `/healthz` ni `/readyz`.
 
-**Logo y caché** (contrato v0.3.0, DD-23): `GET /tenant/logo` responde `Cache-Control: private,
+**Logo y caché** (contrato v0.3.1, DD-23): `GET /tenant/logo` responde `Cache-Control: private,
 no-cache` con un `ETag` distinto por objeto (y por empresa); el navegador revalida en cada uso y
 recibe `304` sin cuerpo si no cambió. El parámetro de query `v` (string, máx. 100 caracteres) lo
 ignora el servidor: la UI lo arma como `encodeURIComponent(`${tenant.id}-${tenant.updated_at}`)`
 (≈ 64 caracteres) para que el `<img>` cambie de URL apenas cambia el logo. `If-None-Match` lo
 maneja el navegador solo; la UI no lo envía a mano.
+
+**Subida del logo** (contrato v0.3.1, plan DD-31): `PUT /tenant/logo` con `multipart/form-data`
+y **una sola parte** `file`. El archivo puede pesar hasta **2 097 152 bytes** (2 MiB, medidos
+sobre el contenido de la parte `file`) y medir hasta 2000×2000 px; el cuerpo completo, hasta
+2 162 688 bytes (el margen de 64 KiB es para el *boundary* y los encabezados de la parte). Errores:
+`413 payload_too_large` si se supera cualquiera de los dos límites; `415 unsupported_media_type`
+si no es PNG ni JPEG; `422 validation_failed` con `field: file` y `code: required` (falta la parte
+o está vacía) o `code: invalid_value` (la imagen no se puede leer o supera 2000×2000);
+`400 malformed_request` si el multipart está mal formado o trae partes extra. El servidor guarda
+los bytes sin modificarlos y **no** quita EXIF (INV-24 del plan): eso lo hace la SPA (DD-F21).
 
 **¿El API manda algo que el cliente no debería ver?** Revisado: `User` no incluye hashes, tokens
 ni sesiones; `InvitationPreview` muestra nombre de empresa, email y rol solo a quien tiene el token
@@ -575,8 +595,9 @@ export function isRetryable(error: unknown): boolean;
 Subida del logo (`PUT /tenant/logo`, `multipart/form-data`): función `putTenantLogo(file: File):
 Promise<Tenant>` en `features/tenant/api.ts`. Si el tipo generado del body (`file: string`) no
 acepta un `File`, esa única función usa `fetch` nativo con `FormData` (sin fijar `Content-Type`,
-para que el navegador ponga el *boundary*) y la misma normalización `toApiError`. El archivo que
-recibe es siempre el resultado de `prepareLogo` (§13.11.1), nunca el original sin revisar.
+para que el navegador ponga el *boundary*) y la misma normalización `toApiError`. El `FormData`
+lleva **solo** la parte `file` (cualquier otra parte da `400`, DD-31). El archivo que recibe es
+siempre el resultado de `prepareLogo` (§13.11.1), nunca el original sin revisar.
 
 ### 11.4 Paso de *bundle* multi-spec (DD-17 del plan)
 
@@ -629,10 +650,10 @@ pantalla cuando hace falta; la tabla muestra el texto por defecto y las variante
 
 | `code` | HTTP | Título (y descripción) | Comportamiento |
 |---|---|---|---|
-| `malformed_request` | 400 | "No pudimos procesar el pedido." / "Recargá la página y probá de nuevo." | Error general del formulario. Es un bug del cliente: muestra `requestId` |
-| `validation_failed` | 422 | "Revisá los datos marcados." | `fieldErrors` → `setError` por campo (nombres = propiedades del contrato, `snake_case`) + foco en el primero. Campos desconocidos → error general |
+| `malformed_request` | 400 | "No pudimos procesar el pedido." / "Recargá la página y probá de nuevo." · Logo: "No pudimos subir el logo." / "Recargá la página y probá de nuevo." | Error general del formulario (logo: en el control del logo). Es un bug del cliente (en el logo, un multipart mal armado o con partes extra, DD-31): muestra `requestId` |
+| `validation_failed` | 422 | "Revisá los datos marcados." | `fieldErrors` → `setError` por campo (nombres = propiedades del contrato, `snake_case`) + foco en el primero. Campos desconocidos → error general. Logo: el error de `field: file` va al control del logo con el texto de §12.3 |
 | `unsupported_media_type` | 415 | Logo: "El logo tiene que ser una imagen PNG o JPG." · Resto: como `malformed_request` | Logo: error en el control de archivo |
-| `payload_too_large` | 413 | Logo: "La imagen sigue pesando más de lo permitido. Probá con otra imagen del logo." · Resto: como `malformed_request` | Idem (no debería pasar: el cliente ya la achicó; si pasa, ver H-11) |
+| `payload_too_large` | 413 | Logo: "La imagen sigue pesando más de lo permitido. Probá con otra imagen del logo." · Resto: como `malformed_request` | Idem. No debería pasar: el cliente nunca sube más de 2 097 152 bytes (DD-F22); si pasa, los límites del cliente y del servidor se desalinearon (RF-6) |
 | `unauthenticated` | 401 | En el login: "Tu sesión se cerró. Ingresá de nuevo para seguir." + ayuda "Las sesiones se cierran solas después de 24 horas sin uso o a los 7 días." | **Global** (§12.4) |
 | `invalid_credentials` | 401 | "El email o la contraseña no son correctos." | En S-02: se conserva el email, se vacía la contraseña y se enfoca. **No** dispara el manejador global |
 | `account_disabled` | 403 | "Tu usuario está desactivado." / "Pedile a un administrador de tu empresa que lo reactive." | En S-02: aviso persistente; no es "sin permiso" (no invalida sesión: no hay) |
@@ -653,11 +674,11 @@ pantalla cuando hace falta; la tabla muestra el texto por defecto y las variante
 
 | Código | Texto por defecto | Variantes por campo |
 |---|---|---|
-| `required` | "Completá este campo." | `industry_template_code`: "Elegí el rubro de tu empresa." · `base_currency`: "Elegí la moneda base." |
+| `required` | "Completá este campo." | `industry_template_code`: "Elegí el rubro de tu empresa." · `base_currency`: "Elegí la moneda base." · `file` (logo): "Elegí una imagen para el logo." (no debería pasar: la UI nunca sube un archivo vacío) |
 | `invalid_format` | "El formato no es válido." | `email`: "Ingresá un email válido, por ejemplo nombre@empresa.com" · `tax_id`: "El CUIT tiene 11 números (podés escribirlo con o sin guiones)." |
 | `too_short` | "Es demasiado corto." | `password`: "La contraseña tiene que tener al menos 10 caracteres." |
 | `too_long` | "Es demasiado largo (máximo {n} caracteres)." | `n` sale de las constantes del contrato por campo (`name`/`company_name` 120, `legal_name` 200, `address` 300, `phone` 50, `email` 254, `password` 128) |
-| `invalid_value` | "Elegí una opción de la lista." | |
+| `invalid_value` | "Elegí una opción de la lista." | `file` (logo): "No pudimos leer la imagen o mide más de 2000 × 2000 px. Probá con otra imagen del logo." |
 | `invalid_tax_id` | "El CUIT no es válido. Revisá los números." | |
 | `same_as_email` | "La contraseña no puede ser igual a tu email." | |
 | `unknown_template` | "Elegí un rubro de la lista." | Además se refresca `['industry-templates']` |
@@ -1107,7 +1128,7 @@ Para un invitado, {nombre} es su email (`name` es `null` hasta que acepta).
 | Éxito | `201`: vuelve a Usuarios + toast "Invitación enviada a {email}. Vence el {fecha}." · `200` con el mismo rol que tenía: "{email} ya estaba invitado: le reenviamos la invitación." · `200` con otro rol (se compara con `['users']` en caché; si no está, se usa el texto neutro anterior): "{email} ya estaba invitado: le reenviamos la invitación como {Rol}." |
 | Sin permiso / Sesión vencida | Guard / §12.4 |
 
-### 13.11 S-11 Datos de la empresa (`/settings/company`) · US-4, DD-11, DD-15, DD-16
+### 13.11 S-11 Datos de la empresa (`/settings/company`) · US-4, DD-11, DD-15, DD-16, DD-31
 
 ```text
 ┌──────────────────────────────────┐
@@ -1162,29 +1183,30 @@ Para un invitado, {nombre} es su email (`name` es `null` hasta que acepta).
 | Error de carga | `ErrorState` "No pudimos cargar los datos de tu empresa." + "Reintentar" |
 | Error al guardar | `422` por campo (`invalid_tax_id`, `invalid_format`, `too_long`, `invalid_timezone`); `503`/`500`/red con "Reintentar" y lo cargado intacto |
 | Preparando el logo | "Preparando la imagen…" (`aria-live="polite"`); "Cambiar logo" y "Quitar" deshabilitados |
-| Error de logo | Del cliente (§13.11.1, sin request) · Del servidor: `413`, `415`, `422` ("La imagen no se pudo leer o supera 2000 × 2000 px"), `503` |
+| Error de logo | Del cliente (§13.11.1, sin request) · Del servidor (en el control del logo, §12.2–12.3): `413`, `415`, `422` con `field: file` (`invalid_value`: "No pudimos leer la imagen o mide más de 2000 × 2000 px…"; `required`), `400` (con `requestId`), `503`/`500`/red con "Reintentar" |
 | Enviando | "Guardando…" / "Subiendo logo…" / "Quitando logo…" |
 | Éxito | Toast "Guardamos los datos de la empresa." / "Logo actualizado." (si se achicó: "Logo actualizado. Lo achicamos para que pese menos.") / "Quitamos el logo."; el encabezado se actualiza sin recargar (nueva URL con `v`) |
 | Cambios sin guardar | Al salir: "Tenés cambios sin guardar. ¿Salir igual?" (`useBlocker`); también mientras se prepara o sube el logo |
 | Sin permiso / Sesión vencida | Guard / §12.4 (DD-F5) |
 
-#### 13.11.1 Preparación del logo en el navegador (P-F2, DD-11, DD-F11, DD-F20, DD-F21)
+#### 13.11.1 Preparación del logo en el navegador (P-F2, P-F6, DD-11, DD-31, DD-F11, DD-F20, DD-F21, DD-F22)
 
 **Qué se resuelve**: una foto del logo sacada con el celular (3–6 MB, 4000×3000 px, con EXIF de
 orientación y ubicación) tiene que poder subirse aunque el servidor acepte solo PNG/JPEG de hasta
-2 MB y 2000×2000 px. Los límites del servidor **no cambian** y siguen siendo la autoridad; el
-cliente se ajusta a ellos con margen.
+**2 097 152 bytes** (2 MiB, medidos sobre el archivo, DD-31) y 2000×2000 px. Los límites del
+servidor **no cambian** y siguen siendo la autoridad (INV-24 del plan); el cliente apunta
+exactamente a ellos (DD-F22).
 
 **Constantes** (`features/tenant/logo/limits.ts`):
 
 | Constante | Valor | Por qué |
 |---|---|---|
 | `LOGO_MAX_SIDE` | 2000 px | Límite del servidor (DD-11), por lado |
-| `LOGO_TARGET_MAX_BYTES` | 1 900 000 bytes | Margen bajo "2 MB" mientras no esté definido si son 2 000 000 o 2 097 152 bytes, y si el límite cuenta el cuerpo multipart o solo el archivo (H-11) |
+| `LOGO_TARGET_MAX_BYTES` | **2 097 152 bytes** (el límite exacto del archivo, igual a `LogoMaxBytes` del backend) | El servidor mide el contenido de la parte `file` (DD-31), que es exactamente el `size` del archivo que prepara el cliente; los encabezados multipart tienen su propio margen de 64 KiB en el límite del cuerpo. Un margen extra no protege de nada y solo baja la calidad o re-codifica un PNG que el servidor aceptaría. Se compara con `≤` (el servidor acepta exactamente 2 097 152, T-B703/T-B705). DD-F22 |
 | `LOGO_INPUT_MAX_BYTES` | 20 MB | Por encima no se intenta procesar (memoria del celular) |
 | `LOGO_INPUT_MAX_PIXELS` | 25 000 000 (25 MP) | Decodificar más consume > 100 MB de memoria; una foto normal de celular tiene 12 MP |
 | Escalera JPEG (`maxSide`, calidad) | (2000, 0,90) → (2000, 0,80) → (1600, 0,80) → (1200, 0,80) → (1000, 0,75) | Primero se baja calidad sin perder resolución; después resolución. A 1000 px y 0,75 un JPEG pesa bastante menos de 1 MB |
-| Escalera PNG (`maxSide`) | 2000 → 1600 → 1200 → 1000 → 700 | PNG no tiene calidad. A 700×700 los píxeles sin comprimir (RGBA) ocupan ≈ 1,96 MB, así que el último paso prácticamente siempre entra |
+| Escalera PNG (`maxSide`) | 2000 → 1600 → 1200 → 1000 → 700 | PNG no tiene calidad. A 700×700 los píxeles sin comprimir (RGBA) ocupan 1 960 000 bytes, menos que el límite, así que el último paso prácticamente siempre entra |
 
 Nunca se agranda una imagen: `maxSide` efectivo = `min(paso, lado mayor original)`.
 
@@ -1219,12 +1241,14 @@ Reglas:
 - **Dimensiones desde el encabezado**, sin decodificar: PNG del chunk `IHDR`; JPEG del primer
   marcador `SOF0`–`SOF15` (salvo `C4`, `C8`, `CC`). Son las dimensiones crudas: con orientación
   EXIF de 90° ancho y alto se invierten, pero el límite es igual para ambos lados.
-- **PNG dentro de los límites** (≤ 2000 px por lado y ≤ `LOGO_TARGET_MAX_BYTES`): se sube el
-  archivo original, byte a byte (sin pérdida, transparencia intacta).
-- **JPEG: siempre se vuelve a codificar** (DD-F21), aunque ya cumpla los límites. Así se aplica la
-  orientación EXIF a los píxeles (un logo de foto nunca queda de costado en el PDF de 005) y se
-  quitan los metadatos: una foto de celular trae ubicación GPS y datos del dispositivo que no deben
-  terminar en un logo que se envía a clientes.
+- **PNG dentro de los límites** (≤ 2000 px por lado y ≤ 2 097 152 bytes): se sube el archivo
+  original, byte a byte (sin pérdida, transparencia intacta).
+- **JPEG: siempre se vuelve a codificar** (DD-F21, confirmada por el usuario en P-F6), aunque ya
+  cumpla los límites. Así se aplica la orientación EXIF a los píxeles (un logo de foto nunca queda
+  de costado en el PDF de 005) y se quitan los metadatos: una foto de celular trae ubicación GPS y
+  datos del dispositivo que no deben terminar en un logo que se envía a clientes. El servidor no lo
+  hace por su cuenta (guarda los bytes tal cual, INV-24 del plan): si lo sube otro cliente, el
+  riesgo queda aceptado del lado del backend (R-13 del plan).
 - **PNG que no cumple**: se vuelve a codificar como **PNG** (conserva la transparencia: el canvas
   arranca transparente y no se pinta fondo).
 - **JPEG que no cumple**: se codifica como **JPEG** (no tiene transparencia; convertirlo a PNG lo
@@ -1233,8 +1257,11 @@ Reglas:
   'from-image' })` (Chrome 112, Firefox 111, Safari 16: NFR-F02); cada paso de la escalera dibuja
   ese bitmap en un `<canvas>` del tamaño destino con `imageSmoothingQuality = 'high'` y codifica con
   `canvas.toBlob(tipo, calidad)`. Al terminar se libera (`bitmap.close()`).
+- **Un paso "entra"** si el `Blob` resultante pesa ≤ 2 097 152 bytes (y, por construcción, su lado
+  mayor es ≤ 2000).
 - **Resultado**: un `File` (`logo.png` o `logo.jpg`, el nombre no importa: el servidor genera la
-  clave) que va a `putTenantLogo`. El servidor vuelve a validar tipo, tamaño y dimensiones.
+  clave) que va a `putTenantLogo` como única parte `file`. El servidor vuelve a validar tipo,
+  tamaño y dimensiones.
 - **Sin dependencias**: todo con APIs del navegador (DD-F20). Sin *Web Worker*: `toBlob` ya es
   asíncrono y la UI muestra "Preparando la imagen…".
 
@@ -1248,10 +1275,10 @@ Mensajes (en el control del logo, `role="alert"`; no hay request):
 | `too_large_to_process` | "La imagen es demasiado grande para prepararla en este dispositivo. Probá con una captura de pantalla del logo o con una imagen más chica." |
 | `cannot_shrink` | "No pudimos achicar la imagen lo suficiente. Probá con otra imagen del logo." |
 
-**Cómo se prueba**: las funciones puras (firma, dimensiones, plan, escalera) con tablas de bytes en
-Vitest (T-F604); la pantalla con el adaptador de canvas sustituido, porque jsdom no tiene
-`createImageBitmap` ni canvas (T-F603); el adaptador real con imágenes de verdad en Playwright,
-Chromium y WebKit (T-F706).
+**Cómo se prueba**: las funciones puras (firma, dimensiones, plan, escalera, incluidos los bordes
+2 097 152 / 2 097 153 bytes) con tablas de bytes en Vitest (T-F604); la pantalla con el adaptador
+de canvas sustituido, porque jsdom no tiene `createImageBitmap` ni canvas (T-F603); el adaptador
+real con imágenes de verdad en Playwright, Chromium y WebKit (T-F706).
 
 ### 13.12 S-12 No encontrado (`*`)
 
@@ -1403,17 +1430,17 @@ sequenceDiagram
     P->>L: prepareLogo(file)
     L->>L: firma JPEG, dimensiones del encabezado, plan de re-codificación
     L->>C: createImageBitmap con orientación EXIF
-    loop pasos de la escalera hasta que entre
+    loop pasos de la escalera hasta que entre en 2097152 bytes
         L->>C: dibujar a maxSide y codificar JPEG con calidad
         C-->>L: blob
     end
     alt algún paso entra en el límite
         L-->>P: ok con File preparado y resized true
         P-->>A: Subiendo logo
-        P->>API: PUT /tenant/logo multipart
+        P->>API: PUT /tenant/logo multipart con una sola parte file
         alt 200 Tenant con updated_at nuevo
             P-->>A: toast Logo actualizado, lo achicamos; img con nueva URL v
-        else 413, 415 o 422
+        else 413, 415, 422 file o 400
             P-->>A: mensaje en el control del logo
         end
     else ninguno entra o no se puede leer
@@ -1580,7 +1607,7 @@ export interface LogoUploaderProps {
   companyName: string;
   logoSrc: string | null;                        // logoUrl(tenant); null si has_logo = false
   pending: 'processing' | 'upload' | 'remove' | null; // "Preparando la imagen…" / "Subiendo logo…" / "Quitando logo…"
-  error: string | null;                          // del cliente (§13.11.1) o del servidor
+  error: string | null;                          // del cliente (§13.11.1) o del servidor (§12.2–12.3)
   onSelectFile: (file: File) => void;            // el contenedor prepara (prepareLogo) y sube
   onRemove: () => void;                          // el contenedor pide confirmación
 }
@@ -1706,13 +1733,15 @@ export function formatRetryAt(retryAfterSeconds: number, now: Date): { time: str
 
 - **Principio**: la validación del cliente es UX inmediata; **la del servidor es la autoridad**.
   Toda regla replicada en el cliente sale del contrato (longitudes, formato, enum) o de un `DD`
-  del plan (DD-6 contraseña, DD-11 logo, DD-16 CUIT) y tiene su test; ninguna regla vive solo en el
-  cliente.
+  del plan (DD-6 contraseña, DD-11/DD-31 logo, DD-16 CUIT) y tiene su test; ninguna regla vive
+  solo en el cliente.
 - Esquemas Zod por formulario en la feature (`features/auth/schemas.ts`, etc.). Cada esquema se
   declara contra el tipo del contrato (`satisfies z.ZodType<SignupRequest>` o equivalente): si el
   contrato cambia un campo, **no compila**.
 - Los nombres de los campos del formulario son las propiedades del contrato (`snake_case`), así
   los `FieldError.field` del `422` se aplican directo con `setError` (`applyServerFieldErrors`).
+  El logo no es un campo de React Hook Form: su `422` (`field: file`) lo muestra el control del
+  logo (§13.11).
 - Normalización antes de enviar: `trim` en textos; email en minúsculas (el backend igual
   normaliza).
 - Cuándo se valida: al enviar; tras el primer intento, al cambiar el campo (el error se va apenas
@@ -1729,15 +1758,16 @@ export function formatRetryAt(retryAfterSeconds: number, now: Date): { time: str
 | Aceptar invitación | Nombre 1–120; contraseña 10–128 y ≠ email de la vista previa | Token |
 | Invitar | Email; rol | Email en uso (`409`) |
 | Datos de la empresa | Nombre 1–120; longitudes; email de contacto; CUIT (formato + dígito verificador) | Zona horaria válida; todo lo anterior otra vez |
-| Logo | Formato por firma, dimensiones y peso (§13.11.1), con margen bajo el límite del servidor | Tipo real, peso y dimensiones (DD-11) |
+| Logo | Formato por firma, dimensiones y peso (§13.11.1), con los mismos límites exactos que el servidor (≤ 2000 px, ≤ 2 097 152 bytes) | Tipo real, peso, dimensiones y forma del multipart (DD-11, DD-31) |
 
 ---
 
 ## 17. Autenticación en el cliente
 
-- **Dónde vive la sesión**: en la cookie `__Host-crm_session` (`HttpOnly`), que el navegador envía
-  sola a `/api/v1` porque la SPA es del mismo origen (ADR-006, ADR-019). **El cliente nunca lee,
-  guarda ni envía un token de sesión.** No hay `Authorization` ni `localStorage`.
+- **Dónde vive la sesión**: en la cookie `__Host-crm_session` (`HttpOnly`, siempre `Secure`,
+  `SameSite=Lax`; INV-23 del plan), que el navegador envía sola a `/api/v1` porque la SPA es del
+  mismo origen (ADR-006, ADR-019). **El cliente nunca lee, guarda ni envía un token de sesión.**
+  No hay `Authorization` ni `localStorage`.
 - **Qué sabe el cliente**: `SessionInfo` en la caché (`['session']`), para mostrar nombre, empresa
   y opciones. Es información de presentación, **no** una prueba de identidad.
 - **Autorización**: la hace el servidor en cada request. Los permisos de `/me` solo ocultan
@@ -1755,8 +1785,10 @@ export function formatRetryAt(retryAfterSeconds: number, now: Date): { time: str
   la cachea.
 - **Varias pestañas**: sin coordinación en el MVP; cada pestaña se entera en su próximo request o
   al recibir el foco.
-- **Desarrollo local**: ver §21.3 y H-10 (la cookie `__Host-` en `http://localhost` según el
-  navegador).
+- **Desarrollo local**: siempre sobre HTTPS con un certificado de `localhost` de una CA local de
+  mkcert (§21.3, DD-24 del plan, H-10 resuelto). La cookie es la misma que en producción en
+  Chrome, Firefox y Safari; no hay variante de desarrollo de la cookie ni forma de emitirla sin
+  `Secure`.
 
 ---
 
@@ -1874,7 +1906,7 @@ viewport-fit=cover">` (sin bloquear el zoom), `<meta name="theme-color" content=
 
 ---
 
-## 21. Distribución y build (ADR-019; plan DD-22, DD-29, §10.7)
+## 21. Distribución y build (ADR-019; plan DD-22, DD-24, DD-29, §10.5.1, §10.7)
 
 - `web/` contiene la SPA; `npm run build` genera `web/dist/`. El paquete Go `web` (en la raíz del
   repo, fuera de `internal/`, porque `go:embed` necesita que `dist` esté bajo el paquete) embebe
@@ -1905,13 +1937,13 @@ viewport-fit=cover">` (sin bloquear el zoom), `<meta name="theme-color" content=
 ### 21.2 Cabeceras
 
 **Fuente única**: la tabla de `plan.md` §10.7 (la verifican los tests Go de T-B203 y T-F007). La
-de abajo es la parte de la SPA, idéntica a §10.7 al 2026-09-29; si alguna vez difieren, **manda
-§10.7** (es lo que el servidor implementa y prueba) y este documento se actualiza en el mismo
-cambio.
+de abajo es la parte de la SPA, idéntica a §10.7 al 2026-09-29 (segunda tanda del plan incluida);
+si alguna vez difieren, **manda §10.7** (es lo que el servidor implementa y prueba) y este
+documento se actualiza en el mismo cambio.
 
 | Recurso | `Cache-Control` | Otras | gzip |
 |---|---|---|---|
-| Toda respuesta (heredadas del mux raíz) | — | `X-Request-Id`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Strict-Transport-Security` | — |
+| Toda respuesta (heredadas del mux raíz) | — | `X-Request-Id`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Strict-Transport-Security` (**salvo en modo local**: host de `APP_BASE_URL` `localhost` o `127.0.0.1`, DD-24) | — |
 | `index.html` (y el *fallback*) | `no-cache` | `Content-Security-Policy` (abajo) | Sí |
 | `/assets/*` (nombre con hash) | `public, max-age=31536000, immutable` | | Sí (JS, CSS) |
 | `/sw.js` | `no-cache` | `Content-Type: text/javascript` | Sí |
@@ -1935,45 +1967,82 @@ base-uri 'none'; form-action 'self'; frame-ancestors 'none'
 - `img-src blob:` para una vista previa local de imágenes; `data:` para íconos embebidos en CSS. La
   preparación del logo usa `createImageBitmap` y `<canvas>` sobre el `Blob` del archivo: no carga
   nada por URL, así que no necesita nada más de la CSP.
-- Sin `upgrade-insecure-requests` (rompería el binario servido por `http://localhost`; HSTS ya
-  cubre producción).
+- Sin `upgrade-insecure-requests`: no está en §10.7 y no hace falta (la SPA solo pide recursos de
+  su mismo origen, que es HTTPS en todos los entornos donde hay un navegador).
 - El servidor de desarrollo de Vite **no** aplica CSP (usa scripts inline para HMR): la CSP se
   prueba en E2E contra el binario (NFR-F10).
+- Sin HSTS en modo local (DD-24): el navegador del desarrollador no registra HSTS para `localhost`
+  y no fuerza HTTPS en otros proyectos locales (S-13 del plan). T-F007 prueba ambos modos.
 
-### 21.3 Desarrollo local
+### 21.3 Desarrollo local y E2E con HTTPS (plan DD-24, §10.5.1; H-10 resuelto)
 
-| Modo | Cómo | Para qué |
+La cookie de sesión es siempre `__Host-crm_session` con `Secure` (INV-23 del plan) y
+`APP_BASE_URL` siempre es `https://`: no existe `COOKIE_SECURE` ni una variante de desarrollo de la
+cookie. Por eso **el navegador trabaja siempre sobre HTTPS**, también en desarrollo y en E2E, con
+un certificado de `localhost` emitido por una CA local de **mkcert**. Así la cookie es la misma
+que en producción en Chrome, Firefox y Safari (supuesto S-12 del plan), y no hace falta elegir un
+navegador para desarrollar.
+
+**Una vez por equipo** (el README lo documenta, T-B014 y T-F009): instalar mkcert (en Linux,
+también `certutil`), correr `mkcert -install` (crea la CA local y la agrega a los almacenes de
+confianza del sistema y de los navegadores) y `make dev-certs` (genera `.certs/localhost.pem` y
+`.certs/localhost-key.pem` en la raíz del repo, ignorados por git). En la shell donde se corre
+Node: `export NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem"`. La clave de la CA
+(`rootCA-key.pem`) **no se comparte ni se copia al repo** (R-14 del plan).
+
+| Modo | `crm serve` | Frontend | El navegador abre | `APP_BASE_URL` | Para qué |
+|---|---|---|---|---|---|
+| **Vite + API** | `HTTP_ADDR=:8443`, `TLS_CERT_FILE=.certs/localhost.pem`, `TLS_KEY_FILE=.certs/localhost-key.pem` | `cd web && npm run dev` | `https://localhost:5173` | `https://localhost:5173` (los enlaces de email abren Vite) | Desarrollo con recarga en caliente |
+| **Binario completo** (y E2E) | Igual que arriba | `make build` (SPA embebida) | `https://localhost:8443` | `https://localhost:8443` | Igual que producción: CSP, service worker, cabeceras (sin HSTS: modo local); lo usa el E2E |
+| Solo backend | HTTP plano en `:8080`, sin `TLS_*` | — | — (`curl`) | `https://localhost:8080` | Del backend; un navegador no tendría sesión |
+
+**Configuración de Vite** (`web/vite.config.ts`, T-F006):
+
+| Opción | Valor | Por qué |
 |---|---|---|
-| Vite + API | `docker compose up` + `crm serve` (`:8080`) + `cd web && npm run dev` (`:5173`); Vite hace *proxy* de `/api` a `http://localhost:8080` **sin** `changeOrigin` (el `Host` sigue siendo `localhost:5173`, lo que espera el test T-B203 del backend). `APP_BASE_URL=http://localhost:5173` para que los enlaces de email abran Vite | Desarrollo con recarga en caliente |
-| Binario completo | `make build` + `crm serve`, abrir `http://localhost:8080` | Igual que producción (CSP, SW, cabeceras); lo usa el E2E |
+| `server.https` | `cert` y `key` leídos de `../.certs/localhost.pem` y `../.certs/localhost-key.pem` | El mismo certificado que usa `crm serve`; el navegador confía en él por `mkcert -install` |
+| Certificados ausentes | `npm run dev` termina con "Faltan los certificados de desarrollo: corré `make dev-certs` (ver README)." | Error accionable en vez de un *stack trace* |
+| `server.port` / `server.strictPort` | `5173` / `true` | `APP_BASE_URL` apunta a ese puerto: si Vite eligiera otro en silencio, los enlaces de email abrirían otra cosa |
+| `server.proxy['/api']` | `target: 'https://localhost:8443'`, **sin** `changeOrigin`, con la verificación del certificado activada (sin `secure: false`) | Sin `changeOrigin`, el backend ve `Host: localhost:5173`, igual al `Origin` del navegador: `CrossOriginProtection` lo trata como mismo origen (T-B203). La verificación funciona porque Node confía en la CA por `NODE_EXTRA_CA_CERTS`; apagarla escondería una configuración rota (DD-F23) |
+| `NODE_EXTRA_CA_CERTS` | Exportada en la shell antes de `npm run dev` y `npm run e2e` | Node no usa el almacén del sistema (lo documenta mkcert) y lee esa variable solo al arrancar el proceso: no se puede fijar desde `vite.config.ts` |
 
-**Cookie de sesión en `http://localhost`** (DD-24 del plan, H-3 resuelto, **H-10 nuevo**): el
-backend acepta `APP_BASE_URL=http://localhost…` con `COOKIE_SECURE=true`, pero la cookie se llama
-`__Host-crm_session`, y los navegadores no tratan igual ese prefijo en `http://localhost`:
+**E2E** (T-F701): Playwright contra el binario en `https://localhost:8443` (`use.baseURL`), sin
+`ignoreHTTPSErrors`. En CI, el job sigue la receta de plan §10.5.1: mkcert de versión fijada con
+checksum verificado, `certutil`, `mkcert -install`, `make dev-certs`, `crm serve` como en "Binario
+completo" y `NODE_EXTRA_CA_CERTS` para el proceso de Playwright. La CA se crea en el runner y muere
+con él. Que Chromium y WebKit de Playwright confíen en esa CA es el supuesto **S-12** del plan: se
+valida en la primera corrida de T-F701. Respaldo: `ignoreHTTPSErrors` solo para el navegador que
+falle y **solo si** T-F703 muestra que el service worker se registra igual; si no, se vuelve al
+arquitecto.
 
-| Navegador | Cookie `Secure` en `http://localhost` | Cookie `__Host-` en `http://localhost` | Consecuencia |
-|---|---|---|---|
-| Firefox | Sí | Sí | Funciona |
-| Chrome / Chromium (incluido Playwright) | Sí | **No** (según la última fuente verificable) | **No hay sesión**: ni en desarrollo con Chrome ni en los E2E de Chromium sobre `http://localhost` |
-| Safari | No | No | No funciona (ya se sabía) |
+**Diagnóstico rápido** (complementa la fila del runbook del plan, "el navegador no guarda la
+sesión"):
 
-Hasta que el backend resuelva H-10: se desarrolla con **Firefox**. Los E2E de Chromium (T-F7xx)
-dependen de H-10.
+| Síntoma | Causa probable | Qué hacer |
+|---|---|---|
+| El navegador muestra un aviso de certificado | Falta `mkcert -install`, o ese navegador no usa el almacén donde mkcert instaló la CA (mkcert documenta Firefox solo en macOS y Linux) | `mkcert -install` y reiniciar el navegador |
+| `npm run dev` arranca, pero toda llamada a `/api` falla y la consola de Vite muestra un error de certificado | Falta `NODE_EXTRA_CA_CERTS` en la shell de `npm run dev` | Exportarla y reiniciar Vite |
+| Se ingresa y enseguida todo da `401` | Se abrió un origen distinto del de `APP_BASE_URL`, o `crm serve` no está en HTTPS | Abrir exactamente `https://localhost:5173` (o `:8443` en modo binario); verificar el log `listen=https_local` |
+
+**Celular**: `localhost` no es accesible desde el teléfono y el modo local de DD-24 no acepta la IP
+de la red local, así que la prueba en un celular real (checkpoint F6, NFR-F11, NFR-F13, S-F8)
+necesita otro origen HTTPS: hallazgo **H-12** (§27.2).
 
 ---
 
 ## 22. Estructura de carpetas
 
 ```text
+.certs/                         # raíz del repo, ignorada por git: localhost.pem y localhost-key.pem (make dev-certs, T-B014)
 web/                            # también es el paquete Go `web` (embed.go)
 ├── index.html                  # documento base (lang, viewport, manifest, theme-color, noscript)
 ├── package.json                # scripts: dev, gen:api, lint, typecheck, test, build, check, e2e
-├── vite.config.ts              # proxy /api en dev (sin changeOrigin), build.target, alias @/
+├── vite.config.ts              # server.https con ../.certs, strictPort, proxy /api → https://localhost:8443 (sin changeOrigin), build.target, alias @/
 ├── tsconfig*.json              # strict, noUncheckedIndexedAccess, alias @/*
 ├── eslint.config.js            # typescript-eslint, react-hooks, jsx-a11y, no-restricted-imports (§9.1)
 ├── components.json             # configuración de shadcn (Radix, lucide, alias)
 ├── redocly.yaml                # una entrada por spec → src/api/generated/NNN.ts (§11.4)
-├── playwright.config.ts
+├── playwright.config.ts        # baseURL https://localhost:8443; Chromium (cada PR) y WebKit
 ├── embed.go                    # package web: //go:embed all:dist, DistFS(), NewHandler() (ADR-019)
 ├── handler.go / *_test.go      # reglas §21.1–21.2 y sus tests (T-F007/T-F008, Go)
 ├── dist/                       # build (ignorado por git salvo .gitkeep)
@@ -2049,8 +2118,10 @@ La preparación de imágenes vive en `features/tenant/logo/` porque solo la usa 
 | **DD-F17** | El bloqueo por intentos es un estado de `/login`, no una ruta | Conserva el email y el contexto | — |
 | **DD-F18** | Desde el `409` del registro se navega a S-03 con el email prellenado (no se envía el pedido automáticamente) | Reusa una pantalla con sus estados; el usuario confirma el email antes de enviar | Dos toques en vez de uno |
 | **DD-F19** | Mutaciones con `networkMode: 'always'` | Sin conexión fallan enseguida con mensaje claro | El usuario reintenta a mano |
-| **DD-F20** | *(Nueva)* La preparación del logo usa solo APIs del navegador: firma y dimensiones leídas de los bytes (funciones puras), `createImageBitmap` con orientación EXIF, `<canvas>` y `toBlob`; escalera fija de tamaños y calidades; PNG se mantiene PNG (transparencia) y JPEG se mantiene JPEG; sin *Web Worker* | Sin dependencias; las decisiones viven en funciones puras que se prueban con tablas; lo que depende del navegador es un adaptador chico | La escalera es fija (no busca la calidad óptima); el procesamiento corre en el hilo principal salvo la codificación |
-| **DD-F21** | *(Nueva, a aprobar: P-F6)* Todo JPEG se vuelve a codificar aunque ya cumpla los límites | Aplica la orientación EXIF a los píxeles (el logo nunca queda de costado en el PDF de 005, que puede ignorar EXIF) y quita la ubicación GPS y los datos del celular de una imagen que termina en documentos enviados a clientes | Una re-codificación con calidad 0,90 (pérdida mínima) aun cuando no hacía falta achicar |
+| **DD-F20** | La preparación del logo usa solo APIs del navegador: firma y dimensiones leídas de los bytes (funciones puras), `createImageBitmap` con orientación EXIF, `<canvas>` y `toBlob`; escalera fija de tamaños y calidades; PNG se mantiene PNG (transparencia) y JPEG se mantiene JPEG; sin *Web Worker* | Sin dependencias; las decisiones viven en funciones puras que se prueban con tablas; lo que depende del navegador es un adaptador chico | La escalera es fija (no busca la calidad óptima); el procesamiento corre en el hilo principal salvo la codificación |
+| **DD-F21** | Todo JPEG se vuelve a codificar aunque ya cumpla los límites. **Confirmada por el usuario (P-F6).** | Aplica la orientación EXIF a los píxeles (el logo nunca queda de costado en el PDF de 005, que puede ignorar EXIF) y quita la ubicación GPS y los datos del celular de una imagen que termina en documentos enviados a clientes; el servidor no lo hace (INV-24 del plan) | Una re-codificación con calidad 0,90 (pérdida mínima) aun cuando no hacía falta achicar |
+| **DD-F22** | *(Nueva, revisión 2)* `LOGO_TARGET_MAX_BYTES` = **2 097 152 bytes**, el límite exacto del archivo en el servidor (DD-31), sin margen; se compara con `≤` | El servidor mide el contenido de la parte `file`, que es el `size` exacto del archivo preparado; los encabezados multipart tienen su propio margen de 64 KiB en el límite del cuerpo. Un margen extra solo bajaría la calidad o re-codificaría un PNG que el servidor acepta | Si el backend cambia el límite, el cliente tiene que cambiar la constante en el mismo PR (matriz §29); si no, un `413` lo delata (RF-6) |
+| **DD-F23** | *(Nueva, revisión 2)* Desarrollo con Vite sobre HTTPS con el mismo certificado de mkcert que `crm serve`; *proxy* a `https://localhost:8443` sin `changeOrigin` y **con** verificación de certificado (Node confía por `NODE_EXTRA_CA_CERTS`); `strictPort` | Es la receta del plan (§10.5.1) llevada a la configuración de Vite; verificar el certificado hace visible una configuración rota en vez de esconderla | Un paso más por equipo (exportar la variable) |
 
 ---
 
@@ -2060,13 +2131,15 @@ La preparación de imágenes vive en `features/tenant/logo/` porque solo la usa 
 |---|---|---|---|---|
 | S-F1 | `openapi-typescript` (con `redocly.yaml`) resuelve `$ref` externos entre contratos de specs | Abierto | T-F004 (contrato de prueba que referencia a 001) | Paso previo `redocly bundle` (§11.4) |
 | S-F2 | openapi-fetch con `baseUrl` absoluta funciona en jsdom con MSW interceptando | Abierto | T-F003 | Ajustar el entorno de test (p. ej. `happy-dom`) sin cambiar el código de la app |
-| S-F3 | Los navegadores aceptan la cookie `__Host-crm_session; Secure` servida por `http://localhost` | **Refutado para Chrome/Chromium** (acepta `Secure` pero rechaza el prefijo `__Host-` en `http://localhost`); válido para Firefox; Safari no acepta ninguna | Fuentes de §30; spike manual en T-F006 | H-10 |
+| S-F3 | Los navegadores aceptan la cookie `__Host-crm_session; Secure` servida por `http://localhost` | **Refutado (Chrome y Safari) y ya no aplica**: el usuario eligió HTTPS local con mkcert (H-10, DD-24). Lo reemplaza S-12 del plan | Spike de T-F006 sobre HTTPS | — |
 | S-F4 | Los usuarios tienen navegadores de NFR-F02 (celulares de los últimos ~4 años) | Abierto | Consultas de soporte | Tailwind v4 no funciona en navegadores más viejos: habría que volver a v3.4 (nuevo ADR) |
 | S-F5 | Nombre e íconos de la app son provisorios ("CRM", íconos genéricos) | Confirmado por el usuario (P-F1) | — | Se cambian manifest e íconos, sin impacto en código |
-| S-F6 | El backend ignora parámetros de query en `GET /tenant/logo` | **Resuelto**: el contrato v0.3.0 declara `v` (DD-23) | — | — |
+| S-F6 | El backend ignora parámetros de query en `GET /tenant/logo` | **Resuelto**: el contrato declara `v` (DD-23) | — | — |
 | S-F7 | `createImageBitmap(file, { imageOrientation: 'from-image' })` aplica la orientación EXIF en Chrome ≥ 112, Firefox ≥ 111 y Safari ≥ 16 (documentado; falta verlo con una foto real) | Abierto | T-F706 (Chromium y WebKit) con una foto de orientación 6 | Leer la orientación del EXIF con una función pura y rotar en el canvas |
-| S-F8 | En iOS, un `<input type="file" accept="image/png,image/jpeg">` entrega las fotos HEIC convertidas a JPEG | Abierto | Prueba manual en un iPhone (checkpoint F6) | Se rechazan con "tiene que ser PNG o JPG" (el usuario puede sacar una captura); evaluar aceptar HEIC en Safari, que lo decodifica |
+| S-F8 | En iOS, un `<input type="file" accept="image/png,image/jpeg">` entrega las fotos HEIC convertidas a JPEG | Abierto | Prueba manual en un iPhone (checkpoint F6; necesita un origen HTTPS accesible desde el teléfono, H-12) | Se rechazan con "tiene que ser PNG o JPG" (el usuario puede sacar una captura); evaluar aceptar HEIC en Safari, que lo decodifica |
 | S-F9 | `canvas.toBlob('image/png')` conserva la transparencia y `toBlob('image/jpeg', q)` respeta la calidad pedida en los navegadores de NFR-F02 | Abierto | T-F706 | Ajustar la escalera |
+| S-12 (plan) | Tras `mkcert -install`, Chrome, Firefox y Safari en desarrollo, y Chromium y WebKit de Playwright en CI, confían en el certificado de `localhost` | Abierto | Primera corrida de T-F701 (y spike de T-F006 en desarrollo) | Respaldo en CI: `ignoreHTTPSErrors` solo si el service worker se registra igual (T-F703); si no, volver al arquitecto |
+| S-F10 | En Android, el reenvío de puertos de Chrome (`chrome://inspect`) a `localhost:8443` más la CA de mkcert instalada en el teléfono permiten probar el binario local con sesión (respaldo de H-12) | Abierto (no verificado) | Checkpoint F6, si no hay otro origen | Probar en el celular solo contra un entorno con dominio y HTTPS real |
 
 ## 26. Preguntas
 
@@ -2077,38 +2150,46 @@ La preparación de imágenes vive en `features/tenant/logo/` porque solo la usa 
 | P-F3 | ¿Rutas en inglés o en español? | **Resuelta** | Inglés; `APP_LINK_*` = `/reset-password`, `/verify-email`, `/accept-invitation` (DD-F1, DD-14) |
 | P-F4 | ¿Modo oscuro? | **Resuelta** | No en el MVP (DD-F13) |
 | P-F5 | ¿E2E en cada PR? | **Resuelta** | Playwright con Chromium en cada PR; WebKit antes de liberar |
-| **P-F6** | ¿Volvemos a codificar **todo** JPEG de logo (aunque cumpla los límites) para enderezarlo y quitarle la ubicación GPS y los datos del celular? | **Abierta, no bloquea** | Default: sí (DD-F21). Si la respuesta es no, un JPEG dentro de los límites se sube tal cual y se pierde la corrección de orientación |
+| P-F6 | ¿Volvemos a codificar **todo** JPEG de logo (aunque cumpla los límites) para enderezarlo y quitarle la ubicación GPS y los datos del celular? | **Resuelta** | Sí (default aceptado): DD-F21. El backend no cambia y guarda los bytes tal cual (INV-24 del plan) |
+
+No quedan preguntas abiertas del frontend.
 
 ## 27. Hallazgos para el backend-architect
 
-### 27.1 Resueltos (plan §18, contrato v0.3.0)
+### 27.1 Resueltos (plan §18, contrato v0.3.1)
 
 | ID | Hallazgo | Resolución del backend | Cómo lo usa el frontend |
 |---|---|---|---|
 | H-1 | Montaje de la SPA | Mux raíz (DD-22, INV-22); `web.DistFS`, `web.NewHandler`; stub `503` hasta T-F008 | §21; T-F007/T-F008 |
 | H-2 | Caché del logo | `private, no-cache` + `ETag` por objeto; `v` declarado e ignorado; `304` (DD-23) | `logoUrl` con `v` (INV-F14, DD-F12) |
-| H-3 | `APP_BASE_URL` en desarrollo | `http://localhost`/`127.0.0.1` con `COOKIE_SECURE=true` (DD-24) | §21.3; **no alcanza para Chrome: H-10** |
+| H-3 | `APP_BASE_URL` en desarrollo | Primero `http://localhost` con `COOKIE_SECURE=true`; **reemplazado por H-10** | — |
 | H-4 | Invitación vencida | `invitation_expires_at` informa la última aunque haya vencido (DD-25) | §13.9 "La invitación venció el …" |
 | H-5 | Rol de invitados | Reinvitar con otro rol lo cambia; `PUT …/role` para `invited`; `disabled` → `invalid_state` (DD-26) | BR-F01, BR-F08, §13.9, §13.10 |
 | H-6 | Zona horaria del registro | Desconocida → default sin error (DD-27) | DD-F10 revisada: sin reintento |
 | H-7 | `no-store` en la API | En toda la API salvo el logo (DD-28) | §10.2, §17 |
 | H-8 | Cabeceras y gzip de la SPA | Tabla §10.7; `gzhttp` aprobada solo para la SPA (DD-29) | §21.2 remite a §10.7; ADR-019 actualizado |
 | H-9 | CSRF en problem+json | `403 forbidden` problem+json (DD-30) | §12.1–12.2: mismo tratamiento que cualquier `403 forbidden` |
+| H-10 | Cookie `__Host-` en `http://localhost` (Chrome la rechaza; Safari rechaza `Secure`) | Decisión del usuario: **HTTPS local con mkcert**. `APP_BASE_URL` siempre `https://`; sin `COOKIE_SECURE`; `TLS_CERT_FILE`/`TLS_KEY_FILE` solo en modo local (`crm serve` en `:8443`); sin HSTS en modo local; `make dev-certs`; receta de CI (DD-24, INV-23, §10.5.1, T-B002, T-B004, T-B014) | §17, §21.2, §21.3, DD-F23; T-F006, T-F007, T-F009, T-F701 |
+| H-11 | Tamaño exacto del límite del logo | Archivo ≤ 2 097 152 bytes (2 MiB), medido sobre la parte `file`; cuerpo ≤ 2 162 688; una sola parte `file`; errores `413`/`415`/`422 file`/`400` (DD-31, INV-24, contrato v0.3.1) | §11.1, §12.2–12.3, §13.11.1, DD-F22; T-F101, T-F603, T-F604, T-F706 |
 
-Verificación de consistencia hecha el 2026-09-29: la CSP y las cabeceras de caché de §21.2 y de
-ADR-019 coinciden con `plan.md` §10.7; el uso del logo (`v`, `ETag`, `304`, `private, no-cache`)
-coincide con el contrato v0.3.0.
+Verificación de consistencia hecha el 2026-09-29 (revisión 2): la CSP y las cabeceras de §21.2 y
+de ADR-019 coinciden con `plan.md` §10.7 (incluido HSTS solo fuera del modo local); el uso del logo
+(`v`, `ETag`, `304`, `private, no-cache`) y los límites y errores de `PUT /tenant/logo` coinciden
+con el contrato v0.3.1; los modos y puertos de §21.3 coinciden con plan §10.5.1.
 
 ### 27.2 Nuevos
 
 | ID | Hallazgo | Propuesta | Impacto en el frontend |
 |---|---|---|---|
-| **H-10** (bloquea el desarrollo con Chrome y los E2E en Chromium) | DD-24 supone que "los navegadores aceptan cookies `Secure` en localhost", pero la cookie es `__Host-crm_session`: **Chrome acepta `Secure` en `http://localhost` pero rechaza el prefijo `__Host-`** (fuentes en §30; no encontré evidencia de que se haya corregido). Firefox la acepta; Safari no acepta ni `Secure`. Consecuencia: con Chromium (Playwright en cada PR, P-F5) sobre `http://localhost:8080` no se guarda la sesión y ningún flujo con sesión funciona. Mi S-F3 original estaba mal para Chrome | Opción A (recomendada, ya figura como respaldo en R-23): **TLS local** para desarrollo y E2E. `crm serve` acepta `TLS_CERT_FILE`/`TLS_KEY_FILE` (solo con `localhost`/`127.0.0.1`); certificado de desarrollo con `mkcert`; Vite con `server.https` usando el mismo certificado y *proxy* a `https://localhost:8443`; Playwright con `ignoreHTTPSErrors` (o la CA de mkcert en CI). Opción B: con `APP_BASE_URL` `http://localhost`, nombre de cookie sin prefijo (`crm_session`, con `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`); R-23 la descartó porque los tests dejan de probar la cookie real. **No lo decido yo**: afecta `platform/config`, ADR-006 y T-B002 | T-F006 (spike), checkpoint F2, T-F701/T-F702. Mientras tanto, desarrollo con Firefox |
-| **H-11** | "Máximo 2 MB" (DD-11) no dice si son 2 000 000 o 2 097 152 bytes, ni si el límite cuenta el cuerpo `multipart` completo (encabezados de la parte incluidos) o solo el archivo. T-B703 prueba "2 MB + 1 byte" sin fijar la unidad | Fijar el valor exacto en DD-11 y en la descripción de `PUT /tenant/logo` del contrato (propuesta: 2 097 152 bytes para el **archivo**, con el límite del cuerpo algo mayor para los encabezados multipart) | El cliente usa `LOGO_TARGET_MAX_BYTES = 1 900 000` (margen); cuando se fije, se ajusta la constante |
+| **H-12** (no bloquea) | La prueba en un **celular real** (checkpoint F6: subir una foto de la galería, S-F8 en iPhone, NFR-F13 en un Android de gama media; y NFR-F11, instalar la PWA) necesita un origen **HTTPS en el que confíe el teléfono y al que el teléfono llegue**. `localhost` no es accesible desde el celular, la CA de mkcert no está en el teléfono, y DD-24 solo permite TLS propio con `localhost`/`127.0.0.1` (con `https://192.168.x.x:8443` el backend sirve HTTP plano, T-B002). Hoy no hay ningún entorno donde hacer esa prueba | (a) **Recomendada**: un entorno de *staging* con dominio y HTTPS del hosting (el modo normal de producción; depende de P-1, S-6 del plan ya prevé *staging*). (b) Respaldo sin tocar DD-24, solo Android: reenvío de puertos de Chrome (`chrome://inspect` → *Port forwarding* `8443` → `localhost:8443`) y la CA de mkcert instalada en el teléfono, que mkcert documenta para Android e iOS (supuesto S-F10, no verificado). (c) Ampliar el modo local a IPs de la red local: **no la recomiendo** (más reglas en `platform/config`, certificados por IP, y abre el binario de desarrollo a la red); la decisión sería del backend | Checkpoint F6: la prueba en celular se hace con (a) o (b) si están disponibles; si no, queda pendiente y se reporta sin bloquear la fase (S-F8 y NFR-F13 siguen abiertos). T-F705 (TalkBack/VoiceOver) y NFR-F11 tienen la misma dependencia |
 
-Otro punto menor, fuera de mi alcance de escritura: el índice `docs/adr/README.md` todavía muestra
-ADR-019 como "detalles Proposed"; desde esta revisión sus detalles son `Accepted` (nota fechada en
-el ADR).
+Otros puntos menores, fuera de mi alcance de escritura:
+
+- El índice `docs/adr/README.md` todavía muestra ADR-019 como "detalles Proposed"; sus detalles son
+  `Accepted` desde la revisión 1 (nota fechada en el ADR).
+- El encabezado de `tasks.md` (párrafos de revisión del backend) dice que "la sección Frontend no se
+  tocó" en la segunda revisión; desde esta revisión 2 sí se actualizó (ver la nota de revisión de
+  la sección Frontend).
 
 ## 28. Riesgos
 
@@ -2119,11 +2200,14 @@ el ADR).
 | RF-3 | El usuario (nivel básico en React) se pierde entre librerías | Media | Medio | Pocas abstracciones propias, firmas en este documento, ADR con el porqué |
 | RF-4 | La CSP rompe algo que en desarrollo funcionaba (Vite dev no aplica CSP) | Media | Medio | E2E contra el binario falla ante cualquier violación de CSP (NFR-F10) |
 | RF-5 | Pérdida de lo cargado por un `401` al enviar | Baja en 001 | Bajo | DD-F5 |
-| RF-6 | Deriva entre las reglas del cliente y del servidor (longitudes, CUIT, límites del logo) | Media | Bajo | Esquemas atados al tipo del contrato; tabla de casos de CUIT compartida con T-B701; margen en el tamaño del logo (H-11) |
+| RF-6 | Deriva entre las reglas del cliente y del servidor (longitudes, CUIT, límites del logo) | Media | Bajo | Esquemas atados al tipo del contrato; tabla de casos de CUIT compartida con T-B701; la constante del logo es el límite exacto del servidor y T-F604 prueba 2 097 152 / 2 097 153 bytes; un `413` en producción lo delata (§12.2) |
 | RF-7 | Presupuesto de JS superado | Media | Medio | Chunks por ruta; medición en T-F704 |
 | RF-8 | Un celular de gama baja se queda sin memoria al decodificar una foto grande | Media | Medio | Tope de 25 MP y 20 MB antes de decodificar; una sola decodificación; mensaje que propone una captura del logo |
-| RF-9 | Diferencias entre navegadores al codificar (tamaño de PNG, orientación EXIF) | Media | Bajo | Escalera con margen; E2E en Chromium y WebKit con fotos reales (T-F706); S-F7, S-F9 |
-| RF-10 | Sin sesión en Chrome sobre `http://localhost` (H-10) | Alta (confirmado por fuentes) | Alto para el flujo de trabajo | H-10; mientras tanto Firefox para desarrollo |
+| RF-9 | Diferencias entre navegadores al codificar (tamaño de PNG, orientación EXIF) | Media | Bajo | Escalera que termina bien por debajo del límite; E2E en Chromium y WebKit con fotos reales (T-F706); S-F7, S-F9 |
+| RF-10 | *(Revisado)* Configuración local de HTTPS incompleta en un equipo (sin `mkcert -install`, sin `make dev-certs` o sin `NODE_EXTRA_CA_CERTS`): aviso de certificado, proxy de Vite caído o sin sesión | Media | Bajo | Mensaje de `vite.config.ts` si faltan los certificados; tabla de diagnóstico de §21.3; README (T-B014, T-F009). El riesgo anterior (sin sesión en Chrome sobre `http://localhost`) quedó cerrado por H-10 |
+| RF-11 | Chromium o WebKit de Playwright no confían en la CA de mkcert en CI (S-12) | Media | Medio | Se ve en la primera corrida de T-F701; respaldo `ignoreHTTPSErrors` solo si T-F703 pasa |
+| RF-12 | Se filtra la clave de la CA local (`rootCA-key.pem`) de un desarrollador | Baja | Medio | No se comparte ni se copia al repo; `.certs/` ignorado por git; en CI la CA es efímera (R-14 del plan) |
+| RF-13 | La prueba en un celular real no se puede hacer por falta de un origen HTTPS accesible (H-12) | Alta hasta tener *staging* | Medio (S-F8 y NFR-F13 sin validar) | H-12: *staging* o reenvío de puertos en Android; se reporta como pendiente sin bloquear F6 |
 
 ---
 
@@ -2143,7 +2227,8 @@ La actualización va **en el mismo cambio** que el código.
 | Una invalidación | §10.3 + test de la pantalla |
 | Un token visual | §19 + `styles/globals.css` + verificación de contraste |
 | Cabeceras, CSP o reglas del handler de la SPA | `plan.md` §10.7 (fuente) + §21 + ADR-019 (nuevo ADR si cambia la decisión) + test Go de T-F007 |
-| Los límites del logo en el servidor (DD-11) o su política de caché (DD-23) | §13.11.1 (constantes y escalera) + `features/tenant/logo/limits.ts` + T-F604/T-F706 |
+| Los límites del logo en el servidor (DD-11, DD-31) o su política de caché (DD-23) | §11.1 + §13.11.1 (constantes y escalera) + `features/tenant/logo/limits.ts` + T-F604/T-F706 |
+| El HTTPS local, los puertos o `APP_BASE_URL` de desarrollo (plan DD-24, §10.5.1) | §21.3 + `vite.config.ts` + `playwright.config.ts` + job de E2E + README (sección de desarrollo) + T-F006/T-F701 |
 | El service worker o el manifest | §20 + ADR-020 + T-F703 |
 | Una decisión de ADR-015..023 | ADR nuevo que la reemplace o nota fechada si es una aclaración (nunca reescribir uno aceptado) |
 | Cómo se construye o corre el frontend | README (sección de desarrollo) + §21.3 + comandos de `tasks.md` |
@@ -2161,4 +2246,6 @@ La actualización va **en el mismo cambio** que el código.
 - Criterios de instalación de Chrome: <https://developer.chrome.com/blog/update-install-criteria>
 - `Intl.NumberFormat` con strings como decimales exactos: <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/NumberFormat/format>
 - Cookies `Secure` y con prefijo en `http://localhost` por navegador (H-10): <https://github.com/httpwg/http-extensions/issues/2605>, <https://issues.chromium.org/issues/40202941>, <https://bugzilla.mozilla.org/show_bug.cgi?id=1618113>
+- mkcert (almacenes de confianza soportados, `certutil` en Linux, Firefox solo en macOS y Linux, `NODE_EXTRA_CA_CERTS` para Node, CA en iOS y Android, advertencia sobre `rootCA-key.pem`): <https://github.com/FiloSottile/mkcert>
+- Chrome DevTools, reenvío de puertos a un Android para abrir un servidor local (H-12): <https://developer.chrome.com/docs/devtools/remote-debugging/local-server>
 - `createImageBitmap` y `imageOrientation: 'from-image'` (soporte: Chrome 112, Firefox 111, Safari 16): <https://developer.mozilla.org/en-US/docs/Web/API/Window/createImageBitmap>, <https://caniuse.com/mdn-api_createimagebitmap_options_imageorientation_parameter_from-image>, <https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html>
