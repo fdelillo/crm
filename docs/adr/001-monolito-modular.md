@@ -4,6 +4,15 @@
 **Fecha**: 2026-09-27
 **Origen**: spec 001 (`specs/001-empresas-usuarios/plan.md` §4.1 y §11)
 
+> **Nota 2026-09-29 (detalle; no cambia la decisión)**: el paquete `web` (SPA embebida con
+> `go:embed`, ADR-019) vive en la **raíz del repo, fuera de `internal/`**, porque `go:embed` solo
+> ve archivos bajo el directorio del paquete y el build del frontend deja `dist/` en `web/dist`.
+> Sigue sin ser importable desde fuera del binario en la práctica: `depguard` restringe su
+> import a `internal/app` y `cmd/crm`. `internal/app` arma además el **mux raíz** que reparte
+> `/api/`, `/healthz`, `/readyz` y la SPA (DD-22 del plan de 001, hallazgo H-1). No se crea un
+> ADR nuevo porque la organización por dominio, las reglas de dependencia y el composition root
+> no cambian: se agrega un paquete de assets sin lógica de dominio.
+
 ## Contexto
 
 La constitución fija un **monolito modular**: un solo servicio desplegable, módulos separados

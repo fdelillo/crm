@@ -4,6 +4,16 @@
 **Fecha**: 2026-09-27
 **Origen**: spec 001
 
+> **Nota 2026-09-29 (detalle; no cambia la decisión)**: chi sigue siendo el router de **la API**,
+> que se monta en `/api/` dentro de un `http.ServeMux` **raíz** de la librería estándar; ese mux
+> raíz solo reparte por prefijo `/api/`, `/healthz`, `/readyz` y la SPA embebida (DD-22 del plan
+> de 001, hallazgo H-1; ADR-019). La SPA no se registra en chi, así que un `/api/...`
+> inexistente nunca cae en el fallback de `index.html` (INV-22). `chi.Walk` se aplica **solo al
+> router de la API**: el test de cobertura de aislamiento (T-B801) recorre las rutas de negocio y
+> no las de la SPA. No hace falta un ADR nuevo: la elección de chi, los grupos con permisos y el
+> listado de rutas quedan igual; lo que se agrega es un reparto por prefijo que `ServeMux` cubre
+> sin dependencias.
+
 ## Contexto
 
 La API REST necesita rutas con parámetros, middlewares globales (logging, recover, CSRF, headers

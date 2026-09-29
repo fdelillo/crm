@@ -30,5 +30,18 @@ Reglas:
 | [012](012-estrategia-de-tests.md) | Estrategia de tests (TDD, PostgreSQL real, contrato, aislamiento) | Accepted | 001 |
 | [013](013-autorizacion-matriz-permisos.md) | Autorización con matriz estática de permisos por rol | Accepted | 001 |
 | [014](014-contrato-openapi-canonico.md) | Contrato OpenAPI 3.1 canónico, handlers a mano, validación en tests | Accepted | 001 |
+| [015](015-frontend-stack-y-estructura.md) | Frontend: Vite + React + TypeScript en `web/`, carpetas por feature | Proposed | 001 (frontend) |
+| [016](016-componentes-shadcn-tailwind.md) | Componentes con shadcn/ui (Radix) y estilos con Tailwind CSS v4 | Accepted (decisión del usuario; detalles Proposed) | 001 (frontend) |
+| [017](017-router-react-router-spa.md) | Router con React Router v7 en modo SPA, variante *data* | Accepted (decisión del usuario; detalles Proposed) | 001 (frontend) |
+| [018](018-server-state-tanstack-query-openapi.md) | Server state con TanStack Query, cliente openapi-fetch y tipos con openapi-typescript | Accepted (decisión del usuario; detalles Proposed) | 001 (frontend) |
+| [019](019-distribucion-spa-embebida-go.md) | SPA embebida en el binario Go, mismo origen que la API | Accepted (decisión del usuario; detalles aceptados el 2026-09-29, ver nota) | 001 (frontend) |
+| [020](020-pwa-service-worker-minimo.md) | PWA instalable con service worker mínimo, sin offline | Proposed | 001 (frontend) |
+| [021](021-formularios-react-hook-form-zod.md) | Formularios con React Hook Form y Zod atado al contrato | Proposed | 001 (frontend) |
+| [022](022-estrategia-de-tests-frontend.md) | Estrategia de tests del frontend (Vitest, Testing Library, MSW, Playwright) | Proposed | 001 (frontend) |
+| [023](023-idioma-formato-fechas-dinero-frontend.md) | Idioma, formato de fechas y dinero en el frontend (es-AR, `Intl`, sin punto flotante) | Proposed | 001 (frontend) |
 
 Los ADR 001–014 quedaron `Accepted` el 2026-09-29, al aprobarse el plan de la spec 001.
+
+Los ADR 015–023 (frontend) se escribieron el 2026-09-29 junto con `specs/001-empresas-usuarios/ui.md`.
+Los marcados `Accepted` registran decisiones del usuario; sus detalles y los ADR `Proposed` quedan
+pendientes de aprobación.

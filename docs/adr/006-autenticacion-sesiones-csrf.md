@@ -10,6 +10,51 @@
 > todavía no estaba aprobado y la decisión estructural (sesión en base + cookie) no cambió. Desde
 > la aprobación del plan, cualquier cambio de duración va en un ADR que reemplace a este.
 
+> **Nota 2026-09-29 (detalle; no cambia la decisión)**, por los hallazgos H-3 y H-9 de la
+> revisión del frontend-architect:
+>
+> 1. **Desarrollo local con navegador (H-3, DD-24 del plan de 001)**: `APP_BASE_URL` puede ser
+>    `http://` **solo** si el host es `localhost` o `127.0.0.1`, y eso se combina con
+>    `COOKIE_SECURE=true` (los navegadores tratan esos orígenes como contexto seguro y aceptan
+>    `__Host-` con `Secure`). `COOKIE_SECURE=false` queda **solo para clientes que no son
+>    navegador** (tests de integración con `httptest` y similares); la configuración rechaza al
+>    arrancar cualquier otra combinación. Esto precisa el último punto de "Consecuencias" sin
+>    cambiarlo.
+> 2. **Respuesta del rechazo CSRF (H-9, DD-30)**: `http.CrossOriginProtection` se configura con
+>    `SetDenyHandler` para que el rechazo sea `403` `application/problem+json` con
+>    `code: forbidden` (el mismo formato que el resto de la API, ADR-009) y se registre el evento
+>    `csrf_rejected` en el log. `CrossOriginProtection` envuelve el **mux raíz** (DD-22), así que
+>    cubre también cualquier método no seguro que llegue fuera de `/api/`.
+>
+> No se crea un ADR nuevo porque ni el modelo de sesión, ni la cookie, ni las tres capas CSRF
+> cambian: se fija una regla de configuración y el formato de un rechazo.
+
+> **Nota 2026-09-29 (b) (detalle; corrige el punto 1 de la nota anterior y la última viñeta de
+> "Consecuencias"; no cambia la decisión)**, por el hallazgo H-10: el punto 1 afirmaba que los
+> navegadores aceptan `__Host-` con `Secure` en `http://localhost`. Es falso para Chrome/Chromium
+> (acepta `Secure` allí pero rechaza el prefijo `__Host-`) y para Safari (no acepta `Secure` en
+> `http://localhost`); solo Firefox la acepta. Con esa regla no había sesión en Chrome ni en los E2E
+> de Chromium. Por decisión del usuario, desarrollo y E2E usan **HTTPS local con un certificado de
+> `mkcert`** (DD-24 del plan de 001, research R-23):
+>
+> 1. `APP_BASE_URL` debe ser **siempre** `https://`; se eliminan la excepción `http://localhost` /
+>    `127.0.0.1` y la variable `COOKIE_SECURE`. La cookie es `__Host-crm_session` con `Secure` en
+>    **todos** los entornos: no existe configuración que la emita sin `Secure` (INV-23). La
+>    viñeta de "Consecuencias" que decía "para tests sin TLS existe `COOKIE_SECURE=false`" queda
+>    sin efecto.
+> 2. `crm serve` sirve TLS propio **solo en modo local** (host de `APP_BASE_URL` = `localhost` o
+>    `127.0.0.1`) y solo si se configuran `TLS_CERT_FILE` y `TLS_KEY_FILE`; con un `APP_BASE_URL`
+>    real esas variables son un error de configuración: en producción el TLS lo termina el
+>    hosting.
+> 3. En modo local no se envía `Strict-Transport-Security`.
+> 4. Los tests HTTP de Go que encadenan requests con la cookie usan `httptest.NewTLSServer` (nota
+>    en ADR-012); no necesitan mkcert.
+>
+> No se crea un ADR nuevo porque el modelo de sesión (tabla + token opaco), la cookie
+> (`__Host-`, `HttpOnly`, `Secure`, `SameSite=Lax`) y las tres capas CSRF siguen iguales: se corrige
+> una regla de configuración de desarrollo y se **quita** una vía de escape, lo que endurece la
+> decisión en vez de cambiarla.
+
 ## Contexto
 
 Los usuarios entran con email y contraseña desde una PWA servida en el mismo origen que la API.
