@@ -391,6 +391,9 @@ Supuestos a validar durante la implementación (no verificados con documentació
 Autor: `frontend-architect` (2026-09-29). Diseño en [`ui.md`](ui.md); decisiones estructurales en
 ADR-015 a ADR-023. Las marcadas **(usuario)** las tomó el usuario; el resto son defaults del
 arquitecto pendientes de aprobación.
+**Revisión 2026-09-29**: respuestas del usuario a P-F1 a P-F5; R-F08 (compresión aprobada,
+desarrollo local y H-10), R-F13 (DD-F10, DD-F11, DD-F21) actualizadas; R-F14 (preparación del logo
+en el navegador) y R-F15 (cookie de sesión en `http://localhost`, H-10) agregadas.
 
 Criterios que se repiten: (1) simplicidad para un usuario con nivel básico en React/TypeScript
 (pocas abstracciones propias, patrones de la documentación oficial); (2) accesibilidad y uso desde
@@ -504,14 +507,14 @@ Montaje del handler de la SPA:
 
 | Opción | A favor | En contra | Veredicto |
 |---|---|---|---|
-| **Mux raíz: `/api/` → chi; `/healthz`, `/readyz`; resto → SPA** | Los tests de rutas del backend (T-B004, T-B801, rutas vs contrato) no cambian; un `/api/…` inexistente sigue en `404 problem+json` | Un nivel más de ruteo en `internal/app` | **Elegida** (hallazgo H-1 de `ui.md`) |
+| **Mux raíz: `/api/` → chi; `/healthz`, `/readyz`; resto → SPA** | Los tests de rutas del backend (T-B004, T-B801, rutas vs contrato) no cambian; un `/api/…` inexistente sigue en `404 problem+json` | Un nivel más de ruteo en `internal/app` | **Elegida** (H-1; adoptada por el backend, DD-22 y R-19) |
 | Ruta `/*` dentro de chi | Directo | Rompe `chi.Walk` y los tests de cobertura | Descartada |
 
 *Fallback* y cabeceras:
 
 | Opción | A favor | En contra | Veredicto |
 |---|---|---|---|
-| **`index.html` para rutas sin extensión; `404` para archivos inexistentes; `no-cache` en HTML, `immutable` en assets con hash** | No sirve HTML como JS; cada carga ve la versión nueva; assets descargados una vez | — | **Elegida** |
+| **`index.html` para rutas sin extensión; `404` para archivos inexistentes; `no-cache` en HTML, `immutable` en assets con hash** | No sirve HTML como JS; cada carga ve la versión nueva; assets descargados una vez | — | **Elegida** (tabla de referencia: `plan.md` §10.7) |
 | `index.html` para todo lo que no exista | Simple | Chunks viejos reciben HTML (error de MIME) y pueden cachearse | Descartada |
 | HTML con `max-age` | Menos requests | Pestañas nuevas con `index.html` viejo apuntando a chunks inexistentes | Descartada |
 
@@ -527,16 +530,16 @@ Desarrollo local:
 
 | Opción | A favor | En contra | Veredicto |
 |---|---|---|---|
-| **Proxy de Vite (`/api` → `:8080`)** | Incluido en Vite; mismo origen para el navegador | Depende de que el navegador acepte la cookie `Secure` en `http://localhost` (S-F3) | **Elegida por el usuario** |
+| **Proxy de Vite (`/api` → `:8080`, sin `changeOrigin`)** | Incluido en Vite; mismo origen para el navegador | Con `http://localhost`, Chrome rechaza la cookie `__Host-` (H-10, R-F15); hoy solo funciona en Firefox | **Elegida por el usuario** (con H-10 pendiente) |
 | Go reenvía a Vite | Un solo puerto | Código Go solo para desarrollo | Descartada |
 
 Compresión:
 
 | Opción | A favor | En contra | Veredicto |
 |---|---|---|---|
-| **`gzhttp` en Go envolviendo el handler de la SPA** | Funciona en cualquier hosting | Dependencia Go nueva (aprobación del backend, H-8) | **Propuesta** |
+| **`gzhttp` en Go envolviendo solo el handler de la SPA** | Funciona en cualquier hosting | Dependencia Go nueva | **Elegida** (aprobada por el usuario, DD-29 y R-21 del backend) |
 | Archivos precomprimidos (`.br`/`.gz`) en el build | Sin costo de CPU por request | Más lógica en el handler | Descartada por ahora |
-| Delegar en el proxy del hosting | Cero código | Hosting sin definir (P-1) | Si el hosting lo trae, reemplaza a la propuesta |
+| Delegar en el proxy del hosting | Cero código | Hosting sin definir (P-1) | Si el hosting lo trae, se quita `gzhttp` |
 
 ## R-F09 PWA y service worker → ADR-020
 
@@ -569,17 +572,18 @@ Cuándo validar:
 
 | Opción | A favor | En contra | Veredicto |
 |---|---|---|---|
-| **Vitest + Testing Library + MSW (jsdom)** | Misma configuración que Vite; consultas por rol; red interceptada en el borde con el cliente real | Mantener handlers alineados al contrato (tipados) | **Elegida** |
+| **Vitest + Testing Library + MSW (jsdom)** | Misma configuración que Vite; consultas por rol; red interceptada en el borde con el cliente real | Mantener handlers alineados al contrato (tipados); jsdom no tiene canvas (el adaptador del logo se sustituye y se prueba en E2E) | **Elegida** |
 | Jest | Estándar histórico | Configuración de TS/ESM extra | Descartada |
 | happy-dom | Más rápido | Menos fiel | Respaldo (S-F2) |
-| Vitest modo navegador | Más fiel | Más lento y más piezas | Reevaluable |
+| Vitest modo navegador | Más fiel (canvas real) | Más lento y más piezas | Reevaluable |
+| Paquete `canvas` de Node para jsdom | Canvas en Vitest | Dependencia nativa; no reproduce los codificadores ni la orientación EXIF de cada navegador | Descartada |
 | Mockear hooks de datos | Rápido | No prueba la integración real | Descartada |
 
 End-to-end:
 
 | Opción | A favor | En contra | Veredicto |
 |---|---|---|---|
-| **Playwright contra el binario + `docker compose` + axe** | Prueba SW, CSP, cookies y cabeceras reales; Chromium y WebKit | Necesita Docker; minutos de CI | **Elegida** (frecuencia en P-F5) |
+| **Playwright contra el binario + `docker compose` + axe** | Prueba SW, CSP, cookies, cabeceras y canvas reales; Chromium y WebKit | Necesita Docker; minutos de CI; Chromium necesita resolver H-10 para tener sesión | **Elegida**; Chromium en cada PR, WebKit antes de liberar (**usuario, P-F5**) |
 | Cypress | Buena experiencia | Sin WebKit | Descartada |
 | Solo pruebas manuales | Nada que mantener | Sin regresión automática en flujos críticos | Descartada |
 
@@ -607,18 +611,80 @@ pantallas sin sesión.
 
 | Decisión | Opción elegida | Alternativa descartada y por qué |
 |---|---|---|
-| Idioma de las rutas (DD-F1) | Inglés (`/reset-password`) | Español: URLs más amigables, pero sin coherencia con endpoints en inglés y con caracteres especiales (P-F3) |
+| Idioma de las rutas (DD-F1) | Inglés (`/reset-password`) (**usuario, P-F3**) | Español: URLs más amigables, pero sin coherencia con endpoints en inglés y con caracteres especiales |
 | Token del enlace (DD-F2) | Del fragmento a `history.state` al montar | Dejarlo en el fragmento (visible, copiable al compartir la URL); `sessionStorage` (sobrevive a la pestaña más de lo necesario) |
 | Confirmar email (DD-F3) | Botón explícito | Automático al abrir: el doble montaje de React en desarrollo o un escáner de enlaces pueden consumir el token |
 | Invitar (DD-F6) | Página propia | Modal: peor con el botón atrás en el celular y más manejo de foco |
 | Cambio de rol (DD-F7) | Acción con confirmación | Selector en la fila: cambios por un toque accidental |
 | Email entre pantallas (DD-F9) | `location.state` | Query string: el email quedaría en logs de acceso del servidor |
-| Zona horaria en el registro (DD-F10) | La del navegador con reintento sin ella ante `422` | No enviarla (la empresa arranca en Buenos Aires aunque esté en otra zona) |
-| Logo grande (DD-F11) | Rechazar con indicación | Redimensionar en el navegador (P-F2): más código y difícil de probar en jsdom |
-| Tema (DD-F13) | Solo claro | Claro + oscuro: el doble de verificación de contraste sin pedido de la spec |
+| Zona horaria en el registro (DD-F10, revisada) | La del navegador, sin validar ni reintentar (el backend usa la default si no la conoce, DD-27) | Reintento sin `timezone` ante `422` (versión anterior): innecesario desde DD-27; no enviarla: la empresa arrancaría en Buenos Aires aunque esté en otra zona |
+| Logo grande (DD-F11, revisada) | Achicarlo en el navegador (**usuario, P-F2**; detalle en R-F14) | Rechazarlo con una indicación (default anterior): el usuario pidió que las fotos del celular se puedan subir |
+| JPEG dentro de los límites (DD-F21, a aprobar P-F6) | Volver a codificarlo siempre | Subirlo tal cual: conserva la ubicación GPS de la foto y puede quedar de costado en el PDF |
+| Tema (DD-F13) | Solo claro (**usuario, P-F4**) | Claro + oscuro: el doble de verificación de contraste sin pedido de la spec |
 | Navegación (DD-F15) | Barra inferior (celular) + lateral (escritorio) | Menú hamburguesa: oculta la navegación y queda lejos del pulgar |
 | Repetir contraseña (DD-F16) | No, con mostrar/ocultar | Campo de confirmación: un campo más sin beneficio con el control de visibilidad |
 | Bloqueo (DD-F17) | Estado de `/login` | Ruta propia: pierde el email y no hay nada que enlazar |
+
+## R-F14 Preparación del logo en el navegador **(usuario: achicar, P-F2)** → DD-F11, DD-F20, DD-F21
+
+Dónde se achica:
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **En el navegador, con `createImageBitmap` + `<canvas>` + `toBlob` (APIs nativas)** | Sin dependencias; sube menos bytes por datos móviles; el backend no cambia (el usuario pidió mantener sus límites) | Código propio que depende de cada navegador (orientación, codificadores); no se prueba en jsdom | **Elegida** |
+| Librería de compresión en el navegador (browser-image-compression, compressorjs, pica) | Resuelve escalado, EXIF y calidad | Una dependencia más para ~100 líneas propias; su API y su comportamiento por navegador igual hay que probarlos en E2E | Descartada |
+| Achicar en el servidor (aceptar archivos grandes y reescalar en Go) | Un solo lugar, sin diferencias de navegador | Cambia los límites del backend (el usuario pidió no cambiarlos); sube 5 MB por datos móviles; decodificar imágenes grandes en el servidor es superficie de DoS | Descartada |
+| Rechazar y pedir otra imagen (default anterior) | Cero código | El usuario pidió lo contrario | Descartada |
+
+Cómo se detecta el formato y el tamaño:
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Firma de los primeros bytes y dimensiones del encabezado (PNG `IHDR`, JPEG `SOF`), funciones puras** | No se decodifica una imagen enorme para descubrir que es enorme; se prueba con tablas de bytes en Vitest; no depende de `file.type` (que puede venir vacío o mal) | Parsers chicos propios | **Elegida** |
+| `file.type` y extensión | Trivial | Se puede equivocar (fotos sin tipo, extensiones cambiadas) | Descartada (solo se usa `file.type` como pista para SVG) |
+| Decodificar siempre y leer `bitmap.width` | Sin parsers | Una foto de 48 MP puede agotar la memoria de un celular antes de saber que había que rechazarla | Descartada como primer paso |
+
+Formato de salida:
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **PNG → PNG, JPEG → JPEG** | PNG conserva la transparencia; JPEG no se vuelve más pesado | — | **Elegida** |
+| Todo a JPEG | Archivos chicos | Pierde la transparencia de un logo PNG (queda un fondo negro o blanco) | Descartada |
+| Todo a PNG | Sin pérdida | Una foto en PNG pesa mucho más; más pasos para entrar en el límite | Descartada |
+| WebP | Mejor compresión | El backend acepta solo PNG/JPEG (DD-11) y los PDF de 005 también | Descartada |
+
+Formatos de entrada:
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Aceptar PNG y JPEG; rechazar SVG, GIF, WebP, HEIC y otros con un mensaje que dice qué hacer** | Lo mismo que acepta el servidor; sin sorpresas (un GIF animado no queda "congelado" en silencio; un SVG no se rasteriza a un tamaño arbitrario) | Un logo en WebP o SVG requiere exportarlo | **Elegida** |
+| Convertir cualquier formato que el navegador pueda decodificar | Más permisivo | Resultados distintos por navegador (HEIC solo en Safari), pérdida silenciosa de animación o de calidad vectorial | Descartada por ahora |
+
+Metadatos y orientación de los JPEG:
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Volver a codificar todo JPEG (aplicando la orientación con `imageOrientation: 'from-image'`)** | Quita GPS y datos del dispositivo; el logo queda derecho en cualquier visor y en el PDF | Una re-codificación con calidad 0,90 aunque no hiciera falta achicar | **Elegida** (DD-F21, a aprobar P-F6) |
+| Solo volver a codificar cuando supera los límites | Sin re-codificación innecesaria | Un JPEG chico de celular sube con GPS y puede quedar de costado en el PDF | Descartada |
+| Borrar los segmentos EXIF por bytes, sin re-codificar | Sin pérdida | Se pierde la orientación sin aplicarla: la foto queda de costado | Descartada |
+
+Dónde se procesa:
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Hilo principal con `<canvas>`; `toBlob` asíncrono; estado "Preparando la imagen…"** | Lo más simple; funciona en todos los navegadores del piso | La decodificación puede trabar la UI unos cientos de ms en celulares lentos | **Elegida** |
+| Web Worker con `OffscreenCanvas` | UI siempre fluida | Más piezas (worker, mensajes) para una acción que se hace una vez | Descartada por ahora (se reevalúa si NFR-F13 no se cumple) |
+
+## R-F15 Cookie de sesión en `http://localhost` (H-10) → decisión del backend
+
+Vista del frontend; la decisión es del backend (afecta `platform/config`, ADR-006, DD-24).
+
+| Opción | A favor | En contra | Veredicto del frontend |
+|---|---|---|---|
+| **TLS local para desarrollo y E2E** (certificado de desarrollo con `mkcert`, `crm serve` con TLS solo para `localhost`, Vite con `server.https` y el mismo certificado, Playwright con `ignoreHTTPSErrors` o la CA instalada en CI) | La misma cookie `__Host-` que producción en todos los navegadores; los E2E prueban lo real | Un paso de instalación y dos variables de configuración | **Recomendada** (es el respaldo que ya prevé R-23) |
+| Cookie sin prefijo solo con `APP_BASE_URL` `http://localhost` | Cero instalación | Dos comportamientos de cookie; los E2E dejan de probar la real (R-23 la descartó por eso) | Aceptable si el backend prioriza la simplicidad |
+| Desarrollar y correr los E2E solo con Firefox | Cero cambios | Contradice P-F5 (Chromium en cada PR); el navegador más usado queda sin E2E | Descartada |
+| Esperar a que Chrome acepte `__Host-` en `localhost` | Cero cambios | Sin fecha conocida | Descartada |
 
 ## Fuentes consultadas (frontend)
 
@@ -632,7 +698,10 @@ pantallas sin sesión.
 - Redocly `bundle` / `join`: <https://redocly.com/docs/cli/commands/bundle>, <https://redocly.com/docs/cli/commands/join>
 - Chrome, criterios de instalación: <https://developer.chrome.com/blog/update-install-criteria>
 - `Intl.NumberFormat.prototype.format` con strings decimales exactos: <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/NumberFormat/format>
+- Cookies `Secure` y con prefijo en `http://localhost` por navegador: <https://github.com/httpwg/http-extensions/issues/2605>, <https://issues.chromium.org/issues/40202941>, <https://bugzilla.mozilla.org/show_bug.cgi?id=1618113>
+- `createImageBitmap` y `imageOrientation: 'from-image'`: <https://developer.mozilla.org/en-US/docs/Web/API/Window/createImageBitmap>, <https://caniuse.com/mdn-api_createimagebitmap_options_imageorientation_parameter_from-image>, <https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html>
 
 Supuestos a validar durante la implementación (detalle en `ui.md` §25): S-F1 (`$ref` externos en
-openapi-typescript, T-F004), S-F2 (openapi-fetch + MSW en jsdom, T-F003), S-F3 (cookie `Secure` en
-`http://localhost`, T-F006).
+openapi-typescript, T-F004), S-F2 (openapi-fetch + MSW en jsdom, T-F003), S-F7 (orientación EXIF
+en `createImageBitmap`, T-F706), S-F8 (iOS convierte HEIC a JPEG al elegir, checkpoint F6), S-F9
+(codificación PNG/JPEG del canvas, T-F706). S-F3 quedó refutado para Chrome (H-10).

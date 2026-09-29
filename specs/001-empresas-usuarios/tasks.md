@@ -7,7 +7,7 @@ T-B307, T-B402, T-B501, T-B506, T-B604, T-B606, T-B903).
 **Revisión 2026-09-29**: incorporados los hallazgos H-1 a H-9 del frontend (plan §18) en la
 sección Backend (tareas afectadas: T-B002, T-B004, T-B005, T-B011, T-B203, T-B204, T-B213,
 T-B303, T-B305, T-B601, T-B603, T-B605, T-B606, T-B702, T-B703, T-B705, T-B801, T-B901, T-B903).
-La sección Frontend no cambia.
+La sección Frontend se revisó aparte (ver su nota de revisión).
 
 ---
 
@@ -1075,13 +1075,21 @@ llama a la función como `crm_signup`).
 
 Autor: `frontend-architect`. Implementa: `frontend-developer`, **una fase por invocación** (modo
 en `.claude/dev-mode`). Diseño: [`ui.md`](ui.md) · ADR-015 a ADR-023.
+**Revisión 2026-09-29**: respuestas del usuario a P-F1 a P-F5 y resolución de H-1 a H-9 por el
+backend (plan §18). Tareas afectadas: T-F002 (piso Chrome 112), T-F006 (proxy sin `changeOrigin`,
+S-F3 refutado para Chrome), T-F007/T-F008 (firmas `web.DistFS`/`web.NewHandler`, stub, gzip
+aprobado), T-F202 (sin reintento por zona horaria), T-F502/T-F503/T-F504 (invitación vencida, rol
+de invitados, reinvitación con otro rol), Fase F6 (preparación del logo: T-F603 a T-F605 nuevas o
+reescritas), Fase F7 (T-F706 nueva: logo en navegadores reales; correcciones pasan a T-F707).
+Hallazgos nuevos que condicionan tareas: H-10 (cookie `__Host-` en Chrome sobre `http://localhost`)
+y H-11 (valor exacto del límite de 2 MB), en `ui.md` §27.2.
 
 ### Convenciones de esta sección
 
 - `[T]` = tarea de test. Va **antes** de la tarea de código que la hace pasar, y el test debe
   fallar por la razón correcta antes de implementar (Red).
 - Trazabilidad: `US-n` (historia de la spec), `FR-`, `SC-`, `P-` (plan), `DD-` (plan), `BR-F`,
-  `INV-F`, `DD-F`, `NFR-F`, `H-` (hallazgos para el backend) y secciones de `ui.md`; `ADR-`.
+  `INV-F`, `DD-F`, `NFR-F`, `H-` (hallazgos) y secciones de `ui.md`; `ADR-`.
 - **Se prueba lo que el usuario percibe**: consultas por rol y nombre accesible
   (`getByRole('button', { name: 'Crear cuenta' })`), nunca por clase CSS ni estructura del DOM;
   nada de estado interno ni conteo de renders.
@@ -1095,7 +1103,8 @@ en `.claude/dev-mode`). Diseño: [`ui.md`](ui.md) · ADR-015 a ADR-023.
   | La red, con MSW (`onUnhandledRequest: 'error'`) | Hooks de datos, `QueryClient`, router, React Hook Form, Zod |
   | El reloj (`vi.useFakeTimers` / `now` inyectado) donde hay horas | Componentes de shadcn/Radix (se usan a través de su accesibilidad) |
   | `window.location.reload` (espía) en el test de `vite:preloadError` | El backend en los E2E (Fase F7) |
-  | `Intl.DateTimeFormat().resolvedOptions().timeZone` en el test del registro | |
+  | `Intl.DateTimeFormat().resolvedOptions().timeZone` en el test del registro | Las funciones puras de preparación del logo (firma, dimensiones, plan) |
+  | El adaptador de canvas del logo (`decodeImage`, `encodeBitmap`): como parámetro de `prepareLogo` en sus tests y con `vi.mock` del módulo `features/tenant/logo/canvas.ts` en los de pantalla (jsdom no tiene `createImageBitmap` ni canvas) | El adaptador de canvas real en los E2E (T-F706) |
 
 - En jsdom la barra inferior y la lateral están ambas en el DOM (no hay CSS aplicado): los tests
   eligen con `within(getAllByRole('navigation', …)[0])` o equivalente.
@@ -1110,7 +1119,7 @@ Se corren en `web/` salvo los de `make`.
 
 | Comando | Qué corre |
 |---|---|
-| `npm run dev` | Vite en `:5173` con *proxy* de `/api` a `http://localhost:8080` |
+| `npm run dev` | Vite en `:5173` con *proxy* de `/api` a `http://localhost:8080` (sin `changeOrigin`) |
 | `npm run gen:api` | `openapi-typescript` con `redocly.yaml` → `src/api/generated/NNN.ts` |
 | `npm run lint` | ESLint + `prettier --check` + verificación de que `gen:api` no produce diferencias |
 | `npm run typecheck` | `tsc -b` |
@@ -1125,16 +1134,16 @@ Se corren en `web/` salvo los de `make`.
 
 ### Dependencias con el backend
 
-| Fase | Necesita del backend (prueba independiente) | Hallazgos que deben estar acordados |
+| Fase | Necesita del backend (prueba independiente) | Hallazgos |
 |---|---|---|
-| F0 | T-B005 (router raíz) para T-F008; T-B013 (Makefile/CI) para T-F009 | H-1 (montaje de la SPA), H-8 (cabeceras y compresión); P-F3 (idioma de rutas) |
+| F0 | T-B005 (mux raíz con `RootDeps.SPA`) y T-B204 (middlewares comunes) para T-F007/T-F008; T-B013 para T-F009 | H-1 y H-8 resueltos (DD-22, DD-29) |
 | F1 | T-B310 (`/me`) | — |
-| F2 | T-B302, T-B306, T-B310 | H-3 (cookie en `localhost` para desarrollo), H-6 opcional |
+| F2 | T-B302, T-B306, T-B310 | H-3 resuelto (DD-24); **H-10 abierto**: hasta resolverlo, la prueba independiente se hace con Firefox |
 | F3 | T-B405 | — |
-| F4 | T-B507; `APP_LINK_*` configurados con los paths de `ui.md` §6.2 | — |
-| F5 | T-B607 | H-4, H-5 |
-| F6 | T-B706 | H-2 |
-| F7 | Todas las fases del backend hasta la 7 + `compose.yaml` | H-7, H-9 |
+| F4 | T-B507; `APP_LINK_*` con los defaults de DD-14 | — |
+| F5 | T-B607 | H-4, H-5 resueltos (DD-25, DD-26) |
+| F6 | T-B706 | H-2 resuelto (DD-23); **H-11 abierto** (el cliente usa margen: no bloquea) |
+| F7 | Todas las fases del backend hasta la 7 + `compose.yaml` | H-7, H-9 resueltos (DD-28, DD-30); **H-10 bloquea los E2E en Chromium** |
 
 ---
 
@@ -1142,7 +1151,8 @@ Se corren en `web/` salvo los de `make`.
 
 **Objetivo**: existe `web/` con Vite + React + TypeScript, Tailwind + shadcn, router, TanStack
 Query, tipos generados del contrato, cliente HTTP con errores normalizados, harness de tests con
-MSW, lint; el binario Go embebe y sirve la SPA con las cabeceras de ADR-019; CI corre todo.
+MSW, lint; el binario Go embebe y sirve la SPA con las cabeceras de `plan.md` §10.7; CI corre
+todo.
 
 **Prueba independiente**: `make check-all` en verde en CI; `make build` + `crm serve` y abrir
 `http://localhost:8080/login` muestra la pantalla provisoria de Ingresar; `curl -I` sobre `/`,
@@ -1155,7 +1165,8 @@ respuestas de `ui.md` §21.1–21.2.
 - ESLint (typescript-eslint, `react-hooks`, `jsx-a11y`, `no-console`) + Prettier. Reglas
   `no-restricted-imports` de `ui.md` §9.1: `components/**` no importa `@/api`, `@/features`,
   `@/app`; `features/X` no importa `features/Y` salvo `features/auth/session`; `fetch` solo en
-  `src/api/**` y `features/tenant/api.ts` (subida del logo).
+  `src/api/**` y `features/tenant/api.ts` (subida del logo); `createImageBitmap` y canvas solo en
+  `features/tenant/logo/canvas.ts`.
 - `index.html` base: `lang="es-AR"`, viewport sin bloquear zoom, `theme-color`, `manifest`,
   `apple-touch-icon`, `<noscript>` (`ui.md` §19.3).
 - `.gitignore`: `web/node_modules`, `web/dist/*` salvo `web/dist/.gitkeep`, `web/.api-bundle`.
@@ -1171,7 +1182,8 @@ respuestas de `ui.md` §21.1–21.2.
   `prefers-reduced-motion`, alto mínimo de 44 px en botones, inputs e ítems.
 - Componentes: `button`, `input`, `label`, `field`, `radio-group`, `select`, `alert`,
   `alert-dialog`, `dropdown-menu`, `badge`, `card`, `skeleton`, `separator`, `sonner`.
-- `build.target` explícito: `chrome111`, `edge111`, `firefox128`, `safari16.4`, `ios16.4`.
+- `build.target` explícito: `chrome112`, `edge112`, `firefox128`, `safari16.4`, `ios16.4`
+  (NFR-F02: Chrome 112 por `createImageBitmap` con orientación EXIF).
 
 **T-F003 [T] — Harness de tests con MSW** · ADR-022, supuesto S-F2
 - **Red**:
@@ -1198,6 +1210,7 @@ respuestas de `ui.md` §21.1–21.2.
   | Tipo de la respuesta `200` de `paths['/me']['get']` | igual a `SessionInfo` |
   | `ErrorCode` | incluye `email_already_registered`, `email_taken`, `last_admin`, `token_invalid` |
   | `User['name']` | `string \| null` |
+  | Parámetros de query de `paths['/tenant/logo']['get']` | incluyen `v?: string` (contrato v0.3.0) |
   | Utilidad de tipos `AssertDisjoint<keyof Paths001, keyof PathsOtra>` con claves disjuntas | compila |
   | La misma utilidad con una ruta repetida (fixture de tipos) | error de compilación (`@ts-expect-error`) |
   | **Spike S-F1**: contrato de prueba `web/test-fixtures/openapi/999.yaml` con `$ref` externo a `Problem` de 001 generado con `gen:api` | el tipo generado tiene `code: ErrorCode`; si no, aplicar el respaldo `redocly bundle` (`ui.md` §11.4) y reportar |
@@ -1217,6 +1230,7 @@ respuestas de `ui.md` §21.1–21.2.
   | `429 login_locked` con `Retry-After: 900` | `retryAfterSeconds: 900` |
   | `429` sin `Retry-After` | `retryAfterSeconds: null` |
   | `500` con `instance` | `requestId` = `instance` |
+  | `403` problem+json `forbidden` (como el rechazo de CSRF, DD-30) | `kind: 'problem'`, `code: 'forbidden'` |
   | `502` con cuerpo HTML | `kind: 'unexpected'`, `status: 502`, `code: null` |
   | problem+json con un `code` que no está en el enum | `kind: 'problem'`, `code: null`, `problem` conservado |
   | `fetch` rechaza (sin red) | `kind: 'network'`, `status: null` |
@@ -1227,7 +1241,7 @@ respuestas de `ui.md` §21.1–21.2.
 - **Green**: `src/api/client.ts`, `errors.ts`, `queryKeys.ts` (`ui.md` §10.3).
 - **Refactor**: `toApiError` es una función pura sin dependencias de React.
 
-**T-F006 — Esqueleto de rutas, providers y proxy de desarrollo** · ADR-017, ADR-019, `ui.md` §6.1, §10.2, supuesto S-F3
+**T-F006 — Esqueleto de rutas, providers y proxy de desarrollo** · ADR-017, ADR-019, `ui.md` §6.1, §10.2, §21.3, S-F3, H-10
 - `src/app/router.tsx` con el árbol completo de `ui.md` §6.1 y **pantallas provisorias** (solo su
   `<h1>`), guards provisorios que dejan pasar, `lazy` por grupo de rutas; `RootLayout` con
   `<Toaster/>` y `<ScrollRestoration/>`; `createAppQueryClient` con los defaults de `ui.md` §10.2
@@ -1235,55 +1249,62 @@ respuestas de `ui.md` §21.1–21.2.
   (`createMemoryRouter` con el mismo árbol).
 - Test de humo: cada ruta del árbol muestra su `<h1>` provisorio; una ruta inexistente muestra
   "No encontramos esta página."
-- `vite.config.ts`: *proxy* de `/api` a `http://localhost:8080`.
-- **Spike S-F3** (manual, cuando el backend tenga T-B306): en `http://localhost:5173`, registrarse
-  con `fetch('/api/v1/auth/signup', …)` desde la consola y verificar que `fetch('/api/v1/me')`
-  responde `200` en Chrome y Firefox. Si el backend todavía no está, se ejecuta en el checkpoint de
-  F2. Depende de H-3.
+- `vite.config.ts`: *proxy* de `/api` a `http://localhost:8080` **sin** `changeOrigin` (el `Host`
+  sigue siendo `localhost:5173`, como espera T-B203).
+- **Spike de la cookie** (manual, cuando el backend tenga T-B306): en `http://localhost:5173`,
+  registrarse con `fetch('/api/v1/auth/signup', …)` desde la consola y verificar si
+  `fetch('/api/v1/me')` responde `200`, en **Firefox** (esperado: sí) y en **Chrome** (esperado,
+  según H-10: no, porque rechaza la cookie `__Host-` en `http://localhost`). Reportar el resultado
+  de cada navegador: confirma o descarta H-10. Si el backend todavía no está, se ejecuta en el
+  checkpoint de F2.
 
-**T-F007 [T] — Handler Go de la SPA** · ADR-019, H-1, DD-14, NFR-F10, `ui.md` §21
-- Implementa: `backend-developer` (código Go, `testing` nativo, table-driven, ADR-012). El handler
-  recibe un `fs.FS` para poder probarlo con `fstest.MapFS` sin compilar el frontend. Firma:
-  `func NewHandler(dist fs.FS) http.Handler` en el paquete `web`.
-- **Red** (unitario con `fstest.MapFS` + integración del mux raíz con `httptest`):
+**T-F007 [T] — Handler Go de la SPA** · ADR-019, plan DD-22, DD-29, §10.7, INV-22, DD-14, NFR-F10, `ui.md` §21
+- Implementa: `backend-developer` (código Go, `testing` nativo, table-driven, ADR-012). Depende de
+  T-B005 (mux raíz con `RootDeps.SPA`) y T-B204 (middlewares comunes). Firmas (plan §11.1):
+  `func DistFS() fs.FS` y `func NewHandler(dist fs.FS) http.Handler` en el paquete `web` (raíz del
+  repo). El handler recibe un `fs.FS` para probarlo con `fstest.MapFS` sin compilar el frontend.
+- **Red** (unitario con `fstest.MapFS` + integración del mux raíz con `httptest`, usando
+  `app.NewRootHandler` con `RootDeps.SPA = web.NewHandler(fs)`):
 
   | Request | Esperado |
   |---|---|
-  | `GET /` | `200` `text/html`, `index.html`, `Cache-Control: no-cache`, CSP exacta de ADR-019 |
+  | `GET /` | `200` `text/html`, `index.html`, `Cache-Control: no-cache`, CSP exacta de §10.7 |
   | `GET /settings/users`, `GET /reset-password` | `200` con `index.html` |
   | `GET /assets/index-abc123.js` (existe) | `200`, tipo JavaScript, `Cache-Control: public, max-age=31536000, immutable` |
   | `GET /assets/viejo-def456.js` (no existe) | `404` `text/plain`, `Cache-Control: no-store`, el cuerpo no contiene `<html` |
   | `GET /sw.js` / `GET /manifest.webmanifest` / `GET /offline.html` | `no-cache`; tipos `text/javascript` / `application/manifest+json` / `text/html` con CSP |
-  | `GET /icons/icon-192.png` | `public, max-age=86400` |
+  | `GET /icons/icon-192.png` | `public, max-age=86400`; **sin** `Content-Encoding` aunque se pida gzip |
   | `HEAD /` | `200` sin cuerpo |
   | `POST /login` | `405` |
-  | `GET /api/v1/no-existe` (mux completo) | `404` problem+json `code: not_found` (nunca `index.html`) |
+  | `GET /api/v1/no-existe` (mux completo) | `404` problem+json `code: not_found` (nunca `index.html`, INV-22) |
+  | `GET /api/v1/me` con `Accept-Encoding: gzip` (mux completo) | **sin** `Content-Encoding: gzip` (la API no se comprime, DD-29) |
   | `GET /healthz` (mux completo) | `200` `{"status":"ok"}` del backend |
-  | `dist` sin `index.html` (solo `.gitkeep`) | `503` `text/plain` que menciona `make web-build` |
-  | Toda respuesta de la SPA | `X-Request-Id`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` (middlewares compartidos) |
+  | `dist` sin `index.html` (solo `.gitkeep`) | `503` `text/plain` "La interfaz no está compilada (correr `make web-build`)" |
+  | Toda respuesta de la SPA | `X-Request-Id`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Strict-Transport-Security` (middlewares comunes) |
+  | `Accept-Encoding: gzip` en un asset JS, en `index.html` y en el manifest (de más de 1 KB) | `Content-Encoding: gzip` y `Vary: Accept-Encoding` (supuesto 6 del `research.md` del backend) |
   | `chi.Walk` sobre el router de la API | no incluye rutas de la SPA (T-B801 y el test de rutas contra el contrato siguen igual) |
-  | `Accept-Encoding: gzip` en un asset JS (si H-8 se aprueba) | `Content-Encoding: gzip` |
 - **Green**: pasa la tabla.
 - **Refactor**: las reglas de caché en una tabla (extensión/prefijo → cabecera), no en `if`
   dispersos.
 
-**T-F008 — Implementar el paquete `web` y el mux raíz** · ADR-019, H-1
-- Implementa: `backend-developer`. `web/embed.go` (`//go:embed all:dist`), `web.NewHandler`,
-  `web/dist/.gitkeep`; en `internal/app`, mux raíz `/api/` → chi, `/healthz` y `/readyz` → ops,
-  resto → SPA, todo envuelto por los middlewares de request id, recover, logging y cabeceras de
-  seguridad. Depende de T-B005 y del acuerdo sobre H-1 (y H-8 para la compresión).
+**T-F008 — Implementar el paquete `web` y conectarlo al mux raíz** · ADR-019, plan DD-22, DD-29
+- Implementa: `backend-developer`. `web/embed.go` (`//go:embed all:dist`, `DistFS`), el handler
+  (`NewHandler`, envuelto con `gzhttp` con el umbral por defecto), `web/dist/.gitkeep`; en
+  `cmd/crm`/`internal/app`, reemplazar el stub de `RootDeps.SPA` (T-B005) por
+  `web.NewHandler(web.DistFS())`. `depguard`: `web` solo importa la librería estándar y `gzhttp`
+  (T-B011).
 
 **T-F009 — Makefile y CI** · ADR-019, ADR-022
 - Targets `web-build`, `web-check`, `build`, `check-all` (tabla de comandos). CI: job de frontend
   con Node LTS y caché de npm que corre `make web-check`; el job de backend no necesita el
   frontend (usa el marcador de `dist`); un job de build que corre `make build` y guarda el binario
-  como artefacto para los E2E (Fase F7).
-- `README` (sección de desarrollo): los dos modos de `ui.md` §21.3 y `APP_BASE_URL` /
-  `APP_LINK_*` de desarrollo.
+  como artefacto para los E2E (Fase F7). Depende de T-B013.
+- `README` (sección de desarrollo): los dos modos de `ui.md` §21.3, `APP_BASE_URL` / `APP_LINK_*`
+  de desarrollo y la nota de H-10 (usar Firefox hasta que se resuelva).
 
 **Checkpoint Fase F0**: `make check-all` en verde local y en CI; la prueba independiente
-ejecutada con `curl`; resultados de los spikes S-F1 y S-F2 reportados (S-F3 si el backend ya
-tiene T-B306).
+ejecutada con `curl`; resultados de los spikes S-F1 y S-F2 reportados (y el de la cookie, si el
+backend ya tiene T-B306).
 
 ---
 
@@ -1293,10 +1314,10 @@ tiene T-B306).
 con aviso; los permisos ocultan lo que no corresponde; el shell es navegable por teclado y la PWA
 es instalable.
 
-**Prueba independiente**: con el backend (T-B310): abrir `/settings/users` sin sesión redirige a
-`/login?next=%2Fsettings%2Fusers`; con una sesión creada por `curl` (cookie pegada en el
-navegador) se ve el shell; borrar la sesión en la base y navegar vuelve al login con "Tu sesión se
-cerró"; Chrome ofrece "Instalar app".
+**Prueba independiente**: con el backend (T-B310) y Firefox: abrir `/settings/users` sin sesión
+redirige a `/login?next=%2Fsettings%2Fusers`; con una sesión creada por `curl` (cookie pegada en
+el navegador) se ve el shell; borrar la sesión en la base y navegar vuelve al login con "Tu sesión
+se cerró"; Chrome ofrece "Instalar app" sobre el binario.
 
 **T-F101 [T] — Mensajes por `code` y por campo** · ADR-009, INV-F05, `ui.md` §12.2–12.3
 - **Red**:
@@ -1312,11 +1333,12 @@ cerró"; Chrome ofrece "Instalar app".
   | `kind: 'network'` | "No hay conexión." y `retryable: true` |
   | `kind: 'unexpected'` con `502` / `418` | como `service_unavailable` / como `internal` |
   | `fieldErrorMessage` para cada `FieldError.code` y cada variante por campo de §12.3 | textos de la tabla |
+  | `logoRejectMessage` para cada `LogoRejectReason` | textos de §13.11.1 |
   | `applyServerFieldErrors` con un campo conocido y uno desconocido | `setError` en el conocido; devuelve el desconocido |
 - **Green**: pasa la tabla.
 
 **T-F102 — Implementar `api/errorMessages.ts`** (`messageForError`, `fieldErrorMessage`,
-`applyServerFieldErrors`).
+`logoRejectMessage`, `applyServerFieldErrors`).
 
 **T-F103 [T] — `safeNextPath`** · INV-F07, BR-F07
 - **Red**:
@@ -1345,6 +1367,7 @@ cerró"; Chrome ofrece "Instalar app".
   | Una mutación responde `401 unauthenticated` | mismo comportamiento |
   | `POST /auth/login` → `401 invalid_credentials` | no navega ni limpia la caché (INV-F02) |
   | Una query responde `403 forbidden` | se vuelve a pedir `/me`; con el rol nuevo sin `settings.manage`, el guard muestra "Sin permiso" |
+  | Una mutación responde `403 forbidden` (p. ej. rechazo de CSRF, DD-30) | mensaje "No tenés permiso para hacer esto."; se vuelve a pedir `/me` |
   | `['session']` pasa de un usuario a `null` en un refetch al enfocar la ventana | igual que un `401` global (`reason=session_expired`) |
   | Tras el `401`, botón atrás del navegador | se vuelve a pedir `/me`; no se ven datos anteriores |
 - **Green**: pasa la tabla.
@@ -1379,10 +1402,10 @@ cerró"; Chrome ofrece "Instalar app".
 `useTenant` (lectura).
 
 **T-F108 — PWA base** · ADR-020, `ui.md` §20
-- `public/manifest.webmanifest`, íconos provisorios (P-F1), `public/sw.js` y `public/offline.html`
-  según ADR-020; registro en `main.tsx` solo en producción. Verificación manual en el binario
-  (Chrome DevTools → Application: manifest sin errores, SW activo, Cache Storage con solo
-  `crm-offline-v1`); la verificación automática es T-F703.
+- `public/manifest.webmanifest` (`name`/`short_name` "CRM"), íconos genéricos provisorios (P-F1),
+  `public/sw.js` y `public/offline.html` según ADR-020; registro en `main.tsx` solo en producción.
+  Verificación manual en el binario (Chrome DevTools → Application: manifest sin errores, SW
+  activo, Cache Storage con solo `crm-offline-v1`); la verificación automática es T-F703.
 
 **Checkpoint Fase F1**: `npm run check` en verde + prueba independiente contra el backend.
 
@@ -1393,10 +1416,11 @@ cerró"; Chrome ofrece "Instalar app".
 **Objetivo**: un visitante se registra desde el celular en una sola pantalla y llega al panel con
 su empresa, rubro y moneda base.
 
-**Prueba independiente**: con el backend (T-B306, T-B310) y Mailpit: en `http://localhost:5173/signup`
-(o el binario), completar el formulario → panel con "Hola, {nombre}" y el rubro elegido; el email
-de verificación está en Mailpit; repetir con el mismo email → "Ya existe un usuario con ese
-email." y "Recuperar contraseña". Spike S-F3 cerrado.
+**Prueba independiente**: con el backend (T-B306, T-B310) y Mailpit, en Firefox (hasta resolver
+H-10): en `http://localhost:5173/signup` (o el binario), completar el formulario → panel con
+"Hola, {nombre}" y el rubro elegido; el email de verificación está en Mailpit; repetir con el
+mismo email → "Ya existe un usuario con ese email." y "Recuperar contraseña". Spike de la cookie
+(T-F006) reportado para Firefox y Chrome.
 
 **T-F201 [T] — Esquema del registro** · ADR-021, DD-6, `ui.md` §13.1, §16
 - **Red** (unitario sobre el esquema Zod):
@@ -1412,7 +1436,7 @@ email." y "Recuperar contraseña". Spike S-F3 cerrado.
   | Test de tipos: el esquema produce un `SignupRequest` | compila; un campo renombrado en el contrato no compila |
 - **Green**: pasa la tabla.
 
-**T-F202 [T] — Pantalla de registro** · US-1.1, US-1.2, FR-001, FR-002, SC-001, P-4, DD-19, DD-21, DD-F10, DD-F18, BR-F10, `ui.md` §13.1, §14.2
+**T-F202 [T] — Pantalla de registro** · US-1.1, US-1.2, FR-001, FR-002, SC-001, P-4, DD-19, DD-21, DD-27, DD-F10, DD-F18, BR-F10, `ui.md` §13.1, §14.2
 - **Red**:
 
   | Interacción | Resultado observable |
@@ -1420,10 +1444,9 @@ email." y "Recuperar contraseña". Spike S-F3 cerrado.
   | Rubros pendientes | *skeletons* en "Rubro de tu empresa"; "Crear cuenta" deshabilitado |
   | Rubros → `503`, "Reintentar" → `200` | aparecen "Carpintería de aluminio" y "Genérico" |
   | Enviar vacío | un error debajo de cada campo requerido (textos de §12.3); foco en "Tu nombre"; ningún request |
-  | Datos válidos | `POST /auth/signup` con el body del contrato (email normalizado, `base_currency: 'ARS'` por defecto, `timezone` del navegador); luego el panel, toast "¡Listo! Tu empresa quedó creada."; atrás no vuelve al formulario |
+  | Datos válidos | `POST /auth/signup` con el body del contrato (email normalizado, `base_currency: 'ARS'` por defecto, `timezone` = la del navegador tal cual, incluso si es un valor raro como `Etc/Unknown`); luego el panel, toast "¡Listo! Tu empresa quedó creada."; atrás no vuelve al formulario |
   | `409 email_already_registered` | alerta "Ya existe un usuario con ese email." con "Recuperar contraseña" (→ `/forgot-password` con el email prellenado) y "Usar otro email" (enfoca el email) |
   | `422` con `errors: [{field: 'company_name', code: 'too_long'}]` | error debajo de "Nombre de la empresa" y foco ahí |
-  | `422` solo con `timezone` | segundo `POST` sin `timezone`; con `201`, panel |
   | `429 rate_limited` con `Retry-After: 1800` | "Hiciste muchos intentos seguidos. Esperá 30 minutos y probá de nuevo." |
   | `503` / sin red | mensaje con "Reintentar"; los valores siguen cargados |
   | Doble click en "Crear cuenta" | un solo `POST`; botón "Creando cuenta…" deshabilitado |
@@ -1450,7 +1473,7 @@ email." y "Recuperar contraseña". Spike S-F3 cerrado.
 **T-F205 — Implementar `DashboardPage`**.
 
 **Checkpoint Fase F2**: `npm run check` en verde + prueba independiente (registro medido: < 3
-min en una prueba manual en el celular, SC-001).
+min en una prueba manual, SC-001).
 
 ---
 
@@ -1504,7 +1527,7 @@ login con "Cerraste sesión." y atrás no muestra datos.
 **Objetivo**: los enlaces de email funcionan de punta a punta sin exponer el token en la URL, y el
 aviso de verificación permite reenviar el email.
 
-**Prueba independiente**: con el backend (T-B507) y `APP_LINK_*` de `ui.md` §6.2: pedir el
+**Prueba independiente**: con el backend (T-B507) y los `APP_LINK_*` por defecto (DD-14): pedir el
 restablecimiento, abrir el enlace de Mailpit, definir la contraseña nueva e ingresar; reabrir el
 mismo enlace → "Este enlace ya no sirve."; confirmar el email desde su enlace y ver desaparecer el
 aviso.
@@ -1582,15 +1605,16 @@ aviso.
 
 ### Fase F5 — Historia 3: Usuarios e invitaciones (P2)
 
-**Objetivo**: el Administrador invita, reenvía, cambia roles, desactiva y reactiva desde el
-celular sin poder dejar la empresa sin administrador; el invitado acepta en una pantalla.
+**Objetivo**: el Administrador invita, reenvía, cambia roles (también de invitados), desactiva y
+reactiva desde el celular sin poder dejar la empresa sin administrador; el invitado acepta en una
+pantalla.
 
-**Prueba independiente**: con el backend (T-B607): invitar a un operador, abrir su enlace en otra
-ventana privada, aceptar y ver el panel sin "Primeros pasos"; como operador, `/settings/users`
-muestra "Sin permiso"; como admin, desactivarlo y ver que su ventana vuelve al login con "Tu sesión
-se cerró"; reactivarlo.
+**Prueba independiente**: con el backend (T-B607): invitar a un operador, reinvitarlo como
+Administrador (el toast lo dice), abrir su enlace en otra ventana privada, aceptar y ver el panel
+con "Primeros pasos"; como un operador, `/settings/users` muestra "Sin permiso"; como admin,
+desactivar a un usuario y ver que su ventana vuelve al login con "Tu sesión se cerró"; reactivarlo.
 
-**T-F501 [T] — Reglas de acciones y fechas** · BR-F01, BR-F02, BR-F03, INV-F12, ADR-023
+**T-F501 [T] — Reglas de acciones y fechas** · BR-F01, BR-F02, BR-F03, INV-F12, DD-26, ADR-023
 - **Red** (unitario):
 
   | Entrada | Esperado de `availableUserActions` |
@@ -1600,7 +1624,8 @@ se cerró"; reactivarlo.
   | `active`+`admin`, es el usuario actual, 2 admins | `makeOperator` con `selfWarning: 'lose_settings_access'`; `deactivate` con `selfWarning: 'end_own_session'` |
   | `active`+`operator` | `makeAdmin`, `deactivate` |
   | `invited`+`operator` | `resendInvitation` (sin confirmación), `makeAdmin`, `deactivate` |
-  | `disabled` | solo `reactivate` |
+  | `invited`+`admin`, siendo el usuario actual el único admin activo | `makeOperator` **habilitada** (los invitados no cuentan para `last_admin`, DD-26), `resendInvitation`, `deactivate` |
+  | `disabled` | solo `reactivate` (sin cambio de rol: el backend responde `invalid_state`) |
 
   | Entrada | Esperado |
   |---|---|
@@ -1609,40 +1634,43 @@ se cerró"; reactivarlo.
   | Misma fecha con `now` en otro año | incluye el año |
 - **Green**: pasa la tabla.
 
-**T-F502 [T] — Lista de usuarios** · US-3, FR-005, FR-007, H-4, `ui.md` §13.9
+**T-F502 [T] — Lista de usuarios** · US-3, FR-005, FR-007, DD-25, `ui.md` §13.9
 - **Red**:
 
   | Caso | Resultado observable |
   |---|---|
   | `GET /users` pendiente | 3 *skeletons* con `aria-busy` |
   | Admin (vos), invitado vigente, desactivado | una tarjeta por usuario con nombre (o email si `name` es `null`), email, rol y estado **en texto**; "(vos)" en la propia; "La invitación vence el 6/10, 14:30" en la zona de la empresa |
-  | Invitado con `invitation_expires_at` pasado / `null` | "Invitación vencida" / "Invitación sin fecha" |
+  | Invitado con `invitation_expires_at` en el pasado | "La invitación venció el {fecha}. Reenviala para que pueda entrar." |
+  | Invitado con `invitation_expires_at: null` (fuera de contrato) | sin texto de vencimiento; la tarjeta se ve igual |
   | Solo el usuario actual | "Todavía sos el único usuario." + "Invitar" |
   | `500` con `instance` | "No pudimos cargar los usuarios." + código + "Reintentar" |
   | Nombre de 120 caracteres | el texto completo está en el DOM (sin truncar) |
 - **Green**: pasa la tabla.
 
-**T-F503 [T] — Acciones sobre usuarios** · US-3.3, US-3.4, FR-005, P-3, DD-5, DD-F7, DD-F8, INV-F04, INV-F10, `ui.md` §13.9
+**T-F503 [T] — Acciones sobre usuarios** · US-3.3, US-3.4, FR-005, P-3, DD-5, DD-26, DD-F7, DD-F8, INV-F04, INV-F10, `ui.md` §13.9
 - **Red**:
 
   | Interacción | Resultado observable |
   |---|---|
   | Abrir el menú de un invitado con teclado (Enter, flechas) | "Reenviar invitación", "Hacer Administrador", "Desactivar"; nombre accesible "Acciones para {email}" |
   | Único admin activo (vos) | "Cambiar a Operador" y "Desactivar" deshabilitados con "Tiene que quedar al menos un administrador activo" |
-  | "Hacer Administrador" → confirmar → `200` | `PUT /users/{id}/role` `{ role: 'admin' }`; toast "{nombre} ahora es Administrador"; la tarjeta muestra el rol nuevo; foco de vuelta en el botón de acciones de esa fila |
+  | "Hacer Administrador" a un activo → confirmar → `200` | `PUT /users/{id}/role` `{ role: 'admin' }`; toast "{nombre} ahora es Administrador"; la tarjeta muestra el rol nuevo; foco de vuelta en el botón de acciones de esa fila |
+  | "Hacer Administrador" a un invitado → confirmar → `200` con `status: invited` | el diálogo decía "Cuando acepte la invitación, va a poder…"; toast "{email} ahora es Administrador"; sigue "Invitado" con el mismo vencimiento |
+  | Menú de un desactivado | solo "Reactivar" (no hay cambio de rol) |
   | Cancelar o Esc en el diálogo | sin request; foco de vuelta en el botón |
   | `409 last_admin` | toast con el mensaje de §12.2; se vuelve a pedir la lista |
   | "Desactivar" a otro → `200` | toast "Desactivaste a {nombre}"; estado "Desactivado" |
   | Desactivarse a sí mismo (hay otro admin) → `200` | el diálogo advertía "Se va a cerrar tu sesión."; el request siguiente da `401` y se ve el login con aviso |
   | Bajarse a Operador → `200` | el diálogo advertía "Vas a perder el acceso a Ajustes."; `/me` pedido de nuevo; "Sin permiso" |
   | "Reactivar" → `200` `active` / `200` `invited` | "Reactivaste a {nombre}" / "Le enviamos una invitación nueva a {email}" |
-  | "Reenviar invitación" → `200` | `POST /users/invitations` con su email y rol; "Reenviamos la invitación a {email}" |
+  | "Reenviar invitación" → `200` | `POST /users/invitations` con su email y su rol actual; "Reenviamos la invitación a {email}" |
   | `404 not_found` / `409 invalid_state` | mensaje de §12.2 y lista pedida de nuevo |
   | `403 forbidden` | `/me` pedido de nuevo; "Sin permiso" |
   | Doble confirmación rápida | un solo request |
 - **Green**: pasa la tabla.
 
-**T-F504 [T] — Invitar** · US-3.1, DD-5, DD-21, BR-F08, BR-F11, DD-F6, `ui.md` §13.10, §14.3
+**T-F504 [T] — Invitar** · US-3.1, DD-5, DD-21, DD-26, BR-F08, BR-F11, DD-F6, `ui.md` §13.10, §14.3
 - **Red**:
 
   | Interacción | Resultado observable |
@@ -1650,7 +1678,9 @@ se cerró"; reactivarlo.
   | Abrir la pantalla | "Operador" seleccionado; descripción de cada rol visible |
   | Email inválido | error; sin request |
   | Enviar → `201` | vuelve a Usuarios; toast "Invitación enviada a {email}. Vence el {fecha}."; la lista incluye al invitado |
-  | Enviar → `200` | toast "{email} ya estaba invitado: le reenviamos la invitación." |
+  | Enviar → `200` con el mismo rol que tenía en la lista | toast "{email} ya estaba invitado: le reenviamos la invitación." |
+  | Enviar como Administrador → `200` a un invitado que figuraba como Operador | toast "{email} ya estaba invitado: le reenviamos la invitación como Administrador."; la lista muestra el rol nuevo |
+  | `200` sin `['users']` en caché | texto neutro "{email} ya estaba invitado: le reenviamos la invitación." |
   | `409 email_taken` | "Ese email ya tiene un usuario en el sistema." en el campo; si es de un desactivado de la lista, "Es de {nombre}, que está desactivado. Podés reactivarlo desde la lista." |
   | "Cancelar" | vuelve a Usuarios |
 - **Green**: pasa la tabla.
@@ -1681,12 +1711,17 @@ se cerró"; reactivarlo.
 
 ### Fase F6 — Historia 4: Datos de la empresa y logo (P2)
 
-**Objetivo**: el Administrador edita los datos fiscales y de contacto y el logo, y el encabezado
-se actualiza sin recargar.
+**Objetivo**: el Administrador edita los datos fiscales y de contacto y sube el logo, incluso
+desde una foto del celular (que se achica y se endereza en el navegador), y el encabezado se
+actualiza sin recargar.
 
-**Prueba independiente**: con el backend (T-B706) y MinIO: cargar un CUIT válido y un logo PNG;
-el encabezado muestra el logo nuevo al instante; cerrar sesión, entrar con otra empresa en el mismo
-navegador y verificar que **no** se ve el logo anterior (H-2).
+**Prueba independiente**: con el backend (T-B706) y MinIO: cargar un CUIT válido; subir una foto
+JPEG grande (> 2 MB, > 2000 px, sacada con un celular) y ver "Preparando la imagen…", luego "Logo
+actualizado. Lo achicamos para que pese menos." y el logo nuevo en el encabezado; subir un PNG con
+transparencia chico y verlo tal cual; cerrar sesión, entrar con otra empresa en el mismo navegador
+y verificar que **no** se ve el logo anterior. En un celular real (Android y, si hay, iPhone), elegir
+una foto de la galería contra un entorno con HTTPS (el backend no acepta `http://` fuera de
+`localhost`), para validar S-F8 y NFR-F13.
 
 **T-F601 [T] — CUIT** · DD-16, `ui.md` §13.11
 - **Red**: la **misma tabla de casos que T-B701** (con la misma fuente citada): válido con y sin
@@ -1694,7 +1729,7 @@ navegador y verificar que **no** se ve el logo anterior (H-2).
   del módulo 11 con resto 10 u 11 según la regla oficial.
 - **Green**: `lib/cuit.ts` (`isValidCuit`) pasa la tabla.
 
-**T-F602 [T] — Datos de la empresa** · US-4, DD-15, BR-F09, BR-F10, INV-F04, `ui.md` §13.11
+**T-F602 [T] — Datos de la empresa** · US-4, DD-15, DD-27, BR-F09, BR-F10, INV-F04, `ui.md` §13.11
 - **Red**:
 
   | Interacción | Resultado observable |
@@ -1705,49 +1740,113 @@ navegador y verificar que **no** se ve el logo anterior (H-2).
   | Cambiar solo el teléfono → Guardar | `PATCH /tenant` con `{ phone }` solamente |
   | Vaciar la razón social → Guardar | `{ legal_name: null }` |
   | CUIT con dígito verificador inválido | error en el campo; sin request |
-  | `422 invalid_tax_id` del servidor | error en "CUIT" |
+  | `422 invalid_tax_id` / `422 invalid_timezone` del servidor | error en "CUIT" / en "Zona horaria" |
   | `200` | toast "Guardamos los datos de la empresa."; el encabezado muestra el nombre nuevo |
   | Salir con cambios sin guardar | "Tenés cambios sin guardar. ¿Salir igual?"; "Salir" navega, "Quedarme" no |
   | Zona horaria | `America/Argentina/*` primero en el selector |
   | `503` al guardar | mensaje con "Reintentar"; valores intactos |
 - **Green**: pasa la tabla.
 
-**T-F603 [T] — Logo** · US-4, DD-11, DD-F11, DD-F12, H-2, `ui.md` §13.11
-- **Red**:
+**T-F603 [T] — Logo en la pantalla y en el encabezado** · US-4, DD-11, DD-23, DD-F11, DD-F12, BR-F13, INV-F14, `ui.md` §13.11, §14.4
+- **Red** (pantalla con MSW; el módulo `features/tenant/logo/canvas.ts` con `vi.mock`: `decodeImage`
+  devuelve un bitmap falso con el tamaño pedido y `encodeBitmap` un `Blob` del tamaño que fija cada
+  caso):
 
   | Interacción | Resultado observable |
   |---|---|
   | `has_logo: false` | iniciales + "Todavía no subiste un logo"; encabezado con iniciales |
-  | `has_logo: true` | `<img alt="Logo de {empresa}">` con `src` `/api/v1/tenant/logo?v={id}-{updated_at}` (en S-11 y en el encabezado) |
-  | Elegir un GIF / un PNG de 3 MB | "El logo tiene que ser una imagen PNG o JPG." / "La imagen pesa más de 2 MB. Elegí una más liviana."; sin request |
-  | Elegir un PNG válido → `200` `Tenant` | "Subiendo logo…"; toast "Logo actualizado."; `src` con el `updated_at` nuevo en S-11 y en el encabezado |
-  | `413` / `415` / `422` del servidor | mensajes de §13.11 |
+  | `has_logo: true` | `<img alt="Logo de {empresa}">` con `src` = `/api/v1/tenant/logo?v=` + `encodeURIComponent(id-updated_at)` en S-11 y en el encabezado |
+  | Elegir un PNG chico dentro de los límites | sin "Preparando…" visible más de un instante; `PUT /tenant/logo` con los **mismos bytes** del archivo; toast "Logo actualizado." |
+  | Elegir un JPEG de 5 MB y 4000×3000 (bytes de fixture con encabezado real) | "Preparando la imagen…" anunciado; "Cambiar logo" y "Quitar" deshabilitados; luego "Subiendo logo…"; `PUT` con un archivo `image/jpeg` ≤ `LOGO_TARGET_MAX_BYTES`; toast "Logo actualizado. Lo achicamos para que pese menos."; `src` con el `updated_at` nuevo en S-11 y en el encabezado |
+  | Elegir un SVG / un GIF / un WebP | mensaje de §13.11.1 para cada uno; **ningún** request |
+  | Elegir un archivo con bytes que no son imagen | "No pudimos leer la imagen. Probá con otro archivo PNG o JPG."; ningún request |
+  | El adaptador falla al decodificar | mismo mensaje de "no pudimos leer"; ningún request |
+  | Ningún paso de la escalera entra (el adaptador falso devuelve siempre 3 MB) | "No pudimos achicar la imagen lo suficiente…"; ningún request |
+  | `413` / `415` / `422` del servidor | mensajes de §12.2 y §13.11 en el control del logo |
+  | Salir mientras se prepara o sube | pide confirmación (BR-F10) |
   | "Quitar" → confirmar → `204` | iniciales; toast "Quitamos el logo." |
   | La imagen falla al cargar | iniciales |
-  | Control de archivo | etiqueta accesible "Cambiar logo"; `accept="image/png,image/jpeg"` |
-- **Green**: pasa la tabla. Si H-2 no se resolvió, se implementa igual (S-F6) y se reporta.
+  | Control de archivo | etiqueta accesible "Cambiar logo"; `accept="image/png,image/jpeg"`; operable con teclado |
+- **Green**: pasa la tabla.
 
-**T-F604 — Implementar** `CompanyPage`, `LogoUploader`, `useUpdateTenant`, `useUploadLogo`
-(`putTenantLogo`), `useDeleteLogo`, `logoUrl`, `lib/cuit.ts`; el encabezado pasa a mostrar el logo.
+**T-F604 [T] — Preparación del logo: funciones puras y orquestación** · DD-11, DD-F20, DD-F21, INV-F13, H-11, `ui.md` §13.11.1
+- **Red** (unitario; bytes de prueba armados en el test, sin imágenes reales):
 
-**Checkpoint Fase F6**: `npm run check` en verde + prueba independiente.
+  | `sniffImageType` | Esperado |
+  |---|---|
+  | Firma PNG | `png` |
+  | `FF D8 FF E0` y `FF D8 FF E1` (JFIF y EXIF) | `jpeg` |
+  | `GIF89a` / `RIFF….WEBP` / `….ftypheic` | `gif` / `webp` / `heic` |
+  | Texto `<svg …>`, con BOM y espacios antes, y `<?xml … ?><svg` | `svg` |
+  | Bytes arbitrarios con `declaredType = 'image/svg+xml'` | `svg` |
+  | Bytes arbitrarios, archivo vacío | `unknown` |
+
+  | `readImageSize` | Esperado |
+  |---|---|
+  | PNG con `IHDR` de 3000×2000 | `{ width: 3000, height: 2000 }` |
+  | JPEG con `APP1` (EXIF de 20 KB) antes de un `SOF0` de 4000×3000 | `{ width: 4000, height: 3000 }` |
+  | JPEG progresivo (`SOF2`) | dimensiones correctas |
+  | JPEG con un `DHT` (`C4`) antes del `SOF` | no lo confunde con un `SOF` |
+  | Encabezado truncado | `null` |
+
+  | `planLogoProcessing` | Esperado |
+  |---|---|
+  | PNG de 800×400 y 300 KB | `upload_original` |
+  | PNG de 3000×3000 (o de 1500×1500 y 2,5 MB) | `reencode` `image/png` con la escalera PNG; ningún `maxSide` mayor al lado original |
+  | JPEG de 1200×800 y 200 KB | `reencode` `image/jpeg` (DD-F21) con primer paso (1200, 0,90) |
+  | JPEG de 4000×3000 y 5 MB | `reencode` `image/jpeg` con la escalera JPEG completa |
+  | Cualquier imagen de más de 25 MP o archivo de más de 20 MB | `reject` `too_large_to_process` |
+  | `svg` / `gif` / `webp` / `heic` / `unknown` | `reject` `svg` / `unsupported_format` (los cuatro restantes) |
+  | PNG o JPEG con `width: null` | `reject` `unreadable` |
+
+  | `fitWithin` | Esperado |
+  |---|---|
+  | (4000, 3000, 2000) / (3000, 4000, 2000) / (800, 400, 2000) | (2000, 1500) / (1500, 2000) / (800, 400) |
+
+  | `prepareLogo` (con `decodeImage` y `encodeBitmap` falsos inyectados) | Esperado |
+  |---|---|
+  | PNG dentro de los límites | `ok`, mismo `File`, `reencoded: false`; los falsos no se llamaron |
+  | JPEG grande; el falso devuelve 2,4 MB, 2,1 MB y después 1,5 MB | `ok`, `resized: true`, archivo `image/jpeg` de 1,5 MB; `decodeImage` llamado **una** vez; `encodeBitmap` tres veces con los pasos de la escalera en orden |
+  | Ningún paso entra | `{ ok: false, reason: 'cannot_shrink' }` |
+  | `decodeImage` rechaza | `{ ok: false, reason: 'unreadable' }` |
+  | En todos los caminos con decodificación | el bitmap se cierra (`close` del falso llamado) |
+- **Green**: pasa la tabla.
+- **Refactor**: las constantes (`limits.ts`) en un solo lugar; `prepareLogo` sin ramas de formato
+  que no estén en `planLogoProcessing`.
+
+**T-F605 — Implementar** `CompanyPage`, `LogoUploader`, `useUpdateTenant`, `useUploadLogo`
+(`putTenantLogo`), `useDeleteLogo`, `logoUrl`, `lib/cuit.ts`, `features/tenant/logo/`
+(`limits.ts`, `sniff.ts`, `plan.ts`, `canvas.ts`, `prepareLogo.ts`); el encabezado pasa a mostrar
+el logo.
+
+**Checkpoint Fase F6**: `npm run check` en verde + prueba independiente (incluida la prueba en un
+celular real, con su resultado para S-F8 y NFR-F13).
 
 ---
 
 ### Fase F7 — End-to-end, PWA, accesibilidad y performance (verificación)
 
-**Objetivo**: los flujos críticos funcionan de punta a punta sobre el binario real; la PWA, la CSP
-y la accesibilidad están verificadas; los objetivos de performance están medidos. Esta fase
-**verifica y cierra huecos**: cada pantalla ya llegó con sus estados y su accesibilidad.
+**Objetivo**: los flujos críticos funcionan de punta a punta sobre el binario real; la PWA, la CSP,
+la preparación del logo y la accesibilidad están verificadas; los objetivos de performance están
+medidos. Esta fase **verifica y cierra huecos**: cada pantalla ya llegó con sus estados y su
+accesibilidad.
 
-**Prueba independiente**: `npm run e2e` en verde en CI; reporte con tamaños de bundle y métricas
-de Lighthouse.
+**Prueba independiente**: `npm run e2e` en verde en CI (Chromium); corrida en WebKit reportada;
+reporte con tamaños de bundle y métricas de Lighthouse.
 
-**T-F701 — Playwright** · ADR-022
+**Precondición**: H-10 resuelto por el backend (Chromium necesita poder guardar la cookie de sesión
+en el entorno de E2E). Si no lo está, se corre en Firefox y se reporta el bloqueo; no se cambia el
+diseño de la cookie desde el frontend.
+
+**T-F701 — Playwright** · ADR-022, H-10
 - `playwright.config.ts` (Chromium en cada PR; WebKit en la corrida previa a liberar), *global
-  setup* que verifica el binario y `docker compose` arriba, helper para leer emails y extraer el
-  enlace desde la API HTTP de Mailpit, helper de axe (`@axe-core/playwright`, reglas WCAG 2.x AA),
-  captura de eventos `securitypolicyviolation` y errores de consola.
+  setup* que verifica el binario y `docker compose` arriba, el origen de E2E según la resolución de
+  H-10 (p. ej. `https://localhost:8443` con TLS local), helper para leer emails y extraer el enlace
+  desde la API HTTP de Mailpit, helper de axe (`@axe-core/playwright`, reglas WCAG 2.x AA),
+  captura de eventos `securitypolicyviolation` y errores de consola. Fixtures de imágenes en
+  `web/e2e/fixtures/` generadas para la prueba (sin fotos reales de personas ni lugares): JPEG
+  4000×3000 de ~5 MB con EXIF de orientación 6 y coordenadas GPS ficticias; PNG 3000×3000 con zonas
+  transparentes; PNG 800×400 < 1 MB; SVG; GIF.
 
 **T-F702 [T] — Flujos críticos** · SC-001, US-1..US-4, NFR-F01, NFR-F06, NFR-F10, P-5
 - **Red**:
@@ -1757,6 +1856,7 @@ de Lighthouse.
   | Registro → panel → cerrar sesión → ingresar → panel | cada paso visible; registro completo < 10 s automatizado (SC-001) |
   | Registro con un email existente → "Recuperar contraseña" → enviar | "Revisá tu email"; llega el email |
   | Admin invita → enlace de Mailpit → invitado acepta → panel de Operador → `/settings/users` | "Sin permiso" |
+  | Admin reinvita a un invitado con otro rol → el invitado acepta | entra con el rol nuevo |
   | Olvidé mi contraseña → enlace → contraseña nueva → ingresar; reabrir el enlace | éxito; "Este enlace ya no sirve." |
   | Admin desactiva al operador (otro contexto de navegador) → el operador navega | login con "Tu sesión se cerró." |
   | 5 contraseñas incorrectas → 6.º intento | estado Bloqueado con la hora |
@@ -1768,7 +1868,7 @@ de Lighthouse.
 
   | Caso | Esperado |
   |---|---|
-  | `manifest.webmanifest` | campos de `ui.md` §20; los íconos responden `200` |
+  | `manifest.webmanifest` | campos de `ui.md` §20 (`name` "CRM"); los íconos responden `200` |
   | Tras cargar `/` en el binario | SW activo con `scope` `/` |
   | Contexto sin conexión → navegar a `/settings` | se ve "Sin conexión. Para usar la app necesitás internet." |
   | Cache Storage | solo `crm-offline-v1` con `offline.html`; ninguna URL `/api/` ni `/assets/` |
@@ -1783,15 +1883,29 @@ de Lighthouse.
 
 **T-F705 — Verificación manual de accesibilidad** · NFR-F06, NFR-F07, NFR-F08, `ui.md` §18
 - Checklist: todos los flujos solo con teclado; TalkBack (Chrome Android) y VoiceOver (Safari
-  iOS) en registro, ingresar, usuarios y datos de la empresa; zoom al 200 %;
-  `prefers-reduced-motion`; contraste de cada par de tokens de §19.1 con una herramienta;
-  objetivos táctiles ≥ 44 px; foco nunca tapado por la barra inferior. Resultado en el reporte de
-  la fase, con cada hallazgo y su corrección.
+  iOS) en registro, ingresar, usuarios y datos de la empresa (incluida la subida del logo y el
+  anuncio "Preparando la imagen…"); zoom al 200 %; `prefers-reduced-motion`; contraste de cada par
+  de tokens de §19.1 con una herramienta; objetivos táctiles ≥ 44 px; foco nunca tapado por la
+  barra inferior. Resultado en el reporte de la fase, con cada hallazgo y su corrección.
 
-**T-F706 — Correcciones** que surjan de T-F702..T-F705, cada una con su test de regresión.
+**T-F706 [T] — Preparación del logo en navegadores reales** · DD-F20, DD-F21, INV-F13, NFR-F13, S-F7, S-F9, `ui.md` §13.11.1
+- **Red** (Playwright, Chromium y WebKit; cada caso sube por la UI y después descarga
+  `/api/v1/tenant/logo` desde la página para inspeccionar lo que guardó el servidor):
+
+  | Fixture | Esperado |
+  |---|---|
+  | JPEG 4000×3000, ~5 MB, EXIF orientación 6 y GPS | se sube; el logo guardado es JPEG ≤ `LOGO_TARGET_MAX_BYTES`, **vertical** (alto > ancho: se aplicó la orientación), lado mayor ≤ 2000, **sin** segmento `APP1`/`Exif` (sin GPS); tiempo de preparación reportado (NFR-F13) |
+  | PNG 3000×3000 con transparencia | se sube como PNG ≤ 2000 px; el píxel de una esquina transparente tiene alfa 0 (se lee dibujando el logo guardado en un canvas de la página) |
+  | PNG 800×400 < 1 MB | los bytes guardados son **idénticos** a los del archivo |
+  | SVG / GIF | mensaje de §13.11.1; ningún `PUT` en la red |
+- **Green**: pasa en Chromium y WebKit; si S-F7 falla en algún navegador (foto horizontal), frenar
+  y volver al arquitecto con el resultado (respaldo previsto: leer la orientación del EXIF y rotar
+  en el canvas).
+
+**T-F707 — Correcciones** que surjan de T-F702..T-F706, cada una con su test de regresión.
 
 **Checkpoint Fase F7**: `npm run check` y `npm run e2e` en verde (Chromium en CI; WebKit
-reportado); reportes de T-F704 y T-F705 adjuntos.
+reportado); reportes de T-F704, T-F705 y T-F706 adjuntos.
 
 ---
 
@@ -1803,22 +1917,29 @@ reportado); reportes de T-F704 y T-F705 adjuntos.
 | FR-002 Plantillas | T-F202, T-F204 |
 | FR-003 Email + contraseña | T-F301 |
 | FR-004 Recuperar contraseña | T-F402, T-F403, T-F702 |
-| FR-005 Invitar, desactivar, cambiar rol, reactivar | T-F501..T-F504 |
+| FR-005 Invitar, desactivar, cambiar rol (también de invitados), reactivar | T-F501..T-F504, T-F702 |
 | FR-006 Aislamiento (del lado del cliente: caché vacía entre sesiones, logo por empresa) | T-F104, T-F303, T-F505, T-F603, T-F703 |
 | FR-007 Matriz de permisos (UX) | T-F104, T-F106, T-F502, T-F702 |
 | US-1 (1, 2, 3) | T-F202 (1, 2), T-F404/T-F405 (3) |
 | US-2 (1, 2, 3) | T-F301 (1, 2), T-F402/T-F403 (3), T-F303 (cerrar sesión) |
 | US-3 (1, 2, 3, 4) | T-F504 (1), T-F505 (2), T-F503 (3, 4) |
-| US-4 (1) | T-F602, T-F603 |
+| US-4 (1) | T-F602, T-F603, T-F604, T-F706 |
 | Casos borde (404 de otra empresa, 403 de operador) | T-F503 (404), T-F104, T-F502, T-F702 (403) |
 | SC-001 Panel en < 3 min | T-F202, T-F702, checkpoint F2 |
 | P-2 Verificación no bloqueante | T-F405 |
 | P-3 Reactivación | T-F503 |
 | P-4 `email_already_registered` | T-F202, T-F702 |
 | P-5 Sesión 24 h / 7 días (401 global) | T-F104, T-F702 |
+| P-F2 Logo achicado en el navegador (DD-F11, DD-F20) | T-F603, T-F604, T-F706 |
+| P-F6 / DD-F21 JPEG siempre re-codificado | T-F604, T-F706 |
 | DD-14 Token en el fragmento | T-F401, T-F007 |
 | DD-17 *Bundle* multi-spec | T-F004 |
+| DD-23 Caché del logo (`v`, `ETag`) | T-F004, T-F603 |
+| DD-25 / DD-26 Invitación vencida, rol de invitados | T-F501, T-F502, T-F503, T-F504 |
+| DD-27 Zona horaria del registro | T-F202 |
+| DD-30 `403` de CSRF | T-F005, T-F104 |
 | ADR-006 (401 en cualquier request vuelve al login) | T-F104 |
-| ADR-019 (SPA embebida, cabeceras, CSP) | T-F007, T-F008, T-F702 |
+| ADR-019 (SPA embebida, cabeceras, CSP, gzip) | T-F007, T-F008, T-F702 |
 | ADR-020 (PWA sin offline) | T-F108, T-F703 |
-| NFR-F01..F12 | T-F002 (F02, F07, F08), T-F702 (F01, F06, F10, F12), T-F703 (F09, F11), T-F704 (F03..F05), T-F705 (F06..F08) |
+| H-10 Cookie `__Host-` en `http://localhost` | T-F006 (spike), T-F701 (precondición) |
+| NFR-F01..F13 | T-F002 (F02, F07, F08), T-F702 (F01, F06, F10, F12), T-F703 (F09, F11), T-F704 (F03..F05), T-F705 (F06..F08), T-F706 (F13) |

@@ -3,6 +3,8 @@
 **Status**: Proposed
 **Fecha**: 2026-09-29
 **Origen**: spec 001 (`ui.md` §20); constitución, principio VII
+**Revisión 2026-09-29**: nombre de la app e íconos confirmados como provisorios por el usuario (P-F1:
+"CRM", ícono genérico).
 
 ## Contexto
 
@@ -15,9 +17,9 @@ viejas servidas desde caché y datos de una sesión visibles para otra en un dis
 
 ## Decisión
 
-- **Manifest** (`public/manifest.webmanifest`): `id`, `name`/`short_name` (provisorios hasta P-F1),
-  `lang: es-AR`, `start_url: /`, `scope: /`, `display: standalone`, colores de los tokens, íconos
-  192, 512 y 512 `maskable`; `apple-touch-icon` en `index.html`.
+- **Manifest** (`public/manifest.webmanifest`): `id`, `name` y `short_name` = "CRM" (provisorios,
+  P-F1), `lang: es-AR`, `start_url: /`, `scope: /`, `display: standalone`, colores de los tokens,
+  íconos genéricos 192, 512 y 512 `maskable`; `apple-touch-icon` en `index.html`.
 - **Service worker escrito a mano** (`public/sw.js`, sin librerías):
   - Atiende **solo** navegaciones (`request.mode === 'navigate'`) que no empiecen con `/api/`: red
     primero; si la red falla, responde `offline.html` desde su caché.
@@ -47,7 +49,8 @@ viejas servidas desde caché y datos de una sesión visibles para otra en un dis
 - **Sin service worker**: instalable desde el menú de Chrome, pero sin sugerencia automática y con
   la página de error genérica sin conexión.
 - **Cachear respuestas de `/api` (stale-while-revalidate)**: mostraría datos viejos y datos de
-  otro usuario tras cerrar sesión; prohibido por NFR-F09 e INV-F09.
+  otro usuario tras cerrar sesión; prohibido por NFR-F09 e INV-F09 (y la API responde `no-store`,
+  DD-28 del plan).
 
 ## Consecuencias
 
@@ -55,4 +58,4 @@ viejas servidas desde caché y datos de una sesión visibles para otra en un dis
   por el SW.
 - Aceptás: sin mejoras de velocidad por precache (la caché HTTP con `immutable` cubre las visitas
   repetidas); cambiar `offline.html` exige subir el número de caché; el SW se prueba en E2E
-  (no en jsdom).
+  (no en jsdom); cambiar el nombre o el ícono definitivos es editar el manifest y los íconos.

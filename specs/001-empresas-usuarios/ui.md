@@ -2,7 +2,15 @@
 
 **Spec**: [`spec.md`](spec.md) · **Rama**: `001-empresas-usuarios` · **Fecha**: 2026-09-29
 **Autor**: `frontend-architect` · **Estado**: Propuesto (pendiente de aprobación del usuario)
-**Contrato consumido**: [`contracts/openapi.yaml`](contracts/openapi.yaml) v0.2.0 (**canónico**)
+**Contrato consumido**: [`contracts/openapi.yaml`](contracts/openapi.yaml) v0.3.0 (**canónico**)
+**Revisión 1 (2026-09-29)**: respuestas del usuario a P-F1 a P-F5 (§26) y resolución de los
+hallazgos H-1 a H-9 por el backend (`plan.md` §18, DD-22 a DD-30, §10.7, contrato v0.3.0). Cambios:
+el logo grande se achica en el navegador (§13.11.1, DD-F11, DD-F20, DD-F21); el registro ya no
+reintenta sin zona horaria (DD-F10); el `403` de CSRF entra al mapa de errores (§12.2);
+invitación vencida, rol de invitados y reinvitación con otro rol (§13.9, §13.10); distribución
+alineada con el mux raíz y la tabla de cabeceras del plan (§21); piso de Chrome 112 (NFR-F02).
+**Hallazgos nuevos** H-10 (Chrome rechaza la cookie `__Host-` en `http://localhost`; refuta S-F3
+para Chrome) y H-11 (tamaño exacto del límite de 2 MB), en §27.
 
 | Archivo | Contenido |
 |---|---|
@@ -16,8 +24,8 @@
 ## 0. Contexto y validación del stack
 
 **Greenfield en frontend**: no hay código ni `package.json`. El backend de 001 está diseñado y
-aprobado (`plan.md`, ADR-001 a ADR-014) y su contrato OpenAPI es la restricción más dura de este
-diseño.
+aprobado (`plan.md`, ADR-001 a ADR-014, más los cambios del §18 del plan) y su contrato OpenAPI es
+la restricción más dura de este diseño.
 
 Diseño sobre este stack (decisiones del usuario marcadas con **(u)**; el resto son defaults
 propuestos, cada uno con su ADR):
@@ -29,15 +37,11 @@ propuestos, cada uno con su ADR):
 | Componentes y estilos | **shadcn/ui (sobre Radix) + Tailwind CSS v4 (u)** | ADR-016 |
 | Router | **React Router v7 en modo SPA/librería (u)**, variante *data* (`createBrowserRouter`) | ADR-017 |
 | Server state y cliente | **TanStack Query v5 + openapi-fetch, tipos con openapi-typescript (u)** | ADR-018 |
-| Distribución | **SPA embebida en el binario Go (`go:embed`), mismo origen que `/api/v1`; proxy de Vite en desarrollo (u)** | ADR-019 |
+| Distribución | **SPA embebida en el binario Go (`go:embed`), mismo origen que `/api/v1`; proxy de Vite en desarrollo (u)**; montaje, cabeceras y gzip aprobados (plan DD-22, DD-29) | ADR-019 |
 | PWA | Manifest + service worker mínimo escrito a mano, sin offline | ADR-020 |
 | Formularios | React Hook Form + Zod | ADR-021 |
-| Tests | Vitest + Testing Library + MSW; Playwright para E2E | ADR-022 |
+| Tests | Vitest + Testing Library + MSW; Playwright para E2E (Chromium en cada PR, WebKit antes de liberar) | ADR-022 |
 | Idioma y formato | es-AR sin librería de i18n; `Intl` con la zona horaria de la empresa; dinero en centavos formateado sin `float` | ADR-023 |
-
-> Detecté un repositorio sin código de frontend, con un backend Go aprobado que sirve la API en
-> `/api/v1` con sesión por cookie `HttpOnly` en el mismo origen. Diseño sobre el stack de la
-> tabla; si algo va por otro lado, se corrige en el ADR correspondiente antes de la Fase F0.
 
 **Arquetipo**: *SPA con sesión* (rutas protegidas, server state, navegación) con un componente de
 *flujos por enlace* (reset, verificación, invitación: la pantalla arranca desde un email con un
@@ -55,7 +59,9 @@ unauthenticated` en "tu sesión se cerró" y vuelve al login recordando la panta
 error del contrato tiene su mensaje en español rioplatense y su comportamiento, y el compilador
 obliga a cubrir los códigos nuevos. La interfaz es mobile-first (barra de navegación inferior en el
 celular, lateral en escritorio), accesible (WCAG 2.2 AA) e instalable como PWA, con un service
-worker que **nunca** cachea la API y solo muestra una página de "sin conexión".
+worker que **nunca** cachea la API y solo muestra una página de "sin conexión". El logo se prepara
+en el navegador (se achica si hace falta y se le quitan los metadatos de la foto) antes de subirlo;
+los límites del servidor siguen siendo la autoridad.
 
 ---
 
@@ -63,13 +69,13 @@ worker que **nunca** cachea la API y solo muestra una página de "sin conexión"
 
 | Principio | Estado | Cómo se cumple |
 |---|:---:|---|
-| **I. Simplicidad** | ✅ | Registro y aceptación de invitación en **una pantalla** cada uno. Sin store global, sin i18n, sin SSR, sin librería de PWA. Invitar es una página simple (no un modal). Mensajes en lenguaje de negocio ("Tu sesión se cerró", no "401"). Se construye solo lo que pide 001 + las consecuencias confirmadas en el plan (reactivar, reenviar invitación). |
-| **II. Genérico por configuración** | ✅ | El rubro se elige de `GET /industry-templates` (datos). Ninguna pantalla tiene texto o lógica de un rubro. Los nombres configurables de entidades llegan en 002. |
-| **III. Aislamiento** | ✅ (N/A cliente) | El cliente no decide nada de aislamiento. Al cerrar o perder la sesión se **vacía toda la caché** (INV-F03) para que otro usuario del mismo dispositivo no vea datos anteriores. Hallazgo H-2 (logo cacheado entre empresas). |
+| **I. Simplicidad** | ✅ | Registro y aceptación de invitación en **una pantalla** cada uno. Sin store global, sin i18n, sin SSR, sin librería de PWA ni de imágenes (el logo se procesa con APIs nativas del navegador). Invitar es una página simple (no un modal). Mensajes en lenguaje de negocio ("Tu sesión se cerró", no "401"). |
+| **II. Genérico por configuración** | ✅ | El rubro se elige de `GET /industry-templates` (datos). Ninguna pantalla tiene texto o lógica de un rubro. |
+| **III. Aislamiento** | ✅ (N/A cliente) | El cliente no decide nada de aislamiento. Al cerrar o perder la sesión se **vacía toda la caché** (INV-F03). El logo usa una URL versionada y el backend lo revalida siempre con un `ETag` por objeto (DD-23 del plan), así un celular compartido no muestra el logo de otra empresa. |
 | **IV. Integridad del dinero** | ✅ (N/A en 001) | 001 no muestra importes. ADR-023 fija para las specs siguientes: centavos enteros + moneda, formateo sin aritmética de punto flotante, nunca se suman monedas distintas en el cliente. |
-| **V. SDD** | ✅ | Diseño derivado de `spec.md` + `plan.md` + contrato. Escenarios Dado/Cuando/Entonces trazados a tareas `[T]`. Huecos como supuestos (§25) o preguntas (§26). |
+| **V. SDD** | ✅ | Diseño derivado de `spec.md` + `plan.md` + contrato. Escenarios Dado/Cuando/Entonces trazados a tareas `[T]`. |
 | **VI. Tests primero** | ✅ | Todas las fases del frontend son TDD; los tipos del cliente se derivan del contrato y el lint falla si están desactualizados. |
-| **VII. Mobile-first / PWA** | ✅ | Diseño base 360×640, mínimo 320 px; objetivos táctiles ≥ 44 px; PWA instalable; **sin offline** (el service worker no cachea datos). |
+| **VII. Mobile-first / PWA** | ✅ | Diseño base 360×640, mínimo 320 px; objetivos táctiles ≥ 44 px; PWA instalable; **sin offline**; el logo acepta fotos del celular y las achica. |
 
 ---
 
@@ -78,7 +84,7 @@ worker que **nunca** cachea la API y solo muestra una página de "sin conexión"
 | Perfil | Dispositivo y situación | Consecuencia de diseño |
 |---|---|---|
 | Dueño que se registra (Administrador) | Celular, a veces en el taller, atención parcial; quiere entrar "ya" (SC-001: < 3 min) | Un solo formulario, 6 campos, teclado adecuado por campo, gestores de contraseñas y pegado permitidos |
-| Administrador que gestiona usuarios y datos | Celular o PC de oficina | Listas como tarjetas en el celular; acciones con confirmación; lateral en escritorio |
+| Administrador que gestiona usuarios y datos | Celular o PC de oficina | Listas como tarjetas en el celular; acciones con confirmación; lateral en escritorio; el logo puede ser una foto sacada con el celular |
 | Operador invitado | Abre la invitación desde el email o WhatsApp en el celular | La invitación abre una pantalla que explica a qué empresa y con qué rol entra; define nombre y contraseña ahí mismo |
 | Cualquiera en obra | Señal intermitente, sol, manos ocupadas | Aviso de "sin conexión", botones grandes, alto contraste, sin gestos obligatorios |
 
@@ -111,7 +117,7 @@ worker que **nunca** cachea la API y solo muestra una página de "sin conexión"
 | S-07 | Panel inicial | `/` | Sesión | Bienvenida, empresa, rubro y primeros pasos | US-1 (prueba independiente) |
 | S-08 | Ajustes | `/settings` | Sesión | Menú de ajustes según permisos + cerrar sesión | US-2 (cerrar sesión), FR-007 |
 | S-09 | Usuarios | `/settings/users` | Sesión + `settings.manage` | Listar, cambiar rol, desactivar, reactivar, reenviar invitación | US-3, FR-005 |
-| S-10 | Invitar usuario | `/settings/users/invite` | Sesión + `settings.manage` | Invitar un email con un rol | US-3.1 |
+| S-10 | Invitar usuario | `/settings/users/invite` | Sesión + `settings.manage` | Invitar (o reinvitar) un email con un rol | US-3.1 |
 | S-11 | Datos de la empresa | `/settings/company` | Sesión + `settings.manage` | Editar datos fiscales y de contacto, zona horaria y logo | US-4 |
 | S-12 | No encontrado | `*` | Público | Ruta inexistente | Casos borde |
 | C-01 | Aviso "Confirmá tu email" (parte del shell) | — | Sesión | Recordar la verificación y reenviar el email (no bloquea, P-2) | US-1.3 |
@@ -172,13 +178,13 @@ flowchart TD
 - Todas las pantallas son rutas reales: atrás siempre vuelve a la pantalla anterior, con
   `<ScrollRestoration />` restaurando la posición.
 - Tras registro, login y aceptación de invitación se navega con `replace`: atrás **no** vuelve al
-  formulario (evita reenviar o ver un formulario que ya no aplica).
+  formulario.
 - Tras cerrar sesión o perderla, `replace` al login; la caché ya está vacía, así que "atrás" hacia
   una pantalla con sesión vuelve a pedir `/me`, recibe `401` y redirige al login.
 - En Invitar (S-10), "Cancelar" y el éxito vuelven a Usuarios con `navigate(-1)` si se llegó desde
   ahí, o con `replace` a `/settings/users` si se entró directo por URL.
 - Datos de la empresa (S-11) con cambios sin guardar: al intentar salir se pide confirmación
-  (`useBlocker`, BR-F10).
+  (`useBlocker`, BR-F10). Mientras se prepara o sube el logo, salir también pide confirmación.
 
 ---
 
@@ -205,9 +211,9 @@ flowchart TD
 └── *                               NotFoundPage
 ```
 
-### 6.2 Enlaces de email (lo que el backend recibe por `APP_LINK_*`, DD-14, S-10 del plan)
+### 6.2 Enlaces de email (DD-14 del plan; rutas confirmadas por el usuario, P-F3)
 
-| Variable del backend | Valor | Enlace completo que arma el backend |
+| Variable del backend | Valor (default de la configuración) | Enlace completo que arma el backend |
 |---|---|---|
 | `APP_LINK_RESET` | `/reset-password` | `{APP_BASE_URL}/reset-password#token={token}` |
 | `APP_LINK_VERIFY` | `/verify-email` | `{APP_BASE_URL}/verify-email#token={token}` |
@@ -254,18 +260,19 @@ después de 24 h), se trata igual que el `401` global (§12.4): caché vacía y 
 
 | ID | Regla | Fuente |
 |---|---|---|
-| BR-F01 | Acciones por usuario en S-09 según su estado (tabla de §13.9). | FR-005, plan §4.6 |
-| BR-F02 | Si el usuario es el **único Administrador activo** (se cuenta en la lista: `role=admin` y `status=active`), "Cambiar a Operador" y "Desactivar" aparecen **deshabilitadas** con el motivo visible ("Tiene que quedar al menos un administrador activo"). Es UX: el servidor responde `409 last_admin` igual. | US-3.4, INV-10 |
+| BR-F01 | Acciones por usuario en S-09 según su estado (tabla de §13.9). | FR-005, plan §4.6, DD-26 |
+| BR-F02 | Si el usuario es el **único Administrador activo** (se cuenta en la lista: `role=admin` y `status=active`; los invitados no cuentan), "Cambiar a Operador" y "Desactivar" aparecen **deshabilitadas** con el motivo visible ("Tiene que quedar al menos un administrador activo"). Es UX: el servidor responde `409 last_admin` igual. | US-3.4, INV-10 |
 | BR-F03 | La fila del usuario actual dice "(vos)". Bajarse a Operador o desactivarse a uno mismo pide una confirmación con advertencia explícita ("Vas a perder el acceso a Ajustes" / "Se va a cerrar tu sesión"). | US-3.3 |
 | BR-F04 | La navegación muestra solo lo que el rol puede usar (`session.permissions`). En Ajustes, el Operador ve su nombre, email y rol, y "Cerrar sesión". | FR-007, ADR-013 |
 | BR-F05 | Con `user.email_verified = false` se muestra el aviso C-01 en todas las pantallas con sesión; no bloquea nada; se puede ocultar hasta cerrar el navegador. | P-2, DD-4 |
 | BR-F06 | Tras registrarse o aceptar una invitación se entra directo al panel (la sesión viene en la respuesta). Tras restablecer la contraseña se va al login con aviso (el backend no inicia sesión y cierra las demás). | DD-4, plan §4.5 |
 | BR-F07 | `next` solo acepta rutas internas (§6.3). | INV-F07 |
-| BR-F08 | Invitar un email que ya estaba invitado en la empresa (respuesta `200`) muestra "Ya estaba invitado: le reenviamos la invitación". | DD-5 |
+| BR-F08 | Invitar un email que ya estaba invitado en la empresa (respuesta `200`) muestra "Ya estaba invitado: le reenviamos la invitación"; si el rol elegido era otro, el mensaje lo dice ("…como Administrador"), porque el backend también cambia el rol. | DD-5, DD-26 |
 | BR-F09 | La moneda base se muestra en Datos de la empresa como **solo lectura** ("No se puede cambiar"). | DD-15 |
-| BR-F10 | Todo botón de envío queda deshabilitado y con texto de progreso mientras la operación está en curso (sin doble envío). Salir de Datos de la empresa con cambios sin guardar pide confirmación. | Casos borde |
+| BR-F10 | Todo botón de envío queda deshabilitado y con texto de progreso mientras la operación está en curso (sin doble envío). Salir de Datos de la empresa con cambios sin guardar, o mientras se prepara o sube el logo, pide confirmación. | Casos borde |
 | BR-F11 | Si el email de una invitación rechazada con `409 email_taken` coincide con un usuario **desactivado** de la lista, se sugiere "Es de {nombre}, que está desactivado. Podés reactivarlo desde la lista". | DD-21 |
 | BR-F12 | Al aceptar una invitación con otra sesión abierta en el navegador se avisa: "Tenés una sesión abierta como {email}. Si aceptás, se va a cerrar." | Casos borde |
+| BR-F13 | Un logo que supera los límites del servidor (tamaño o dimensiones) se achica en el navegador antes de subirlo; un JPEG siempre se vuelve a codificar para aplicar la orientación y quitar los metadatos de la foto (ubicación GPS, modelo del celular). El usuario ve "Preparando la imagen…" y, si se achicó, "Lo achicamos para que pese menos". El servidor sigue siendo quien acepta o rechaza. | P-F2, DD-11, DD-F20, DD-F21 |
 
 ---
 
@@ -274,17 +281,18 @@ después de 24 h), se trata igual que el `401` global (§12.4): caché vacía y 
 | ID | Requisito | Valor | Cómo se mide |
 |---|---|---|---|
 | NFR-F01 | Viewport | Diseño base 360×640; sin scroll horizontal desde **320 CSS px** (WCAG 1.4.10) | Playwright a 320 px en cada pantalla (T-F702) |
-| NFR-F02 | Navegadores mínimos | Chrome/Edge ≥ 111, Safari/iOS ≥ 16.4, Firefox ≥ 128 (piso de Tailwind v4; Vite 8 apunta a Chrome 111 / Safari 16.4 / Firefox 114 por defecto). Samsung Internet basado en Chromium ≥ 111 (supuesto S-F4) | `build.target` explícito; E2E en Chromium y WebKit |
+| NFR-F02 | Navegadores mínimos | Chrome/Edge ≥ **112**, Safari/iOS ≥ 16.4, Firefox ≥ 128. El piso lo fijan Tailwind v4 (Chrome 111, Safari 16.4, Firefox 128) y `createImageBitmap` con orientación EXIF (`imageOrientation: 'from-image'`: Chrome 112, Firefox 111, Safari 16) para el logo. Samsung Internet basado en Chromium ≥ 112 (supuesto S-F4) | `build.target` explícito; E2E en Chromium y WebKit |
 | NFR-F03 | LCP | ≤ 2,5 s (p75) en `/login` y `/` | Lighthouse *mobile* (red y CPU simuladas) sobre el binario, T-F704 |
 | NFR-F04 | INP / CLS | INP ≤ 200 ms; CLS ≤ 0,1 | Lighthouse + inspección manual en un Android de gama media |
-| NFR-F05 | Presupuesto de JS (gzip) | Ruta pública (`/login`): ≤ 200 KB. Hasta ver el panel: ≤ 250 KB acumulados. Cada chunk de ruta de Ajustes: ≤ 40 KB. **Objetivos, no mediciones** | Reporte de `vite build` (tamaños gzip) en T-F704 |
+| NFR-F05 | Presupuesto de JS (gzip) | Ruta pública (`/login`): ≤ 200 KB. Hasta ver el panel: ≤ 250 KB acumulados. Cada chunk de ruta de Ajustes: ≤ 40 KB (incluida la preparación del logo). **Objetivos, no mediciones** | Reporte de `vite build` (tamaños gzip) en T-F704 |
 | NFR-F06 | Accesibilidad | WCAG 2.2 AA | axe en E2E por pantalla + checklist manual (T-F702, T-F705) |
 | NFR-F07 | Objetivos táctiles | ≥ 44×44 CSS px, separados ≥ 8 px (WCAG 2.5.8 pide 24) | Revisión visual + tokens |
 | NFR-F08 | Texto | Cuerpo 16 px; inputs ≥ 16 px (evita el zoom automático de iOS); zoom del navegador nunca bloqueado | Tokens + E2E |
 | NFR-F09 | Almacenamiento local | Ningún dato de negocio ni token en `localStorage`, `IndexedDB` ni Cache Storage. `sessionStorage` solo para marcas de UI (aviso ocultado, recarga por versión nueva) | Revisión + test de SW (T-F703) |
-| NFR-F10 | Seguridad del documento | CSP con `script-src 'self'` sin scripts inline (ADR-019) | E2E sin violaciones de CSP (T-F702) |
-| NFR-F11 | Instalable | Chrome Android: "Instalar app"; iOS: "Agregar a inicio" con ícono y nombre correctos | T-F703 + prueba manual |
+| NFR-F10 | Seguridad del documento | CSP con `script-src 'self'` sin scripts inline (ADR-019, plan §10.7) | E2E sin violaciones de CSP (T-F702) |
+| NFR-F11 | Instalable | Chrome Android: "Instalar app"; iOS: "Agregar a inicio" con ícono y nombre "CRM" (provisorios, P-F1) | T-F703 + prueba manual |
 | NFR-F12 | SC-001 | Registro en una pantalla, 6 campos, 1 request | E2E cronometrado (< 10 s automatizado) + prueba con un usuario real (< 3 min) |
+| NFR-F13 | Preparación del logo | Una foto de celular de 12 MP (≈ 4000×3000, 3–6 MB) queda lista para subir en ≤ 3 s en un Android de gama media; el procesamiento nunca decodifica imágenes de más de 25 MP. **Objetivo, no medición** | E2E con fixture (T-F706) + prueba manual en el celular (checkpoint F6) |
 
 ---
 
@@ -302,7 +310,7 @@ graph TB
                 AUTH["auth/<br/>signup, login, logout, reset,<br/>verify, invitación, sesión"]
                 DASH["dashboard/"]
                 USERS["users/"]
-                TEN["tenant/<br/>datos y logo"]
+                TEN["tenant/<br/>datos, logo y su preparación"]
             end
             SHARED["components/ (compartidos)<br/>components/ui/ (shadcn)"]
             API["api/<br/>client (openapi-fetch), errors,<br/>errorMessages, types generados"]
@@ -310,21 +318,26 @@ graph TB
         end
         CACHE[("Caché de TanStack Query<br/>(en memoria)")]
         SW["sw.js<br/>solo navegación → offline.html"]
+        CANVAS["createImageBitmap + canvas<br/>(APIs del navegador)"]
     end
     subgraph Binario["Binario crm (mismo origen)"]
-        STATIC["Handler de la SPA<br/>(go:embed web/dist)"]
-        APIV1["/api/v1 (chi)"]
+        ROOT["Mux raíz (DD-22)<br/>middlewares comunes + CSRF"]
+        STATIC["web.NewHandler<br/>(go:embed web/dist, gzip)"]
+        APIV1["/api/ (chi, no-store)"]
     end
 
     MAIN --> APP --> FEAT
     FEAT --> SHARED
     FEAT --> API
     FEAT --> LIB
+    TEN --> CANVAS
     APP --> API
     API <--> CACHE
-    API -->|"fetch same-origin + cookie"| APIV1
-    SW -.->|"no intercepta /api ni assets"| STATIC
-    MAIN -->|"GET /, /assets/*"| STATIC
+    API -->|"fetch same-origin + cookie"| ROOT
+    MAIN -->|"GET /, /assets/*"| ROOT
+    ROOT --> APIV1
+    ROOT --> STATIC
+    SW -.->|"no intercepta /api ni assets"| ROOT
 ```
 
 Reglas de dependencia (se verifican con `no-restricted-imports` de ESLint, T-F001):
@@ -333,7 +346,10 @@ Reglas de dependencia (se verifican con `no-restricted-imports` de ESLint, T-F00
   **presentación pura** (todo por props).
 - `features/X` no importa `features/Y` salvo `features/auth/session` (sesión y permisos, que son
   transversales). Si otra feature necesita algo de una hermana, se mueve a `components/` o `lib/`.
-- Solo `api/` llama a `fetch`/openapi-fetch. Los componentes usan hooks de su feature.
+- Solo `api/` llama a `fetch`/openapi-fetch (excepción: la subida del logo en
+  `features/tenant/api.ts`). Los componentes usan hooks de su feature.
+- Solo `features/tenant/logo/canvas.ts` usa `createImageBitmap` y `<canvas>` (el adaptador que se
+  sustituye en jsdom, §13.11.1).
 - `api/generated/` es derivado: nunca se edita a mano.
 
 ### 9.2 Invariantes del diseño (`INV-F`)
@@ -353,7 +369,9 @@ Propiedades que se rompen **sin que falle la compilación**. Cada una tiene un t
 | INV-F09 | El service worker no intercepta ni cachea `/api/*` ni los assets de la app; su única caché es la página `offline.html`. | T-F703 |
 | INV-F10 | Al cerrar un diálogo o menú, el foco vuelve al control que lo abrió; al cambiar de ruta, el foco va al `<h1>` de la pantalla nueva. | T-F106, T-F503 |
 | INV-F11 | Todo campo tiene `<label>` asociado; todo error de campo está enlazado con `aria-describedby`; los errores generales se anuncian (`role="alert"`). | Tests por rol/nombre accesible + axe |
-| INV-F12 | Ningún componente formatea fechas o dinero por su cuenta: usa `lib/format` con la zona horaria de la empresa (ADR-023). | Revisión + T-F502 |
+| INV-F12 | Ningún componente formatea fechas o dinero por su cuenta: usa `lib/format` con la zona horaria de la empresa (ADR-023). | Revisión + T-F501 |
+| INV-F13 | Lo que la UI sube como logo es PNG o JPEG, ≤ 2000 px por lado y ≤ `LOGO_TARGET_MAX_BYTES`; un JPEG subido nunca conserva metadatos EXIF (se vuelve a codificar). El cliente es igual o más estricto que el servidor, que igual decide. | T-F604, T-F706 |
+| INV-F14 | El logo se muestra siempre con la URL versionada `/api/v1/tenant/logo?v={id}-{updated_at}` (parámetro `v` del contrato, ignorado por el servidor): al cambiar el logo o la empresa, cambia la URL. | T-F603 |
 
 ---
 
@@ -374,6 +392,7 @@ Propiedades que se rompen **sin que falle la compilación**. Cada una tiene un t
 | Email prellenado, token del enlace | Estado de navegación | `location.state` | No es URL: no debe quedar en logs |
 | Valores de formularios, errores de campo | Client local | React Hook Form dentro de la pantalla | |
 | Diálogo de confirmación abierto, acción pendiente | Client local | `useState` del contenedor | |
+| Preparación del logo en curso (`processing`), error del cliente | Client local | `useState` de `CompanyPage` | El archivo preparado no se guarda: se sube y se descarta |
 | Mostrar/ocultar contraseña | Client local | `PasswordInput` | |
 | Hay conexión | Client global (del navegador) | `useOnlineStatus()` sobre `online`/`offline` | No es un store: se lee del navegador |
 | Aviso de verificación ocultado | Client local persistido | `sessionStorage` (`crm.verifyBanner.dismissed`) | Solo una marca booleana |
@@ -396,6 +415,9 @@ necesitan (sesión, permisos, empresa) es server state y ya la comparte la cach�
 | `networkMode` de queries | `online` (por defecto) | Sin conexión se pausan y se reanudan solas al volver |
 | `networkMode` de mutaciones | `always` | Sin conexión fallan enseguida con un mensaje claro, en vez de quedar "enviando" indefinidamente (DD-F19) |
 | `QueryCache.onError` / `MutationCache.onError` | Manejador global de `401 unauthenticated` y de `403 forbidden` (§12.4) | Un único lugar (INV-F02) |
+
+Toda respuesta de `/api/v1` llega con `Cache-Control: no-store` (DD-28 del plan): la única caché
+de datos del servidor en el cliente es la memoria de TanStack Query.
 
 ### 10.3 Claves de caché e invalidación
 
@@ -421,7 +443,7 @@ export const queryKeys = {
 | Reenviar verificación | `POST /auth/email-verification/resend` | — |
 | Pedir restablecimiento | `POST /auth/password-reset` | — |
 | Editar empresa | `PATCH /tenant` | `setQueryData(tenant, respuesta)` + `invalidateQueries(session)` (nombre en `TenantSummary`) |
-| Subir / quitar logo | `PUT` / `DELETE /tenant/logo` | `PUT`: `setQueryData(tenant, respuesta)`; `DELETE`: `invalidateQueries(tenant)`; ambos `invalidateQueries(session)` (`has_logo`) |
+| Subir / quitar logo | `PUT` / `DELETE /tenant/logo` | `PUT`: `setQueryData(tenant, respuesta)` (nuevo `updated_at` → nueva URL del logo); `DELETE`: `invalidateQueries(tenant)`; ambos `invalidateQueries(session)` (`has_logo`) |
 | Invitar / reenviar | `POST /users/invitations` | Reemplaza o agrega el `User` devuelto en `['users']` + `invalidateQueries(users)` |
 | Cambiar rol / desactivar / reactivar | `PUT …/role`, `POST …/deactivate`, `POST …/reactivate` | Reemplaza el `User` devuelto en `['users']` + `invalidateQueries(users)`; si el afectado es el usuario actual, `invalidateQueries(session)` |
 | Cualquier `404`/`409 invalid_state` en acciones de usuario | — | `invalidateQueries(users)` (la lista estaba vieja) |
@@ -430,9 +452,9 @@ export const queryKeys = {
 
 ## 11. Contrato de consumo del API
 
-**Canónico**: `specs/001-empresas-usuarios/contracts/openapi.yaml`. Los tipos del cliente se
-**generan** de él (ADR-018); si este documento y el YAML difieren, manda el YAML y este documento
-quedó desactualizado. Convención de los ejemplos: el valor es el tipo.
+**Canónico**: `specs/001-empresas-usuarios/contracts/openapi.yaml` **v0.3.0**. Los tipos del
+cliente se **generan** de él (ADR-018); si este documento y el YAML difieren, manda el YAML y este
+documento quedó desactualizado. Convención de los ejemplos: el valor es el tipo.
 
 ### 11.1 Endpoints consumidos
 
@@ -451,22 +473,28 @@ quedó desactualizado. Convención de los ejemplos: el valor es el tipo.
 | GET | `/me` | Guards, shell, todas las pantallas con sesión | `useSession` | `SessionInfo` |
 | GET | `/tenant` | Shell (nombre y logo), S-07, S-11 | `useTenant` | `Tenant` |
 | PATCH | `/tenant` | S-11 | `useUpdateTenant` | `Tenant` |
-| GET | `/tenant/logo` | Shell, S-11 (como `<img src>`) | — (lo pide el navegador) | `image/png` o `image/jpeg` |
+| GET | `/tenant/logo?v={id}-{updated_at}` | Shell, S-11 (como `<img src>`) | — (lo pide el navegador; `logoUrl()` arma la URL) | `image/png` o `image/jpeg` (`200`) o `304` |
 | PUT | `/tenant/logo` | S-11 | `useUploadLogo` | `Tenant` |
 | DELETE | `/tenant/logo` | S-11 | `useDeleteLogo` | — (204) |
 | GET | `/users` | S-09, S-10 (para BR-F11) | `useUsers` | `{ items: User[] }` |
-| POST | `/users/invitations` | S-10, S-09 (reenviar) | `useInviteUser` | `User` (201 nuevo / 200 reemitida) |
-| PUT | `/users/{userId}/role` | S-09 | `useChangeUserRole` | `User` |
+| POST | `/users/invitations` | S-10, S-09 (reenviar) | `useInviteUser` | `User` (201 nuevo / 200 reemitida, con el rol pedido) |
+| PUT | `/users/{userId}/role` | S-09 | `useChangeUserRole` | `User` (vale para `invited` y `active`; `disabled` → `409 invalid_state`) |
 | POST | `/users/{userId}/deactivate` | S-09 | `useDeactivateUser` | `User` |
 | POST | `/users/{userId}/reactivate` | S-09 | `useReactivateUser` | `User` |
 
 No se consumen `/healthz` ni `/readyz`.
 
+**Logo y caché** (contrato v0.3.0, DD-23): `GET /tenant/logo` responde `Cache-Control: private,
+no-cache` con un `ETag` distinto por objeto (y por empresa); el navegador revalida en cada uso y
+recibe `304` sin cuerpo si no cambió. El parámetro de query `v` (string, máx. 100 caracteres) lo
+ignora el servidor: la UI lo arma como `encodeURIComponent(`${tenant.id}-${tenant.updated_at}`)`
+(≈ 64 caracteres) para que el `<img>` cambie de URL apenas cambia el logo. `If-None-Match` lo
+maneja el navegador solo; la UI no lo envía a mano.
+
 **¿El API manda algo que el cliente no debería ver?** Revisado: `User` no incluye hashes, tokens
 ni sesiones; `InvitationPreview` muestra nombre de empresa, email y rol solo a quien tiene el token
 (correcto: es el destinatario); el `409 email_already_registered` no trae datos de la cuenta
-(INV-20). Sin hallazgos de filtración. El único punto sensible es el logo cacheado entre
-empresas (H-2).
+(INV-20). Sin hallazgos de filtración.
 
 ### 11.2 Tipos derivados
 
@@ -547,7 +575,8 @@ export function isRetryable(error: unknown): boolean;
 Subida del logo (`PUT /tenant/logo`, `multipart/form-data`): función `putTenantLogo(file: File):
 Promise<Tenant>` en `features/tenant/api.ts`. Si el tipo generado del body (`file: string`) no
 acepta un `File`, esa única función usa `fetch` nativo con `FormData` (sin fijar `Content-Type`,
-para que el navegador ponga el *boundary*) y la misma normalización `toApiError`.
+para que el navegador ponga el *boundary*) y la misma normalización `toApiError`. El archivo que
+recibe es siempre el resultado de `prepareLogo` (§13.11.1), nunca el original sin revisar.
 
 ### 11.4 Paso de *bundle* multi-spec (DD-17 del plan)
 
@@ -582,13 +611,14 @@ Agregar una spec = una entrada en `redocly.yaml` + un `&` en `schema.ts`.
 | Sin conexión | `navigator.onLine = false` o `fetch` rechaza (`kind: 'network'`) | Aviso C-02 arriba ("Sin conexión. Revisá tu internet.") + en la acción: "No hay conexión. Revisá tu internet y probá de nuevo." | Queries: se pausan y reanudan al volver la conexión. Mutaciones: no, botón "Reintentar" |
 | `4xx` de validación (`422`) | `code = validation_failed` | Error debajo de cada campo (`fieldErrors`) + foco en el primero | No |
 | `401 unauthenticated` | Manejador global | Login con "Tu sesión se cerró. Ingresá de nuevo para seguir." | No |
-| `403 forbidden` | Manejador global + pantalla | Mensaje de permiso; se refresca la sesión (el rol pudo cambiar) | No |
+| `403 forbidden` | Manejador global + pantalla | Mensaje de permiso; se refresca la sesión (el rol pudo cambiar). También lo usa el backend para rechazar un request de origen cruzado (CSRF, DD-30); con la SPA en el mismo origen no debería ocurrir | No |
 | `404` | Por pantalla | Recurso de lista: "Ese usuario ya no está en tu empresa" + refresco. Ruta: S-12 | No |
 | `409` | Por `code` | Mensaje específico (§12.2) | No |
 | `429` | `login_locked` / `rate_limited` + `Retry-After` | Hora a partir de la cual se puede reintentar | No (el usuario decide) |
 | `503` | `service_unavailable` | "El servicio no está disponible…" + "Reintentar" | Queries: hasta 2 veces con *backoff* |
 | `500` | `internal` | "Algo salió mal de nuestro lado…" + código de referencia (`requestId`) | No |
 | Respuesta no problem+json | `kind: 'unexpected'` | Mensaje genérico según status (5xx como `503`, 4xx como `internal`) | Según status |
+| Error del cliente al preparar el logo | `prepareLogo` devuelve `{ ok: false, reason }` | Mensaje en el control del logo (§13.11.1); no hay request | No |
 | Error de render | `ErrorBoundary` de la ruta raíz | "Algo salió mal al mostrar esta pantalla" + "Recargar" + "Ir al inicio" | No |
 | Chunk inexistente tras un deploy | `vite:preloadError` | Recarga automática una vez por sesión (marca en `sessionStorage`); si vuelve a fallar, "Hay una versión nueva de la app" + "Actualizar" | Una vez |
 
@@ -602,11 +632,11 @@ pantalla cuando hace falta; la tabla muestra el texto por defecto y las variante
 | `malformed_request` | 400 | "No pudimos procesar el pedido." / "Recargá la página y probá de nuevo." | Error general del formulario. Es un bug del cliente: muestra `requestId` |
 | `validation_failed` | 422 | "Revisá los datos marcados." | `fieldErrors` → `setError` por campo (nombres = propiedades del contrato, `snake_case`) + foco en el primero. Campos desconocidos → error general |
 | `unsupported_media_type` | 415 | Logo: "El logo tiene que ser una imagen PNG o JPG." · Resto: como `malformed_request` | Logo: error en el control de archivo |
-| `payload_too_large` | 413 | Logo: "La imagen pesa más de 2 MB. Elegí una más liviana." · Resto: como `malformed_request` | Idem |
+| `payload_too_large` | 413 | Logo: "La imagen sigue pesando más de lo permitido. Probá con otra imagen del logo." · Resto: como `malformed_request` | Idem (no debería pasar: el cliente ya la achicó; si pasa, ver H-11) |
 | `unauthenticated` | 401 | En el login: "Tu sesión se cerró. Ingresá de nuevo para seguir." + ayuda "Las sesiones se cierran solas después de 24 horas sin uso o a los 7 días." | **Global** (§12.4) |
 | `invalid_credentials` | 401 | "El email o la contraseña no son correctos." | En S-02: se conserva el email, se vacía la contraseña y se enfoca. **No** dispara el manejador global |
 | `account_disabled` | 403 | "Tu usuario está desactivado." / "Pedile a un administrador de tu empresa que lo reactive." | En S-02: aviso persistente; no es "sin permiso" (no invalida sesión: no hay) |
-| `forbidden` | 403 | "No tenés permiso para hacer esto." / "Si lo necesitás, pedíselo a un administrador." | Global: `invalidateQueries(session)`; la pantalla muestra el mensaje o el guard pasa a "Sin permiso" |
+| `forbidden` | 403 | "No tenés permiso para hacer esto." / "Si lo necesitás, pedíselo a un administrador." | Global: `invalidateQueries(session)`; la pantalla muestra el mensaje o el guard pasa a "Sin permiso". Mismo tratamiento si el origen fue el rechazo de CSRF (DD-30): la UI no los distingue y no hace falta (§27, H-9 resuelto) |
 | `not_found` | 404 | Acciones de usuario: "Ese usuario ya no está en tu empresa. Actualizamos la lista." · Logo (`GET`): sin mensaje (se muestran iniciales) · Resto: "No encontramos lo que buscás." | Refresca la lista afectada |
 | `email_already_registered` | 409 | "Ya existe un usuario con ese email." / "¿Querés recuperar la contraseña?" | Si `suggested_action = password_reset`: botón **"Recuperar contraseña"** → `/forgot-password` con el email en `location.state` (DD-F18). Botón secundario "Usar otro email" enfoca el campo email |
 | `email_taken` | 409 | "Ese email ya tiene un usuario en el sistema." / "Usá otro email." | Error en el campo email de S-10; BR-F11 si es un desactivado de la empresa |
@@ -631,7 +661,7 @@ pantalla cuando hace falta; la tabla muestra el texto por defecto y las variante
 | `invalid_tax_id` | "El CUIT no es válido. Revisá los números." | |
 | `same_as_email` | "La contraseña no puede ser igual a tu email." | |
 | `unknown_template` | "Elegí un rubro de la lista." | Además se refresca `['industry-templates']` |
-| `invalid_timezone` | "Elegí una zona horaria de la lista." | En el registro no se muestra: reintento único sin `timezone` (DD-F10) |
+| `invalid_timezone` | "Elegí una zona horaria de la lista." | Solo en S-11 (`PATCH /tenant`). En el registro no existe: una zona desconocida se reemplaza por la default sin error (DD-27 del plan) |
 
 ### 12.4 Sesión vencida (`401`) y permisos (`403`) globales
 
@@ -750,7 +780,7 @@ A: ícono de la app. B: `<h1>` y bajada. C y D: `<fieldset>` con `<legend>`. E: 
 | Nombre de la empresa | `company_name` | `input` | requerido, trim, 1–120 | `organization` |
 | Rubro de tu empresa | `industry_template_code` | `RadioGroup` con `items` de `/industry-templates` | requerido (sin opción preseleccionada) | — |
 | Moneda base | `base_currency` | `RadioGroup` | `ARS` (preseleccionada) o `USD` | — |
-| (oculto) | `timezone` | — | `Intl.DateTimeFormat().resolvedOptions().timeZone` | — |
+| (oculto) | `timezone` | — | `Intl.DateTimeFormat().resolvedOptions().timeZone`, sin validar en el cliente: si el backend no la conoce, usa `America/Argentina/Buenos_Aires` sin error (DD-27); se corrige después en S-11 | — |
 
 | Estado | Qué ve el usuario |
 |---|---|
@@ -892,7 +922,7 @@ Confirmación con **botón** y no automática al abrir (DD-F3).
 ┌──────────────────────────────────┐
 │ A  Te invitaron a                │
 │    Aberturas Norte               │  ← tenant_name
-│    como Operador                 │  ← role
+│    como Operador                 │  ← role (el vigente: una reinvitación puede haberlo cambiado)
 │    La invitación vence el 6/10.  │  ← expires_at (zona del navegador)
 │ B  [! Tenés una sesión abierta …]│  (BR-F12, solo si hay sesión)
 │    Email                         │
@@ -991,6 +1021,12 @@ En escritorio, "Cerrar sesión" también está en el menú del usuario de la bar
 │ │ La invitación vence el 6/10, │ │
 │ │ 14:30                        │ │
 │ ├──────────────────────────────┤ │
+│ │ pedro@…                  [⋮] │ │
+│ │ Operador · [Invitado]        │ │
+│ │ La invitación venció el 20/9.│ │
+│ │ Reenviala para que pueda     │ │
+│ │ entrar.                      │ │
+│ ├──────────────────────────────┤ │
 │ │ Luis Gómez               [⋮] │ │
 │ │ luis@…                       │ │
 │ │ Operador · [Desactivado]     │ │
@@ -1003,23 +1039,31 @@ ensancha). Estado con texto, no solo color. El menú `⋮` es un `DropdownMenu` 
 "Acciones para {nombre o email}". Nombres largos y emails largos hacen *wrap*
 (`overflow-wrap: anywhere`), sin truncar.
 
+Vencimiento de invitaciones (DD-25 del plan, H-4 resuelto): para un `invited`,
+`invitation_expires_at` es el vencimiento de su **última** invitación aunque ya haya pasado. Si es
+futuro: "La invitación vence el {fecha}"; si pasó: "La invitación venció el {fecha}. Reenviala para
+que pueda entrar." (fechas en la zona de la empresa). Si llegara `null` para un invitado (no
+debería, según el contrato), no se muestra vencimiento.
+
 **Acciones por estado (BR-F01 a BR-F03)**, calculadas por la función pura `availableUserActions`:
 
 | Estado del usuario | Acciones | Confirmación |
 |---|---|---|
 | `active` + `admin` | "Cambiar a Operador", "Desactivar" (ambas deshabilitadas si es el único admin activo, con el motivo) | Sí, ambas |
 | `active` + `operator` | "Hacer Administrador", "Desactivar" | Sí |
-| `invited` | "Reenviar invitación", "Cambiar a Operador"/"Hacer Administrador", "Desactivar" (su invitación deja de funcionar) | Reenviar: no. Resto: sí |
-| `disabled` | "Reactivar" | Sí ("Si nunca aceptó la invitación, le enviamos una nueva") |
+| `invited` | "Reenviar invitación", "Cambiar a Operador"/"Hacer Administrador" (DD-26: vale para invitados; nunca dispara `last_admin`), "Desactivar" (su invitación deja de funcionar) | Reenviar: no. Resto: sí |
+| `disabled` | "Reactivar" (cambiar el rol de un desactivado no se ofrece: el backend responde `409 invalid_state`) | Sí ("Si nunca aceptó la invitación, le enviamos una nueva") |
 
 Textos de confirmación (`ConfirmDialog`, `AlertDialog` accesible):
 
 | Acción | Título | Descripción | Botón |
 |---|---|---|---|
-| Hacer Administrador | "¿Hacer Administrador a {nombre}?" | "Va a poder ver toda la información de la empresa y gestionar usuarios." | "Hacer Administrador" |
+| Hacer Administrador | "¿Hacer Administrador a {nombre}?" | "Va a poder ver toda la información de la empresa y gestionar usuarios." (invitado: "Cuando acepte la invitación, va a poder…") | "Hacer Administrador" |
 | Cambiar a Operador | "¿Cambiar a {nombre} a Operador?" | "Deja de ver finanzas, reportes y ajustes." (propio: "Vas a perder el acceso a Ajustes.") | "Cambiar a Operador" |
-| Desactivar | "¿Desactivar a {nombre}?" | "No va a poder ingresar y se cierran sus sesiones abiertas. Podés reactivarlo después." (propio: "Se va a cerrar tu sesión.") | "Desactivar" (destructivo) |
+| Desactivar | "¿Desactivar a {nombre}?" | "No va a poder ingresar y se cierran sus sesiones abiertas. Podés reactivarlo después." (invitado: "Su invitación deja de funcionar."; propio: "Se va a cerrar tu sesión.") | "Desactivar" (destructivo) |
 | Reactivar | "¿Reactivar a {nombre}?" | "Va a poder ingresar de nuevo con su contraseña. Si nunca aceptó la invitación, le enviamos una nueva." | "Reactivar" |
+
+Para un invitado, {nombre} es su email (`name` es `null` hasta que acepta).
 
 | Estado | Qué ve el usuario |
 |---|---|
@@ -1032,7 +1076,7 @@ Textos de confirmación (`ConfirmDialog`, `AlertDialog` accesible):
 | Sin permiso | Guard: "No tenés acceso a esta sección" (Operador por URL, o Administrador al que le bajaron el rol mientras miraba) |
 | Sesión vencida | §12.4. Si el Administrador se desactivó a sí mismo, el siguiente request da `401` y cae acá |
 
-### 13.10 S-10 Invitar usuario (`/settings/users/invite`) · US-3.1, DD-5, DD-21
+### 13.10 S-10 Invitar usuario (`/settings/users/invite`) · US-3.1, DD-5, DD-21, DD-26
 
 ```text
 ┌──────────────────────────────────┐
@@ -1060,7 +1104,7 @@ Textos de confirmación (`ConfirmDialog`, `AlertDialog` accesible):
 | Carga / Vacío | N/A (formulario; `['users']` se usa solo para BR-F11 si ya está en caché) |
 | Error | `409 email_taken` en el campo email (+ BR-F11); `422` por campo; `503`/`500`/red con "Reintentar" |
 | Enviando | "Enviando…" |
-| Éxito | `201`: vuelve a Usuarios + toast "Invitación enviada a {email}. Vence el {fecha}." · `200`: toast "{email} ya estaba invitado: le reenviamos la invitación." |
+| Éxito | `201`: vuelve a Usuarios + toast "Invitación enviada a {email}. Vence el {fecha}." · `200` con el mismo rol que tenía: "{email} ya estaba invitado: le reenviamos la invitación." · `200` con otro rol (se compara con `['users']` en caché; si no está, se usa el texto neutro anterior): "{email} ya estaba invitado: le reenviamos la invitación como {Rol}." |
 | Sin permiso / Sesión vencida | Guard / §12.4 |
 
 ### 13.11 S-11 Datos de la empresa (`/settings/company`) · US-4, DD-11, DD-15, DD-16
@@ -1073,9 +1117,10 @@ Textos de confirmación (`ConfirmDialog`, `AlertDialog` accesible):
 │ presupuestos.                    │
 │ L  ── Logo ───────────────────── │
 │    [ imagen 96×96 o iniciales ]  │
-│    PNG o JPG, hasta 2 MB y       │
-│    2000 × 2000 px.               │
+│    PNG o JPG. Si la imagen es    │
+│    muy grande, la achicamos.     │
 │    [ Cambiar logo ] [ Quitar ]   │
+│    (i) Preparando la imagen…     │  ← región aria-live
 │ F  ── Datos ──────────────────── │
 │    Nombre de la empresa *        │
 │    [____________________________]│
@@ -1098,17 +1143,17 @@ Textos de confirmación (`ConfirmDialog`, `AlertDialog` accesible):
 └──────────────────────────────────┘
 ```
 
-- El logo se sube **al elegir el archivo** (acción independiente del formulario de datos), con
-  validación previa en el cliente: tipo `image/png` o `image/jpeg` y tamaño ≤ 2 MB. Las
-  dimensiones las valida el servidor (`422`). Sin redimensionar en el navegador (DD-F11, P-F2).
-- La imagen se muestra con `src="/api/v1/tenant/logo?v={tenant.id}-{tenant.updated_at}"`
-  (DD-F12, depende de H-2) y `alt="Logo de {empresa}"`; si falla, iniciales de la empresa.
+- El logo se sube **al elegir el archivo** (acción independiente del formulario de datos), después
+  de prepararlo en el navegador (§13.11.1). El control de archivo tiene `accept="image/png,image/jpeg"`.
+- La imagen se muestra con `src` = `logoUrl(tenant)` = `/api/v1/tenant/logo?v={id}-{updated_at}`
+  (INV-F14, DD-F12) y `alt="Logo de {empresa}"`; si falla, iniciales de la empresa.
 - `PATCH` envía **solo los campos modificados** (`dirtyFields`); un campo opcional vaciado se
   envía como `null` (borra el dato, contrato). CUIT: se valida formato y dígito verificador en el
   cliente (`isValidCuit`, mismo algoritmo y casos que T-B701) y se envía como se escribió (el
   backend normaliza).
 - Zona horaria: `Select` con las zonas `America/Argentina/*` primero y luego el resto de
-  `Intl.supportedValuesOf('timeZone')`.
+  `Intl.supportedValuesOf('timeZone')`. Una zona desconocida para el backend da `422
+  invalid_timezone` en el campo.
 
 | Estado | Qué ve el usuario |
 |---|---|
@@ -1116,11 +1161,97 @@ Textos de confirmación (`ConfirmDialog`, `AlertDialog` accesible):
 | Vacío | Campos opcionales vacíos con su ayuda; logo con iniciales y "Todavía no subiste un logo" |
 | Error de carga | `ErrorState` "No pudimos cargar los datos de tu empresa." + "Reintentar" |
 | Error al guardar | `422` por campo (`invalid_tax_id`, `invalid_format`, `too_long`, `invalid_timezone`); `503`/`500`/red con "Reintentar" y lo cargado intacto |
-| Error de logo | Cliente: "El logo tiene que ser una imagen PNG o JPG." / "La imagen pesa más de 2 MB. Elegí una más liviana." · Servidor: `413`, `415`, `422` ("La imagen no se pudo leer o supera 2000 × 2000 px"), `503` |
+| Preparando el logo | "Preparando la imagen…" (`aria-live="polite"`); "Cambiar logo" y "Quitar" deshabilitados |
+| Error de logo | Del cliente (§13.11.1, sin request) · Del servidor: `413`, `415`, `422` ("La imagen no se pudo leer o supera 2000 × 2000 px"), `503` |
 | Enviando | "Guardando…" / "Subiendo logo…" / "Quitando logo…" |
-| Éxito | Toast "Guardamos los datos de la empresa." / "Logo actualizado." / "Quitamos el logo."; el encabezado se actualiza sin recargar |
-| Cambios sin guardar | Al salir: "Tenés cambios sin guardar. ¿Salir igual?" (`useBlocker`) |
+| Éxito | Toast "Guardamos los datos de la empresa." / "Logo actualizado." (si se achicó: "Logo actualizado. Lo achicamos para que pese menos.") / "Quitamos el logo."; el encabezado se actualiza sin recargar (nueva URL con `v`) |
+| Cambios sin guardar | Al salir: "Tenés cambios sin guardar. ¿Salir igual?" (`useBlocker`); también mientras se prepara o sube el logo |
 | Sin permiso / Sesión vencida | Guard / §12.4 (DD-F5) |
+
+#### 13.11.1 Preparación del logo en el navegador (P-F2, DD-11, DD-F11, DD-F20, DD-F21)
+
+**Qué se resuelve**: una foto del logo sacada con el celular (3–6 MB, 4000×3000 px, con EXIF de
+orientación y ubicación) tiene que poder subirse aunque el servidor acepte solo PNG/JPEG de hasta
+2 MB y 2000×2000 px. Los límites del servidor **no cambian** y siguen siendo la autoridad; el
+cliente se ajusta a ellos con margen.
+
+**Constantes** (`features/tenant/logo/limits.ts`):
+
+| Constante | Valor | Por qué |
+|---|---|---|
+| `LOGO_MAX_SIDE` | 2000 px | Límite del servidor (DD-11), por lado |
+| `LOGO_TARGET_MAX_BYTES` | 1 900 000 bytes | Margen bajo "2 MB" mientras no esté definido si son 2 000 000 o 2 097 152 bytes, y si el límite cuenta el cuerpo multipart o solo el archivo (H-11) |
+| `LOGO_INPUT_MAX_BYTES` | 20 MB | Por encima no se intenta procesar (memoria del celular) |
+| `LOGO_INPUT_MAX_PIXELS` | 25 000 000 (25 MP) | Decodificar más consume > 100 MB de memoria; una foto normal de celular tiene 12 MP |
+| Escalera JPEG (`maxSide`, calidad) | (2000, 0,90) → (2000, 0,80) → (1600, 0,80) → (1200, 0,80) → (1000, 0,75) | Primero se baja calidad sin perder resolución; después resolución. A 1000 px y 0,75 un JPEG pesa bastante menos de 1 MB |
+| Escalera PNG (`maxSide`) | 2000 → 1600 → 1200 → 1000 → 700 | PNG no tiene calidad. A 700×700 los píxeles sin comprimir (RGBA) ocupan ≈ 1,96 MB, así que el último paso prácticamente siempre entra |
+
+Nunca se agranda una imagen: `maxSide` efectivo = `min(paso, lado mayor original)`.
+
+**Flujo**:
+
+```mermaid
+flowchart TD
+    A["Archivo elegido"] --> B{"¿Pesa más de 20 MB?"}
+    B -->|"sí"| X1["Rechazo: demasiado grande para procesar"]
+    B -->|"no"| C["Leer bytes y detectar el formato por su firma"]
+    C --> D{"Formato"}
+    D -->|"SVG"| X2["Rechazo: exportalo como PNG"]
+    D -->|"GIF, WebP, HEIC u otro"| X3["Rechazo: tiene que ser PNG o JPG"]
+    D -->|"PNG o JPEG"| E["Leer ancho y alto del encabezado"]
+    E -->|"no se puede leer"| X4["Rechazo: no pudimos leer la imagen"]
+    E --> F{"¿Más de 25 MP?"}
+    F -->|"sí"| X1
+    F -->|"no"| G{"¿PNG dentro de los límites?"}
+    G -->|"sí"| U["Subir el original sin tocar"]
+    G -->|"no, o es JPEG"| H["Decodificar una vez con createImageBitmap<br/>(aplica la orientación EXIF)"]
+    H -->|"falla"| X4
+    H --> I["Probar los pasos de la escalera:<br/>dibujar en canvas y codificar"]
+    I -->|"algún paso entra"| U2["Subir la versión preparada"]
+    I -->|"ninguno entra"| X5["Rechazo: no pudimos achicarla lo suficiente"]
+```
+
+Reglas:
+
+- **Formato por firma, no por extensión ni `file.type`**: PNG `89 50 4E 47 0D 0A 1A 0A`; JPEG
+  `FF D8 FF`; GIF `GIF8`; WebP `RIFF….WEBP`; HEIC/AVIF `ftyp` en el byte 4; SVG si el texto (tras
+  BOM y espacios) empieza con `<?xml` o `<svg`, o `file.type` es `image/svg+xml`.
+- **Dimensiones desde el encabezado**, sin decodificar: PNG del chunk `IHDR`; JPEG del primer
+  marcador `SOF0`–`SOF15` (salvo `C4`, `C8`, `CC`). Son las dimensiones crudas: con orientación
+  EXIF de 90° ancho y alto se invierten, pero el límite es igual para ambos lados.
+- **PNG dentro de los límites** (≤ 2000 px por lado y ≤ `LOGO_TARGET_MAX_BYTES`): se sube el
+  archivo original, byte a byte (sin pérdida, transparencia intacta).
+- **JPEG: siempre se vuelve a codificar** (DD-F21), aunque ya cumpla los límites. Así se aplica la
+  orientación EXIF a los píxeles (un logo de foto nunca queda de costado en el PDF de 005) y se
+  quitan los metadatos: una foto de celular trae ubicación GPS y datos del dispositivo que no deben
+  terminar en un logo que se envía a clientes.
+- **PNG que no cumple**: se vuelve a codificar como **PNG** (conserva la transparencia: el canvas
+  arranca transparente y no se pinta fondo).
+- **JPEG que no cumple**: se codifica como **JPEG** (no tiene transparencia; convertirlo a PNG lo
+  haría más pesado).
+- **Decodificación**: una sola vez por archivo, con `createImageBitmap(file, { imageOrientation:
+  'from-image' })` (Chrome 112, Firefox 111, Safari 16: NFR-F02); cada paso de la escalera dibuja
+  ese bitmap en un `<canvas>` del tamaño destino con `imageSmoothingQuality = 'high'` y codifica con
+  `canvas.toBlob(tipo, calidad)`. Al terminar se libera (`bitmap.close()`).
+- **Resultado**: un `File` (`logo.png` o `logo.jpg`, el nombre no importa: el servidor genera la
+  clave) que va a `putTenantLogo`. El servidor vuelve a validar tipo, tamaño y dimensiones.
+- **Sin dependencias**: todo con APIs del navegador (DD-F20). Sin *Web Worker*: `toBlob` ya es
+  asíncrono y la UI muestra "Preparando la imagen…".
+
+Mensajes (en el control del logo, `role="alert"`; no hay request):
+
+| Motivo (`LogoRejectReason`) | Texto |
+|---|---|
+| `svg` | "No podemos usar logos en SVG. Exportalo como PNG desde el programa donde lo tenés y subilo de nuevo." |
+| `unsupported_format` | "El logo tiene que ser una imagen PNG o JPG." |
+| `unreadable` | "No pudimos leer la imagen. Probá con otro archivo PNG o JPG." |
+| `too_large_to_process` | "La imagen es demasiado grande para prepararla en este dispositivo. Probá con una captura de pantalla del logo o con una imagen más chica." |
+| `cannot_shrink` | "No pudimos achicar la imagen lo suficiente. Probá con otra imagen del logo." |
+
+**Cómo se prueba**: las funciones puras (firma, dimensiones, plan, escalera) con tablas de bytes en
+Vitest (T-F604); la pantalla con el adaptador de canvas sustituido, porque jsdom no tiene
+`createImageBitmap` ni canvas (T-F603); el adaptador real con imágenes de verdad en Playwright,
+Chromium y WebKit (T-F706).
 
 ### 13.12 S-12 No encontrado (`*`)
 
@@ -1204,8 +1335,6 @@ sequenceDiagram
     S->>API: POST /auth/signup con timezone del navegador
     alt 201 SessionInfo
         S-->>V: panel con toast y aviso de verificación
-    else 422 con errors campo timezone
-        S->>API: reintenta una vez sin timezone
     else 409 email_already_registered con suggested_action password_reset
         S-->>V: Ya existe un usuario con ese email y botón Recuperar contraseña
         V->>F: Recuperar contraseña (email en location.state)
@@ -1233,7 +1362,7 @@ sequenceDiagram
     UI->>API: POST /users/invitations
     alt 201 User invitado
         UI-->>A: vuelve a Usuarios, toast con vencimiento
-    else 200 User (ya estaba invitado)
+    else 200 User (ya estaba invitado, rol actualizado si cambió)
         UI-->>A: toast Ya estaba invitado, reenviamos
     else 409 email_taken
         UI-->>A: error en el campo email (y sugerencia de reactivar si corresponde)
@@ -1255,6 +1384,41 @@ sequenceDiagram
         end
     else 400 token_invalid
         UI-->>O: Esta invitación ya no es válida, pedir una nueva por email
+    end
+```
+
+### 14.4 Subir un logo desde una foto del celular (US-4, P-F2)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor A as Administrador
+    participant P as S-11 Datos de la empresa
+    participant L as prepareLogo
+    participant C as Canvas del navegador
+    participant API as /api/v1
+
+    A->>P: Cambiar logo, elige foto JPEG de 5 MB 4000x3000
+    P-->>A: Preparando la imagen (botones deshabilitados)
+    P->>L: prepareLogo(file)
+    L->>L: firma JPEG, dimensiones del encabezado, plan de re-codificación
+    L->>C: createImageBitmap con orientación EXIF
+    loop pasos de la escalera hasta que entre
+        L->>C: dibujar a maxSide y codificar JPEG con calidad
+        C-->>L: blob
+    end
+    alt algún paso entra en el límite
+        L-->>P: ok con File preparado y resized true
+        P-->>A: Subiendo logo
+        P->>API: PUT /tenant/logo multipart
+        alt 200 Tenant con updated_at nuevo
+            P-->>A: toast Logo actualizado, lo achicamos; img con nueva URL v
+        else 413, 415 o 422
+            P-->>A: mensaje en el control del logo
+        end
+    else ninguno entra o no se puede leer
+        L-->>P: ok false con el motivo
+        P-->>A: mensaje en el control del logo, sin request
     end
 ```
 
@@ -1352,7 +1516,7 @@ export interface EmailVerificationBannerProps {
 // src/components/AppBrand.tsx — logo o iniciales + nombre
 export interface AppBrandProps {
   name: string;
-  logoSrc: string | null;        // null → iniciales
+  logoSrc: string | null;        // null → iniciales; si no, logoUrl(tenant)
 }
 ```
 
@@ -1372,7 +1536,7 @@ export interface UserListItemProps {
 // src/features/users/components/UserStatusBadge.tsx
 export interface UserStatusBadgeProps {
   status: UserStatus;                            // texto siempre visible, no solo color
-  invitationExpiresAt: string | null;            // ISO-8601; si está vencida: "Invitación vencida"
+  invitationExpiresAt: string | null;            // ISO-8601; pasada → "La invitación venció el …" (DD-25)
   timeZone: string;
   now?: Date;                                    // inyectable para tests
 }
@@ -1414,10 +1578,10 @@ export interface CurrencyPickerProps {
 // src/features/tenant/components/LogoUploader.tsx
 export interface LogoUploaderProps {
   companyName: string;
-  logoSrc: string | null;                        // null si has_logo = false
-  pending: 'upload' | 'remove' | null;
-  error: string | null;
-  onSelectFile: (file: File) => void;            // el contenedor valida tipo/tamaño y sube
+  logoSrc: string | null;                        // logoUrl(tenant); null si has_logo = false
+  pending: 'processing' | 'upload' | 'remove' | null; // "Preparando la imagen…" / "Subiendo logo…" / "Quitando logo…"
+  error: string | null;                          // del cliente (§13.11.1) o del servidor
+  onSelectFile: (file: File) => void;            // el contenedor prepara (prepareLogo) y sube
   onRemove: () => void;                          // el contenedor pide confirmación
 }
 ```
@@ -1430,7 +1594,7 @@ export interface LogoUploaderProps {
 | `RequireSession`, `PublicOnly`, `RequirePermission` | Guards (§6.4) | `useSession`, `useCan` |
 | `AppShell` | Encabezado, avisos, navegación inferior/lateral, `<main id="main">` | `useSession`, `useTenant`, `useCan`, `useResendEmailVerification` |
 | `SignupPage`, `LoginPage`, `ForgotPasswordPage`, `ResetPasswordPage`, `VerifyEmailPage`, `AcceptInvitationPage` | Pantallas S-01..S-06 | los de §15.4 |
-| `DashboardPage`, `SettingsPage`, `UsersPage`, `InviteUserPage`, `CompanyPage`, `NotFoundPage` | Pantallas S-07..S-12 | los de §15.4 |
+| `DashboardPage`, `SettingsPage`, `UsersPage`, `InviteUserPage`, `CompanyPage`, `NotFoundPage` | Pantallas S-07..S-12 | los de §15.4; `CompanyPage` además `prepareLogo` |
 
 ### 15.4 Hooks y funciones (firmas)
 
@@ -1455,9 +1619,43 @@ export function useAcceptInvitation(): UseMutationResult<SessionInfo, ApiError, 
 // features/tenant/api.ts
 export function useTenant(): UseQueryResult<Tenant, ApiError>;
 export function useUpdateTenant(): UseMutationResult<Tenant, ApiError, TenantUpdate>;
-export function useUploadLogo(): UseMutationResult<Tenant, ApiError, File>;
+export function useUploadLogo(): UseMutationResult<Tenant, ApiError, File>;   // recibe el File ya preparado
 export function useDeleteLogo(): UseMutationResult<void, ApiError, void>;
+/** `/api/v1/tenant/logo?v=<encodeURIComponent(id-updated_at)>` o null si no hay logo (INV-F14). */
 export function logoUrl(tenant: Pick<Tenant, 'id' | 'updated_at' | 'has_logo'>): string | null;
+
+// features/tenant/logo/sniff.ts — puras
+export type SniffedImageType = 'png' | 'jpeg' | 'gif' | 'webp' | 'heic' | 'svg' | 'unknown';
+export function sniffImageType(bytes: Uint8Array, declaredType?: string): SniffedImageType;
+export function readImageSize(bytes: Uint8Array, type: 'png' | 'jpeg'): { width: number; height: number } | null;
+
+// features/tenant/logo/plan.ts — puras
+export type LogoRejectReason = 'svg' | 'unsupported_format' | 'unreadable' | 'too_large_to_process' | 'cannot_shrink';
+export interface EncodeAttempt { maxSide: number; quality?: number }       // quality solo para JPEG
+export type LogoPlan =
+  | { action: 'upload_original' }
+  | { action: 'reencode'; format: 'image/png' | 'image/jpeg'; attempts: EncodeAttempt[] }
+  | { action: 'reject'; reason: LogoRejectReason };
+export function planLogoProcessing(input: {
+  type: SniffedImageType; byteSize: number; width: number | null; height: number | null;
+}): LogoPlan;
+export function fitWithin(width: number, height: number, maxSide: number): { width: number; height: number };
+
+// features/tenant/logo/canvas.ts — adaptador del navegador (se sustituye en jsdom)
+export function decodeImage(file: Blob): Promise<ImageBitmap>;             // imageOrientation: 'from-image'
+export function encodeBitmap(
+  bitmap: ImageBitmap,
+  options: { maxSide: number; format: 'image/png' | 'image/jpeg'; quality?: number },
+): Promise<Blob>;
+
+// features/tenant/logo/prepareLogo.ts — orquesta: firma → plan → decodificar una vez → escalera
+export type PrepareLogoResult =
+  | { ok: true; file: File; resized: boolean; reencoded: boolean }
+  | { ok: false; reason: LogoRejectReason };
+export function prepareLogo(
+  file: File,
+  deps?: { decodeImage: typeof decodeImage; encodeBitmap: typeof encodeBitmap },  // inyectables para tests
+): Promise<PrepareLogoResult>;
 
 // features/users/api.ts
 export function useUsers(): UseQueryResult<User[], ApiError>;
@@ -1486,6 +1684,7 @@ export type ErrorContext =
   | 'tenant' | 'logo' | 'generic';
 export function messageForError(error: unknown, context: ErrorContext): UserMessage;
 export function fieldErrorMessage(field: string, code: FieldErrorCode): string;
+export function logoRejectMessage(reason: LogoRejectReason): string;      // textos de §13.11.1
 /** Pasa los FieldError del servidor a React Hook Form; devuelve los que no corresponden a ningún campo. */
 export function applyServerFieldErrors<T extends FieldValues>(
   setError: UseFormSetError<T>, fieldErrors: FieldError[], knownFields: ReadonlyArray<Path<T>>,
@@ -1507,7 +1706,8 @@ export function formatRetryAt(retryAfterSeconds: number, now: Date): { time: str
 
 - **Principio**: la validación del cliente es UX inmediata; **la del servidor es la autoridad**.
   Toda regla replicada en el cliente sale del contrato (longitudes, formato, enum) o de un `DD`
-  del plan (DD-6 contraseña, DD-16 CUIT) y tiene su test; ninguna regla vive solo en el cliente.
+  del plan (DD-6 contraseña, DD-11 logo, DD-16 CUIT) y tiene su test; ninguna regla vive solo en el
+  cliente.
 - Esquemas Zod por formulario en la feature (`features/auth/schemas.ts`, etc.). Cada esquema se
   declara contra el tipo del contrato (`satisfies z.ZodType<SignupRequest>` o equivalente): si el
   contrato cambia un campo, **no compila**.
@@ -1522,13 +1722,14 @@ export function formatRetryAt(retryAfterSeconds: number, now: Date): { time: str
 
 | Formulario | Reglas del cliente | Solo el servidor decide |
 |---|---|---|
-| Registro | Requeridos; email; contraseña 10–128 y ≠ email; longitudes | Email existente (`409`), rubro válido, zona horaria |
+| Registro | Requeridos; email; contraseña 10–128 y ≠ email; longitudes | Email existente (`409`), rubro válido, zona horaria (con default) |
 | Ingresar | Email con formato; contraseña 1–128 | Credenciales, bloqueo, desactivado |
 | Olvidé mi contraseña | Email | Todo lo demás (respuesta neutra) |
 | Restablecer | Contraseña 10–128 | Token; `same_as_email` (el cliente no conoce el email) |
 | Aceptar invitación | Nombre 1–120; contraseña 10–128 y ≠ email de la vista previa | Token |
 | Invitar | Email; rol | Email en uso (`409`) |
 | Datos de la empresa | Nombre 1–120; longitudes; email de contacto; CUIT (formato + dígito verificador) | Zona horaria válida; todo lo anterior otra vez |
+| Logo | Formato por firma, dimensiones y peso (§13.11.1), con margen bajo el límite del servidor | Tipo real, peso y dimensiones (DD-11) |
 
 ---
 
@@ -1545,13 +1746,17 @@ export function formatRetryAt(retryAfterSeconds: number, now: Date): { time: str
   por el `401` del siguiente request o del refetch de `/me` al volver a la pestaña (§12.4). No hay
   refresco silencioso: la política del backend no lo contempla (la sesión se extiende sola con el
   uso, hasta los 7 días).
-- **CSRF**: lo resuelve el backend (`Sec-Fetch-Site`/`Origin`, `SameSite=Lax`, JSON obligatorio).
-  El cliente solo tiene que mandar `Content-Type: application/json` (openapi-fetch lo hace) y
-  nunca llamar a la API desde otro origen.
+- **CSRF**: lo resuelve el backend (`Sec-Fetch-Site`/`Origin`, `SameSite=Lax`, JSON obligatorio;
+  un rechazo responde `403 problem+json forbidden`, DD-30). El cliente solo tiene que mandar
+  `Content-Type: application/json` (openapi-fetch lo hace) y nunca llamar a la API desde otro
+  origen.
 - **Al salir**: `POST /auth/logout` → `queryClient.clear()` → login. No hay nada más que limpiar:
-  no se guardan datos en el navegador (NFR-F09) y el service worker no cachea la API.
+  no se guardan datos en el navegador (NFR-F09), la API responde `no-store` y el service worker no
+  la cachea.
 - **Varias pestañas**: sin coordinación en el MVP; cada pestaña se entera en su próximo request o
   al recibir el foco.
+- **Desarrollo local**: ver §21.3 y H-10 (la cookie `__Host-` en `http://localhost` según el
+  navegador).
 
 ---
 
@@ -1568,7 +1773,7 @@ export function formatRetryAt(retryAfterSeconds: number, now: Date): { time: str
 | Formularios | `<label>` visible en cada campo (nunca solo *placeholder*); ayuda persistente con `aria-describedby`; errores de campo junto al campo y enlazados; error general `role="alert"`; requeridos marcados | 1.3.1, 3.3.1, 3.3.2 |
 | Autenticación accesible | Se permite pegar y usar gestores de contraseñas (`autocomplete` correcto); sin CAPTCHA ni pruebas cognitivas | 3.3.8 |
 | Entrada redundante | El email escrito pasa a "Olvidé mi contraseña" (Ingresar y Registro) | 3.3.7 |
-| Cambios dinámicos | Toasts y resultados en regiones `aria-live="polite"`; errores en `role="alert"`; *skeletons* con `aria-busy` | 4.1.3 |
+| Cambios dinámicos | Toasts y resultados en regiones `aria-live="polite"`; errores en `role="alert"`; *skeletons* con `aria-busy`; "Preparando la imagen…" anunciado | 4.1.3 |
 | Contraste | Texto ≥ 4,5:1; bordes de campos e íconos con significado ≥ 3:1 (tokens §19) | 1.4.3, 1.4.11 |
 | Color | Estados de usuario con texto; errores con ícono + texto | 1.4.1 |
 | Tamaño de objetivos | ≥ 44×44 CSS px | 2.5.8 (supera) |
@@ -1576,6 +1781,7 @@ export function formatRetryAt(retryAfterSeconds: number, now: Date): { time: str
 | Movimiento | Animaciones cortas y funcionales; `prefers-reduced-motion` las desactiva | 2.3.3 (buena práctica) |
 | Idioma | `<html lang="es-AR">` | 3.1.1 |
 | Imágenes | Logo con `alt="Logo de {empresa}"`; íconos decorativos junto a texto con `aria-hidden` | 1.1.1 |
+| Subida de archivo | El control "Cambiar logo" es un `<input type="file">` con etiqueta visible y ayuda de formatos; se opera con teclado | 1.3.1, 2.1.1 |
 
 **Lo que no se garantiza automáticamente**: axe detecta una parte de los problemas; la
 navegación con lector de pantalla (TalkBack/VoiceOver en el celular, NVDA en escritorio) se
@@ -1586,8 +1792,9 @@ verifica a mano en T-F705 con un checklist. Nada de 001 queda por debajo de AA a
 ## 19. Sistema visual
 
 Estilo: plano y sobrio (catálogo `ui-ux-pro-max`: "CRM & Client Management" → *Flat Design +
-Minimalism*, azul profesional). Tema **solo claro** en el MVP (DD-F13): mejor legibilidad al sol;
-las variables de shadcn dejan el tema oscuro para después sin tocar componentes.
+Minimalism*, azul profesional). Tema **solo claro** en el MVP (DD-F13, confirmado P-F4): mejor
+legibilidad al sol; las variables de shadcn dejan el tema oscuro para después sin tocar
+componentes.
 
 ### 19.1 Tokens de color (variables CSS de shadcn)
 
@@ -1614,7 +1821,7 @@ Contrastes calculados contra el fondo indicado (a verificar con herramienta en T
 | `--ring` | `#2563EB` | Anillo de foco | 5,2:1 |
 | `--success` (propio) | `#047857` | Texto/íconos de éxito, estado "Activo" | 5,5:1 sobre blanco |
 | `--success-muted` (propio) | `#ECFDF5` | Fondo de éxito | — |
-| `--warning` (propio) | `#92400E` | Texto de avisos (C-01, "Invitado") | 7:1 sobre `warning-muted` |
+| `--warning` (propio) | `#92400E` | Texto de avisos (C-01, "Invitado", invitación vencida) | 7:1 sobre `warning-muted` |
 | `--warning-muted` (propio) | `#FFFBEB` | Fondo de avisos | — |
 
 ### 19.2 Tipografía, espaciado y forma
@@ -1656,7 +1863,7 @@ viewport-fit=cover">` (sin bloquear el zoom), `<meta name="theme-color" content=
 
 | Pieza | Decisión (ADR-020) |
 |---|---|
-| Manifest (`/manifest.webmanifest`) | `id: "/"`, `name` y `short_name` (P-F1, provisorio "CRM"), `lang: "es-AR"`, `start_url: "/"`, `scope: "/"`, `display: "standalone"`, `background_color: "#F8FAFC"`, `theme_color: "#2563EB"`, íconos 192 y 512 (`any`) + 512 `maskable`; `apple-touch-icon` 180 en `index.html` |
+| Manifest (`/manifest.webmanifest`) | `id: "/"`, `name: "CRM"` y `short_name: "CRM"` (provisorios, P-F1 resuelta), `lang: "es-AR"`, `start_url: "/"`, `scope: "/"`, `display: "standalone"`, `background_color: "#F8FAFC"`, `theme_color: "#2563EB"`, íconos genéricos provisorios 192 y 512 (`any`) + 512 `maskable`; `apple-touch-icon` 180 en `index.html` |
 | Service worker (`/sw.js`) | Escrito a mano, ~30 líneas, sin librerías. **Solo** atiende navegaciones (`request.mode === 'navigate'`) fuera de `/api/`: va a la red y, si la red falla, responde `offline.html` desde su caché |
 | Qué cachea | Únicamente `offline.html` (autocontenida: CSS inline, sin scripts, ícono SVG inline) en la caché `crm-offline-v1` |
 | Qué **nunca** cachea | `/api/*` (ni siquiera la intercepta), `index.html`, `/assets/*` (los cachea el navegador por HTTP con `immutable`), el logo, el manifest, `sw.js` |
@@ -1667,41 +1874,53 @@ viewport-fit=cover">` (sin bloquear el zoom), `<meta name="theme-color" content=
 
 ---
 
-## 21. Distribución y build (ADR-019)
+## 21. Distribución y build (ADR-019; plan DD-22, DD-29, §10.7)
 
-- `web/` contiene la SPA; `npm run build` genera `web/dist/`. El paquete Go `web` (`web/embed.go`)
-  embebe `dist` con `//go:embed all:dist` y expone el handler. `web/dist/` está en `.gitignore`
-  salvo un marcador (`web/dist/.gitkeep`) para que el backend compile sin haber compilado el
-  frontend; sin `index.html`, el handler responde `503` "La interfaz no está compilada (correr
-  `make web-build`)".
-- **Montaje** (hallazgo H-1): la SPA **no** se registra en el router chi de la API. `internal/app`
-  arma un mux raíz: `/api/` → router chi; `/healthz`, `/readyz` → ops; todo lo demás → handler de
-  la SPA. Así `chi.Walk` y el test de rutas contra el contrato no ven la SPA, y un `/api/…`
-  inexistente sigue siendo `404 problem+json`. Los middlewares de request id, recover, logging y
-  cabeceras de seguridad envuelven también a la SPA.
+- `web/` contiene la SPA; `npm run build` genera `web/dist/`. El paquete Go `web` (en la raíz del
+  repo, fuera de `internal/`, porque `go:embed` necesita que `dist` esté bajo el paquete) embebe
+  `dist` con `//go:embed all:dist` y expone `web.DistFS() fs.FS` y `web.NewHandler(dist fs.FS)
+  http.Handler`. `web/dist/` está en `.gitignore` salvo `web/dist/.gitkeep`, para que el backend
+  compile sin haber compilado el frontend; sin `index.html`, el handler responde `503` "La
+  interfaz no está compilada (correr `make web-build`)".
+- **Montaje** (DD-22, INV-22): `internal/app` arma un `http.ServeMux` raíz: `/api/` → router chi
+  (con su `NotFound`/`MethodNotAllowed` en problem+json y `Cache-Control: no-store`), `GET
+  /healthz` y `GET /readyz` → ops, `/` → `RootDeps.SPA`. Hasta T-F008, `RootDeps.SPA` es un stub
+  que responde `503` con el mismo texto; T-F008 lo reemplaza por `web.NewHandler(web.DistFS())`.
+  Los middlewares comunes (request id, recover, logging, cabeceras de seguridad y
+  `CrossOriginProtection`) envuelven al mux raíz, así que aplican también a la SPA. `/api` sin barra
+  lo redirige el `ServeMux` a `/api/`. `chi.Walk` ve solo la API.
+- **Compresión** (DD-29, aprobada por el usuario): `github.com/klauspost/compress/gzhttp` envuelve
+  **solo** el handler de la SPA (umbral por defecto de 1 KB); la API no se comprime.
 
 ### 21.1 Reglas del handler de la SPA
 
 | Request | Respuesta |
 |---|---|
 | Método distinto de `GET`/`HEAD` | `405` |
-| Ruta bajo `/api/` | Nunca llega (la atiende la API); si llegara, `404` |
+| Ruta bajo `/api/` | Nunca llega (la atiende la API, INV-22) |
 | Archivo existente en `dist` (`/assets/…`, `/sw.js`, `/manifest.webmanifest`, `/icons/…`, `/offline.html`) | El archivo, con las cabeceras de §21.2 |
 | Ruta con extensión de archivo que no existe (`/assets/viejo-abc123.js`) | `404` texto plano, `Cache-Control: no-store` (**nunca** `index.html`: evita servir HTML como JS y cachearlo) |
 | Cualquier otra ruta (`/`, `/login`, `/settings/users`, `/reset-password`) | `index.html` con `200` |
 
 ### 21.2 Cabeceras
 
-| Recurso | `Cache-Control` | Otras |
-|---|---|---|
-| `index.html` (y el *fallback*) | `no-cache` | `Content-Security-Policy` (abajo); heredadas del backend: `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Strict-Transport-Security` |
-| `/assets/*` (nombre con hash) | `public, max-age=31536000, immutable` | |
-| `/sw.js` | `no-cache` | `Content-Type: text/javascript` |
-| `/manifest.webmanifest` | `no-cache` | `Content-Type: application/manifest+json` |
-| `/offline.html` | `no-cache` | Misma CSP |
-| `/icons/*`, `/favicon.*` | `public, max-age=86400` | |
+**Fuente única**: la tabla de `plan.md` §10.7 (la verifican los tests Go de T-B203 y T-F007). La
+de abajo es la parte de la SPA, idéntica a §10.7 al 2026-09-29; si alguna vez difieren, **manda
+§10.7** (es lo que el servidor implementa y prueba) y este documento se actualiza en el mismo
+cambio.
 
-**CSP** de los documentos HTML:
+| Recurso | `Cache-Control` | Otras | gzip |
+|---|---|---|---|
+| Toda respuesta (heredadas del mux raíz) | — | `X-Request-Id`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Strict-Transport-Security` | — |
+| `index.html` (y el *fallback*) | `no-cache` | `Content-Security-Policy` (abajo) | Sí |
+| `/assets/*` (nombre con hash) | `public, max-age=31536000, immutable` | | Sí (JS, CSS) |
+| `/sw.js` | `no-cache` | `Content-Type: text/javascript` | Sí |
+| `/manifest.webmanifest` | `no-cache` | `Content-Type: application/manifest+json` | Sí |
+| `/offline.html` | `no-cache` | Misma CSP | Sí |
+| `/icons/*`, `/favicon.*` | `public, max-age=86400` | | No |
+| Archivo con extensión inexistente | `no-store` | `text/plain`, `404` | — |
+
+**CSP** de los documentos HTML (igual a §10.7):
 
 ```text
 default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:;
@@ -1712,52 +1931,59 @@ base-uri 'none'; form-action 'self'; frame-ancestors 'none'
 - `script-src 'self'` sin `unsafe-inline`: el build de Vite no genera scripts inline; ningún
   script de terceros.
 - `style-src 'unsafe-inline'`: algunas piezas de Radix (bloqueo de scroll de los diálogos) y de
-  sonner insertan `<style>` en tiempo de ejecución. El riesgo de estilos inline es mucho menor que
-  el de scripts; se reevalúa con *nonces* si se sirve HTML dinámico.
-- `img-src blob:` para la vista previa local del logo; `data:` para íconos embebidos en CSS.
+  sonner insertan `<style>` en tiempo de ejecución.
+- `img-src blob:` para una vista previa local de imágenes; `data:` para íconos embebidos en CSS. La
+  preparación del logo usa `createImageBitmap` y `<canvas>` sobre el `Blob` del archivo: no carga
+  nada por URL, así que no necesita nada más de la CSP.
 - Sin `upgrade-insecure-requests` (rompería el binario servido por `http://localhost`; HSTS ya
   cubre producción).
 - El servidor de desarrollo de Vite **no** aplica CSP (usa scripts inline para HMR): la CSP se
   prueba en E2E contra el binario (NFR-F10).
 
-**Compresión**: el presupuesto NFR-F05 se mide en gzip. Default propuesto: envolver el handler de
-la SPA con compresión gzip en Go (`github.com/klauspost/compress/gzhttp`); si el hosting (P-1 del
-plan) pone un proxy que comprime, se quita. Es una dependencia Go nueva: queda para aprobación del
-backend-architect (H-8).
-
 ### 21.3 Desarrollo local
 
 | Modo | Cómo | Para qué |
 |---|---|---|
-| Vite + API | `docker compose up` + `crm serve` (`:8080`) + `cd web && npm run dev` (`:5173`); Vite hace *proxy* de `/api` a `http://localhost:8080` | Desarrollo con recarga en caliente. `APP_BASE_URL=http://localhost:5173` para que los enlaces de email abran Vite |
+| Vite + API | `docker compose up` + `crm serve` (`:8080`) + `cd web && npm run dev` (`:5173`); Vite hace *proxy* de `/api` a `http://localhost:8080` **sin** `changeOrigin` (el `Host` sigue siendo `localhost:5173`, lo que espera el test T-B203 del backend). `APP_BASE_URL=http://localhost:5173` para que los enlaces de email abran Vite | Desarrollo con recarga en caliente |
 | Binario completo | `make build` + `crm serve`, abrir `http://localhost:8080` | Igual que producción (CSP, SW, cabeceras); lo usa el E2E |
 
-La cookie `__Host-` exige `Secure`; Chrome y Firefox aceptan cookies `Secure` en
-`http://localhost` (supuesto S-F3, se valida en T-F006; Safari de escritorio puede no hacerlo: se
-desarrolla con Chrome o Firefox). Requiere que la configuración del backend lo permita (H-3).
+**Cookie de sesión en `http://localhost`** (DD-24 del plan, H-3 resuelto, **H-10 nuevo**): el
+backend acepta `APP_BASE_URL=http://localhost…` con `COOKIE_SECURE=true`, pero la cookie se llama
+`__Host-crm_session`, y los navegadores no tratan igual ese prefijo en `http://localhost`:
+
+| Navegador | Cookie `Secure` en `http://localhost` | Cookie `__Host-` en `http://localhost` | Consecuencia |
+|---|---|---|---|
+| Firefox | Sí | Sí | Funciona |
+| Chrome / Chromium (incluido Playwright) | Sí | **No** (según la última fuente verificable) | **No hay sesión**: ni en desarrollo con Chrome ni en los E2E de Chromium sobre `http://localhost` |
+| Safari | No | No | No funciona (ya se sabía) |
+
+Hasta que el backend resuelva H-10: se desarrolla con **Firefox**. Los E2E de Chromium (T-F7xx)
+dependen de H-10.
 
 ---
 
 ## 22. Estructura de carpetas
 
 ```text
-web/
+web/                            # también es el paquete Go `web` (embed.go)
 ├── index.html                  # documento base (lang, viewport, manifest, theme-color, noscript)
 ├── package.json                # scripts: dev, gen:api, lint, typecheck, test, build, check, e2e
-├── vite.config.ts              # proxy /api en dev, build.target, alias @/
+├── vite.config.ts              # proxy /api en dev (sin changeOrigin), build.target, alias @/
 ├── tsconfig*.json              # strict, noUncheckedIndexedAccess, alias @/*
 ├── eslint.config.js            # typescript-eslint, react-hooks, jsx-a11y, no-restricted-imports (§9.1)
 ├── components.json             # configuración de shadcn (Radix, lucide, alias)
 ├── redocly.yaml                # una entrada por spec → src/api/generated/NNN.ts (§11.4)
 ├── playwright.config.ts
-├── embed.go                    # paquete Go `web`: //go:embed all:dist + handler (ADR-019)
+├── embed.go                    # package web: //go:embed all:dist, DistFS(), NewHandler() (ADR-019)
+├── handler.go / *_test.go      # reglas §21.1–21.2 y sus tests (T-F007/T-F008, Go)
 ├── dist/                       # build (ignorado por git salvo .gitkeep)
 ├── public/
 │   ├── manifest.webmanifest
 │   ├── sw.js                   # service worker mínimo (ADR-020)
 │   ├── offline.html
-│   └── icons/                  # 180, 192, 512, 512-maskable, favicon
-├── e2e/                        # Playwright: flujos críticos + axe + PWA
+│   └── icons/                  # 180, 192, 512, 512-maskable, favicon (provisorios)
+├── e2e/                        # Playwright: flujos críticos + axe + PWA + logo
+│   └── fixtures/               # imágenes de prueba del logo (sin datos reales)
 └── src/
     ├── main.tsx                # wiring: QueryClient + RouterProvider + registro del SW
     ├── styles/globals.css      # Tailwind + tokens (§19)
@@ -1769,6 +1995,7 @@ web/
     │   ├── dashboard/          # DashboardPage
     │   ├── users/              # UsersPage, InviteUserPage, rules.ts, components/, api.ts
     │   └── tenant/             # CompanyPage, LogoUploader, api.ts
+    │       └── logo/           # limits.ts, sniff.ts, plan.ts, canvas.ts (adaptador), prepareLogo.ts
     ├── components/             # presentación compartida (§15.1)
     │   └── ui/                 # generados por shadcn
     ├── lib/                    # utils (cn), format, cuit, safeNextPath, linkToken, onlineStatus
@@ -1777,21 +2004,25 @@ web/
 
 Cada pantalla vive con sus tests (`LoginPage.test.tsx` junto a `LoginPage.tsx`). Las carpetas de
 `features/` usan los nombres del glosario (`tenant`, `users`); `auth` agrupa sesión y credenciales.
+La preparación de imágenes vive en `features/tenant/logo/` porque solo la usa el logo; si 004
+(adjuntos) la necesita, se mueve a `lib/image/`.
 
 ---
 
 ## 23. Performance
 
 - **Code splitting por ruta** (`lazy` de React Router): (1) pantallas públicas; (2) shell +
-  panel; (3) cada pantalla de Ajustes por separado. Radix Dialog/DropdownMenu solo entran con
-  Usuarios y Datos de la empresa.
+  panel; (3) cada pantalla de Ajustes por separado. Radix Dialog/DropdownMenu y la preparación del
+  logo solo entran con Usuarios y Datos de la empresa.
 - **Sin fuentes web** (DD-F14) ni imágenes pesadas: el LCP de `/login` es texto.
 - **Precarga**: al tocar un enlace de navegación, React Router descarga el chunk de la ruta
   mientras navega; no se precarga nada más.
 - **Listas**: la de usuarios tiene decenas de filas (S-7 del plan): sin virtualización ni
   memoización especial.
-- **Caché HTTP**: assets con hash `immutable` 1 año; `index.html` revalida siempre.
-- Números de §8 (NFR-F03..F05) son **objetivos**; se miden en T-F704 y se reportan.
+- **Caché HTTP**: assets con hash `immutable` 1 año; `index.html` revalida siempre; gzip en la SPA.
+- **Logo**: se decodifica una sola vez; los pasos de la escalera solo vuelven a dibujar y codificar
+  (NFR-F13). El logo mostrado revalida con `304` (DD-23): pocos bytes por pantalla.
+- Números de §8 (NFR-F03..F05, F13) son **objetivos**; se miden en T-F704/T-F706 y se reportan.
 
 ---
 
@@ -1799,78 +2030,100 @@ Cada pantalla vive con sus tests (`LoginPage.test.tsx` junto a `LoginPage.tsx`).
 
 | ID | Decisión | Por qué | Trade-off |
 |---|---|---|---|
-| **DD-F1** | Rutas en inglés (`/login`, `/reset-password`, `/settings/users`) | Coherencia con endpoints e identificadores en inglés (constitución); sin tildes ni `ñ` en URLs | Las URLs de los emails no están en español (P-F3) |
+| **DD-F1** | Rutas en inglés (`/login`, `/reset-password`, `/settings/users`). **Confirmada por el usuario (P-F3).** | Coherencia con endpoints e identificadores en inglés (constitución); sin tildes ni `ñ` en URLs | Las URLs de los emails no están en español |
 | **DD-F2** | El token del enlace se mueve del fragmento a `history.state` al montar la pantalla | No queda visible en la barra ni en el historial; no se comparte por error; sobrevive a recargar la pestaña | Abrir el mismo enlace en otra pestaña funciona (vuelve a leer el fragmento); una pestaña "duplicada" puede no tenerlo |
-| **DD-F3** | Confirmar email con botón, no automáticamente al abrir | Evita que el doble montaje de React en desarrollo o un escáner de enlaces consuma el token; un `POST` por acción explícita | Un toque más |
+| **DD-F3** | Confirmar email con botón, no automáticamente al abrir | Evita que el doble montaje de React en desarrollo o un escáner de enlaces consuma el token | Un toque más |
 | **DD-F4** | `['session']` mapea `401` a `null` (anónimo) en vez de error | Las pantallas públicas preguntan "¿hay sesión?" sin disparar el manejador global | La transición usuario → `null` se detecta aparte (§6.4) |
-| **DD-F5** | Un `401` al enviar un formulario pierde lo cargado en 001; `next` devuelve a la pantalla | Formularios de ≤ 7 campos; guardar borradores agrega complejidad sin caso real en 001 | Las specs con formularios largos definen su borrador |
+| **DD-F5** | Un `401` al enviar un formulario pierde lo cargado en 001; `next` devuelve a la pantalla | Formularios de ≤ 7 campos | Las specs con formularios largos definen su borrador |
 | **DD-F6** | Invitar es una página (`/settings/users/invite`), no un modal | Funciona con el botón atrás, se puede enlazar desde el panel, menos manejo de foco | Un cambio de pantalla |
-| **DD-F7** | Cambio de rol como acción con confirmación, no como selector en la fila | Evita cambios por un toque accidental en el celular; mismo patrón que desactivar | Un paso más |
-| **DD-F8** | "Reenviar invitación" = `POST /users/invitations` con el email y el rol actuales | Es la semántica de DD-5; sin endpoint nuevo | Depende de H-5 si se cambia el rol al reinvitar |
+| **DD-F7** | Cambio de rol como acción con confirmación, no como selector en la fila | Evita cambios por un toque accidental en el celular | Un paso más |
+| **DD-F8** | "Reenviar invitación" = `POST /users/invitations` con el email y el rol actuales | Es la semántica de DD-5; sin endpoint nuevo | — (H-5 resuelto: reinvitar con otro rol cambia el rol, DD-26) |
 | **DD-F9** | Datos entre pantallas (email) por `location.state`, nunca por query string | La URL de la SPA se pide al servidor: el email quedaría en logs de acceso | Se pierde al abrir en otra pestaña |
-| **DD-F10** | Registro envía la zona horaria del navegador; si el `422` es solo por `timezone`, reintenta una vez sin ella | El usuario no puede corregir un campo que no ve | Un request extra (consume cupo de rate limit) en un caso raro; H-6 propone resolverlo en el backend |
-| **DD-F11** | Logo: validación de tipo y tamaño en el cliente; sin redimensionar | Simplicidad; el backend valida dimensiones | Una foto de celular de más de 2 MB se rechaza con una indicación (P-F2) |
-| **DD-F12** | El encabezado usa `GET /tenant` (nombre + logo) y el logo lleva `?v={id}-{updated_at}` | Evita ver el logo viejo o el de otra empresa en un dispositivo compartido | Depende de H-2 (declarar el parámetro o cambiar la caché) |
-| **DD-F13** | Solo tema claro en el MVP | Uso a pleno sol; la mitad de verificación de contraste | Sin modo oscuro (P-F4) |
+| **DD-F10** | *(Revisada 2026-09-29)* El registro envía la zona horaria del navegador tal cual, sin validarla ni reintentar: si el backend no la conoce, usa la default sin error (DD-27). La versión anterior (reintento sin `timezone` ante `422`) queda descartada | El backend resolvió H-6; un request menos y nada de lógica de reintento | Una empresa con navegador mal configurado arranca en Buenos Aires y lo corrige en S-11 |
+| **DD-F11** | *(Revisada 2026-09-29, P-F2)* Un logo que supera los límites del servidor se **achica en el navegador** antes de subir (§13.11.1). Se rechazan SVG, GIF, WebP, HEIC y otros formatos con un mensaje que dice qué hacer | Pedido del usuario: las fotos del celular tienen que poder subirse; los límites del servidor no cambian | Más código en el cliente, probado en tres niveles (T-F603, T-F604, T-F706) |
+| **DD-F12** | El encabezado y S-11 muestran el logo con `logoUrl(tenant)` (`?v={id}-{updated_at}`) | Con el `ETag` por objeto y `no-cache` del servidor (DD-23) nunca se ve un logo viejo o de otra empresa; `v` hace que el `<img>` cambie apenas cambia el logo | Una revalidación (`304`) por uso |
+| **DD-F13** | Solo tema claro en el MVP. **Confirmada por el usuario (P-F4).** | Uso a pleno sol; la mitad de verificación de contraste | Sin modo oscuro |
 | **DD-F14** | Fuente del sistema | 0 KB, LCP más rápido, se ve nativa | Aspecto distinto entre Android, iOS y Windows |
-| **DD-F15** | Navegación: barra inferior (< 1024 px) con "Inicio" y "Ajustes"; lateral en escritorio | Alcance del pulgar; escala hasta 5 destinos cuando lleguen Clientes, Proyectos, Caja | Con 2 ítems la barra se ve vacía hasta 003 |
+| **DD-F15** | Navegación: barra inferior (< 1024 px) con "Inicio" y "Ajustes"; lateral en escritorio | Alcance del pulgar; escala hasta 5 destinos | Con 2 ítems la barra se ve vacía hasta 003 |
 | **DD-F16** | Sin campo "repetir contraseña"; con mostrar/ocultar | Un campo menos (principio I); los gestores de contraseñas completan | Un error de tipeo se descubre al ingresar (se resuelve con "Olvidé mi contraseña") |
-| **DD-F17** | El bloqueo por intentos es un estado de `/login`, no una ruta | Conserva el email y el contexto; no hay nada que enlazar | — |
+| **DD-F17** | El bloqueo por intentos es un estado de `/login`, no una ruta | Conserva el email y el contexto | — |
 | **DD-F18** | Desde el `409` del registro se navega a S-03 con el email prellenado (no se envía el pedido automáticamente) | Reusa una pantalla con sus estados; el usuario confirma el email antes de enviar | Dos toques en vez de uno |
-| **DD-F19** | Mutaciones con `networkMode: 'always'` | Sin conexión fallan enseguida con mensaje claro en vez de quedar "enviando" | El usuario reintenta a mano |
+| **DD-F19** | Mutaciones con `networkMode: 'always'` | Sin conexión fallan enseguida con mensaje claro | El usuario reintenta a mano |
+| **DD-F20** | *(Nueva)* La preparación del logo usa solo APIs del navegador: firma y dimensiones leídas de los bytes (funciones puras), `createImageBitmap` con orientación EXIF, `<canvas>` y `toBlob`; escalera fija de tamaños y calidades; PNG se mantiene PNG (transparencia) y JPEG se mantiene JPEG; sin *Web Worker* | Sin dependencias; las decisiones viven en funciones puras que se prueban con tablas; lo que depende del navegador es un adaptador chico | La escalera es fija (no busca la calidad óptima); el procesamiento corre en el hilo principal salvo la codificación |
+| **DD-F21** | *(Nueva, a aprobar: P-F6)* Todo JPEG se vuelve a codificar aunque ya cumpla los límites | Aplica la orientación EXIF a los píxeles (el logo nunca queda de costado en el PDF de 005, que puede ignorar EXIF) y quita la ubicación GPS y los datos del celular de una imagen que termina en documentos enviados a clientes | Una re-codificación con calidad 0,90 (pérdida mínima) aun cuando no hacía falta achicar |
 
 ---
 
 ## 25. Supuestos
 
-| ID | Supuesto | Se valida en | Si es falso |
+| ID | Supuesto | Estado | Se valida en | Si es falso |
+|---|---|---|---|---|
+| S-F1 | `openapi-typescript` (con `redocly.yaml`) resuelve `$ref` externos entre contratos de specs | Abierto | T-F004 (contrato de prueba que referencia a 001) | Paso previo `redocly bundle` (§11.4) |
+| S-F2 | openapi-fetch con `baseUrl` absoluta funciona en jsdom con MSW interceptando | Abierto | T-F003 | Ajustar el entorno de test (p. ej. `happy-dom`) sin cambiar el código de la app |
+| S-F3 | Los navegadores aceptan la cookie `__Host-crm_session; Secure` servida por `http://localhost` | **Refutado para Chrome/Chromium** (acepta `Secure` pero rechaza el prefijo `__Host-` en `http://localhost`); válido para Firefox; Safari no acepta ninguna | Fuentes de §30; spike manual en T-F006 | H-10 |
+| S-F4 | Los usuarios tienen navegadores de NFR-F02 (celulares de los últimos ~4 años) | Abierto | Consultas de soporte | Tailwind v4 no funciona en navegadores más viejos: habría que volver a v3.4 (nuevo ADR) |
+| S-F5 | Nombre e íconos de la app son provisorios ("CRM", íconos genéricos) | Confirmado por el usuario (P-F1) | — | Se cambian manifest e íconos, sin impacto en código |
+| S-F6 | El backend ignora parámetros de query en `GET /tenant/logo` | **Resuelto**: el contrato v0.3.0 declara `v` (DD-23) | — | — |
+| S-F7 | `createImageBitmap(file, { imageOrientation: 'from-image' })` aplica la orientación EXIF en Chrome ≥ 112, Firefox ≥ 111 y Safari ≥ 16 (documentado; falta verlo con una foto real) | Abierto | T-F706 (Chromium y WebKit) con una foto de orientación 6 | Leer la orientación del EXIF con una función pura y rotar en el canvas |
+| S-F8 | En iOS, un `<input type="file" accept="image/png,image/jpeg">` entrega las fotos HEIC convertidas a JPEG | Abierto | Prueba manual en un iPhone (checkpoint F6) | Se rechazan con "tiene que ser PNG o JPG" (el usuario puede sacar una captura); evaluar aceptar HEIC en Safari, que lo decodifica |
+| S-F9 | `canvas.toBlob('image/png')` conserva la transparencia y `toBlob('image/jpeg', q)` respeta la calidad pedida en los navegadores de NFR-F02 | Abierto | T-F706 | Ajustar la escalera |
+
+## 26. Preguntas
+
+| ID | Pregunta | Estado | Respuesta |
 |---|---|---|---|
-| S-F1 | `openapi-typescript` (con `redocly.yaml`) resuelve `$ref` externos entre contratos de specs | T-F004 (contrato de prueba que referencia a 001) | Paso previo `redocly bundle` (§11.4) |
-| S-F2 | openapi-fetch con `baseUrl` absoluta funciona en jsdom con MSW interceptando | T-F003 | Ajustar el entorno de test (p. ej. `happy-dom`) sin cambiar el código de la app |
-| S-F3 | Chrome y Firefox aceptan la cookie `__Host-…; Secure` servida por `http://localhost` (vía proxy de Vite y desde el binario) | T-F006 | Desarrollo con TLS local (certificado de desarrollo) |
-| S-F4 | Los usuarios tienen navegadores de NFR-F02 (celulares de los últimos ~4 años) | Analítica futura / consultas de soporte | Tailwind v4 no funciona en navegadores más viejos: habría que volver a v3.4 (nuevo ADR) |
-| S-F5 | Nombre e íconos de la app son provisorios ("CRM", íconos genéricos) | P-F1 | Se cambian manifest e íconos, sin impacto en código |
-| S-F6 | El backend ignora parámetros de query no declarados en `GET /tenant/logo` | H-2 | Sin `?v=` hasta que el contrato lo declare |
-
-## 26. Preguntas abiertas
-
-Ninguna bloquea empezar; P-F1 bloquea publicar la app instalable con su nombre definitivo.
-
-| ID | Pregunta | Default propuesto | ¿Bloquea? |
-|---|---|---|---|
-| P-F1 | ¿Cómo se llama la app (nombre bajo el ícono del celular) y hay un logo/ícono propio? | "CRM" e ícono genérico azul provisorios | Solo la salida a producción |
-| P-F2 | ¿Achicamos en el navegador un logo de más de 2 MB (foto del celular) en vez de rechazarlo? | No en el MVP: se rechaza con indicación clara | No |
-| P-F3 | ¿Rutas en inglés (`/reset-password`) o en español (`/restablecer-contrasena`)? | Inglés (DD-F1). Decidir antes de T-F007: el backend las recibe por `APP_LINK_*` | No (pero conviene antes de F0) |
-| P-F4 | ¿Hace falta modo oscuro? | No en el MVP (DD-F13) | No |
-| P-F5 | ¿Corremos los E2E de Playwright en CI en cada PR (más minutos de CI, necesita Docker) o solo antes de liberar? | En cada PR a `main`, 4 flujos (~5 min estimados, no medidos) | No |
+| P-F1 | ¿Cómo se llama la app y hay ícono propio? | **Resuelta** | "CRM" e ícono genérico, provisorios (default aceptado) |
+| P-F2 | ¿Achicamos en el navegador un logo que supera los límites? | **Resuelta (el usuario cambió el default)** | Sí: se achica antes de subir; los límites del servidor no cambian (§13.11.1, DD-F11, DD-F20) |
+| P-F3 | ¿Rutas en inglés o en español? | **Resuelta** | Inglés; `APP_LINK_*` = `/reset-password`, `/verify-email`, `/accept-invitation` (DD-F1, DD-14) |
+| P-F4 | ¿Modo oscuro? | **Resuelta** | No en el MVP (DD-F13) |
+| P-F5 | ¿E2E en cada PR? | **Resuelta** | Playwright con Chromium en cada PR; WebKit antes de liberar |
+| **P-F6** | ¿Volvemos a codificar **todo** JPEG de logo (aunque cumpla los límites) para enderezarlo y quitarle la ubicación GPS y los datos del celular? | **Abierta, no bloquea** | Default: sí (DD-F21). Si la respuesta es no, un JPEG dentro de los límites se sube tal cual y se pierde la corrección de orientación |
 
 ## 27. Hallazgos para el backend-architect
 
-No modifican el contrato: son propuestas concretas.
+### 27.1 Resueltos (plan §18, contrato v0.3.0)
+
+| ID | Hallazgo | Resolución del backend | Cómo lo usa el frontend |
+|---|---|---|---|
+| H-1 | Montaje de la SPA | Mux raíz (DD-22, INV-22); `web.DistFS`, `web.NewHandler`; stub `503` hasta T-F008 | §21; T-F007/T-F008 |
+| H-2 | Caché del logo | `private, no-cache` + `ETag` por objeto; `v` declarado e ignorado; `304` (DD-23) | `logoUrl` con `v` (INV-F14, DD-F12) |
+| H-3 | `APP_BASE_URL` en desarrollo | `http://localhost`/`127.0.0.1` con `COOKIE_SECURE=true` (DD-24) | §21.3; **no alcanza para Chrome: H-10** |
+| H-4 | Invitación vencida | `invitation_expires_at` informa la última aunque haya vencido (DD-25) | §13.9 "La invitación venció el …" |
+| H-5 | Rol de invitados | Reinvitar con otro rol lo cambia; `PUT …/role` para `invited`; `disabled` → `invalid_state` (DD-26) | BR-F01, BR-F08, §13.9, §13.10 |
+| H-6 | Zona horaria del registro | Desconocida → default sin error (DD-27) | DD-F10 revisada: sin reintento |
+| H-7 | `no-store` en la API | En toda la API salvo el logo (DD-28) | §10.2, §17 |
+| H-8 | Cabeceras y gzip de la SPA | Tabla §10.7; `gzhttp` aprobada solo para la SPA (DD-29) | §21.2 remite a §10.7; ADR-019 actualizado |
+| H-9 | CSRF en problem+json | `403 forbidden` problem+json (DD-30) | §12.1–12.2: mismo tratamiento que cualquier `403 forbidden` |
+
+Verificación de consistencia hecha el 2026-09-29: la CSP y las cabeceras de caché de §21.2 y de
+ADR-019 coinciden con `plan.md` §10.7; el uso del logo (`v`, `ETag`, `304`, `private, no-cache`)
+coincide con el contrato v0.3.0.
+
+### 27.2 Nuevos
 
 | ID | Hallazgo | Propuesta | Impacto en el frontend |
 |---|---|---|---|
-| **H-1** | Servir la SPA desde el router chi rompería T-B004 ("ruta inexistente → 404 problem+json"), T-B801 (cobertura de rutas con `chi.Walk`) y el test de rutas contra el contrato (ADR-014) | Mux raíz en `internal/app`: `/api/` → chi, `/healthz` y `/readyz` → ops, resto → handler de la SPA (paquete `web`), con los mismos middlewares de seguridad. Agregar al plan (§4.1, §11) y la tarea correspondiente; T-F007 la especifica | Bloquea T-F007 hasta acordarlo |
-| **H-2** | `GET /tenant/logo` responde `private, max-age=300` en una URL **igual para todas las empresas**: en un dispositivo compartido, tras cerrar sesión y entrar con otra empresa, el navegador puede mostrar hasta 5 min el logo anterior (y tras reemplazar el logo se ve el viejo) | (a) `Cache-Control: private, no-cache` + `ETag` (revalida con `304`), **y** (b) declarar el parámetro opcional `v` (string, ignorado por el servidor) en el contrato; alternativa a (b): `logo_version` en `Tenant`/`TenantSummary` | T-F603 usa `?v=` (DD-F12) |
-| **H-3** | T-B002 rechaza `APP_BASE_URL` sin `https://` cuando `COOKIE_SECURE ≠ false`, pero en desarrollo con navegador (`http://localhost:5173` o `:8080`) se necesita la cookie `Secure` (los navegadores la aceptan en `localhost`). Con `COOKIE_SECURE=false` el navegador **rechaza** una cookie `__Host-` | Permitir `http://localhost` y `http://127.0.0.1` con `COOKIE_SECURE=true`; documentar que `COOKIE_SECURE=false` solo sirve para clientes no navegador | Bloquea el desarrollo local con Vite (T-F006) |
-| **H-4** | `User.invitation_expires_at` es "de la invitación vigente": no queda claro qué llega si la invitación **venció** (¿`null`?). La UI necesita mostrar "Invitación vencida" y ofrecer reenviar | Devolver el vencimiento de la última invitación del usuario `invited` aunque haya pasado; documentarlo en el contrato | T-F502 muestra "vencida" si la fecha es pasada; si llega `null` para un `invited`, muestra "Invitación sin fecha" |
-| **H-5** | Reinvitar (DD-5) con un rol distinto al que tiene el invitado: no está definido si cambia el rol. Tampoco si `PUT /users/{id}/role` aplica a usuarios `invited` | Reinvitar **actualiza** el rol (auditado en `user.invitation_reissued` con `data.role`); `PUT …/role` permitido para `invited` y `active` | BR-F01 ofrece cambiar rol a invitados |
-| **H-6** | Un `timezone` inválido en `POST /auth/signup` da `422` en un campo que el usuario no ve | En signup, una zona desconocida usa el default en lugar de `422` (o garantizar `time/tzdata` embebido para aceptar toda zona IANA del navegador) | La UI mitiga con un reintento (DD-F10) |
-| **H-7** | `Cache-Control: no-store` solo en `/auth/*` y `/me`; `/users` y `/tenant` (datos personales) no tienen directiva | `no-store` en todas las respuestas JSON de `/api/v1` (el logo mantiene su política de H-2) | Ninguno en código; baja el riesgo en dispositivos compartidos |
-| **H-8** | Cabeceras de la SPA (CSP, `Cache-Control` por tipo de archivo) y compresión gzip no están en §10.3 del plan; la compresión agrega una dependencia Go (`klauspost/compress/gzhttp`) | Incorporar §21.2 de este documento al plan del backend y aprobar (o no) la dependencia | NFR-F05 se mide en gzip |
-| **H-9** | El rechazo de `http.CrossOriginProtection` responde por defecto un `403` de texto plano, no problem+json | Configurar su *deny handler* para responder problem+json `code: forbidden` | La UI lo trata como `kind: 'unexpected'` mientras tanto |
+| **H-10** (bloquea el desarrollo con Chrome y los E2E en Chromium) | DD-24 supone que "los navegadores aceptan cookies `Secure` en localhost", pero la cookie es `__Host-crm_session`: **Chrome acepta `Secure` en `http://localhost` pero rechaza el prefijo `__Host-`** (fuentes en §30; no encontré evidencia de que se haya corregido). Firefox la acepta; Safari no acepta ni `Secure`. Consecuencia: con Chromium (Playwright en cada PR, P-F5) sobre `http://localhost:8080` no se guarda la sesión y ningún flujo con sesión funciona. Mi S-F3 original estaba mal para Chrome | Opción A (recomendada, ya figura como respaldo en R-23): **TLS local** para desarrollo y E2E. `crm serve` acepta `TLS_CERT_FILE`/`TLS_KEY_FILE` (solo con `localhost`/`127.0.0.1`); certificado de desarrollo con `mkcert`; Vite con `server.https` usando el mismo certificado y *proxy* a `https://localhost:8443`; Playwright con `ignoreHTTPSErrors` (o la CA de mkcert en CI). Opción B: con `APP_BASE_URL` `http://localhost`, nombre de cookie sin prefijo (`crm_session`, con `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`); R-23 la descartó porque los tests dejan de probar la cookie real. **No lo decido yo**: afecta `platform/config`, ADR-006 y T-B002 | T-F006 (spike), checkpoint F2, T-F701/T-F702. Mientras tanto, desarrollo con Firefox |
+| **H-11** | "Máximo 2 MB" (DD-11) no dice si son 2 000 000 o 2 097 152 bytes, ni si el límite cuenta el cuerpo `multipart` completo (encabezados de la parte incluidos) o solo el archivo. T-B703 prueba "2 MB + 1 byte" sin fijar la unidad | Fijar el valor exacto en DD-11 y en la descripción de `PUT /tenant/logo` del contrato (propuesta: 2 097 152 bytes para el **archivo**, con el límite del cuerpo algo mayor para los encabezados multipart) | El cliente usa `LOGO_TARGET_MAX_BYTES = 1 900 000` (margen); cuando se fije, se ajusta la constante |
+
+Otro punto menor, fuera de mi alcance de escritura: el índice `docs/adr/README.md` todavía muestra
+ADR-019 como "detalles Proposed"; desde esta revisión sus detalles son `Accepted` (nota fechada en
+el ADR).
 
 ## 28. Riesgos
 
 | ID | Riesgo | Prob. | Impacto | Mitigación |
 |---|---|:---:|:---:|---|
-| RF-1 | Versiones del ecosistema (Vite 8, Tailwind v4, shadcn con `Field`, Zod 4 + resolvers) con incompatibilidades puntuales de tipos | Media | Bajo | Versiones fijadas en `package-lock.json`; T-F001/T-F002 verifican la combinación; se documentan los ajustes |
-| RF-2 | Tras un deploy, pestañas abiertas piden chunks que ya no existen (el binario nuevo no los tiene) | Alta | Bajo | `vite:preloadError` → recarga única; `index.html` `no-cache` |
-| RF-3 | El usuario (nivel básico en React) se pierde entre librerías | Media | Medio | Pocas abstracciones propias, firmas en este documento, ADR con el porqué; hooks de datos con el mismo patrón en todas las features |
+| RF-1 | Versiones del ecosistema (Vite 8, Tailwind v4, shadcn con `Field`, Zod 4 + resolvers) con incompatibilidades puntuales de tipos | Media | Bajo | Versiones fijadas en `package-lock.json`; T-F001/T-F002 verifican la combinación |
+| RF-2 | Tras un deploy, pestañas abiertas piden chunks que ya no existen | Alta | Bajo | `vite:preloadError` → recarga única; `index.html` `no-cache` |
+| RF-3 | El usuario (nivel básico en React) se pierde entre librerías | Media | Medio | Pocas abstracciones propias, firmas en este documento, ADR con el porqué |
 | RF-4 | La CSP rompe algo que en desarrollo funcionaba (Vite dev no aplica CSP) | Media | Medio | E2E contra el binario falla ante cualquier violación de CSP (NFR-F10) |
-| RF-5 | Pérdida de lo cargado por un `401` al enviar | Baja en 001 | Bajo | DD-F5; patrón de borrador para specs con formularios largos |
-| RF-6 | Deriva entre las reglas del cliente y del servidor (longitudes, CUIT) | Media | Bajo | Esquemas atados al tipo del contrato; tabla de casos de CUIT compartida con T-B701 |
-| RF-7 | Presupuesto de JS superado por Radix + Zod + React Router | Media | Medio | Chunks por ruta; medición en T-F704; si se excede, `zod/mini` o revisar componentes |
+| RF-5 | Pérdida de lo cargado por un `401` al enviar | Baja en 001 | Bajo | DD-F5 |
+| RF-6 | Deriva entre las reglas del cliente y del servidor (longitudes, CUIT, límites del logo) | Media | Bajo | Esquemas atados al tipo del contrato; tabla de casos de CUIT compartida con T-B701; margen en el tamaño del logo (H-11) |
+| RF-7 | Presupuesto de JS superado | Media | Medio | Chunks por ruta; medición en T-F704 |
+| RF-8 | Un celular de gama baja se queda sin memoria al decodificar una foto grande | Media | Medio | Tope de 25 MP y 20 MB antes de decodificar; una sola decodificación; mensaje que propone una captura del logo |
+| RF-9 | Diferencias entre navegadores al codificar (tamaño de PNG, orientación EXIF) | Media | Bajo | Escalera con margen; E2E en Chromium y WebKit con fotos reales (T-F706); S-F7, S-F9 |
+| RF-10 | Sin sesión en Chrome sobre `http://localhost` (H-10) | Alta (confirmado por fuentes) | Alto para el flujo de trabajo | H-10; mientras tanto Firefox para desarrollo |
 
 ---
 
@@ -1884,14 +2137,15 @@ La actualización va **en el mismo cambio** que el código.
 | Un `code` de error o `suggested_action` | `api/errorMessages.ts` (no compila sin él) + §12.2 |
 | Un `FieldError.code` o una longitud del contrato | §12.3 + esquema Zod del formulario + su test |
 | Una pantalla o su ruta | §4 inventario + §5 mapa + §6.1 árbol + guards |
-| Un *path* de enlace de email | §6.2 + `APP_LINK_*` del backend (plan §10.5) + E2E |
+| Un *path* de enlace de email | §6.2 + `APP_LINK_*` del backend (plan §10.5, DD-14) + E2E |
 | Props de un componente compartido | §15 + sus usos |
 | Dónde vive una pieza de estado o una clave de caché | §10 + `api/queryKeys.ts` + invariantes §9.2 |
 | Una invalidación | §10.3 + test de la pantalla |
 | Un token visual | §19 + `styles/globals.css` + verificación de contraste |
-| Cabeceras, CSP o reglas del handler de la SPA | §21 + ADR-019 (nuevo ADR si cambia la decisión) + test Go de T-F007 |
+| Cabeceras, CSP o reglas del handler de la SPA | `plan.md` §10.7 (fuente) + §21 + ADR-019 (nuevo ADR si cambia la decisión) + test Go de T-F007 |
+| Los límites del logo en el servidor (DD-11) o su política de caché (DD-23) | §13.11.1 (constantes y escalera) + `features/tenant/logo/limits.ts` + T-F604/T-F706 |
 | El service worker o el manifest | §20 + ADR-020 + T-F703 |
-| Una decisión de ADR-015..023 | ADR nuevo que la reemplace (nunca editar uno aceptado) |
+| Una decisión de ADR-015..023 | ADR nuevo que la reemplace o nota fechada si es una aclaración (nunca reescribir uno aceptado) |
 | Cómo se construye o corre el frontend | README (sección de desarrollo) + §21.3 + comandos de `tasks.md` |
 
 ## 30. Fuentes consultadas
@@ -1904,5 +2158,7 @@ La actualización va **en el mismo cambio** que el código.
 - `@hookform/resolvers` con Zod 4 (desde 5.1.0): <https://github.com/react-hook-form/resolvers/releases>
 - openapi-typescript con `redocly.yaml` (varias APIs): <https://openapi-ts.dev/cli>
 - Redocly `bundle` y `join`: <https://redocly.com/docs/cli/commands/bundle>, <https://redocly.com/docs/cli/commands/join>
-- Criterios de instalación de Chrome (sin *fetch handler* obligatorio desde 108/112 para instalar desde el menú): <https://developer.chrome.com/blog/update-install-criteria>
+- Criterios de instalación de Chrome: <https://developer.chrome.com/blog/update-install-criteria>
 - `Intl.NumberFormat` con strings como decimales exactos: <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/NumberFormat/format>
+- Cookies `Secure` y con prefijo en `http://localhost` por navegador (H-10): <https://github.com/httpwg/http-extensions/issues/2605>, <https://issues.chromium.org/issues/40202941>, <https://bugzilla.mozilla.org/show_bug.cgi?id=1618113>
+- `createImageBitmap` y `imageOrientation: 'from-image'` (soporte: Chrome 112, Firefox 111, Safari 16): <https://developer.mozilla.org/en-US/docs/Web/API/Window/createImageBitmap>, <https://caniuse.com/mdn-api_createimagebitmap_options_imageorientation_parameter_from-image>, <https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html>

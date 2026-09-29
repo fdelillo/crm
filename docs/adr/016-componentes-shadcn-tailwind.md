@@ -1,8 +1,13 @@
 # ADR-016: Componentes con shadcn/ui (sobre Radix) y estilos con Tailwind CSS v4
 
-**Status**: Accepted (shadcn/ui + Tailwind: decisión del usuario) · detalles (Radix como base, lucide, tokens, solo tema claro): Proposed
+**Status**: Accepted (shadcn/ui + Tailwind: decisión del usuario) · detalles (Radix como base, lucide, tokens, solo tema claro): Proposed, salvo "solo tema claro", confirmado por el usuario el 2026-09-29 (ver nota)
 **Fecha**: 2026-09-29
 **Origen**: spec 001 (`ui.md` §15, §18, §19)
+
+> **Nota 2026-09-29**: el usuario confirmó que el MVP no tiene modo oscuro (P-F4 de `ui.md`). El
+> resto de los detalles sigue pendiente de aprobación. Aclaración de piso de navegadores: Tailwind
+> v4 exige Chrome ≥ 111, pero `ui.md` (NFR-F02) fija Chrome/Edge ≥ 112 por la preparación del logo
+> (`createImageBitmap` con orientación EXIF); no cambia nada de esta decisión.
 
 ## Contexto
 
