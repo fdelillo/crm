@@ -1,6 +1,6 @@
 # ADR-009: Formato de errores HTTP RFC 9457 con código estable
 
-**Status**: Proposed
+**Status**: Accepted (aprobado por el usuario con el plan de 001, 2026-09-29)
 **Fecha**: 2026-09-27
 **Origen**: spec 001
 **Revisión 2026-09-27**: se agrega el miembro de extensión `suggested_action` (respuesta P-4 de 001).
