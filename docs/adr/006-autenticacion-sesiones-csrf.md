@@ -10,6 +10,25 @@
 > todavía no estaba aprobado y la decisión estructural (sesión en base + cookie) no cambió. Desde
 > la aprobación del plan, cualquier cambio de duración va en un ADR que reemplace a este.
 
+> **Nota 2026-09-29 (detalle; no cambia la decisión)**, por los hallazgos H-3 y H-9 de la
+> revisión del frontend-architect:
+>
+> 1. **Desarrollo local con navegador (H-3, DD-24 del plan de 001)**: `APP_BASE_URL` puede ser
+>    `http://` **solo** si el host es `localhost` o `127.0.0.1`, y eso se combina con
+>    `COOKIE_SECURE=true` (los navegadores tratan esos orígenes como contexto seguro y aceptan
+>    `__Host-` con `Secure`). `COOKIE_SECURE=false` queda **solo para clientes que no son
+>    navegador** (tests de integración con `httptest` y similares); la configuración rechaza al
+>    arrancar cualquier otra combinación. Esto precisa el último punto de "Consecuencias" sin
+>    cambiarlo.
+> 2. **Respuesta del rechazo CSRF (H-9, DD-30)**: `http.CrossOriginProtection` se configura con
+>    `SetDenyHandler` para que el rechazo sea `403` `application/problem+json` con
+>    `code: forbidden` (el mismo formato que el resto de la API, ADR-009) y se registre el evento
+>    `csrf_rejected` en el log. `CrossOriginProtection` envuelve el **mux raíz** (DD-22), así que
+>    cubre también cualquier método no seguro que llegue fuera de `/api/`.
+>
+> No se crea un ADR nuevo porque ni el modelo de sesión, ni la cookie, ni las tres capas CSRF
+> cambian: se fija una regla de configuración y el formato de un rechazo.
+
 ## Contexto
 
 Los usuarios entran con email y contraseña desde una PWA servida en el mismo origen que la API.

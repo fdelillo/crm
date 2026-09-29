@@ -4,6 +4,10 @@
 · **Contrato**: [`contracts/openapi.yaml`](contracts/openapi.yaml)
 **Revisión 2026-09-27**: incorporadas P-2 a P-5 (tareas afectadas: T-B002, T-B201, T-B303, T-B305,
 T-B307, T-B402, T-B501, T-B506, T-B604, T-B606, T-B903).
+**Revisión 2026-09-29**: incorporados los hallazgos H-1 a H-9 del frontend (plan §18) en la
+sección Backend (tareas afectadas: T-B002, T-B004, T-B005, T-B011, T-B203, T-B204, T-B213,
+T-B303, T-B305, T-B601, T-B603, T-B605, T-B606, T-B702, T-B703, T-B705, T-B801, T-B901, T-B903).
+La sección Frontend no cambia.
 
 ---
 
@@ -16,7 +20,8 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
 - `[T]` = tarea de test. Va **antes** de la tarea de código que la hace pasar, y el test debe
   fallar por la razón correcta antes de implementar (Red).
 - Cada tarea lleva trazabilidad: historia (`US-n` = Historia n de la spec), `FR-`, `SC-`, `INV-`
-  (plan §5), `DD-` (plan §6), `ADR-`, `P-` (respuestas del usuario, plan §14.2).
+  (plan §5), `DD-` (plan §6), `ADR-`, `P-` (respuestas del usuario, plan §14.2), `H-` (hallazgos
+  del frontend, plan §18).
 - Tests: paquete `testing` nativo, *table-driven*, sin testify (ADR-012). Unitarios junto al
   código (`*_test.go`). Integración con build tag `integration` (`//go:build integration`) y
   PostgreSQL 18 real vía `internal/testsupport/pgtest`.
@@ -27,7 +32,8 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
   | `mailer.Mailer` en tests de servicio y HTTP | PostgreSQL (RLS, roles, constraints son lo que se prueba) |
   | `objectstore.ObjectStorage` en tests de servicio y HTTP | El adaptador SMTP en su propio test (contra Mailpit) |
   | `clock.Clock` (tiempo controlado) | El adaptador S3 en su propio test (contra MinIO) |
-  | `industrytemplate.Seeder` solo en el test de rollback (para forzar un fallo) | El router y los middlewares en los tests HTTP (`httptest` sobre el handler real) |
+  | `industrytemplate.Seeder` solo en el test de rollback (para forzar un fallo) | El router, el mux raíz y los middlewares en los tests HTTP (`httptest` sobre el handler real) |
+  | El handler de la SPA (`RootDeps.SPA`) en los tests del backend, por un stub que registra lo que recibe | El paquete `web` en T-F007 (se prueba con `fstest.MapFS`) |
 
 - Los tests de integración se conectan **como `crm_app`** (INV-18). Cada test crea sus propias
   empresas con UUID y emails aleatorios: pueden correr en paralelo (`t.Parallel()`) sobre el mismo
@@ -46,31 +52,57 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
 | `make check` | `lint` + `test` + `test-int`. **Es el checkpoint de cada fase** |
 | `make db-reset` | Solo desarrollo: recrea la base local y corre bootstrap + migraciones |
 
+Los targets del frontend (`web-build`, `web-check`, `build`, `check-all`) los agrega T-F009; el
+backend compila y testea sin el frontend gracias al marcador `web/dist/.gitkeep` (ADR-019).
+
+### Coordinación con la sección Frontend
+
+T-F007 (test del handler de la SPA) y T-F008 (paquete `web` y cableado en el mux raíz) son código
+Go y los implementa `backend-developer`, pero están numeradas en la sección Frontend y **no se
+duplican acá**. Dependen de:
+
+| Tarea del frontend | Necesita del backend | Por qué |
+|---|---|---|
+| T-F007 | T-B005 (mux raíz con `RootDeps.SPA`) y T-B204 (middlewares comunes) | El test del mux completo verifica `/api/…` → problem+json, `/healthz` y las cabeceras comunes sobre la SPA |
+| T-F008 | T-B005, T-B204 y la aprobación de `gzhttp` (DD-29, ya aprobada) | Reemplaza el stub de `RootDeps.SPA` por `web.NewHandler(web.DistFS())` |
+| T-F009 | T-B013 | Agrega targets y el job de frontend al Makefile y a la CI del backend |
+
+Orden sugerido: Fase 0 del backend completa → T-F007/T-F008 (en la misma rama o la siguiente) →
+T-F009.
+
 ---
 
 ### Fase 0 — Esqueleto del monolito (Setup)
 
-**Objetivo**: el binario compila, sirve `/healthz`, corre migraciones embebidas, genera código
-sqlc y hay un harness que levanta PostgreSQL 18 real con los roles del proyecto. CI corre todo.
+**Objetivo**: el binario compila, sirve `/healthz` desde el mux raíz, corre migraciones
+embebidas, genera código sqlc y hay un harness que levanta PostgreSQL 18 real con los roles del
+proyecto. CI corre todo.
 
 **Prueba independiente**: `make check` en verde en CI; `docker compose up` + `crm migrate up` +
-`crm serve` y `curl /healthz` responde `200 {"status":"ok"}`.
+`crm serve` y `curl /healthz` responde `200 {"status":"ok"}`; `curl /api/v1/no-existe` responde
+`404` problem+json.
 
 **T-B001 — Módulo Go y estructura de directorios** · ADR-001
 - `go mod init github.com/fdelillo/crm` con Go 1.27. Árbol de `plan.md` §11 con paquetes vacíos
   (`doc.go` que explique la responsabilidad de cada uno en una línea).
 - `cmd/crm` con subcomandos `serve`, `migrate {up|down|status}`, `tenants reprovision-roles`
-  (este último vacío hasta la Fase 9), usando `flag` de la librería estándar.
+  (este último vacío hasta la Fase 9), usando `flag` de la librería estándar. `cmd/crm` importa
+  `_ "time/tzdata"` (DD-27).
 
-**T-B002 [T] — Configuración** · ADR-001, plan §10.5, DD-10, P-5
+**T-B002 [T] — Configuración** · ADR-001, plan §10.5, DD-10, DD-14, DD-24, P-5, H-3
 - **Red**:
 
   | Entrada (env) | Resultado esperado |
   |---|---|
-  | Todas las variables obligatorias válidas | `Config` poblado; defaults: `HTTP_ADDR=:8080`, `METRICS_ADDR=127.0.0.1:9090`, `SESSION_IDLE=24h`, `SESSION_ABSOLUTE=168h` |
+  | Todas las variables obligatorias válidas | `Config` poblado; defaults: `HTTP_ADDR=:8080`, `METRICS_ADDR=127.0.0.1:9090`, `SESSION_IDLE=24h`, `SESSION_ABSOLUTE=168h`, `COOKIE_SECURE=true`, `APP_LINK_RESET=/reset-password`, `APP_LINK_VERIFY=/verify-email`, `APP_LINK_INVITATION=/accept-invitation` |
   | Falta `DATABASE_URL` | error que nombra la variable |
   | `AUTH_HMAC_KEY` de menos de 32 bytes (decodificada) | error |
-  | `APP_BASE_URL` sin esquema `https://` y `COOKIE_SECURE` ≠ `false` | error |
+  | `APP_BASE_URL=https://crm.example` con `COOKIE_SECURE` `true` / `false` | válido / error |
+  | `APP_BASE_URL=http://localhost:5173`, `http://localhost:8080`, `http://127.0.0.1:8080` con `COOKIE_SECURE=true` | válido (desarrollo con navegador, H-3) |
+  | Esos mismos orígenes con `COOKIE_SECURE=false` | válido (solo clientes no navegador) |
+  | `APP_BASE_URL=http://crm.example` o `http://192.168.0.10:8080` con cualquier `COOKIE_SECURE` | error |
+  | `APP_BASE_URL` sin esquema o con otro esquema (`ftp://…`) | error |
+  | `APP_LINK_*` sin `/` inicial o con `#`/`?` | error que nombra la variable |
   | `SESSION_IDLE` > `SESSION_ABSOLUTE` | error |
   | Duración mal formada | error que nombra la variable |
   | El error nunca incluye el **valor** de una variable secreta | aserción sobre el texto |
@@ -79,20 +111,31 @@ sqlc y hay un harness que levanta PostgreSQL 18 real con los roles del proyecto.
 
 **T-B003 — Implementar `platform/config`**.
 
-**T-B004 [T] — Servidor HTTP mínimo** · ADR-002, DD-12
-- **Red**:
+**T-B004 [T] — Mux raíz y servidor HTTP mínimo** · ADR-002, ADR-019, DD-12, DD-22, INV-22, H-1
+- **Red** (`httptest` sobre `app.NewRootHandler` con un router chi de prueba y un **stub** en
+  `RootDeps.SPA` que responde `200 text/plain "spa"` y registra la ruta recibida):
 
   | Caso | Esperado |
   |---|---|
-  | `GET /healthz` | `200`, `application/json`, `{"status":"ok"}` |
-  | Ruta inexistente | `404` `application/problem+json` con `code=not_found` |
-  | Método no permitido | `405` problem+json |
-  | Un handler que hace *panic* | `500` problem+json `code=internal`, el proceso sigue vivo, log `ERROR` con `request_id` |
-  | Toda respuesta | header `X-Request-Id`; `X-Content-Type-Options: nosniff` |
-- **Green**: `app.NewRouter(deps) http.Handler` con chi; timeouts de §10.3 del plan; apagado
-  ordenado con `context` al recibir SIGTERM.
+  | `GET /healthz` | `200`, `application/json`, `{"status":"ok"}`, `Cache-Control: no-store`; el stub no recibió nada |
+  | `POST /healthz` | `405` (el `ServeMux` rechaza el método) |
+  | `GET /api/v1/no-existe` | `404` `application/problem+json` con `code=not_found`; el stub **no** recibió nada |
+  | `GET /api/v2/cualquier` y `GET /api/` | `404` problem+json (todo `/api/` es de chi) |
+  | `DELETE /api/v1/<ruta que solo acepta GET>` | `405` problem+json |
+  | `GET /api` (sin barra) | redirección a `/api/` del `ServeMux`; nunca llega al stub |
+  | `GET /`, `GET /login`, `GET /settings/users`, `GET /assets/x.js` | los atiende el stub (ruta registrada igual a la pedida) |
+  | Un handler de la API que hace *panic* | `500` problem+json `code=internal`, el proceso sigue vivo, log `ERROR` con `request_id` |
+  | Un stub de SPA que hace *panic* | `500` (el recover es común), proceso vivo |
+  | Toda respuesta (API, ops y SPA) | `X-Request-Id`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Strict-Transport-Security` |
+  | Log de un request a la SPA | `route=spa` (no la URL cruda); a ops, `route=ops`; a la API, el patrón chi |
+- **Green**: `app.NewRootHandler(RootDeps, CommonMiddleware) http.Handler` con `http.ServeMux`
+  (`/api/` → chi, `GET /healthz`, `GET /readyz`, `/` → SPA) envuelto por los middlewares
+  comunes; timeouts de §10.3 del plan; apagado ordenado con `context` al recibir SIGTERM.
 
-**T-B005 — Implementar router raíz, logging `slog` JSON y `serve`**.
+**T-B005 — Implementar el mux raíz, el router chi de la API (con `NotFound`/`MethodNotAllowed`
+problem+json), logging `slog` JSON y `serve`**. Hasta T-F008, `serve` usa como `RootDeps.SPA` un
+handler que responde `503 text/plain` "La interfaz no está compilada (correr `make web-build`)"
+(el mismo mensaje que usará el paquete `web` sin `index.html`, ADR-019).
 
 **T-B006 — Bootstrap de roles y entorno local** · ADR-004, ADR-005, `data-model.md` §3.1
 - `db/bootstrap/`: SQL idempotente que crea los roles de §3.1 con sus atributos y membresías
@@ -131,15 +174,17 @@ sqlc y hay un harness que levanta PostgreSQL 18 real con los roles del proyecto.
 
 **T-B010 — Implementar `internal/testsupport/pgtest`**.
 
-**T-B011 [T] — Reglas de repositorio** · INV-03, INV-04, ADR-001
+**T-B011 [T] — Reglas de repositorio** · INV-03, INV-04, INV-22, ADR-001
 - **Red** (test Go que recorre el árbol de fuentes):
 
   | Regla | Caso que debe fallar |
   |---|---|
   | `SET ROLE`, `SET LOCAL ROLE`, `RESET ROLE` o `set_config('role'` solo en `internal/platform/db` | Archivo de fixture en `testdata/` con `SET ROLE` en otro paquete → detectado |
   | Ningún `fmt.Sprintf`/concatenación que arme SQL fuera de `platform/db` | Fixture con `"SELECT " + x` → detectado |
+  | El router chi de la API no registra rutas fuera de `/api/` (no hay `Mount("/")`, `NotFound` hacia la SPA ni `/*`) | Fixture que registra la SPA en chi → detectado |
 - `.golangci.yml` con `depguard`: reglas de `plan.md` §4.1 (platform no importa dominio;
-  `identity` no importa `tenant`; nadie importa `*/store` de otro módulo).
+  `identity` no importa `tenant`; nadie importa `*/store` de otro módulo; `web` solo importa la
+  librería estándar y `gzhttp`; solo `internal/app` y `cmd/crm` importan `web`).
 - **Green**: el test pasa sobre el código real y detecta los fixtures.
 
 **T-B012 [T] — Spike del rol por empresa** · ADR-005, P-1, supuesto 1 de `research.md`
@@ -155,10 +200,11 @@ sqlc y hay un harness que levanta PostgreSQL 18 real con los roles del proyecto.
 
 **T-B013 — Makefile y CI** · ADR-012
 - Targets de la tabla de comandos. `.github/workflows/ci.yml`: Go 1.27, Docker disponible,
-  `make check`. Cachés de módulos.
+  `make check`. Cachés de módulos. (T-F009 agrega después los targets y el job del frontend.)
 
 **Checkpoint Fase 0**: `make check` en verde local y en CI; resultados de los spikes T-B008 y
-T-B012 reportados. **No avanzar a la Fase 1 si T-B012 falla.**
+T-B012 reportados. **No avanzar a la Fase 1 si T-B012 falla.** Con la Fase 0 cerrada se pueden
+hacer T-F007/T-F008 (sección Frontend).
 
 ---
 
@@ -256,8 +302,10 @@ no modifica y no inserta filas de la otra en ninguna tabla.
 **T-B109 [T] — Privilegios de los roles de sistema** · INV-05, plan §4.4
 - **Red**: *snapshot* de `information_schema.column_privileges` y `table_privileges` para
   `crm_auth`, `crm_worker`, `crm_signup` comparado con la tabla de `data-model.md` §3.4 declarada
-  en el test. Además, como `crm_auth`: `SELECT password_hash FROM app.users` → `42501`; como
-  `crm_worker`: `SELECT payload FROM app.outbox_messages` → `42501`.
+  en el test (incluidas las columnas `purpose`, `used_at` y `revoked_at` de `user_tokens` para
+  `crm_worker`). Además, como `crm_auth`: `SELECT password_hash FROM app.users` → `42501`; como
+  `crm_worker`: `SELECT payload FROM app.outbox_messages` y `SELECT token_hash FROM
+  app.user_tokens` → `42501`.
 - **Green**: pasa tras T-B111. Cambiar un privilegio de sistema obliga a cambiar este test y
   `data-model.md` (matriz de mantenimiento).
 
@@ -280,7 +328,8 @@ no modifica y no inserta filas de la otra en ninguna tabla.
 
 **T-B111 — Migraciones 00003 a 00008** · `data-model.md` §2–§3
 - Tablas, constraints, índices, RLS habilitada y forzada, políticas y `GRANT` exactamente como
-  en `data-model.md`. Cada una con `Down`.
+  en `data-model.md` (incluida la política `worker_cleanup` de `user_tokens` que conserva la
+  invitación abierta, DD-25). Cada una con `Down`.
 
 **T-B112 [T] — Queries con filtro explícito de empresa** · INV-04
 - **Red**: test que parsea cada `internal/*/store/*.sql` y, para toda query que referencie una
@@ -302,7 +351,8 @@ middlewares de seguridad, tokens, hashing, autorización, auditoría, outbox con
 almacenamiento de objetos.
 
 **Prueba independiente**: un mensaje encolado en una transacción de empresa llega a Mailpit;
-un `POST` de origen cruzado es rechazado; la matriz de permisos coincide con FR-007.
+un `POST` de origen cruzado es rechazado con problem+json; la matriz de permisos coincide con
+FR-007.
 
 **T-B201 [T] — problem+json y decodificación de JSON** · ADR-009, plan §9
 - **Red** (unitario):
@@ -324,23 +374,27 @@ un `POST` de origen cruzado es rechazado; la matriz de permisos coincide con FR-
 
 **T-B202 — Implementar `platform/httpx` (problem+json con `suggested_action` opcional, DecodeJSON, mapeo por defecto de errores)**.
 
-**T-B203 [T] — Middlewares de seguridad y observabilidad** · ADR-006, plan §10.2–10.3, DD-12
-- **Red** (unitario, `httptest`):
+**T-B203 [T] — Middlewares de seguridad y observabilidad** · ADR-006, plan §10.2–10.3, §10.7, DD-12, DD-28, DD-30, INV-21, H-7, H-9
+- **Red** (unitario, `httptest` sobre el mux raíz de T-B005 con stub de SPA):
 
   | Caso | Esperado |
   |---|---|
-  | `POST` con `Sec-Fetch-Site: cross-site` | `403` (CrossOriginProtection) |
-  | `POST` con `Origin` de otro host y sin `Sec-Fetch-Site` | `403` |
+  | `POST /api/v1/...` con `Sec-Fetch-Site: cross-site` | `403 application/problem+json` con `code: forbidden` (*deny handler*, H-9); el handler de la API no se ejecutó; log `security_event=csrf_rejected`; `csrf_rejected_total` +1 |
+  | `POST` con `Origin` de otro host y sin `Sec-Fetch-Site` | `403` problem+json `forbidden` |
   | `POST` con `Sec-Fetch-Site: same-origin` | pasa |
+  | `POST` con `Origin: http://localhost:5173`, `Host: localhost:5173` y `Sec-Fetch-Site: same-origin` (proxy de Vite) | pasa |
   | `GET` con `Sec-Fetch-Site: cross-site` | pasa (método seguro) |
-  | Respuesta de `/api/v1/auth/*` y `/api/v1/me` | `Cache-Control: no-store` |
-  | Toda respuesta | `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` |
+  | **Toda** respuesta de `/api/v1/*`: `200` JSON, `201`, `202`, `204`, `4xx` y `5xx` problem+json (H-7) | `Cache-Control: no-store` |
+  | Un handler de prueba registrado como `GET /api/v1/tenant/logo` que fija su propio `Cache-Control` | el middleware no lo pisa (la excepción de DD-23 queda en manos del handler del logo) |
+  | Toda respuesta (API, ops y SPA) | `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` |
+  | Respuesta del stub de SPA | **sin** `no-store` agregado por la API (la caché de la SPA la decide `web`, T-F007) |
   | Log de un request con body `{"password": "..."}` y cookie de sesión | el log no contiene la contraseña, el token ni el header `Cookie` |
-  | Log de request | contiene `request_id`, `route` (patrón chi), `status`, `duration_ms` |
+  | Log de request | contiene `request_id`, `route` (patrón chi, `ops` o `spa`), `status`, `duration_ms` |
 - **Green**: pasa la tabla.
 
-**T-B204 — Implementar middlewares** (orden: request id → recover → logging → security headers →
-CrossOriginProtection → rate limit por ruta → autenticación por grupo).
+**T-B204 — Implementar middlewares** (comunes, en el mux raíz: request id → recover → logging →
+security headers → `CrossOriginProtection` con `SetDenyHandler(httpx.CSRFDenyHandler)`; de la API,
+dentro de chi: `no-store` → rate limit por ruta → autenticación por grupo).
 
 **T-B205 [T] — Tokens y contraseñas** · ADR-007, INV-09, DD-6
 - **Red** (unitario):
@@ -410,13 +464,14 @@ CrossOriginProtection → rate limit por ruta → autenticación por grupo).
 
 **T-B212 — Implementar `platform/outbox` (`Enqueue`, `Dispatcher` con *polling* de 2 s y lote de 10, arranque y parada con `context`)**.
 
-**T-B213 [T] — Adaptador SMTP y plantillas** · ADR-010
+**T-B213 [T] — Adaptador SMTP y plantillas** · ADR-010, DD-14
 - **Red** (integración contra Mailpit en contenedor; su API HTTP para leer lo recibido):
 
   | Caso | Esperado |
   |---|---|
-  | Enviar `password_reset` con `{link}` | llega a Mailpit con asunto en español, partes texto y HTML, enlace con el token en el **fragmento** (DD-14) |
-  | Plantillas `email_verification` e `invitation` (con nombre de empresa y rol en español: "Administrador"/"Operador") | renderizan sin campos vacíos |
+  | Enviar `password_reset` con `{link}` y `APP_BASE_URL=https://crm.example` | llega a Mailpit con asunto en español, partes texto y HTML, enlace `https://crm.example/reset-password#token=…` (token en el **fragmento**, DD-14) |
+  | Plantillas `email_verification` e `invitation` | enlaces `…/verify-email#token=…` y `…/accept-invitation#token=…`; nombre de empresa y rol en español ("Administrador"/"Operador"); sin campos vacíos |
+  | `APP_BASE_URL=http://localhost:5173` | enlaces a `http://localhost:5173/…` (desarrollo con Vite) |
   | Destinatario con `\r\n` | error antes de conectar |
   | SMTP inalcanzable (puerto cerrado) | error recuperable (no `PermanentError`), respeta timeout de `context` |
   | Respuesta `5xx` simulada | `PermanentError` (si Mailpit no permite simularla, test unitario del clasificador de códigos) |
@@ -474,7 +529,7 @@ de verificación. Repetir el registro con el mismo email → `409 email_already_
 
 **T-B302 — Implementar `internal/industrytemplate` (catálogo + `Seeder` sin efecto) y el handler**.
 
-**T-B303 [T] — Servicio de registro** · US-1, FR-001, FR-002, INV-14, INV-16, DD-2, DD-4, DD-13, DD-15
+**T-B303 [T] — Servicio de registro** · US-1, FR-001, FR-002, INV-14, INV-16, DD-2, DD-4, DD-13, DD-15, DD-27, H-6
 - **Red** (integración, `Mailer` real no interviene: se verifica el outbox):
 
   | Caso | Esperado |
@@ -485,7 +540,8 @@ de verificación. Repetir el registro con el mismo email → `409 email_already_
   | Dos registros concurrentes con el mismo email | exactamente uno tiene éxito; el otro `ErrEmailTaken` |
   | Plantilla inexistente | error de validación `unknown_template`; nada creado |
   | `Seeder` falso que falla | error; nada creado (incluido el rol) |
-  | Zona horaria inválida | validación `invalid_timezone` |
+  | `timezone` `America/Argentina/Cordoba` / `Asia/Kathmandu` | se guarda tal cual (la base IANA embebida las conoce) |
+  | `timezone` ausente, vacía, `Marte/Olympus` o de 64 caracteres inventados | la empresa se crea con `America/Argentina/Buenos_Aires`; log `event=signup_timezone_defaulted`; **sin** error (DD-27) |
   | `base_currency` fuera de ARS/USD | validación `invalid_value` |
   | Contraseña de 9 caracteres o igual al email | validación; **no** se calcula hash ni se abre transacción |
 - **Green**: pasa la tabla.
@@ -495,16 +551,17 @@ de verificación. Repetir el registro con el mismo email → `409 email_already_
 **T-B304 — Implementar `tenant.Service.Register` y en `identity`: `CreateFirstAdmin`,
 `CreateSession`, `IssueEmailVerification`**.
 
-**T-B305 [T] — `POST /auth/signup`** · US-1, SC-001, P-4, P-5, DD-9, DD-19, DD-21, INV-20
+**T-B305 [T] — `POST /auth/signup`** · US-1, SC-001, P-4, P-5, DD-9, DD-19, DD-21, DD-27, DD-28, INV-20
 - **Red** (integración HTTP, contrato validado en cada respuesta):
 
   | Caso | Esperado |
   |---|---|
-  | Payload válido | `201` `SessionInfo`; `Set-Cookie: __Host-crm_session=…; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=604800` |
+  | Payload válido | `201` `SessionInfo`; `Set-Cookie: __Host-crm_session=…; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=604800`; `Cache-Control: no-store` |
   | Email existente | `409`, `code: email_already_registered`, `suggested_action: password_reset`, `title` "Ya existe un usuario con ese email", `detail` "Ya existe un usuario con ese email. ¿Querés recuperar la contraseña?"; valida contra `EmailAlreadyRegisteredProblem` |
   | Email existente de un usuario `invited`, `active` y `disabled` (tres cuentas distintas) | los tres cuerpos son **idénticos byte a byte** salvo `instance` (INV-20) |
   | Cuerpo del `409` | no contiene el nombre ni el id de la otra empresa, ni el nombre, id, rol o estado del usuario existente (búsqueda de esos valores en el cuerpo crudo) |
   | `409` | log con `security_event=signup_email_exists` e `ip`, sin el email en claro; `signup_email_exists_total` +1 |
+  | `timezone: "Marte/Olympus"` | `201` (no `422`); `GET /tenant` muestra `America/Argentina/Buenos_Aires` |
   | Campo faltante / campo extra | `422` con `errors[].field` / `400 malformed_request` |
   | Sin `Content-Type` JSON | `415` |
   | 6.º registro en una hora desde la misma IP | `429 rate_limited` con `Retry-After` |
@@ -541,7 +598,7 @@ de verificación. Repetir el registro con el mismo email → `409 email_already_
   `email_verified_at`; sin cookie → `401`. Validado contra el contrato.
 
 **T-B310 — Implementar `/me` y el cableado en `internal/app`** (grupos de rutas públicas y
-autenticadas, worker arrancado por `serve`).
+autenticadas dentro de chi, worker arrancado por `serve`).
 
 **Checkpoint Fase 3**: `make check` en verde + la prueba independiente ejecutada contra
 `docker compose` (registro por `curl`, email visible en Mailpit).
@@ -671,23 +728,28 @@ reemisión reutiliza la misma función interna que la reinvitación del Administ
 
 ### Fase 6 — Historia 3: Invitar operadores y administrar usuarios (P2)
 
-**Objetivo**: invitar, reinvitar, aceptar, cambiar rol, desactivar (cerrando sesiones) y
-reactivar (P-3, confirmado), sin dejar nunca la empresa sin Administrador y con todo auditado.
+**Objetivo**: invitar, reinvitar (con cambio de rol si corresponde), aceptar, cambiar rol de
+invitados y activos, desactivar (cerrando sesiones) y reactivar (P-3, confirmado), sin dejar
+nunca la empresa sin Administrador y con todo auditado.
 
-**Prueba independiente**: el admin invita a un operador; el operador acepta y entra; el operador
-recibe `403` en `/users`; el admin lo desactiva y el siguiente request del operador da `401`; el
-admin lo reactiva y el operador vuelve a entrar con su contraseña.
+**Prueba independiente**: el admin invita a un operador; lo reinvita como administrador; el
+invitado acepta y entra como Administrador; como otro operador, `/users` da `403`; el admin
+desactiva a un usuario y el siguiente request de ese usuario da `401`; el admin lo reactiva y
+vuelve a entrar con su contraseña.
 
-**T-B601 [T] — Invitar y reinvitar** · US-3.1, FR-005, FR-008, INV-16, DD-1, DD-5
+**T-B601 [T] — Invitar y reinvitar** · US-3.1, FR-005, FR-008, INV-10, INV-16, DD-1, DD-5, DD-26, H-5
 - **Red** (integración):
 
   | Caso | Esperado |
   |---|---|
   | Email nuevo, rol `operator` | usuario `invited`, `name` y `password_hash` nulos; token `invitation` de 7 días con `created_by_user_id`; mensaje `invitation` pendiente; auditoría `user.invited` |
-  | Mismo email ya `invited` en la misma empresa | token anterior revocado, token nuevo; `reissued = true`; auditoría `user.invitation_reissued` con `trigger: admin`; sigue habiendo **un** usuario |
+  | Mismo email ya `invited` en la misma empresa, **mismo** rol | token anterior revocado, token nuevo; `reissued = true`; auditoría `user.invitation_reissued {role, trigger: admin}`; **sin** `user.role_changed`; sigue habiendo **un** usuario |
+  | Mismo email ya `invited`, rol **distinto** (`operator` → `admin`) | además del caso anterior, `role = admin`; auditoría `user.role_changed {from: operator, to: admin, status: invited}` en la misma transacción (dos filas en total) |
+  | Reinvitar como `operator` a un invitado `admin` siendo el creador el único admin activo | permitido (los invitados no cuentan para INV-10) |
+  | La reinvitación toma el lock de `tenants` | dos reinvitaciones concurrentes del mismo email con roles distintos terminan con un rol consistente y dos pares de filas de auditoría coherentes (sin interleaving: 20 repeticiones) |
   | Email de un usuario activo o desactivado de esta empresa | `ErrEmailTaken` |
   | Email de un usuario (cualquier estado) de **otra** empresa | `ErrEmailTaken` (sin datos de la otra empresa en el error) |
-  | Rol `admin` | permitido |
+  | Rol `admin` en una invitación nueva | permitido |
   | Email inválido | validación |
 - **Green**: pasa la tabla.
 
@@ -696,8 +758,8 @@ admin lo reactiva y el operador vuelve a entrar con su contraseña.
 
   | Caso | Esperado |
   |---|---|
-  | `Preview` con token vigente | nombre de la empresa, email, rol, vencimiento |
-  | `Accept` válido | usuario `active` con nombre y hash; `email_verified_at` puesto; token usado; sesión creada; auditoría `user.invitation_accepted` |
+  | `Preview` con token vigente | nombre de la empresa, email, rol **actual** del usuario (el de la última reinvitación o cambio de rol), vencimiento |
+  | `Accept` válido | usuario `active` con nombre y hash; `email_verified_at` puesto; token usado; sesión creada con el rol actual; auditoría `user.invitation_accepted` |
   | Token vencido (7 días + 1 s), reemplazado por reinvitación, o ya usado | `ErrTokenInvalid` (en `Preview` y en `Accept`) |
   | Token reemplazado por una reemisión disparada por pedido de reset (DD-20) | `ErrTokenInvalid`; el token nuevo sí funciona |
   | Usuario desactivado antes de aceptar | `ErrTokenInvalid` |
@@ -705,14 +767,17 @@ admin lo reactiva y el operador vuelve a entrar con su contraseña.
   | Dos `Accept` concurrentes | uno solo tiene éxito |
 - **Green**: pasa la tabla.
 
-**T-B603 [T] — Cambio de rol y último Administrador** · US-3.4, FR-005, FR-008, INV-10
+**T-B603 [T] — Cambio de rol y último Administrador** · US-3.4, FR-005, FR-008, INV-10, DD-26, H-5
 - **Red** (integración):
 
   | Caso | Esperado |
   |---|---|
-  | Operador → admin | rol cambiado; auditoría `user.role_changed {from: operator, to: admin}` |
+  | Operador activo → admin | rol cambiado; auditoría `user.role_changed {from: operator, to: admin, status: active}` |
+  | Invitado `operator` → `admin` y viceversa | permitido; auditoría con `status: invited`; la invitación vigente no cambia (mismo token y vencimiento) |
+  | Usuario `disabled` → cualquier rol | `ErrInvalidTransition`; sin cambios ni auditoría |
   | Admin → operador habiendo otro admin activo | permitido |
   | Único admin activo → operador (incluido sobre sí mismo) | `ErrLastAdmin`; sin cambios |
+  | Único admin activo + un invitado `admin`; bajar al activo | `ErrLastAdmin` (el invitado no cuenta) |
   | Dos admins activos + uno desactivado; bajar a uno de los activos | permitido; bajar al otro después → `ErrLastAdmin` (el desactivado no cuenta) |
   | Mismo rol que ya tiene | sin cambios, sin auditoría, sin error |
   | Id de otra empresa o inexistente | `ErrUserNotFound` |
@@ -744,20 +809,26 @@ admin lo reactiva y el operador vuelve a entrar con su contraseña.
 **T-B605 — Implementar `Invite`, `PreviewInvitation`, `AcceptInvitation`, `ListUsers`,
 `ChangeRole`, `Deactivate`, `Reactivate`**. Las transiciones de estado se expresan como una
 tabla (`estado actual × acción → estado nuevo | error`) con su test unitario (incluye las dos
-salidas de `reactivate` según tenga o no contraseña), y cada operación de cambio de rol o estado
-empieza con el lock de la fila `tenants` (INV-10).
+salidas de `reactivate` según tenga o no contraseña y el rechazo de `changeRole` en `disabled`),
+y cada operación de cambio de rol o estado (incluida la reinvitación) empieza con el lock de la
+fila `tenants` (INV-10). `ListUsers` informa `invitation_expires_at` desde la invitación abierta
+de cada invitado, aunque haya vencido (DD-25).
 
-**T-B606 [T] — Endpoints de usuarios e invitaciones** · contrato, FR-005, FR-007, P-3
+**T-B606 [T] — Endpoints de usuarios e invitaciones** · contrato, FR-005, FR-007, P-3, DD-25, DD-26, H-4, H-5
 - **Red** (HTTP + contrato):
 
   | Caso | Esperado |
   |---|---|
-  | Admin: `GET /users` | `200` con invitados (con `invitation_expires_at`), activos y desactivados, en orden de alta |
+  | Admin: `GET /users` | `200` con invitados (con `invitation_expires_at`), activos y desactivados (con `invitation_expires_at: null`), en orden de alta |
+  | Invitado cuya invitación venció hace 3 días (reloj falso) | `invitation_expires_at` = esa fecha pasada (no `null`) |
+  | Invitado cuya invitación venció hace 40 días, después de correr la limpieza (T-B901) | sigue informando la fecha (la limpieza conserva la invitación abierta) |
   | Operador en `GET /users`, `POST /users/invitations`, `PUT /users/{id}/role`, `POST .../deactivate`, `POST .../reactivate` | `403 forbidden` en todos; ningún cambio en la base ni en la auditoría |
   | Admin, `userId` inexistente o de otra empresa | `404 not_found` (idénticos) en `role`, `deactivate` y `reactivate` |
   | `userId` que no es UUID | `404` (no `400`: no revela formato de ids; el test valida solo la respuesta contra el contrato) |
-  | Invitar nuevo / reinvitar | `201` / `200` |
+  | Invitar nuevo / reinvitar con el mismo rol / reinvitar con otro rol | `201` / `200` / `200` con el rol nuevo en el cuerpo |
   | Invitar un email existente | `409 email_taken` **sin** `suggested_action` (DD-21) |
+  | `PUT /users/{id}/role` sobre un invitado | `200` con el rol nuevo y `status: invited` |
+  | `PUT /users/{id}/role` sobre un desactivado | `409 invalid_state` |
   | `POST /users/{id}/reactivate` sobre `disabled` con contraseña | `200` con `status: active` |
   | `POST /users/{id}/reactivate` sobre `disabled` sin contraseña | `200` con `status: invited` e `invitation_expires_at` a 7 días |
   | `POST /users/{id}/reactivate` sobre `active` o `invited` | `409 invalid_state` |
@@ -773,10 +844,12 @@ empieza con el lock de la fila `tenants` (INV-10).
 
 ### Fase 7 — Historia 4: Datos de la empresa y logo (P2)
 
-**Objetivo**: el admin edita los datos de la empresa y sube el logo; cualquier usuario los ve.
+**Objetivo**: el admin edita los datos de la empresa y sube el logo; cualquier usuario los ve; el
+logo nunca se muestra desde la caché de otra empresa o de una versión anterior.
 
 **Prueba independiente**: el admin sube un PNG y edita el CUIT; el operador ve el logo en
-`GET /tenant/logo` y recibe `403` al intentar `PATCH /tenant`.
+`GET /tenant/logo` y recibe `403` al intentar `PATCH /tenant`; con `curl`, un segundo `GET` con
+`If-None-Match` responde `304`; tras reemplazar el logo, el mismo `If-None-Match` responde `200`.
 
 **T-B701 [T] — Validaciones puras de la empresa** · DD-16, DD-15
 - **Red** (unitario):
@@ -791,18 +864,20 @@ empieza con el lock de la fila `tenants` (INV-10).
   | `name` vacío | `required` |
 - **Green**: pasa la tabla.
 
-**T-B702 [T] — Actualización de datos** · US-4, FR-008
+**T-B702 [T] — Actualización de datos** · US-4, FR-008, DD-27
 - **Red** (integración): `PATCH` parcial solo cambia los campos presentes; `null` borra un campo
   opcional; `updated_at` avanza; auditoría `tenant.updated` con la **lista de nombres** de campos
-  (no los valores); `base_currency` en el payload → `400 malformed_request` (campo desconocido).
+  (no los valores); `base_currency` en el payload → `400 malformed_request` (campo desconocido);
+  `timezone: "Marte/Olympus"` → validación `invalid_timezone` (acá **sí** es error, a diferencia
+  del registro).
 
-**T-B703 [T] — Logo** · US-4, DD-11, INV-17
+**T-B703 [T] — Logo** · US-4, DD-11, DD-23, INV-17, H-2
 - **Red** (integración con `ObjectStorage` falso instrumentado):
 
   | Caso | Esperado |
   |---|---|
-  | PNG válido de 1 MB | objeto guardado con clave `tenants/{A}/logo/{uuid}.png`; `logo_object_key` y `logo_content_type` actualizados; auditoría `tenant.logo_updated` |
-  | Reemplazar logo | objeto nuevo guardado **antes** del `COMMIT`; el viejo borrado **después** |
+  | PNG válido de 1 MB | objeto guardado con clave `tenants/{A}/logo/{uuid}.png`; `logo_object_key` y `logo_content_type` actualizados; `updated_at` avanza; auditoría `tenant.logo_updated` |
+  | Reemplazar logo | objeto nuevo guardado **antes** del `COMMIT`; el viejo borrado **después**; clave (y por lo tanto `ETag`) distinta |
   | JPEG válido | aceptado |
   | GIF, WebP, SVG (aunque la extensión o el `Content-Type` digan `png`) | `ErrLogoUnsupportedType` |
   | 2 MB + 1 byte | `ErrLogoTooLarge` (el body se corta: no se lee entero en memoria) |
@@ -810,16 +885,29 @@ empieza con el lock de la fila `tenants` (INV-10).
   | `Put` falla | `503`; la fila de la empresa sin cambios |
   | La transacción falla después del `Put` | el objeto nuevo se borra (mejor esfuerzo, logueado si falla) |
   | Borrar el objeto viejo falla | la operación igual responde éxito; log `WARN` (objeto huérfano aceptado) |
-  | `RemoveLogo` | columnas en `NULL`, objeto borrado, auditoría `tenant.logo_removed`; repetir → sin error |
+  | `RemoveLogo` | columnas en `NULL`, `updated_at` avanza, objeto borrado, auditoría `tenant.logo_removed`; repetir → sin error |
+  | `GetLogo` con `ifNoneMatch` vacío | `ETag = "<uuid de la clave>"`, cuerpo del objeto |
+  | `GetLogo` con `ifNoneMatch` igual al vigente | `NotModified = true`; el fake de S3 **no** recibió `Get` |
+  | `GetLogo` con un `ifNoneMatch` viejo o de otra empresa | cuerpo completo con el `ETag` vigente |
 - **Green**: pasa la tabla.
 
 **T-B704 — Implementar `tenant.Service.Update`, `SetLogo`, `RemoveLogo`, `GetLogo`**.
 
-**T-B705 [T] — Endpoints de empresa** · contrato, FR-007
-- **Red** (HTTP + contrato): `GET /tenant` → `200` para admin y operador; `PATCH /tenant` → `200`
-  admin, `403` operador, `422` CUIT inválido; `PUT /tenant/logo` multipart → `200` / `413` /
-  `415` / `403`; `GET /tenant/logo` → `200` con `Content-Type` exacto, `nosniff`,
-  `Cache-Control: private, max-age=300`, o `404` sin logo; `DELETE /tenant/logo` → `204`.
+**T-B705 [T] — Endpoints de empresa** · contrato, FR-007, DD-23, DD-28, INV-21, H-2, H-7
+- **Red** (HTTP + contrato):
+
+  | Caso | Esperado |
+  |---|---|
+  | `GET /tenant` como admin y como operador | `200`; `Cache-Control: no-store` |
+  | `PATCH /tenant` | `200` admin, `403` operador, `422` CUIT inválido o `timezone` desconocida; `no-store` |
+  | `PUT /tenant/logo` multipart | `200` (el `Tenant` devuelto tiene `updated_at` nuevo) / `413` / `415` / `403` |
+  | `GET /tenant/logo` | `200` con `Content-Type` exacto, `X-Content-Type-Options: nosniff`, `Cache-Control: private, no-cache`, `ETag` entre comillas; **sin** `no-store` |
+  | `GET /tenant/logo?v=cualquier-cosa` | misma respuesta que sin `v` (el parámetro se ignora y es válido para el contrato) |
+  | `GET /tenant/logo` con `If-None-Match` igual al `ETag` | `304` sin cuerpo, con `ETag` y `Cache-Control: private, no-cache` |
+  | Reemplazar el logo y repetir con el `If-None-Match` anterior | `200` con los bytes nuevos y otro `ETag` |
+  | Sin logo | `404` problem+json con `no-store` |
+  | `DELETE /tenant/logo` | `204` con `no-store`; un `GET` posterior con el `If-None-Match` viejo → `404` (nunca `304`) |
+- **Green**: pasa la tabla.
 
 **T-B706 — Implementar los handlers**.
 
@@ -840,17 +928,20 @@ operador, un invitado, un desactivado con contraseña, un desactivado sin contra
 completos; cookies de sesión de cada usuario; tokens vigentes de reset, verificación e invitación
 de cada empresa.
 
-**T-B801 [T] — Matriz HTTP de aislamiento con cobertura de rutas** · SC-002, FR-006, INV-12
+**T-B801 [T] — Matriz HTTP de aislamiento con cobertura de rutas** · SC-002, FR-006, INV-12, INV-21
 - **Red**:
-  - El test obtiene **todas** las rutas registradas con `chi.Walk` y las compara con una tabla
-    declarada `ruta → caso de aislamiento`. **Si existe una ruta sin caso, el test falla**
-    (así se protege a las specs futuras).
+  - El test obtiene **todas** las rutas registradas con `chi.Walk` **sobre el router de la API**
+    (el que `internal/app` monta en `/api/`; la SPA y ops no están en él, DD-22) y las compara con
+    una tabla declarada `ruta → caso de aislamiento`. **Si existe una ruta sin caso, el test
+    falla** (así se protege a las specs futuras). El mismo listado se compara con los `paths` del
+    contrato (sin `/healthz` ni `/readyz`, que están en el mux raíz).
   - Casos por ruta (como admin de `A`):
 
     | Tipo de ruta | Ataque | Esperado |
     |---|---|---|
     | Con `{userId}` (`role`, `deactivate`, `reactivate`) | usar ids de usuarios de `B` (cada estado) | `404`, cuerpo idéntico al de un id inexistente; `B` sin cambios ni filas de auditoría nuevas (verificado como `B`) |
     | Sin id, lectura (`/me`, `/tenant`, `/users`, `/tenant/logo`) | — | solo datos de `A`: ningún id, email o nombre de `B` aparece en el cuerpo |
+    | `GET /tenant/logo` con cookie de `A` e `If-None-Match` = `ETag` del logo de `B` | reuso de caché entre empresas en un dispositivo compartido | `200` con el logo de `A` (nunca `304`) (INV-21) |
     | Sin id, escritura (`PATCH /tenant`, `PUT/DELETE /tenant/logo`, `POST /users/invitations`) | — | modifica solo `A`; `B` sin cambios; la clave del logo empieza con `tenants/{A}/` |
     | Públicas con token (`/auth/*`) | token de `B` usado junto con la cookie de `A` | la operación afecta solo a `B` (la cookie no cambia la empresa del token); ninguna fila de `A` cambia |
     | `POST /auth/signup` con el email de un usuario de `B` | — | `409 email_already_registered` sin ningún dato de `B` (INV-20) |
@@ -894,28 +985,35 @@ restaura sin perder los roles, y su rendimiento con muchas empresas está medido
 **Prueba independiente**: con 10.000 empresas cargadas, los targets de `plan.md` §13 se cumplen;
 borrar un rol de empresa y correr `crm tenants reprovision-roles` restablece el acceso.
 
-**T-B901 [T] — Limpieza periódica** · `data-model.md` §3.4
+**T-B901 [T] — Limpieza periódica** · `data-model.md` §3.4, DD-25
 - **Red** (integración): sesiones y tokens vencidos hace > 30 días, mensajes terminales de > 30
   días y `login_throttles` de > 24 h sin bloqueo vigente se borran **como `crm_worker`**; nada
   vigente o reciente se borra; un `DELETE` de `crm_worker` sobre una sesión vigente afecta 0 filas
-  (la política lo impide aunque el código se equivoque).
+  (la política lo impide aunque el código se equivoque). Invitaciones:
+
+  | Token `invitation` vencido hace > 30 días | ¿Se borra? |
+  |---|---|
+  | Abierto (sin usar ni revocar) de un usuario `invited` | **No** (DD-25); un `DELETE` directo como `crm_worker` afecta 0 filas |
+  | Revocado por una reinvitación | Sí |
+  | Usado (invitación aceptada) | Sí |
+  | Revocado por desactivación | Sí |
 
 **T-B902 — Implementar la limpieza** (en el mismo `Dispatcher`, una vez por hora).
 
 **T-B903 [T] — `/readyz` y métricas** · plan §12
 - **Red**: base caída → `503 {"status":"unavailable"}`; versión de migración de la base ≠ la
   embebida → `503`; ok → `200`; `/debug/vars` solo escucha en `METRICS_ADDR` y expone las
-  métricas de §12.1 (incluida `signup_email_exists_total`); `tenant_roles_total` = cantidad de
-  empresas.
+  métricas de §12.1 (incluidas `signup_email_exists_total` y `csrf_rejected_total`);
+  `tenant_roles_total` = cantidad de empresas.
 
 **T-B904 — Implementar `/readyz` y `expvar`**.
 
 **T-B905 — Benchmark con 10.000 empresas** · R-2, R-3, ADR-005
 - Script de carga (test con build tag `bench`, fuera de `make check`) que aprovisiona 10.000
   empresas en un contenedor con la versión exacta de producción y mide p95 de: `SET LOCAL ROLE`,
-  `GET /me`, `POST /auth/login`, `POST /auth/signup` y el tiempo de conexión de `crm_app`.
-  Comparar con `plan.md` §13. **Si algún target no se cumple, frenar y volver al arquitecto**
-  (se reabre ADR-005).
+  `GET /me`, `GET /tenant/logo` con `304`, `POST /auth/login`, `POST /auth/signup` y el tiempo de
+  conexión de `crm_app`. Comparar con `plan.md` §13. **Si algún target no se cumple, frenar y
+  volver al arquitecto** (se reabre ADR-005).
 
 **T-B906 [T] — Reaprovisionamiento de roles** · plan §12.4
 - **Red**: con dos empresas, se borra el rol de `A` (como superusuario del contenedor); los
@@ -960,6 +1058,16 @@ llama a la función como `crm_signup`).
 | P-3 Reactivación | T-B604, T-B605, T-B606, T-B801 |
 | P-4 `email_already_registered` + login/reset no enumerables | T-B201, T-B305, T-B402, T-B404, T-B501, T-B506, T-B801 |
 | P-5 Sesión 24 h / 7 días | T-B002, T-B305, T-B307, T-B402, T-B404 |
+| H-1 Mux raíz (DD-22, INV-22) | T-B004, T-B005, T-B011, T-B801; T-F007, T-F008 |
+| H-2 Caché del logo (DD-23, INV-21) | T-B703, T-B705, T-B801 |
+| H-3 `APP_BASE_URL` en desarrollo (DD-24) | T-B002 |
+| H-4 `invitation_expires_at` vencida (DD-25) | T-B605, T-B606, T-B901 |
+| H-5 Rol de invitados (DD-26) | T-B601, T-B603, T-B605, T-B606 |
+| H-6 Zona horaria del registro (DD-27) | T-B001, T-B303, T-B305, T-B702 |
+| H-7 `no-store` en la API (DD-28) | T-B203, T-B305, T-B705 |
+| H-8 Cabeceras y gzip de la SPA (DD-29) | T-B004 (cabeceras comunes); T-F007, T-F008 (CSP, caché, gzip) |
+| H-9 CSRF en problem+json (DD-30) | T-B203, T-B204, T-B903 |
+| Rutas de la SPA en inglés (DD-14) | T-B002, T-B213 |
 
 ---
 

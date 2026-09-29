@@ -3,6 +3,7 @@
 **Spec**: [`spec.md`](spec.md) · **Plan**: [`plan.md`](plan.md)
 **Revisión 2026-09-27**: R-06 (duración de sesión, P-5) y R-15 (enumeración en el registro, P-4)
 actualizadas con las respuestas del usuario.
+**Revisión 2026-09-29**: R-19 a R-23 agregadas por los hallazgos H-1 a H-9 del frontend (plan §18).
 
 Alternativas evaluadas por decisión. Las marcadas **(usuario)** las tomó el usuario antes del
 plan: acá se documenta por qué son razonables y qué cuestan. Las demás son defaults del
@@ -32,7 +33,8 @@ justificadas.
 | Gin / Echo / Fiber | Mucho azúcar (binding, validación) | Tipos propios de contexto que no son `net/http` (Fiber ni siquiera usa `net/http`); acoplan todo el código HTTP al framework |
 
 Veredicto: chi. El costo es mínimo y la agrupación de rutas por permiso es exactamente lo que
-pide FR-007.
+pide FR-007. (Desde 2026-09-29, chi atiende solo `/api/`; el reparto de primer nivel lo hace un
+`ServeMux` de la librería estándar: R-19.)
 
 ## R-03 Acceso a datos **(usuario: sqlc + pgx v5)** → ADR-003
 
@@ -122,6 +124,14 @@ Duración de la sesión (**usuario, P-5**):
 | Token sincronizador (`gorilla/csrf` o propio) | Clásico y robusto | Endpoint o cookie extra para obtener el token; la SPA debe adjuntarlo en cada request | Descartada (más piezas sin ganancia real con SPA en el mismo origen) |
 | Double-submit cookie | Sin estado en servidor | Débil si un subdominio puede escribir cookies (el prefijo `__Host-` lo mitiga, pero agrega complejidad) | Descartada |
 | Solo `SameSite=Strict` | Muy simple | Rompe la navegación entrante con sesión (abrir la app desde un link de WhatsApp) | Descartada |
+
+Respuesta del rechazo (H-9, DD-30):
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **`SetDenyHandler` con `403 problem+json` `code: forbidden`** | La UI reusa su mapa de errores; queda un evento `csrf_rejected` para operar | Un handler más en `platform/httpx` | **Elegida** |
+| Respuesta por defecto de la librería (texto plano) | Cero código | El frontend la trata como "respuesta inesperada"; no es problem+json como el resto de la API | Descartada |
+| Código propio `csrf_rejected` en `ErrorCode` | La UI podría distinguirlo | Un código que el usuario nunca debería ver con la SPA en el mismo origen; más superficie en el contrato | Descartada |
 
 ## R-08 Hashing de contraseñas → ADR-007
 
@@ -280,12 +290,73 @@ invitación no agregaría protección.
 | zap / zerolog | Rápidos | Innecesarios a esta escala | Descartada |
 | Prometheus `client_golang` | Estándar de métricas | Dependencia y servidor de métricas que el hosting aún no define | Reevaluar al elegir hosting |
 
+## R-19 Montaje de la SPA junto a la API (H-1) → DD-22, ADR-019
+
+Complementa R-F08 (vista del frontend) con lo que le importa al backend: cómo se reparte el
+tráfico sin romper los tests de rutas.
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **`http.ServeMux` raíz en `internal/app`: `/api/` → chi, `GET /healthz`/`GET /readyz` → ops, `/` → `web`; middlewares comunes envolviendo al mux raíz** | `chi.Walk` sobre el router de la API ve solo la API (T-B801 y el test de rutas contra el contrato no cambian); `/api/…` inexistente sigue siendo `404 problem+json`; cabeceras de seguridad y `CrossOriginProtection` iguales para todo | Dos formas de declarar rutas (tres destinos fijos en stdlib, la API en chi) | **Elegida** |
+| `r.Mount("/", web)` o `r.NotFound(web)` en chi | Un solo router | `NotFound` de la API pasaría a devolver `index.html`; `Mount` en `/` aparece en `chi.Walk` y obliga a excluirlo a mano en los tests | Descartada |
+| Router chi raíz con un subrouter `/api` y la SPA en otro subrouter | Todo chi | Mismo problema de `Walk` (hay que filtrar); más difícil de explicar que tres líneas de `ServeMux` | Descartada |
+| Proxy delante (nginx/Caddy) que separa `/api` de los estáticos | Separación en infraestructura | Otro proceso y hosting sin definir (P-1); contradice el binario único de ADR-019 | Descartada |
+
+Dónde van los middlewares: los que valen para cualquier respuesta (request id, recover, logging,
+cabeceras de seguridad, `CrossOriginProtection`) envuelven al mux raíz; los que son de la API
+(`no-store`, rate limit, sesión, permisos) quedan dentro de chi; los de la SPA (CSP, caché por
+tipo de archivo, gzip) dentro de `web`.
+
+## R-20 Caché del logo por empresa (H-2) → DD-23
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **`private, no-cache` + `ETag` = UUID del objeto; `304` sin leer S3; parámetro `v` declarado e ignorado** | Nunca se muestra un logo sin preguntarle al servidor con la sesión actual (el `ETag` de otra empresa no coincide); revalidar cuesta un `304`; la UI puede cambiar la URL para refrescar el `<img>` al instante | Una revalidación por uso del logo | **Elegida** |
+| `private, max-age=300` (diseño anterior) | Menos requests | En un celular compartido se ve hasta 5 min el logo de la empresa anterior, y el viejo tras reemplazarlo | Descartada (hallazgo H-2) |
+| `no-store` | Lo más simple | Descarga el logo completo en cada uso (hasta 2 MB por pantalla con encabezado) | Descartada |
+| URL por empresa y versión (`/tenant/logo/{object_id}`) con `immutable` | Caché perfecta | Otro endpoint o un `logo_url` en `Tenant`; si la URL se filtra, el logo queda cacheado aunque la sesión cambie (sigue exigiendo sesión para descargarlo, pero el navegador no revalida) | Descartada: más contrato para un beneficio chico |
+| Exponer `logo_version` en `Tenant` en vez del parámetro `v` | La UI no inventa la versión | Cambia `Tenant` y `TenantSummary`; la UI ya resuelve con `?v={id}-{updated_at}` | Descartada por ahora (se puede agregar sin romper) |
+| Agregar `Vary: Cookie` | Separa entradas de caché por sesión | Con `no-cache` la revalidación ya consulta al servidor con la cookie; `Vary: Cookie` suele desactivar la caché en algunos navegadores | Descartada (innecesaria) |
+
+## R-21 Compresión HTTP (H-8) → DD-29, ADR-019
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **`github.com/klauspost/compress/gzhttp` envolviendo solo el handler de la SPA** | Mantenida; umbral por defecto de 1 KB; excluye tipos ya comprimidos; opciones para `ETag` (`SuffixETag`/`DropETag`); funciona en cualquier hosting | Dependencia nueva (aprobada por el usuario) | **Elegida** |
+| Comprimir también la API | Menos bytes en listas grandes | Respuestas de 001 chicas; comprimir respuestas con datos personales y entrada reflejada obliga a analizar ataques tipo BREACH (la librería trae `RandomJitter`, pero es otra pieza a entender) | Descartada para 001; reevaluar con listados grandes (003, 009) |
+| Implementar gzip a mano con `compress/gzip` | Sin dependencia | Manejo correcto de `Accept-Encoding`, `Vary`, `ETag`, `Content-Length`, tipos y umbral: fácil de hacer mal | Descartada |
+| Precomprimir en el build (`.gz`/`.br`) | Cero CPU por request | Más lógica en el handler de la SPA para elegir la variante | Descartada por ahora |
+| Delegar en el proxy del hosting | Cero código | Hosting sin definir (P-1) | Si el hosting comprime, se quita `gzhttp` (S-11 del plan) |
+
+Supuesto a validar en T-F007: que `gzhttp` agregue `Vary: Accept-Encoding` (no quedó explícito en
+la documentación consultada; si no lo hace, se agrega en el handler).
+
+## R-22 Zona horaria en el registro (H-6) → DD-27
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Zona desconocida → default + log; `time/tzdata` embebido** | El usuario nunca ve un error por un campo invisible; con la base IANA embebida, toda zona real del navegador se reconoce aunque el contenedor sea mínimo | El binario crece unos cientos de KB; un navegador mal configurado deja la empresa en Buenos Aires (se corrige en Datos de la empresa) | **Elegida** |
+| `422 invalid_timezone` y reintento del cliente sin la zona (DD-F10) | El servidor es estricto | Un request extra que consume cupo de rate limit de signup; lógica de reintento en la UI | Descartada (la UI puede quitar su reintento) |
+| Solo embeber `tzdata`, sin default | Acepta todas las zonas reales | Un valor basura sigue dando `422` en un campo que no se ve | Descartada |
+| Depender del `zoneinfo` del sistema | Binario más chico | En imágenes `distroless`/`scratch` falla toda zona salvo UTC | Descartada |
+
+## R-23 `APP_BASE_URL` y cookie `Secure` en desarrollo (H-3) → DD-24
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **`http://` solo para `localhost` y `127.0.0.1`, con `COOKIE_SECURE=true`; `false` solo con esos orígenes y para clientes no navegador** | Desarrollo con navegador real (Vite o el binario) con la misma cookie que producción; imposible configurar `http://` o cookie sin `Secure` para un dominio real | Safari de escritorio puede rechazar la cookie `Secure` en `localhost` (se desarrolla con Chrome o Firefox) | **Elegida** |
+| Regla anterior (`http://` solo con `COOKIE_SECURE=false`) | Estricta | Un navegador rechaza la cookie `__Host-` sin `Secure`: el desarrollo local no funcionaba | Descartada (hallazgo H-3) |
+| TLS local obligatorio (certificado de desarrollo) | Idéntico a producción | Paso extra de instalación para un equipo que aprende | Respaldo si falla S-F3 |
+| Cambiar el nombre de la cookie en desarrollo (sin `__Host-`) | Funciona sin `Secure` | Dos comportamientos de cookie; los tests dejan de probar el real | Descartada |
+
 ---
 
 ## Fuentes consultadas
 
 - Go 1.27 (versión estable actual): <https://go.dev/doc/devel/release>
-- `net/http.CrossOriginProtection` (Go 1.25): <https://go.dev/src/net/http/csrf.go>, <https://www.alexedwards.net/blog/preventing-csrf-in-go>
+- `net/http.CrossOriginProtection` (Go 1.25), incluido `SetDenyHandler`: <https://pkg.go.dev/net/http#CrossOriginProtection>, <https://go.dev/src/net/http/csrf.go>, <https://www.alexedwards.net/blog/preventing-csrf-in-go>
+- `gzhttp` (opciones de `ETag`, umbral, filtro de tipos, `RandomJitter`): <https://pkg.go.dev/github.com/klauspost/compress/gzhttp>
+- `time/tzdata` (base IANA embebida; importarlo desde `main`): <https://pkg.go.dev/time/tzdata>
 - PostgreSQL 18 `uuidv7()`: <https://www.thenile.dev/blog/uuidv7>
 - PostgreSQL 16, cambios en `CREATEROLE` y opciones `INHERIT`/`SET` por *grant*: <https://www.percona.com/blog/improved-createrole-attribute-for-user-management-in-postgresql-16/>, <https://thebuild.com/blog/all-your-gucs-in-a-row-createroleselfgrant/>
 - Rendimiento con miles de roles en PostgreSQL 16: <https://postgrespro.com/list/thread-id/2694306>
@@ -309,6 +380,9 @@ Supuestos a validar durante la implementación (no verificados con documentació
 5. Las políticas `TO crm_auth`/`TO crm_worker` y el comportamiento de `SELECT ... FOR UPDATE`
    con RLS (aplica también las políticas de `UPDATE`) se comportan como describe
    `data-model.md` §3.4: los tests T-B109, T-B110 y T-B211 lo confirman.
+6. `gzhttp` agrega `Vary: Accept-Encoding` a las respuestas comprimibles (T-F007).
+7. Con el *proxy* de Vite, el navegador envía `Sec-Fetch-Site: same-origin` en los `POST` a
+   `/api` y `CrossOriginProtection` los acepta sin `AddTrustedOrigin` (spike S-F3 de T-F006).
 
 ---
 

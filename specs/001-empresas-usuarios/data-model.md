@@ -3,6 +3,11 @@
 **Spec**: [`spec.md`](spec.md) · **Plan**: [`plan.md`](plan.md) · **ADR**: ADR-003, ADR-004, ADR-005, ADR-008
 **Revisión 2026-09-27**: sesiones 24 h sin uso / 7 días (P-5); auditoría de reactivación (P-3) y
 de reemisión de invitación por pedido de reset (DD-20). Sin cambios de columnas ni índices.
+**Revisión 2026-09-29**: hallazgos H-2, H-4, H-5 y H-6 (plan §18): `ETag` del logo derivado de
+`logo_object_key` (§2.1), zona horaria del registro (§2.1), semántica de `invitation_expires_at` y
+conservación de la invitación abierta en la limpieza (§2.4, §3.4), auditoría de cambios de rol de
+invitados (§2.6). Sin columnas, tablas ni índices nuevos; cambian la política `worker_cleanup` de
+`user_tokens` y los privilegios por columna de `crm_worker` sobre esa tabla.
 
 DDL **conceptual**: define tablas, tipos, constraints, índices, políticas y privilegios. No es
 una migración ejecutable: las migraciones goose las escribe quien implementa, respetando esto.
@@ -146,10 +151,10 @@ exista o no la cuenta (DD-7).
 | `address` | `text` | sí | `<= 300` | |
 | `phone` | `text` | sí | `<= 50` | |
 | `email` | `text` | sí | `<= 254` | Email de contacto de la empresa (para PDF), distinto del de los usuarios |
-| `logo_object_key` | `text` | sí | `<= 300` | Clave en S3: `tenants/{tenant_id}/logo/{uuidv7}.{png\|jpg}` |
+| `logo_object_key` | `text` | sí | `<= 300` | Clave en S3: `tenants/{tenant_id}/logo/{uuidv7}.{png\|jpg}`. El UUIDv7 del nombre es **el `ETag`** de `GET /tenant/logo` (DD-23): cambia en cada subida y nunca coincide entre empresas |
 | `logo_content_type` | `text` | sí | `IN ('image/png','image/jpeg')` | |
 | `base_currency` | `text` | no | `IN ('ARS','USD')` | ISO 4217; no editable en 001 (DD-15) |
-| `timezone` | `text` | no | default `'America/Argentina/Buenos_Aires'`, `<= 64` | Nombre IANA; se valida en Go con `time.LoadLocation` |
+| `timezone` | `text` | no | default `'America/Argentina/Buenos_Aires'`, `<= 64` | Nombre IANA; se valida en Go con `time.LoadLocation` (base IANA embebida con `time/tzdata`). En el registro, una zona desconocida se reemplaza por el default; en `PATCH /tenant`, se rechaza (DD-27) |
 | `industry_template_code` | `text` | no | `<= 64` | Código del catálogo embebido; se valida en Go |
 | `industry_template_version` | `integer` | no | `> 0` | Versión de la plantilla aplicada (002 puede evolucionar las plantillas) |
 | `created_at` | `timestamptz` | no | default `now()` | |
@@ -159,7 +164,8 @@ Constraints de tabla:
 
 - `tenants_logo_pair_chk`: `(logo_object_key IS NULL) = (logo_content_type IS NULL)`.
 
-Índices: solo la PK. Toda lectura es por `id`.
+Índices: solo la PK. Toda lectura es por `id` (incluida la revalidación del logo, que solo lee
+esta fila para comparar el `ETag` y no toca S3).
 
 ### 2.2 `app.users` — Usuario (`User`)
 
@@ -170,7 +176,7 @@ Constraints de tabla:
 | `email` | `text` | no | `users_email_key UNIQUE`; `email = lower(btrim(email))`; `<= 254` | 🔒 Único **global** (DD-2) |
 | `name` | `text` | sí | `<= 120` | 🔒 `NULL` mientras está `invited` |
 | `password_hash` | `text` | sí | `<= 255` | 🔒 Secreto. PHC argon2id. `NULL` si nunca aceptó la invitación |
-| `role` | `text` | no | `IN ('admin','operator')` | `authz.Role` |
+| `role` | `text` | no | `IN ('admin','operator')` | `authz.Role`. Editable en `invited` y `active`; no en `disabled` (DD-26) |
 | `status` | `text` | no | `IN ('invited','active','disabled')` | |
 | `email_verified_at` | `timestamptz` | sí | | `NULL` = sin verificar; no bloquea nada (P-2) |
 | `status_changed_at` | `timestamptz` | no | default `now()` | |
@@ -193,7 +199,8 @@ Constraints de tabla:
 | `users_tenant_created_idx` | `(tenant_id, created_at)` | `GET /users` ordenado por alta |
 
 La cuenta de Administradores activos (INV-10) recorre los usuarios de una empresa (pocas decenas)
-con `users_tenant_created_idx`; no justifica un índice propio.
+con `users_tenant_created_idx`; no justifica un índice propio. Solo cuentan `status = 'active'` y
+`role = 'admin'`: un invitado con rol `admin` no cuenta.
 
 ### 2.3 `app.sessions` — Sesión (`Session`)
 
@@ -251,12 +258,18 @@ Un token es **válido** si `used_at IS NULL AND revoked_at IS NULL AND $now < ex
 NULL AND revoked_at IS NULL` que debe afectar **exactamente una fila**: dos aceptaciones
 concurrentes del mismo token no pueden ganar ambas.
 
+**`User.invitation_expires_at` de la API (DD-25, H-4)**: para un usuario `invited` es el
+`expires_at` de su invitación **abierta** (`purpose = 'invitation' AND used_at IS NULL AND
+revoked_at IS NULL`), **aunque ya haya vencido**. Siempre hay exactamente una: cada reinvitación
+revoca la anterior antes de crear la nueva, y la limpieza periódica no borra la invitación abierta
+(§3.4). Para `active` y `disabled` es `null`. La lectura usa `user_tokens_open_idx`.
+
 Índices:
 
 | Índice | Columnas | Por qué |
 |---|---|---|
 | `user_tokens_token_hash_key` | `(token_hash)` único | Búsqueda por token (fase `crm_auth`) |
-| `user_tokens_open_idx` | `(tenant_id, user_id, purpose) WHERE used_at IS NULL AND revoked_at IS NULL` | Revocar tokens previos del mismo propósito |
+| `user_tokens_open_idx` | `(tenant_id, user_id, purpose) WHERE used_at IS NULL AND revoked_at IS NULL` | Revocar tokens previos del mismo propósito; leer la invitación abierta de cada invitado en `GET /users` |
 | `user_tokens_expires_idx` | `(expires_at)` | Limpieza |
 
 ### 2.5 `app.outbox_messages` — Mensaje saliente (`OutboxMessage`)
@@ -331,11 +344,15 @@ de rol); ✚ = obligatoria por decisión del usuario (P-3: la reactivación se a
 | `auth.password_reset_completed` | usuario | user | `{sessions_revoked}` |
 | `auth.email_verified` | usuario | user | `{}` |
 | `user.invited` ✱ | admin | user | `{role}` |
-| `user.invitation_reissued` ✱ | admin, o `NULL` si lo disparó un pedido de reset (DD-20) | user | `{role, trigger: "admin" \| "password_reset_request" \| "reactivation"}` |
+| `user.invitation_reissued` ✱ | admin, o `NULL` si lo disparó un pedido de reset (DD-20) | user | `{role, trigger: "admin" \| "password_reset_request" \| "reactivation"}`; `role` es el rol **después** de la reinvitación |
 | `user.invitation_accepted` ✱ | usuario | user | `{}` |
-| `user.role_changed` ✱ | admin | user | `{from, to}` |
+| `user.role_changed` ✱ | admin | user | `{from, to, status}`; se registra para usuarios `invited` y `active`, tanto por `PUT /users/{id}/role` como por una reinvitación con otro rol (DD-26). Asignar el mismo rol no audita |
 | `user.deactivated` | admin | user | `{sessions_revoked}` |
 | `user.reactivated` ✚ | admin | user | `{to_status: "active" \| "invited"}` |
+
+Una reinvitación con cambio de rol deja **dos** filas en la misma transacción:
+`user.invitation_reissued {role: <nuevo>, trigger: "admin"}` y `user.role_changed {from, to,
+status: "invited"}`.
 
 El registro con email existente (`409 email_already_registered`) **no** se audita: no hay empresa
 a la cual asociarlo sin revelar cuál es. Queda en logs como `security_event=signup_email_exists`
@@ -428,7 +445,7 @@ En `tenants`, la misma con `id` en lugar de `tenant_id`.
 | `tenants` | `SELECT, INSERT, UPDATE` | — | `SELECT (id)` | `worker_read FOR SELECT TO crm_worker USING (true)` |
 | `users` | `SELECT, INSERT, UPDATE` | `SELECT (id, tenant_id, email)` | — | `auth_lookup FOR SELECT TO crm_auth USING (true)` |
 | `sessions` | `SELECT, INSERT, UPDATE` | `SELECT (id, tenant_id, token_hash)` | `SELECT (id, expires_at, revoked_at)`, `DELETE` | `auth_lookup FOR SELECT TO crm_auth USING (true)`; `worker_read FOR SELECT TO crm_worker USING (true)`; `worker_cleanup FOR DELETE TO crm_worker USING (expires_at < now() - interval '30 days' OR revoked_at < now() - interval '30 days')` |
-| `user_tokens` | `SELECT, INSERT, UPDATE` | `SELECT (id, tenant_id, token_hash, purpose)` | `SELECT (id, expires_at)`, `DELETE` | `auth_lookup` y `worker_read` como arriba; `worker_cleanup FOR DELETE TO crm_worker USING (expires_at < now() - interval '30 days')` |
+| `user_tokens` | `SELECT, INSERT, UPDATE` | `SELECT (id, tenant_id, token_hash, purpose)` | `SELECT (id, purpose, expires_at, used_at, revoked_at)`, `DELETE` | `auth_lookup` y `worker_read` como arriba; `worker_cleanup FOR DELETE TO crm_worker USING (expires_at < now() - interval '30 days' AND (purpose <> 'invitation' OR used_at IS NOT NULL OR revoked_at IS NOT NULL))` — **la invitación abierta de un invitado no se borra** (DD-25) |
 | `outbox_messages` | `SELECT, INSERT, UPDATE` | — | `SELECT (id, tenant_id, status, next_attempt_at, created_at)`, `UPDATE (next_attempt_at)`, `DELETE` | `worker_read FOR SELECT TO crm_worker USING (true)`; `worker_lock FOR UPDATE TO crm_worker USING (status = 'pending') WITH CHECK (status = 'pending')`; `worker_cleanup FOR DELETE TO crm_worker USING (status <> 'pending' AND created_at < now() - interval '30 days')` |
 | `audit_log` | `SELECT, INSERT` | — | — | — |
 | `login_throttles` | — | `SELECT, INSERT, UPDATE, DELETE` | `SELECT (email_hmac, last_failed_at, locked_until)`, `DELETE` | Sin `tenant_isolation` (no hay `tenant_id`). `auth_all FOR ALL TO crm_auth USING (true) WITH CHECK (true)`; `worker_read FOR SELECT TO crm_worker USING (true)`; `worker_cleanup FOR DELETE TO crm_worker USING (last_failed_at < now() - interval '1 day' AND (locked_until IS NULL OR locked_until < now()))` |
@@ -441,7 +458,13 @@ Notas sobre estas decisiones:
   el rol de la empresa.
 - **Por qué `worker_read USING (true)`**: una sentencia `DELETE` con `WHERE` aplica también las
   políticas de `SELECT`; si la de lectura filtrara por `pending`, la limpieza no vería las filas
-  terminales. La lectura amplia es segura porque el privilegio es **por columna** (solo ruteo).
+  terminales. La lectura amplia es segura porque el privilegio es **por columna** (solo ruteo y
+  estado; nunca el hash del token ni el usuario).
+- **Por qué la invitación abierta no se limpia**: el `DELETE` de un token vencido de un invitado
+  dejaría `invitation_expires_at` en `null` y la UI no podría mostrar "Invitación vencida" (DD-25).
+  La política lo impide aunque el código de limpieza se equivoque; queda como mucho una fila por
+  invitado. Cuando se reinvita (la anterior pasa a revocada), se acepta (usada) o se desactiva al
+  usuario (revocada), la fila vuelve a ser limpiable.
 - Las políticas de limpieza usan `now()` de la base a propósito: la limpieza no necesita tiempo
   controlado por tests (se prueba con filas antiguas) y así la política protege aunque el código
   pase un valor equivocado.
@@ -489,7 +512,8 @@ filtra hasta el JSON.
 | Hash de tokens | `sessions.token_hash`, `user_tokens.token_hash` | Secreto derivado | Solo comparación |
 | Token en claro | `outbox_messages.payload` (solo `pending`) | Secreto | Borrado obligatorio al terminar (`outbox_scrub_chk`) |
 | IP y user agent | `sessions`, `audit_log` | Personal | Retención: sesiones hasta la limpieza; auditoría indefinida (S-5) |
-| CUIT, dirección, teléfono, email de la empresa | `tenants` | Comercial; personal si es persona humana | Solo visible dentro de la empresa |
+| CUIT, dirección, teléfono, email de la empresa | `tenants` | Comercial; personal si es persona humana | Solo visible dentro de la empresa; las respuestas de la API llevan `Cache-Control: no-store` (DD-28) |
+| Logo de la empresa | S3 (clave en `tenants.logo_object_key`) | Comercial | `private, no-cache` + `ETag` por objeto: nunca se reutiliza sin revalidar con la sesión actual (DD-23) |
 | HMAC de email | `login_throttles.email_hmac` | Seudónimo | Borrado a las 24 h sin fallos |
 
 ---
@@ -502,10 +526,15 @@ filtra hasta el JSON.
 | 2 | `00002_tenant_functions.sql` | `app.current_tenant_id()` y `provisioning.provision_tenant_role(uuid)` (esta creada con `SET LOCAL ROLE crm_provisioner`) | T-B102 |
 | 3 | `00003_tenants.sql` | `tenants` + RLS + políticas + grants | T-B111 |
 | 4 | `00004_users.sql` | `users` + RLS + políticas + grants | T-B111 |
-| 5 | `00005_sessions_user_tokens.sql` | `sessions`, `user_tokens` | T-B111 |
+| 5 | `00005_sessions_user_tokens.sql` | `sessions`, `user_tokens` (con la política `worker_cleanup` de §3.4, que conserva la invitación abierta) | T-B111 |
 | 6 | `00006_outbox_messages.sql` | `outbox_messages` | T-B111 |
 | 7 | `00007_audit_log.sql` | `audit_log` | T-B111 |
 | 8 | `00008_login_throttles.sql` | `login_throttles` | T-B111 |
+
+Como todavía no hay código, los cambios del 2026-09-29 se aplican directamente en estas
+migraciones (no hace falta una migración correctiva). Si alguna ya se hubiera aplicado en un
+entorno compartido, el cambio de política y privilegios de `user_tokens` iría en una migración
+nueva.
 
 Cada migración tiene su `-- +goose Down`. Un *backfill* que necesite leer datos de varias empresas
 (no hay en 001) desactiva `FORCE ROW LEVEL SECURITY` en esa tabla **dentro de la misma migración**
@@ -521,3 +550,5 @@ y lo reactiva antes de terminar (ADR-004): queda explícito y versionado.
    cuenta corriente **no** reciben `DELETE`, y su `UPDATE` se limita por columna a los campos de
    anulación).
 5. Agregar la tabla a la lista esperada del test de catálogo (T-B107).
+6. Si la tabla referencia un archivo que se sirve por el backend (adjuntos de 004, PDF de 005), la
+   respuesta que lo sirve sigue la política de caché del logo (DD-23, nota en ADR-011).

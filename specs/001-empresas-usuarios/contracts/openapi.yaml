@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CRM - API 001 Empresas, usuarios y roles
-  version: 0.2.0
+  version: 0.3.0
   summary: Registro de empresas, autenticación, sesiones, invitaciones, usuarios y datos de la empresa.
   description: |
     Contrato **canónico** de la spec 001 (`specs/001-empresas-usuarios/spec.md`).
@@ -18,11 +18,21 @@ info:
       cuando corresponde, `suggested_action`. El frontend decide el texto a mostrar a partir de
       `code`.
     - Un recurso de otra empresa responde 404, nunca 403 (INV-12).
+    - Caché: **todas** las respuestas de `/api/v1` llevan `Cache-Control: no-store` (DD-28), salvo
+      `GET /tenant/logo`, que usa `private, no-cache` con `ETag` (DD-23).
+    - Un método no seguro (POST, PUT, PATCH, DELETE) de origen cruzado recibe `403` con
+      `code: forbidden` (protección CSRF, DD-30), en cualquier ruta.
+    - Solo `/api/`, `/healthz` y `/readyz` son del backend; el resto de las rutas del mismo origen
+      las sirve la SPA embebida (ADR-019) y no forman parte de este contrato.
     - Los componentes `Problem`, `ValidationProblem`, `ErrorCode`, `SuggestedAction`, `Role` y
       `Permission` son la fuente para las specs siguientes, que los referencian con `$ref` (DD-17).
 
-    Historial: 0.2.0 incorpora las respuestas P-2 a P-5 (`email_already_registered`,
-    `suggested_action`, reactivación confirmada, reset para invitados, duración de sesión).
+    Historial:
+    - 0.2.0: respuestas P-2 a P-5 (`email_already_registered`, `suggested_action`, reactivación
+      confirmada, reset para invitados, duración de sesión).
+    - 0.3.0: hallazgos del frontend (plan §18): caché del logo (`v`, `If-None-Match`, `ETag`,
+      `304`), `no-store` en toda la API, `invitation_expires_at` aunque haya vencido, cambio de
+      rol de invitados y por reinvitación, zona horaria del registro con default, `403` de CSRF.
 servers:
   - url: /api/v1
 tags:
@@ -74,6 +84,9 @@ paths:
         Crea la empresa, su rol de base de datos, el usuario Administrador, aplica la plantilla,
         encola el email de verificación e inicia sesión, todo en una transacción (INV-14).
 
+        Si `timezone` falta o no es una zona IANA conocida, la empresa se crea con
+        `America/Argentina/Buenos_Aires` (no hay `422` por la zona horaria en el registro, DD-27).
+
         Si ya existe un usuario con ese email (en cualquier empresa y en cualquier estado)
         responde 409 `email_already_registered` con `suggested_action: password_reset`. La
         respuesta confirma que el email existe (enumeración aceptada, DD-19) pero **no** incluye
@@ -99,6 +112,8 @@ paths:
                 $ref: '#/components/schemas/SessionInfo'
         '400':
           $ref: '#/components/responses/MalformedRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '409':
           description: |
             Ya existe un usuario con ese email (`code` = `email_already_registered`).
@@ -155,7 +170,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
         '403':
-          description: Usuario desactivado (`code` = `account_disabled`)
+          description: |
+            Usuario desactivado (`code` = `account_disabled`), o request de origen cruzado
+            (`code` = `forbidden`, DD-30)
           content:
             application/problem+json:
               schema:
@@ -191,6 +208,8 @@ paths:
           headers:
             Set-Cookie:
               $ref: '#/components/headers/ClearSessionCookie'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         5XX:
           $ref: '#/components/responses/ServerError'
 
@@ -217,6 +236,8 @@ paths:
           description: Pedido aceptado
         '400':
           $ref: '#/components/responses/MalformedRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
@@ -246,6 +267,8 @@ paths:
           description: Contraseña cambiada
         '400':
           $ref: '#/components/responses/TokenInvalidOrMalformed'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
@@ -273,6 +296,8 @@ paths:
           description: Email verificado
         '400':
           $ref: '#/components/responses/TokenInvalidOrMalformed'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '429':
@@ -293,6 +318,8 @@ paths:
           description: Pedido aceptado
         '401':
           $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '429':
           $ref: '#/components/responses/RateLimited'
         5XX:
@@ -320,6 +347,8 @@ paths:
                 $ref: '#/components/schemas/InvitationPreview'
         '400':
           $ref: '#/components/responses/TokenInvalidOrMalformed'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '429':
@@ -352,6 +381,8 @@ paths:
                 $ref: '#/components/schemas/SessionInfo'
         '400':
           $ref: '#/components/responses/TokenInvalidOrMalformed'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
@@ -409,7 +440,9 @@ paths:
       summary: Editar datos de la empresa (Historia 4)
       description: |
         Requiere `settings.manage`. Solo se modifican los campos presentes. En los campos
-        opcionales, `null` los borra. `base_currency` no es editable (DD-15).
+        opcionales, `null` los borra. `base_currency` no es editable (DD-15). Una `timezone`
+        desconocida responde `422` con `invalid_timezone` (a diferencia del registro, acá el
+        campo es visible para el usuario).
       security:
         - sessionCookie: []
       requestBody:
@@ -443,17 +476,40 @@ paths:
       tags: [tenant]
       operationId: getTenantLogo
       summary: Imagen del logo de la empresa
-      description: Se sirve por el backend con tipo fijo y `X-Content-Type-Options nosniff` (DD-11).
+      description: |
+        Se sirve por el backend con tipo fijo y `X-Content-Type-Options: nosniff` (DD-11).
+
+        Caché (DD-23): la URL es la misma para todas las empresas, así que la respuesta lleva
+        `Cache-Control: private, no-cache` (el navegador revalida en cada uso) y un `ETag` que
+        identifica el objeto (cambia en cada subida y nunca coincide entre empresas). Con
+        `If-None-Match` igual al `ETag` vigente de la empresa de la sesión responde `304` sin
+        cuerpo. El parámetro `v` no cambia la respuesta: la UI lo usa para forzar una URL nueva
+        cuando cambia el logo (`?v={id}-{updated_at}`).
       security:
         - sessionCookie: []
+      parameters:
+        - name: v
+          in: query
+          required: false
+          description: Versión elegida por el cliente para invalidar su caché. El servidor lo ignora.
+          schema:
+            type: string
+            maxLength: 100
+        - name: If-None-Match
+          in: header
+          required: false
+          description: '`ETag` recibido antes; si coincide con el vigente, la respuesta es `304`.'
+          schema:
+            type: string
+            maxLength: 200
       responses:
         '200':
           description: Imagen
           headers:
             Cache-Control:
-              description: '`private, max-age=300`'
-              schema:
-                type: string
+              $ref: '#/components/headers/LogoCacheControl'
+            ETag:
+              $ref: '#/components/headers/LogoETag'
           content:
             image/png:
               schema:
@@ -463,6 +519,13 @@ paths:
               schema:
                 type: string
                 contentMediaType: image/jpeg
+        '304':
+          description: El logo no cambió desde el `ETag` enviado (sin cuerpo)
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/LogoCacheControl'
+            ETag:
+              $ref: '#/components/headers/LogoETag'
         '401':
           $ref: '#/components/responses/Unauthenticated'
         '404':
@@ -475,7 +538,8 @@ paths:
       summary: Subir o reemplazar el logo (Historia 4)
       description: |
         Requiere `settings.manage`. Solo PNG o JPEG (detectado por contenido), hasta 2 MB y
-        2000x2000 px (DD-11).
+        2000x2000 px (DD-11). La UI achica las fotos grandes antes de subirlas; estos límites
+        siguen siendo la autoridad.
       security:
         - sessionCookie: []
       requestBody:
@@ -568,9 +632,11 @@ paths:
       description: |
         Requiere `settings.manage`. Crea el usuario en estado `invited` y envía una invitación
         válida por 7 días (201). Si el email ya está `invited` en esta misma empresa, revoca la
-        invitación anterior y envía una nueva (200, DD-5). Si el email ya pertenece a un usuario
-        activo o desactivado de cualquier empresa, responde 409 `email_taken` (sin
-        `suggested_action`: el Administrador no puede recuperar la cuenta de otra persona, DD-21).
+        invitación anterior y envía una nueva (200, DD-5); si además el `role` pedido es distinto
+        del actual, **cambia el rol** y lo audita como cambio de rol (DD-26). Si el email ya
+        pertenece a un usuario activo o desactivado de cualquier empresa, responde 409
+        `email_taken` (sin `suggested_action`: el Administrador no puede recuperar la cuenta de
+        otra persona, DD-21).
       security:
         - sessionCookie: []
       requestBody:
@@ -587,7 +653,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/User'
         '200':
-          description: Invitación reemitida
+          description: Invitación reemitida (con el rol pedido)
           content:
             application/json:
               schema:
@@ -617,11 +683,14 @@ paths:
     put:
       tags: [users]
       operationId: changeUserRole
-      summary: Cambiar el rol de un usuario (FR-005, FR-008)
+      summary: Cambiar el rol de un usuario invitado o activo (FR-005, FR-008)
       description: |
-        Requiere `settings.manage`. Rechaza bajar a Operador al último Administrador activo
-        (409 `last_admin`, Historia 3.4). Asignar el mismo rol que ya tiene es un no-op (200).
-        No cierra sesiones: el rol se lee en cada request. Auditado (`user.role_changed`).
+        Requiere `settings.manage`. Vale para usuarios `invited` y `active` (DD-26); para un
+        usuario `disabled` responde 409 `invalid_state` (se reactiva primero). Rechaza bajar a
+        Operador al último Administrador **activo** (409 `last_admin`, Historia 3.4); los
+        invitados no cuentan como Administradores activos. Asignar el mismo rol que ya tiene es un
+        no-op (200, sin auditoría). No cierra sesiones: el rol se lee en cada request. Auditado
+        (`user.role_changed`).
       security:
         - sessionCookie: []
       requestBody:
@@ -726,6 +795,7 @@ paths:
       tags: [ops]
       operationId: liveness
       summary: Liveness (no consulta la base)
+      description: En el mux raíz, fuera de `/api/` y de la SPA (DD-22).
       security: []
       responses:
         '200':
@@ -742,6 +812,7 @@ paths:
       tags: [ops]
       operationId: readiness
       summary: Readiness (base alcanzable y migraciones al día)
+      description: En el mux raíz, fuera de `/api/` y de la SPA (DD-22).
       security: []
       responses:
         '200':
@@ -790,6 +861,15 @@ components:
       schema:
         type: integer
         minimum: 1
+    LogoCacheControl:
+      description: '`private, no-cache` (DD-23)'
+      schema:
+        type: string
+        const: private, no-cache
+    LogoETag:
+      description: 'Validador fuerte del objeto del logo, entre comillas (p. ej. `"<uuid>"`)'
+      schema:
+        type: string
 
   responses:
     MalformedRequest:
@@ -816,7 +896,9 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
     Forbidden:
-      description: El rol no tiene el permiso requerido (`code` = `forbidden`)
+      description: |
+        El rol no tiene el permiso requerido, o un método no seguro llegó de otro origen y lo
+        rechazó la protección CSRF (en ambos casos `code` = `forbidden`, DD-30)
       content:
         application/problem+json:
           schema:
@@ -967,6 +1049,7 @@ components:
           description: Nombre del campo del request (snake_case), p. ej. `email` o `tax_id`
         code:
           type: string
+          description: '`invalid_timezone` solo aparece en `PATCH /tenant` (el registro usa el default, DD-27).'
           enum:
             - required
             - invalid_format
@@ -1078,7 +1161,9 @@ components:
         timezone:
           type: string
           maxLength: 64
-          description: Zona IANA del navegador. Si falta, `America/Argentina/Buenos_Aires`.
+          description: |
+            Zona IANA del navegador. Si falta o no es una zona conocida, se usa
+            `America/Argentina/Buenos_Aires` (sin error, DD-27).
 
     LoginRequest:
       type: object
@@ -1276,6 +1361,7 @@ components:
         updated_at:
           type: string
           format: date-time
+          description: Cambia en cada modificación de la empresa, incluida la subida o baja del logo
 
     TenantUpdate:
       type: object
@@ -1333,7 +1419,10 @@ components:
         invitation_expires_at:
           type: [string, 'null']
           format: date-time
-          description: Vencimiento de la invitación vigente si `status` = `invited`; si no, `null`
+          description: |
+            Si `status` = `invited`: vencimiento de su **última** invitación, **aunque ya haya
+            pasado** (la UI muestra "Invitación vencida" si es anterior a ahora, DD-25). Para
+            `active` y `disabled`: `null`.
 
     Health:
       type: object

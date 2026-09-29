@@ -3,6 +3,9 @@
 **Spec**: [`spec.md`](spec.md) · **Rama**: `001-empresas-usuarios` · **Fecha**: 2026-09-27
 **Autor**: `backend-architect` · **Estado**: Aprobado (2026-09-29)
 **Revisión 2026-09-27**: incorporadas las respuestas del usuario a P-2, P-3, P-4 y P-5 (§14.2).
+**Revisión 2026-09-29 (posterior a la aprobación)**: incorporados los hallazgos H-1 a H-9 del
+`frontend-architect` (`ui.md` §27), aprobados por el usuario, y las rutas de la SPA confirmadas.
+Detalle en §18.
 
 Artefactos de esta spec:
 
@@ -13,7 +16,8 @@ Artefactos de esta spec:
 | [`data-model.md`](data-model.md) | Tablas, DDL conceptual, RLS, roles, ER, datos sensibles |
 | [`contracts/openapi.yaml`](contracts/openapi.yaml) | Contrato HTTP **canónico** (OpenAPI 3.1) |
 | [`tasks.md`](tasks.md) | Plan TDD (sección Backend) |
-| [`docs/adr/`](../../docs/adr/README.md) | ADR-001 a ADR-014: decisiones base del proyecto |
+| [`ui.md`](ui.md) | Diseño del frontend (`frontend-architect`) |
+| [`docs/adr/`](../../docs/adr/README.md) | ADR-001 a ADR-014: decisiones base del proyecto; ADR-019: SPA embebida |
 
 ---
 
@@ -26,12 +30,12 @@ además de diseñar la funcionalidad fija las decisiones base del proyecto (ADR-
 |---|---|---|
 | Lenguaje | Go **1.27** (estable actual; 1.27.1 del 2026-09-01) | Constitución + verificación |
 | Base de datos | PostgreSQL **18**, último *minor* (debe incluir el arreglo de CVE-2026-14666) | ADR-005 |
-| Router HTTP | `github.com/go-chi/chi/v5` | ADR-002 (decisión del usuario) |
+| Router HTTP | `github.com/go-chi/chi/v5` para la API (`/api/`); mux raíz de la librería estándar que reparte entre API, ops y SPA | ADR-002 (decisión del usuario), DD-22 |
 | Acceso a datos | `sqlc` (generador) + `github.com/jackc/pgx/v5` (`pgxpool`) | ADR-003 (decisión del usuario) |
 | Migraciones | `github.com/pressly/goose/v3`, SQL versionado embebido con `embed.FS` | ADR-004 (decisión del usuario) |
 | Aislamiento | **Un rol de PostgreSQL por empresa** + RLS forzada + filtro explícito | ADR-005 (decisión del usuario) |
 | Sesiones | Tabla `sessions` + token opaco en cookie `__Host-crm_session`; 24 h de inactividad / 7 días máximo | ADR-006 (decisión del usuario) |
-| CSRF | `net/http.CrossOriginProtection` (Go ≥1.25) + `SameSite=Lax` + JSON obligatorio | ADR-006 |
+| CSRF | `net/http.CrossOriginProtection` (Go ≥1.25) con *deny handler* problem+json + `SameSite=Lax` + JSON obligatorio | ADR-006, DD-30 |
 | Contraseñas | argon2id (`golang.org/x/crypto/argon2`), formato PHC | ADR-007 |
 | Identificadores | UUIDv7 (`uuidv7()` de PG 18 y `github.com/google/uuid` en Go) | ADR-008 |
 | Errores HTTP | RFC 9457 `application/problem+json` con `code` estable | ADR-009 |
@@ -40,9 +44,12 @@ además de diseñar la funcionalidad fija las decisiones base del proyecto (ADR-
 | Tests | `testing` nativo, table-driven; integración con PostgreSQL real vía `testcontainers-go`; contrato con `libopenapi-validator` | ADR-012 |
 | Autorización | Matriz estática rol → permisos (FR-007) en `internal/authz` | ADR-013 |
 | Contrato | OpenAPI 3.1 canónico; handlers y DTOs escritos a mano; validación en tests | ADR-014 |
+| Frontend servido | SPA embebida en el binario (paquete `web`, `go:embed`), mismo origen | ADR-019 (decisión del usuario) |
+| Compresión | gzip solo para la SPA con `github.com/klauspost/compress/gzhttp` (dependencia aprobada por el usuario) | DD-29, ADR-019 |
+| Zonas horarias | Base IANA embebida con `time/tzdata` (librería estándar) | DD-27 |
 | Logs | `log/slog` (JSON) de la librería estándar | DD-12 |
 | Rate limit | `golang.org/x/time/rate`, en memoria | DD-9 |
-| Desarrollo local | PostgreSQL 18 + Mailpit + MinIO (`compose.yaml`) | ADR-010, ADR-011 |
+| Desarrollo local | PostgreSQL 18 + Mailpit + MinIO (`compose.yaml`); Vite con *proxy* de `/api` | ADR-010, ADR-011, ADR-019 |
 
 **Validación del stack**: detecté un repo sin código, con la constitución fijando Go +
 PostgreSQL + OpenAPI + monolito modular y las librerías que eligió el usuario. Diseño sobre eso.
@@ -52,7 +59,8 @@ PostgreSQL + OpenAPI + monolito modular y las librerías que eligió el usuario.
 
 **Arquetipo**: API / servicio de recursos, con dos componentes secundarios: un **worker
 asíncrono** (outbox de emails: idempotencia, reintentos, estados terminales) y una
-**integración** con SMTP y S3 (timeouts y mapeo de errores).
+**integración** con SMTP y S3 (timeouts y mapeo de errores). Además el binario sirve la SPA
+como archivos estáticos embebidos (ADR-019).
 
 ---
 
@@ -60,15 +68,15 @@ asíncrono** (outbox de emails: idempotencia, reintentos, estados terminales) y 
 
 | Principio | Estado | Cómo se cumple / justificación |
 |---|:---:|---|
-| **I. Simplicidad primero** | ✅ | Se construye solo lo que pide la spec. Registro y aceptación de invitación son una sola pantalla y un solo request. Un único binario (API + worker). Sin colas externas, sin caché, sin microservicios. Las únicas adiciones fuera del texto literal de la spec son consecuencias necesarias, marcadas y **confirmadas por el usuario**: reemisión de invitación (DD-5) y reactivación de usuarios (P-3). |
+| **I. Simplicidad primero** | ✅ | Se construye solo lo que pide la spec. Registro y aceptación de invitación son una sola pantalla y un solo request. Un único binario (API + worker + SPA). Sin colas externas, sin caché, sin microservicios. Las únicas adiciones fuera del texto literal de la spec son consecuencias necesarias, marcadas y **confirmadas por el usuario**: reemisión de invitación (DD-5), reactivación de usuarios (P-3) y los ajustes H-1 a H-9 (§18). |
 | **II. Genérico por configuración** | ✅ | Las plantillas de rubro son **datos** embebidos (catálogo), no código por rubro. 001 define el catálogo mínimo (código y nombre) y el puerto `industrytemplate.Seeder`; el contenido lo define 002 (DD-3). |
-| **III. Aislamiento entre empresas** | ✅ / ⚠️ | Toda tabla de negocio tiene `tenant_id NOT NULL`, RLS habilitada y **forzada**, política por rol de empresa y filtro explícito en cada query (INV-01 a INV-07). Tests de aislamiento en BD y HTTP (Fases 1 y 8). ⚠️ **Excepciones justificadas**: (a) `tenants` no tiene `tenant_id` porque *es* la empresa: su política usa `id`; (b) `login_throttles` no tiene `tenant_id` porque se indexa por email **exista o no la cuenta** (anti-enumeración, DD-7): no es dato de negocio ni pertenece a una empresa; solo lo ve el rol `crm_auth`. |
+| **III. Aislamiento entre empresas** | ✅ / ⚠️ | Toda tabla de negocio tiene `tenant_id NOT NULL`, RLS habilitada y **forzada**, política por rol de empresa y filtro explícito en cada query (INV-01 a INV-07). Tests de aislamiento en BD y HTTP (Fases 1 y 8). Ninguna respuesta con datos de una empresa se reutiliza desde la caché del navegador sin revalidar (INV-21, H-2, H-7). ⚠️ **Excepciones justificadas**: (a) `tenants` no tiene `tenant_id` porque *es* la empresa: su política usa `id`; (b) `login_throttles` no tiene `tenant_id` porque se indexa por email **exista o no la cuenta** (anti-enumeración, DD-7): no es dato de negocio ni pertenece a una empresa; solo lo ve el rol `crm_auth`. |
 | **IV. Integridad del dinero** | ✅ (N/A) | 001 no maneja importes. `tenants.base_currency` es ISO 4217 restringido a `ARS`/`USD`. Quedan listas la auditoría append-only (`audit_log`) y la atomicidad por operación (`TxRunner`) que usarán las specs financieras; el checklist de tablas nuevas (`data-model.md` §6) ya prevé tablas inmutables sin `DELETE`. |
 | **V. Spec Driven Development** | ✅ / ⚠️ | Plan derivado de `spec.md` y sus Clarificaciones; criterios Dado/Cuando/Entonces trazados a tareas `[T]` (`tasks.md`, tabla de trazabilidad). P-2 a P-5 están **resueltas** por el usuario (§14.2). ⚠️ Queda abierta P-1 (hosting): no bloquea el desarrollo, sí la elección del proveedor de producción. |
 | **VI. Tests primero** | ✅ | Todas las fases son TDD. El contrato OpenAPI se valida con tests de contrato sobre cada respuesta de los tests HTTP (ADR-014). |
-| **VII. Mobile-first** | ✅ (N/A backend) | Sesiones con expiración por inactividad, payloads chicos, logo acotado en tamaño. PWA servida desde el mismo origen que la API (S-2). |
-| **Stack** | ✅ | Go, PostgreSQL, OpenAPI, monolito modular, S3 compatible. Librerías registradas como ADR, como pide la constitución. |
-| **Convenciones** | ✅ | Documentación en español; tablas, columnas, endpoints e identificadores en inglés con nombres del glosario (`Tenant`, `User`, `Role`, `IndustryTemplate`, `AuditLog`). Fechas `timestamptz` en UTC; `tenants.timezone` para mostrar. Términos nuevos incorporados al glosario (§17). |
+| **VII. Mobile-first** | ✅ | Sesiones con expiración por inactividad, payloads chicos, logo acotado en tamaño (el navegador achica las fotos grandes antes de subir), SPA comprimida con gzip y assets con caché inmutable. PWA servida desde el mismo origen que la API (S-2, ADR-019). |
+| **Stack** | ✅ | Go, PostgreSQL, OpenAPI, monolito modular, S3 compatible, React servido por el mismo binario. Librerías registradas como ADR, como pide la constitución (`gzhttp` en ADR-019, aprobada en DD-29). |
+| **Convenciones** | ✅ | Documentación en español; tablas, columnas, endpoints, rutas de la SPA e identificadores en inglés con nombres del glosario (`Tenant`, `User`, `Role`, `IndustryTemplate`, `AuditLog`). Fechas `timestamptz` en UTC; `tenants.timezone` para mostrar. Términos nuevos incorporados al glosario (§17). |
 
 Ninguna excepción queda sin justificar: el plan no está bloqueado por la constitución.
 
@@ -77,17 +85,18 @@ Ninguna excepción queda sin justificar: el plan no está bloqueado por la const
 ## 3. Resumen ejecutivo
 
 Un monolito modular en Go con dos módulos de dominio (`tenant` e `identity`) más un paquete
-transversal de autorización (`authz`) y una capa de plataforma (`platform/*`). La
-autenticación usa sesiones del lado servidor en PostgreSQL con token opaco en cookie
-`HttpOnly`, lo que permite que desactivar un usuario corte su acceso en el siguiente request.
-El aislamiento se apoya en tres capas: filtro explícito por `tenant_id`, **RLS forzada con un
-rol de PostgreSQL por empresa** (cada transacción hace `SET LOCAL ROLE` al rol de su empresa,
-y el rol de login no tiene ningún privilegio propio: si alguien se olvida de cambiar de rol, la
-query falla en vez de filtrar datos), y tests automáticos que recorren todas las tablas y todos
-los endpoints. Los flujos anteriores a conocer la empresa (registro, login, reset, invitación,
-worker) usan **roles de sistema** que solo ven columnas de ruteo (`id`, `tenant_id`, hashes) y
-luego pasan al rol de la empresa para todo lo demás. Los emails salen por un outbox
-transaccional, así que nunca se manda un email de una operación que se deshizo.
+transversal de autorización (`authz`) y una capa de plataforma (`platform/*`). El binario sirve
+también la SPA embebida: un mux raíz reparte `/api/` al router chi, `/healthz` y `/readyz` a ops
+y todo lo demás al paquete `web`. La autenticación usa sesiones del lado servidor en PostgreSQL
+con token opaco en cookie `HttpOnly`, lo que permite que desactivar un usuario corte su acceso en
+el siguiente request. El aislamiento se apoya en tres capas: filtro explícito por `tenant_id`,
+**RLS forzada con un rol de PostgreSQL por empresa** (cada transacción hace `SET LOCAL ROLE` al
+rol de su empresa, y el rol de login no tiene ningún privilegio propio: si alguien se olvida de
+cambiar de rol, la query falla en vez de filtrar datos), y tests automáticos que recorren todas
+las tablas y todos los endpoints. Los flujos anteriores a conocer la empresa (registro, login,
+reset, invitación, worker) usan **roles de sistema** que solo ven columnas de ruteo (`id`,
+`tenant_id`, hashes) y luego pasan al rol de la empresa para todo lo demás. Los emails salen por
+un outbox transaccional, así que nunca se manda un email de una operación que se deshizo.
 
 ---
 
@@ -102,7 +111,11 @@ graph TB
     end
 
     subgraph Binario["Binario crm (serve)"]
-        MW["Cadena HTTP<br/>request id, logging, recover,<br/>CrossOriginProtection, rate limit"]
+        MW["Middlewares comunes<br/>request id, recover, logging,<br/>cabeceras de seguridad,<br/>CrossOriginProtection"]
+        ROOT["Mux raíz (internal/app)"]
+        API["Router chi /api/<br/>no-store, rate limit"]
+        OPS["ops<br/>/healthz /readyz"]
+        WEB["paquete web<br/>SPA embebida, CSP, gzip"]
         AUTHN["identity.Authenticate<br/>(resuelve la sesión)"]
         AUTHZ["authz<br/>RequirePermission"]
         TEN["Módulo tenant<br/>registro, datos, logo"]
@@ -120,12 +133,17 @@ graph TB
     S3[("S3 / MinIO")]
     SMTP[("SMTP / Mailpit")]
 
-    SPA -->|"HTTPS JSON + cookie"| MW
-    MW --> AUTHN --> AUTHZ
+    SPA -->|"HTTPS + cookie"| MW
+    MW --> ROOT
+    ROOT -->|"/api/"| API
+    ROOT -->|"/healthz /readyz"| OPS
+    ROOT -->|"todo lo demás"| WEB
+    API --> AUTHN --> AUTHZ
     AUTHZ --> TEN
     AUTHZ --> IDN
-    MW -->|"rutas públicas"| TEN
-    MW -->|"rutas públicas"| IDN
+    API -->|"rutas públicas"| TEN
+    API -->|"rutas públicas"| IDN
+    OPS --> DBP
     TEN -->|"interfaz AdminOnboarding"| IDN
     TEN --> TPL
     TEN --> OBJ
@@ -143,6 +161,16 @@ graph TB
     MAIL --> SMTP
 ```
 
+**Montaje (DD-22, H-1)**: la SPA **no** se registra en el router chi. `internal/app` arma un
+`http.ServeMux` raíz con tres destinos: `/api/` → router chi (con su propio `NotFound` y
+`MethodNotAllowed` en problem+json), `GET /healthz` y `GET /readyz` → ops, y `/` (todo lo demás)
+→ `web.NewHandler`. Los middlewares comunes (request id, recover, logging, cabeceras de seguridad
+y `CrossOriginProtection`) envuelven al mux raíz, así que aplican a los tres destinos; los
+middlewares propios de la API (`Cache-Control: no-store`, rate limit, autenticación,
+autorización) viven dentro del router chi. Consecuencias: `chi.Walk` sobre el router de la API ve
+**solo** rutas de la API (T-B801 y el test de rutas contra el contrato no cambian), y un
+`/api/…` inexistente sigue siendo `404 problem+json`, nunca `index.html`.
+
 Reglas de dependencia entre paquetes (se verifican con `depguard`, ver ADR-001):
 
 - `platform/*` no importa ningún módulo de dominio ni `authz`.
@@ -151,6 +179,9 @@ Reglas de dependencia entre paquetes (se verifican con `depguard`, ver ADR-001):
 - `tenant` importa `platform/*`, `authz`, `industrytemplate` e `identity` (solo tipos y errores).
   Usa `identity` a través de una interfaz chica que **declara él mismo** (`AdminOnboarding`,
   §11.1); el cableado con `*identity.Service` lo hace `internal/app` (composition root).
+- `web` (en la raíz del repo, fuera de `internal/`, porque `go:embed` necesita que `dist` esté bajo
+  el paquete) solo importa la librería estándar y `gzhttp`; ningún paquete salvo `internal/app` y
+  `cmd/crm` importa `web`.
 - Ningún paquete importa el `store` (código sqlc) de otro módulo: un módulo no lee tablas de otro.
 
 ### 4.2 Roles de PostgreSQL (resumen; detalle en `data-model.md` §3 y ADR-005)
@@ -199,7 +230,7 @@ permite `AsSystem` → `AsTenant`, pero **nunca dos empresas distintas en una tr
 | Pedir reset | `crm_auth` | `users(id, tenant_id, email)` | Según el estado: token de reset, reemisión de invitación (DD-20) o nada | Idem |
 | Confirmar reset, verificar email, ver/aceptar invitación | `crm_auth` | `user_tokens(id, tenant_id, token_hash, purpose)` | Valida vencimiento/uso, escribe | Vencimiento, uso y usuario se validan bajo RLS |
 | Worker de outbox | `crm_worker` | `outbox_messages(id, tenant_id, status, next_attempt_at)` pendientes | Lee destinatario y payload, envía, marca | Destinatario y contenido solo bajo RLS |
-| Limpieza periódica | `crm_worker` | Filas **vencidas** de `sessions`, `user_tokens`, `outbox_messages` terminales, `login_throttles` | — | La política de `DELETE` solo alcanza filas vencidas |
+| Limpieza periódica | `crm_worker` | Filas **vencidas** de `sessions`, `user_tokens` (salvo la invitación abierta de un invitado, DD-25), `outbox_messages` terminales, `login_throttles` | — | La política de `DELETE` solo alcanza filas vencidas |
 | Reaprovisionar roles (ops) | `crm_worker` + `crm_signup` | `tenants(id)` | — | No toca datos de negocio |
 
 **Riesgo residual declarado**: un bug en una de las queries de fase 1 de `crm_auth` podría
@@ -226,6 +257,7 @@ sequenceDiagram
     V->>H: POST /api/v1/auth/signup
     H->>H: rate limit por IP (cuenta éxitos y rechazos) y validación del payload
     H->>S: Register(cmd)
+    S->>S: zona horaria desconocida se reemplaza por la default (DD-27)
     S->>S: hash argon2id de la contraseña (fuera de la transacción)
     S->>DB: BEGIN y SET LOCAL ROLE crm_signup
     S->>DB: SELECT provisioning.provision_tenant_role(tenant_id)
@@ -374,13 +406,14 @@ sequenceDiagram
         Z-->>A: 403 code forbidden
     else es Administrador
         H->>S: Invite(principal, email, role)
-        S->>DB: BEGIN y SET LOCAL ROLE crm_t_HEX
+        S->>DB: BEGIN, SET LOCAL ROLE crm_t_HEX y lock de tenants
         alt email ya es usuario activo o desactivado, o existe en otra empresa
             DB-->>S: usuario existente o unique_violation
             H-->>A: 409 code email_taken
         else email ya invitado en esta empresa
             S->>DB: revocar token anterior, nuevo token 7 días, outbox, audit user.invitation_reissued
-            H-->>A: 200 User (status invited)
+            S->>DB: si el rol pedido es otro, UPDATE role y audit user.role_changed (DD-26)
+            H-->>A: 200 User (status invited, rol pedido)
         else email libre
             S->>DB: INSERT users (status invited), token 7 días, outbox, audit user.invited
             S->>DB: COMMIT
@@ -453,7 +486,7 @@ transacción. Las sesiones revocadas al desactivar **no** se reabren.
 stateDiagram-v2
     [*] --> active : registro de empresa (primer Administrador)
     [*] --> invited : Administrador invita
-    invited --> invited : Administrador reinvita o el invitado pide reset (nuevo token)
+    invited --> invited : Administrador reinvita (puede cambiar el rol) o el invitado pide reset
     invited --> active : invitado acepta con token válido
     invited --> disabled : Administrador desactiva
     active --> disabled : Administrador desactiva (no es el último Administrador activo)
@@ -461,14 +494,17 @@ stateDiagram-v2
     disabled --> invited : Administrador reactiva y el usuario nunca tuvo contraseña (invitación nueva)
 ```
 
-- El **rol** (`admin`/`operator`) es ortogonal al estado. Bajar a Operador al último
-  Administrador **activo** se rechaza con `409 last_admin` (INV-10).
+- El **rol** (`admin`/`operator`) es ortogonal al estado. Se puede cambiar en usuarios `invited` y
+  `active` (con `PUT /users/{id}/role` o, para `invited`, reinvitando con otro rol); en `disabled`
+  responde `409 invalid_state` (DD-26). Bajar a Operador al último Administrador **activo** se
+  rechaza con `409 last_admin` (INV-10); los invitados no cuentan como Administradores activos.
 - Entrar a `disabled` revoca en la misma transacción todas las sesiones y los tokens pendientes
   (INV-11). Salir de `disabled` (reactivar) no reabre sesiones: el usuario vuelve a iniciar
   sesión.
 - Toda transición la ejecuta un Administrador y queda auditada (`user.invited`,
   `user.invitation_reissued`, `user.invitation_accepted`, `user.deactivated`,
-  `user.reactivated`); la reemisión disparada por un pedido de reset se audita con actor `NULL`.
+  `user.reactivated`, `user.role_changed`); la reemisión disparada por un pedido de reset se audita
+  con actor `NULL`.
 - No hay estado terminal ni borrado: los usuarios no se eliminan (la auditoría los referencia).
 - La tabla de transiciones (`estado × acción → estado | error`) vive en `identity/user.go` y es
   la única fuente de verdad en el código (T-B605).
@@ -481,8 +517,9 @@ stateDiagram-v2
     pending --> accepted : invitado acepta con token válido
     pending --> expired : pasan 7 días sin aceptar
     pending --> superseded : reinvitación del Administrador o pedido de reset del invitado
+    expired --> superseded : reinvitación del Administrador o pedido de reset del invitado
     pending --> revoked : Administrador desactiva al usuario invitado
-    expired --> [*]
+    expired --> revoked : Administrador desactiva al usuario invitado
     superseded --> [*]
     revoked --> [*]
     accepted --> [*]
@@ -490,7 +527,9 @@ stateDiagram-v2
 
 No hay tabla `invitations`: la spec modela "invitado" como estado del `User`, y la invitación es
 el token de propósito `invitation` (DD-1). Una invitación vencida no cambia de fila: su estado se
-deriva de `expires_at`. Reinvitar crea una invitación nueva (DD-5, DD-20).
+deriva de `expires_at`, y se conserva mientras el usuario siga invitado para que la API pueda
+informar cuándo venció (`User.invitation_expires_at`, DD-25). Reinvitar crea una invitación nueva
+(DD-5, DD-20).
 
 #### Estado de un mensaje del outbox
 
@@ -522,7 +561,7 @@ la vigila.
 | INV-07 | Toda FK entre tablas de empresa es **compuesta** con `tenant_id` (`(tenant_id, user_id) → users(tenant_id, id)`): la base impide referencias entre empresas. | Migraciones | T-B108 |
 | INV-08 | Las vistas se crean con `security_invoker = true`. Las únicas funciones `SECURITY DEFINER` viven en el esquema `provisioning`, con `search_path` fijo y `EXECUTE` revocado a `PUBLIC`. | Migraciones | T-B107 |
 | INV-09 | Tokens de sesión y de un solo uso se guardan solo como SHA-256; el valor en claro existe únicamente en la cookie o en el email. El payload del outbox se borra al pasar a `sent` o `failed` (lo obliga un `CHECK`). | `identity`, `outbox` | T-B205, T-B211, T-B307 |
-| INV-10 | Cada empresa tiene siempre al menos un Administrador **activo**. Todo cambio de rol o estado de un usuario (incluida la reactivación) toma primero `SELECT … FROM tenants … FOR UPDATE`. | `identity.Service` | T-B603, T-B604 (con concurrencia) |
+| INV-10 | Cada empresa tiene siempre al menos un Administrador **activo**. Todo cambio de rol o estado de un usuario (incluida la reactivación y la reinvitación con otro rol) toma primero `SELECT … FROM tenants … FOR UPDATE`. | `identity.Service` | T-B601, T-B603, T-B604 (con concurrencia) |
 | INV-11 | Pasar un usuario a `disabled` revoca en la **misma transacción** todas sus sesiones y tokens pendientes; la resolución de sesión verifica en cada request que el usuario siga `active`. | `identity` | T-B307, T-B604 |
 | INV-12 | La autorización por permiso se decide **antes** de buscar el recurso y no depende de su existencia. Un recurso de otra empresa responde `404`, nunca `403`. | `authz`, handlers | T-B207, T-B801, T-B802 |
 | INV-13 | Login y pedido de reset responden igual (status, cuerpo, bloqueo y costo de hash) exista o no el email, y cualquiera sea su estado. Se mantiene aunque el registro confirme la existencia de un email (DD-19). | `identity.Service` | T-B402, T-B404, T-B501, T-B506 |
@@ -533,12 +572,15 @@ la vigila.
 | INV-18 | Los tests de integración se conectan como `crm_app`, nunca como superusuario (un superusuario ignora la RLS y haría pasar los tests de aislamiento en falso). | `internal/testsupport/pgtest` | T-B009 |
 | INV-19 | Una violación de RLS o de privilegio (`SQLSTATE 42501`) es un bug: se responde `500`, se loguea con `level=ERROR` y `security_event=rls_violation`, nunca se traduce a `403`/`404`. | `platform/db`, `platform/httpx` | T-B105 |
 | INV-20 | El `409 email_already_registered` del registro nunca incluye datos de la cuenta existente (empresa, nombre, estado, fechas) y es idéntico byte a byte (salvo `instance`) cualquiera sea el estado del usuario existente. | `tenant` HTTP | T-B305 |
+| INV-21 | Ninguna respuesta con datos de una empresa se reutiliza desde la caché del navegador sin preguntarle al servidor: todo `/api/v1` lleva `Cache-Control: no-store`, salvo `GET /tenant/logo`, que lleva `private, no-cache` con un `ETag` distinto por objeto (y por lo tanto por empresa). | Router chi, `tenant` HTTP | T-B203, T-B705, T-B801 |
+| INV-22 | Una ruta bajo `/api/` nunca llega al handler de la SPA (un `/api/…` inexistente es `404 problem+json`), y la SPA nunca queda registrada en el router chi. | `internal/app` (mux raíz) | T-B004, T-F007 |
 
 ---
 
 ## 6. Decisiones locales de esta feature (`DD-n`)
 
-Las decisiones estructurales están en `docs/adr/` (ADR-001 a ADR-014). Estas son locales a 001.
+Las decisiones estructurales están en `docs/adr/` (ADR-001 a ADR-014; la SPA en ADR-019). Estas
+son locales a 001.
 
 | ID | Decisión | Por qué | Trade-off |
 |---|---|---|---|
@@ -546,23 +588,32 @@ Las decisiones estructurales están en `docs/adr/` (ADR-001 a ADR-014). Estas so
 | **DD-2** | Email **único global** (`users_email_key`) y normalizado (trim + minúsculas). | Un usuario pertenece a una sola empresa (Clarificaciones); el login es por email sin elegir empresa. | Cuando se permitan varias empresas por usuario habrá que separar identidad y membresía (fuera del MVP). |
 | **DD-3** | Plantillas de rubro: catálogo embebido en el binario (código, nombre, versión) + puerto `industrytemplate.Seeder` invocado **dentro** de la transacción de registro. En 001 el seeder no precarga nada: se registra el código y la versión en `tenants`; 002 implementa la precarga. | Principio II (datos, no código por rubro); atomicidad; 001 no invade 002. | Hasta 002, "se precarga la configuración" (Historia 1.1) se cumple solo en el registro del código de plantilla. |
 | **DD-4** | Registro y aceptación de invitación inician sesión en el mismo response (`201` + cookie). La verificación de email **no bloquea nada** (P-2, resuelta): `/me` expone `email_verified` y la UI muestra un aviso hasta verificar. | SC-001 (panel en < 3 min); una pantalla. | Una cuenta puede operar con email no verificado. |
-| **DD-5** | Invitar un email que ya está `invited` **en la misma empresa** reemite la invitación (revoca el token anterior, crea uno nuevo de 7 días) y responde `200`. | Sin esto, una invitación vencida deja el email reservado sin salida. No agrega endpoint. | Reinvitar y "reenviar" son la misma acción. |
+| **DD-5** | Invitar un email que ya está `invited` **en la misma empresa** reemite la invitación (revoca el token anterior, crea uno nuevo de 7 días) y responde `200`. Si el rol pedido es distinto, además lo cambia (DD-26). | Sin esto, una invitación vencida deja el email reservado sin salida. No agrega endpoint. | Reinvitar y "reenviar" son la misma acción. |
 | **DD-6** | Contraseñas: mínimo 10 caracteres, máximo 128, sin reglas de composición; se rechazan si son iguales al email. | Las guías actuales desaconsejan reglas de composición; 128 acota el costo del hash. | Algunas guías recientes piden mínimos mayores para contraseñas de un solo factor (verificar la revisión vigente de NIST SP 800-63B); se prioriza la carga desde el celular. |
 | **DD-7** | Bloqueo: contador por **HMAC-SHA256(email normalizado)** en `login_throttles`, exista o no la cuenta. 5 fallos seguidos → `locked_until = now + 15 min`; los intentos durante el bloqueo no lo extienden ni verifican contraseña; al vencer se reinicia el contador; un login exitoso o un reset de contraseña lo borra. | Bloqueo indistinguible para emails inexistentes; HMAC evita guardar en claro emails que no son usuarios. Se mantiene tras P-4 (DD-19). | Cualquiera puede bloquear 15 min una cuenta ajena (aceptado por la spec); se acota con rate limit por IP (DD-9). |
 | **DD-8** | Login de usuario `disabled` con contraseña **correcta** → `403 account_disabled`; con contraseña incorrecta → `401` genérico. Usuario `invited` → siempre `401` genérico. | Quien conoce la contraseña merece saber por qué no entra; no filtra nada a quien no la conoce. | — |
 | **DD-9** | Rate limit en memoria por IP (token bucket, `golang.org/x/time/rate`): **signup 5/h por IP, contando éxitos y rechazos** (es la mitigación principal de la enumeración aceptada en DD-19), login 20/min, password-reset 5/h (y 3/h por email), invitations/preview y accept 20/h, email-verification 20/h. Excedido → `429 rate_limited` + `Retry-After`. | Una sola instancia (S-1); cero infraestructura extra. | Con varias instancias el límite es por instancia; un atacante con muchas IPs enumera más rápido (se detecta con la métrica de DD-19). Valores ajustables por configuración. |
 | **DD-10** | Sesión: expira a las **24 h sin uso** o a los **7 días** desde el login, lo que ocurra primero (P-5, elección del usuario). `last_seen_at` se actualiza como máximo cada 5 minutos. Cookie con `Max-Age = 604800`. | Ventana de exposición corta ante un dispositivo perdido o compartido en obra/taller. | Quien no usa la app un día vuelve a iniciar sesión; la expiración por inactividad tiene una tolerancia de hasta 5 min. |
-| **DD-11** | Logo: solo PNG y JPEG (detección por *magic bytes*, no por extensión ni `Content-Type`), máximo 2 MB y 2000×2000 px, subido como `multipart/form-data`. Se sirve por el backend (`GET /tenant/logo`) con `Content-Type` fijo y `nosniff`, sin URLs prefirmadas. Clave: `tenants/{tenant_id}/logo/{uuidv7}.{png\|jpg}`. | SVG permite scripts; las librerías de PDF (005) soportan PNG/JPEG; servir por backend mantiene el bucket privado y sin CORS. | El backend transfiere los bytes del logo (volumen despreciable). |
-| **DD-12** | Logs estructurados con `log/slog` en JSON; cada request lleva `request_id`, `tenant_id`, `user_id`, `route`, `status`, `duration_ms`. Nunca se loguean contraseñas, tokens, cookies ni payloads del outbox. | Librería estándar; operable. | Sin trazas distribuidas (un solo proceso). |
+| **DD-11** | Logo: solo PNG y JPEG (detección por *magic bytes*, no por extensión ni `Content-Type`), máximo 2 MB y 2000×2000 px, subido como `multipart/form-data`. Se sirve por el backend (`GET /tenant/logo`) con `Content-Type` fijo y `nosniff`, sin URLs prefirmadas, con la política de caché de DD-23. Clave: `tenants/{tenant_id}/logo/{uuidv7}.{png\|jpg}`. El navegador achica las fotos de más de 2 MB antes de subirlas (decisión del usuario sobre el frontend); **los límites del backend no cambian**: son la autoridad. | SVG permite scripts; las librerías de PDF (005) soportan PNG/JPEG; servir por backend mantiene el bucket privado y sin CORS. | El backend transfiere los bytes del logo (volumen despreciable). |
+| **DD-12** | Logs estructurados con `log/slog` en JSON; cada request lleva `request_id`, `tenant_id`, `user_id`, `route`, `status`, `duration_ms`. `route` es el patrón chi en la API, `ops` en health checks y `spa` en el resto (nunca la URL cruda). Nunca se loguean contraseñas, tokens, cookies ni payloads del outbox. | Librería estándar; operable. | Sin trazas distribuidas (un solo proceso). |
 | **DD-13** | Verificación de email: token de 48 h; reenviable con `POST /auth/email-verification/resend` (autenticado). Aceptar una invitación marca el email como verificado (el token llegó a ese email). | Cierra Historia 1.3 sin bloquear el uso. | 48 h es un supuesto. |
-| **DD-14** | Los enlaces de los emails llevan el token en el **fragmento** (`{APP_BASE_URL}/<path>#token=…`), y la SPA lo envía en el body de un `POST`. | El fragmento no viaja al servidor ni en `Referer`: el token no queda en logs de acceso ni de proxies. | Los *paths* exactos de la SPA los fija `ui.md` (frontend-architect); el backend los recibe por configuración (`APP_LINK_*`). |
-| **DD-15** | `tenants.base_currency` se fija al registrarse y **no se edita** en 001; `timezone` sí (default `America/Argentina/Buenos_Aires`, o la que envíe el navegador al registrarse). | La Historia 4 no incluye moneda base; cambiarla tiene efectos en reportes (009). | Si se quiere editar, se agrega en 009 con su análisis. |
+| **DD-14** | Los enlaces de los emails llevan el token en el **fragmento** (`{APP_BASE_URL}{APP_LINK_*}#token=…`), y la SPA lo envía en el body de un `POST`. Rutas confirmadas por el usuario (en inglés): `APP_LINK_RESET=/reset-password`, `APP_LINK_VERIFY=/verify-email`, `APP_LINK_INVITATION=/accept-invitation`; son los defaults de la configuración. | El fragmento no viaja al servidor ni en `Referer`: el token no queda en logs de acceso ni de proxies. | Si `ui.md` cambia una ruta, cambia el default y T-B002/T-B213. |
+| **DD-15** | `tenants.base_currency` se fija al registrarse y **no se edita** en 001; `timezone` sí (default `America/Argentina/Buenos_Aires`, o la que envíe el navegador al registrarse; ver DD-27). | La Historia 4 no incluye moneda base; cambiarla tiene efectos en reportes (009). | Si se quiere editar, se agrega en 009 con su análisis. |
 | **DD-16** | CUIT opcional; si se informa, 11 dígitos con dígito verificador válido (módulo 11); se guarda sin guiones. | Evita errores de tipeo en los PDF (005). | Validación específica de Argentina: es del país, no del rubro (no afecta el principio II). |
-| **DD-17** | El contrato de 001 es la fuente canónica de los componentes compartidos (`Problem`, `ValidationProblem`, `ErrorCode`, `Role`, `Permission`); las specs siguientes los referencian con `$ref` a este archivo. | Un solo lugar para el modelo de errores y los permisos. | Hace falta un paso de *bundle* para que el frontend genere tipos de todas las specs juntas (lo decide `ui.md`). |
+| **DD-17** | El contrato de 001 es la fuente canónica de los componentes compartidos (`Problem`, `ValidationProblem`, `ErrorCode`, `Role`, `Permission`); las specs siguientes los referencian con `$ref` a este archivo. | Un solo lugar para el modelo de errores y los permisos. | Hace falta un paso de *bundle* para que el frontend genere tipos de todas las specs juntas (lo resuelve `ui.md` §11.4). |
 | **DD-18** | Toda comparación de vencimientos en queries recibe `now` como parámetro desde `clock.Clock` (no usa `now()` de SQL). Excepción: las políticas de limpieza de `crm_worker`, que usan `now()` a propósito. | Tests deterministas de vencimientos (15 min, 1 h, 24 h, 48 h, 7 días) sin dormir ni manipular el reloj del sistema. | Un parámetro más en esas queries. |
 | **DD-19** | **Enumeración aceptada solo en el registro** (P-4). El `409` de `POST /auth/signup` confirma que existe un usuario con ese email (sin ningún otro dato). **Login y pedido de reset se mantienen no enumerables** (INV-13, DD-7): mismas respuestas, hash ficticio, bloqueo por HMAC y `202` constante. Se registra `security_event=signup_email_exists` y la métrica `signup_email_exists_total` para detectar enumeración masiva. | Defensa en profundidad: el registro es el oráculo más lento (5/h por IP, formulario completo, argon2id por intento); simplificar login (20/min) o reset daría oráculos 240 veces más rápidos. Mantener la uniformidad no cuesta nada: ya está diseñada y probada. | Quien quiera saber si un email tiene cuenta puede averiguarlo por el registro, de a pocos por IP. Aceptado por el usuario. |
 | **DD-20** | Un pedido de reset para un usuario **`invited`** reemite su invitación (revoca el token anterior, token nuevo de 7 días, email de invitación) en lugar de enviar un enlace de reset; para un usuario **`disabled`** o un email inexistente no se envía nada. La respuesta es siempre `202`. Auditoría `user.invitation_reissued` con actor `NULL` y `data.trigger = "password_reset_request"`. | Coherencia con DD-19: el registro sugiere "recuperar la contraseña" también a quien todavía no aceptó su invitación; sin esto, ese usuario no recibiría nada. Reusa la plantilla y la lógica de reinvitación (DD-5). | Un invitado puede renovar su invitación por su cuenta (solo le llega a su propio email; rate limit 3/h por email). El usuario `disabled` no recibe explicación: debe hablar con su Administrador. |
 | **DD-21** | Mismo error de dominio (`identity.ErrEmailTaken`), **distinto `code` HTTP por endpoint**: registro → `409 email_already_registered` con `suggested_action: "password_reset"`; invitación → `409 email_taken` sin acción sugerida. | Semánticas distintas para la UI: el visitante probablemente ya tiene cuenta y puede recuperarla; el Administrador no puede recuperar la cuenta de otra persona. | Dos códigos para la misma condición de base; el mapeo vive en el `http.go` de cada módulo. |
+| **DD-22** | **Mux raíz** (H-1): `internal/app` arma un `http.ServeMux` con `/api/` → router chi, `GET /healthz` y `GET /readyz` → ops, `/` → `web.NewHandler(dist)`. Los middlewares comunes (request id, recover, logging, cabeceras de seguridad, `CrossOriginProtection`) envuelven al mux raíz; `no-store`, rate limit, autenticación y autorización quedan dentro de chi. `/api` sin barra final lo redirige el propio `ServeMux` a `/api/`. | Registrar la SPA como `/*` en chi rompería T-B004, T-B801 y el test de rutas contra el contrato, y convertiría un `/api/…` inexistente en `index.html`. | Un nivel más de ruteo; dos formas de declarar rutas (stdlib para 3 destinos fijos, chi para la API). |
+| **DD-23** | **Caché del logo** (H-2): `GET /tenant/logo` responde `Cache-Control: private, no-cache` y `ETag: "<uuid del objeto>"` (el UUIDv7 de `logo_object_key`, distinto por subida y por empresa). Con `If-None-Match` igual responde `304` sin leer S3. Acepta un parámetro de query opcional `v` que el servidor **ignora** (lo usa la UI para cambiar la URL cuando cambia el logo: `?v={id}-{updated_at}`). | La URL es la misma para todas las empresas: con `max-age` un celular compartido mostraba el logo de la empresa anterior o el viejo tras reemplazarlo. `no-cache` obliga a revalidar siempre; el `ETag` hace que revalidar cueste un `304` sin bytes. | Un request de revalidación por carga del logo (liviano: solo lee la fila de la empresa). |
+| **DD-24** | **`APP_BASE_URL` en desarrollo** (H-3): se acepta `http://` **solo** para `localhost` y `127.0.0.1` (cualquier puerto), con `COOKIE_SECURE=true`; los navegadores aceptan cookies `Secure` en esos orígenes. `COOKIE_SECURE=false` solo se permite con esos mismos orígenes y sirve **únicamente** para clientes que no son navegador (tests Go sobre `http://`): un navegador rechaza una cookie `__Host-` sin `Secure`. Cualquier otro `http://` es error de configuración. | El desarrollo con Vite (`http://localhost:5173`) necesita la cookie real; la regla anterior lo impedía. | Safari de escritorio puede no aceptar la cookie `Secure` en `localhost` (S-F3 de `ui.md`): se desarrolla con Chrome o Firefox. |
+| **DD-25** | **`User.invitation_expires_at`** (H-4): para un usuario `invited` es el vencimiento de su **última** invitación, **aunque ya haya pasado**; para los demás estados, `null`. La limpieza periódica no borra la invitación abierta de un usuario invitado (solo invitaciones usadas o revocadas, `data-model.md` §3.4). | La UI muestra "Invitación vencida" y ofrece reenviar; sin la fecha no puede distinguir vencida de vigente. | Una fila de `user_tokens` por invitado que nunca aceptó queda sin limpiar mientras siga invitado (volumen despreciable). |
+| **DD-26** | **Rol de un invitado** (H-5): reinvitar con otro rol **cambia el rol** (auditoría `user.invitation_reissued` con `data.role` y, además, `user.role_changed {from, to}`); `PUT /users/{id}/role` vale para usuarios `invited` y `active`; para `disabled` responde `409 invalid_state` (se reactiva primero). Todas estas operaciones toman el lock de `tenants`; los invitados no cuentan como Administradores activos, así que cambiar el rol de un invitado nunca dispara `last_admin`. | El Administrador corrige el rol de una invitación sin desactivar y volver a invitar; FR-008 exige auditar todo cambio de rol. | Dos filas de auditoría para una reinvitación con cambio de rol. |
+| **DD-27** | **Zona horaria en el registro** (H-6): si `timezone` falta o no es una zona IANA conocida, el registro usa `America/Argentina/Buenos_Aires` en lugar de responder `422`, y lo loguea (`level=INFO`, `event=signup_timezone_defaulted`, sin datos personales). `PATCH /tenant` sigue respondiendo `422 invalid_timezone` (ahí el campo es visible). El binario importa `time/tzdata` (en `cmd/crm`) para conocer todas las zonas aunque el contenedor no tenga `/usr/share/zoneinfo`. | El usuario no puede corregir un campo que no ve; sin `tzdata` embebido, `time.LoadLocation` fallaría para todas las zonas en imágenes mínimas. | Una empresa de otra zona que llega con un navegador mal configurado arranca en la zona por defecto (la corrige en Datos de la empresa); el binario crece unos cientos de KB. |
+| **DD-28** | **`Cache-Control: no-store` en toda la API** (H-7): un middleware del router chi lo pone en **todas** las respuestas de `/api/v1` (JSON, problem+json y `204`); la única excepción es `GET /tenant/logo` (`200` y `304`), que usa DD-23. | `/users` y `/tenant` tienen datos personales; en un dispositivo compartido nada de la API debe quedar en la caché del navegador. | Ninguno práctico: la SPA ya cachea en memoria con TanStack Query. |
+| **DD-29** | **Cabeceras y compresión de la SPA** (H-8): se adoptan las reglas de ADR-019 / `ui.md` §21.2 (tabla en §10.7). Se **aprueba** `github.com/klauspost/compress/gzhttp` para comprimir con gzip **solo** el handler de la SPA (HTML, JS, CSS, manifest), con el umbral por defecto (1 KB). La API **no** se comprime. Si el hosting pone un proxy que comprime, se quita. | La librería estándar no trae compresión HTTP; `gzhttp` es mantenida, maneja `ETag` y tipos ya comprimidos. Comprimir solo estáticos públicos evita tener que analizar ataques tipo BREACH sobre respuestas con datos personales, y las respuestas JSON de 001 son chicas. | Una dependencia más (aprobada por el usuario) y CPU por request de la SPA (bajo: pocos usuarios, archivos chicos). |
+| **DD-30** | **Rechazo de CSRF en problem+json** (H-9): `CrossOriginProtection.SetDenyHandler` responde `403 problem+json` con `code: forbidden` y loguea `security_event=csrf_rejected` (con `ip` y `route`, sin cuerpo). | El frontend trata cualquier `403` con el mismo mapa de errores; el texto plano por defecto caía como "respuesta inesperada". | La UI no distingue un rechazo de CSRF de un permiso faltante (no debería ocurrir con la SPA en el mismo origen). |
 
 ---
 
@@ -575,7 +626,7 @@ Detalle completo en [`data-model.md`](data-model.md).
 | `tenants` | La empresa: nombre, datos fiscales y de contacto, logo, moneda base, zona horaria, plantilla | (es `id`) | Nunca |
 | `users` | Usuarios: email, nombre, hash, rol, estado | ✔ | Nunca |
 | `sessions` | Sesiones: hash del token, vencimientos (24 h sin uso / 7 días), revocación | ✔ | Limpieza 30 días después de vencer |
-| `user_tokens` | Tokens de un solo uso: verificación, reset, invitación | ✔ | Limpieza 30 días después de vencer |
+| `user_tokens` | Tokens de un solo uso: verificación, reset, invitación | ✔ | Limpieza 30 días después de vencer, salvo la invitación abierta de un invitado (DD-25) |
 | `outbox_messages` | Emails pendientes/enviados | ✔ | Limpieza 30 días después de `sent`/`failed` |
 | `audit_log` | Auditoría append-only | ✔ | Nunca |
 | `login_throttles` | Contador de intentos por HMAC de email | ✘ (ver Constitution Check) | Limpieza 24 h sin fallos |
@@ -584,12 +635,13 @@ Detalle completo en [`data-model.md`](data-model.md).
 
 ## 8. Contrato de API
 
-**Canónico**: [`contracts/openapi.yaml`](contracts/openapi.yaml) (OpenAPI 3.1). Los tipos del
-cliente se derivan de él; los handlers Go se escriben a mano y los tests validan cada request y
-response contra el contrato (ADR-014). Si este plan y el YAML se contradicen, **manda el YAML** y
-este plan está desactualizado.
+**Canónico**: [`contracts/openapi.yaml`](contracts/openapi.yaml) (OpenAPI 3.1, versión 0.3.0). Los
+tipos del cliente se derivan de él; los handlers Go se escriben a mano y los tests validan cada
+request y response contra el contrato (ADR-014). Si este plan y el YAML se contradicen, **manda
+el YAML** y este plan está desactualizado.
 
-Base: `/api/v1`. Cookie de sesión: `__Host-crm_session`.
+Base: `/api/v1`. Cookie de sesión: `__Host-crm_session`. Todas las respuestas de la API llevan
+`Cache-Control: no-store`, salvo el logo (DD-28, DD-23).
 
 | Método | Ruta | Propósito | Auth | Permiso | Éxito | Errores |
 |---|---|---|---|---|---|---|
@@ -606,19 +658,23 @@ Base: `/api/v1`. Cookie de sesión: `__Host-crm_session`.
 | GET | `/me` | Usuario (incluido `email_verified`), empresa y permisos de la sesión | sí | — | 200 | 401 |
 | GET | `/tenant` | Datos de la empresa | sí | — | 200 | 401 |
 | PATCH | `/tenant` | Editar datos de la empresa | sí | `settings.manage` | 200 | 401, 403, 422 |
-| GET | `/tenant/logo` | Imagen del logo | sí | — | 200 | 401, 404 |
+| GET | `/tenant/logo` | Imagen del logo (`?v=` opcional e ignorado; `If-None-Match`) | sí | — | 200 / 304 | 401, 404 |
 | PUT | `/tenant/logo` | Subir/reemplazar logo | sí | `settings.manage` | 200 | 401, 403, 413, 415, 422 |
 | DELETE | `/tenant/logo` | Quitar logo | sí | `settings.manage` | 204 | 401, 403 |
 | GET | `/users` | Listar usuarios de la empresa | sí | `settings.manage` | 200 | 401, 403 |
-| POST | `/users/invitations` | Invitar (o reinvitar) | sí | `settings.manage` | 201 / 200 | 401, 403, 409 `email_taken`, 422 |
-| PUT | `/users/{userId}/role` | Cambiar rol | sí | `settings.manage` | 200 | 401, 403, 404, 409 `last_admin`, 422 |
+| POST | `/users/invitations` | Invitar (o reinvitar, con cambio de rol si corresponde) | sí | `settings.manage` | 201 / 200 | 401, 403, 409 `email_taken`, 422 |
+| PUT | `/users/{userId}/role` | Cambiar rol (usuarios `invited` o `active`) | sí | `settings.manage` | 200 | 401, 403, 404, 409 `last_admin`/`invalid_state`, 422 |
 | POST | `/users/{userId}/deactivate` | Desactivar | sí | `settings.manage` | 200 | 401, 403, 404, 409 `last_admin`/`invalid_state` |
 | POST | `/users/{userId}/reactivate` | Reactivar (P-3, confirmado) | sí | `settings.manage` | 200 | 401, 403, 404, 409 `invalid_state` |
-| GET | `/healthz` | Liveness (fuera de `/api/v1`) | — | — | 200 | — |
-| GET | `/readyz` | Readiness: BD alcanzable y migraciones al día | — | — | 200 | 503 |
+| GET | `/healthz` | Liveness (fuera de `/api/v1`, en el mux raíz) | — | — | 200 | — |
+| GET | `/readyz` | Readiness: BD alcanzable y migraciones al día (mux raíz) | — | — | 200 | 503 |
 
 Todas las rutas pueden responder `5XX` (`500 internal`, `503 service_unavailable`); las que
-reciben JSON, además `400 malformed_request` y `415`.
+reciben JSON, además `400 malformed_request` y `415`; los métodos no seguros, `403 forbidden` si
+`CrossOriginProtection` los rechaza (DD-30).
+
+Las rutas de la SPA (`/`, `/login`, `/reset-password`, `/settings/users`, …) no son parte del
+contrato: las sirve el paquete `web` fuera de `/api/` (DD-22, ADR-019).
 
 ---
 
@@ -635,18 +691,18 @@ salida, **`suggested_action`** (enum estable; en 001 solo `password_reset`).
 | `code` | HTTP | Tipo | Cuándo | ¿Reintentar? |
 |---|---|---|---|---|
 | `malformed_request` | 400 | Rechazo definitivo | JSON inválido, campos desconocidos | No, corregir |
-| `validation_failed` | 422 | Rechazo definitivo | Payload bien formado pero inválido (email, contraseña corta, CUIT) | No, corregir |
+| `validation_failed` | 422 | Rechazo definitivo | Payload bien formado pero inválido (email, contraseña corta, CUIT, zona horaria en `PATCH /tenant`) | No, corregir |
 | `unsupported_media_type` | 415 | Rechazo definitivo | Falta `Content-Type: application/json`, o logo no PNG/JPEG | No |
 | `payload_too_large` | 413 | Rechazo definitivo | Body > límite (logo > 2 MB, JSON > 64 KB) | No |
 | `unauthenticated` | 401 | Rechazo definitivo | Sin sesión, sesión inválida, vencida o revocada | Iniciar sesión |
 | `invalid_credentials` | 401 | Rechazo definitivo | Email o contraseña incorrectos (mensaje único) | Sí, con otros datos |
 | `account_disabled` | 403 | Rechazo definitivo | Usuario desactivado con contraseña correcta | No |
-| `forbidden` | 403 | Rechazo definitivo | Operador en recurso de Administrador | No |
-| `not_found` | 404 | Rechazo definitivo | No existe **o es de otra empresa** | No |
+| `forbidden` | 403 | Rechazo definitivo | Operador en recurso de Administrador, o request de origen cruzado rechazado por `CrossOriginProtection` (DD-30) | No |
+| `not_found` | 404 | Rechazo definitivo | No existe **o es de otra empresa**; ruta inexistente bajo `/api/` | No |
 | `email_already_registered` | 409 | Rechazo definitivo | **Registro** con un email que ya tiene usuario. `title`: "Ya existe un usuario con ese email"; `detail`: "Ya existe un usuario con ese email. ¿Querés recuperar la contraseña?"; `suggested_action: "password_reset"` (DD-19, DD-21, INV-20) | No; ofrecer recuperar la contraseña |
 | `email_taken` | 409 | Rechazo definitivo | **Invitación** con un email que ya tiene usuario (en esta u otra empresa) | No, otro email |
 | `last_admin` | 409 | Rechazo definitivo | Desactivar o bajar al último Administrador activo | No |
-| `invalid_state` | 409 | Rechazo definitivo | Transición no válida (p. ej. reactivar un activo) | No |
+| `invalid_state` | 409 | Rechazo definitivo | Transición no válida (p. ej. reactivar un activo, cambiar el rol de un desactivado) | No |
 | `token_invalid` | 400 | Rechazo definitivo | Token inexistente, vencido, usado o revocado (un solo código para no filtrar cuál) | No, pedir otro |
 | `login_locked` | 429 | **Recuperable** | Bloqueo de 15 min vigente | Sí, después de `Retry-After` |
 | `rate_limited` | 429 | **Recuperable** | Límite por IP/email | Sí, después de `Retry-After` |
@@ -670,9 +726,11 @@ store (sqlc/pgx) ──► platform/db.MapError ──► errores de dominio ─
 - El único lugar que conoce códigos HTTP es la capa HTTP de cada módulo (`http.go`), a través de
   una tabla de mapeo **por endpoint** cuando el mismo error de dominio tiene distinto significado
   para la UI (DD-21); `platform/httpx` escribe el problem+json y tiene el mapeo por defecto de los
-  errores de `platform/db`.
+  errores de `platform/db`, el `404`/`405` del router chi y el rechazo de CSRF (DD-30).
 - Los errores se envuelven con `fmt.Errorf("...: %w", err)` para conservar la causa en los logs;
   la respuesta HTTP nunca incluye el mensaje envuelto.
+- Fuera de `/api/`, el handler de la SPA responde texto plano (`404` de un archivo inexistente,
+  `405`, `503` sin `index.html`): no son respuestas de la API y no usan problem+json (ADR-019).
 
 ### 9.3 Errores centinela (firmas)
 
@@ -697,7 +755,7 @@ var (
     ErrEmailTaken         = errors.New("identity: email taken") // signup → email_already_registered; invitación → email_taken
     ErrTokenInvalid       = errors.New("identity: token invalid")
     ErrLastAdmin          = errors.New("identity: last active admin")
-    ErrInvalidTransition  = errors.New("identity: invalid status transition")
+    ErrInvalidTransition  = errors.New("identity: invalid status transition") // incluye cambiar el rol de un disabled
     ErrUserNotFound       = errors.New("identity: user not found")
     ErrUnauthenticated    = errors.New("identity: unauthenticated")
 )
@@ -722,6 +780,7 @@ type PermanentError struct{ Err error } // el Mailer lo devuelve para fallos def
 type SuggestedAction string
 const SuggestedPasswordReset SuggestedAction = "password_reset"
 // WriteProblem acepta opciones; una de ellas agrega suggested_action al problem+json.
+func CSRFDenyHandler(log *slog.Logger) http.Handler // 403 problem+json code forbidden (DD-30)
 ```
 
 ### 9.4 Errores del worker (recuperable vs definitivo)
@@ -756,8 +815,9 @@ const SuggestedPasswordReset SuggestedAction = "password_reset"
 
 ### 10.2 CSRF
 
-1. `http.CrossOriginProtection` (Go ≥ 1.25) envuelve todo el router: rechaza métodos no seguros
-   de origen cruzado usando `Sec-Fetch-Site` y, si falta, comparando `Origin` con `Host`.
+1. `http.CrossOriginProtection` (Go ≥ 1.25) envuelve el mux raíz: rechaza métodos no seguros de
+   origen cruzado usando `Sec-Fetch-Site` y, si falta, comparando `Origin` con `Host`. Su *deny
+   handler* responde `403 problem+json` con `code: forbidden` (DD-30).
 2. `SameSite=Lax`: el navegador no manda la cookie en `POST` de otro sitio.
 3. Los endpoints JSON exigen `Content-Type: application/json` (`415` si no): un formulario HTML
    de otro sitio no puede mandarlo sin *preflight* CORS, y la API no habilita CORS.
@@ -766,6 +826,9 @@ La capa 1 deja pasar requests sin `Sec-Fetch-Site` ni `Origin` (navegadores muy 
 no navegador); las capas 2 y 3 cubren ese hueco. `PUT /tenant/logo` es `multipart` (enviable
 desde un formulario), así que depende de las capas 1 y 2.
 
+En desarrollo con el *proxy* de Vite, el navegador ve un solo origen (`http://localhost:5173`) y
+envía `Sec-Fetch-Site: same-origin`, que la capa 1 acepta sin configurar orígenes de confianza.
+
 ### 10.3 Amenazas y mitigaciones
 
 | Amenaza (OWASP 2021) | Vector concreto en 001 | Mitigación |
@@ -773,17 +836,21 @@ desde un formulario), así que depende de las capas 1 y 2.
 | A01 Broken Access Control | Leer o modificar usuarios/empresa de otra empresa por id (IDOR) | Filtro explícito + RLS con rol por empresa + FKs compuestas + `404` (INV-01..07, INV-12); tests de aislamiento en BD y HTTP (T-B110, T-B801..T-B804) |
 | A01 | Operador invita, cambia roles, reactiva o edita la empresa | `RequirePermission(settings.manage)` por grupo de rutas; test de matriz (T-B207) y por endpoint (T-B802) |
 | A01 | Dejar la empresa sin administrador por concurrencia | Lock de la fila `tenants` (INV-10) + tests concurrentes (T-B603, T-B604) |
+| A01 | Datos de otra empresa desde la caché del navegador en un celular compartido (logo con URL fija, JSON cacheado) | `no-store` en toda la API (DD-28); logo con `private, no-cache` + `ETag` por objeto (DD-23); INV-21; tests T-B203, T-B705, T-B801 |
 | A07 Identification & Auth Failures | Fuerza bruta / *credential stuffing* | Bloqueo 5/15 min por email + rate limit por IP + argon2id |
 | A07 | Enumeración de cuentas | **Aceptada solo en el registro** (P-4, DD-19): `409 email_already_registered` confirma la existencia, sin otros datos (INV-20). Mitigación: rate limit de signup 5/h por IP contando rechazos (DD-9), costo de argon2id por intento, métrica y evento `signup_email_exists` para detectar barridos. Login y reset **siguen no enumerables** (INV-13): mensajes idénticos, hash ficticio, bloqueo también para emails inexistentes, `202` constante |
 | A07 | Robo de sesión | `HttpOnly`, `Secure`, `__Host-`, revocación inmediata, 24 h de inactividad / 7 días de vida |
 | A07 | Token de reset/invitación filtrado | Un solo uso, vencimiento corto, hash en base, fragmento en el enlace (DD-14), borrado del payload del outbox (INV-09) |
 | A03 Injection | SQL | Solo queries parametrizadas de sqlc; el único identificador dinámico (nombre de rol) se deriva de un UUID y se sanea con `pgx.Identifier`; la función de aprovisionamiento recibe `uuid` tipado y usa `format('%I')` |
+| A03 | XSS en la SPA | CSP con `script-src 'self'` sin inline en todo documento HTML (§10.7, ADR-019); la cookie de sesión es `HttpOnly` |
 | A03 | Inyección de cabeceras de email | Emails validados con `net/mail.ParseAddress` y sin `\r`/`\n`; el nombre del invitado no va en cabeceras |
 | A04 Insecure Design | CSRF | §10.2 |
-| A05 Security Misconfiguration | Errores con detalles internos | problem+json sin stack ni SQL; headers `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store` en `/auth/*` y `/me` |
+| A05 Security Misconfiguration | Errores con detalles internos | problem+json sin stack ni SQL; headers `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` en **todas** las respuestas (API, ops y SPA); `Cache-Control: no-store` en toda la API (DD-28) |
+| A05 | `http://` o cookie sin `Secure` en producción | La configuración solo acepta `http://` para `localhost`/`127.0.0.1` y `COOKIE_SECURE=false` solo con esos orígenes (DD-24, T-B002) |
 | A05 | Privilegios excesivos en BD | `crm_app` sin privilegios; roles por columna; `CREATEROLE` aislado en una función `SECURITY DEFINER` (§10.4) |
+| A05 | SPA desactualizada o HTML cacheado como JS | `index.html` con `no-cache`; archivos inexistentes con extensión → `404` (nunca `index.html`); assets con hash `immutable` (§10.7) |
 | A08 Software & Data Integrity | Subida de archivo malicioso (SVG con script, bomba de descompresión) | Solo PNG/JPEG por *magic bytes*, 2 MB, `image.DecodeConfig` ≤ 2000×2000, se sirve con tipo fijo y `nosniff` |
-| A09 Logging Failures | Falta de trazas de seguridad | `audit_log` (FR-008) + logs con `security_event` (login fallido, bloqueo, violación RLS, email existente en registro) |
+| A09 Logging Failures | Falta de trazas de seguridad | `audit_log` (FR-008) + logs con `security_event` (login fallido, bloqueo, violación RLS, email existente en registro, CSRF rechazado) |
 | A09 | Secretos en logs | Redacción de `password`, `token`, `Cookie`, `Set-Cookie`, payload del outbox |
 | DoS de aplicación | Ráfaga de hashes, bodies grandes | Semáforo de argon2id, `http.MaxBytesReader`, timeouts de servidor (`ReadHeaderTimeout` 5 s, `ReadTimeout` 15 s, `WriteTimeout` 30 s), `statement_timeout` 5 s en `crm_app` |
 
@@ -811,9 +878,18 @@ desde un formulario), así que depende de las capas 1 y 2.
 Variables de entorno (nunca en el repo, nunca en logs): `DATABASE_URL` (`crm_app`),
 `DATABASE_MIGRATION_URL` (`crm_owner`, solo para `crm migrate`), `AUTH_HMAC_KEY` (≥ 32 bytes,
 para `login_throttles`), `SMTP_HOST/PORT/USERNAME/PASSWORD/FROM`, `S3_ENDPOINT/BUCKET/ACCESS_KEY/
-SECRET_KEY/USE_SSL`, `APP_BASE_URL`, `APP_LINK_RESET/VERIFY/INVITATION` (paths de la SPA),
-`SESSION_IDLE` (default `24h`), `SESSION_ABSOLUTE` (default `168h`), `COOKIE_SECURE` (solo
-`false` en tests sin TLS).
+SECRET_KEY/USE_SSL`, `APP_BASE_URL`, `APP_LINK_RESET` (default `/reset-password`),
+`APP_LINK_VERIFY` (default `/verify-email`), `APP_LINK_INVITATION` (default `/accept-invitation`),
+`SESSION_IDLE` (default `24h`), `SESSION_ABSOLUTE` (default `168h`), `COOKIE_SECURE` (default
+`true`).
+
+Reglas de validación de `APP_BASE_URL` y `COOKIE_SECURE` (DD-24):
+
+| `APP_BASE_URL` | `COOKIE_SECURE=true` | `COOKIE_SECURE=false` |
+|---|---|---|
+| `https://…` | válido (producción) | error |
+| `http://localhost[:puerto]` o `http://127.0.0.1[:puerto]` | válido (desarrollo con navegador: Vite o el binario) | válido solo para clientes no navegador (tests Go sobre `http://`) |
+| cualquier otro `http://` | error | error |
 
 ### 10.6 Datos personales
 
@@ -822,19 +898,44 @@ Marcados en `data-model.md` §5: `users.email`, `users.name`, `sessions.ip`, `se
 `tenants` (el CUIT de un monotributista identifica a una persona). Secretos derivados:
 `users.password_hash`, `*.token_hash`.
 
+### 10.7 Cabeceras y caché por tipo de respuesta (DD-22, DD-23, DD-28, DD-29; ADR-019)
+
+| Respuesta | `Cache-Control` | Otras cabeceras | Compresión |
+|---|---|---|---|
+| Toda respuesta (API, ops, SPA) | — | `X-Request-Id`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Strict-Transport-Security` | — |
+| `/api/v1/*` (JSON, problem+json, `202`, `204`) | `no-store` | — | No |
+| `GET /api/v1/tenant/logo` (`200`, `304`) | `private, no-cache` | `ETag`, `Content-Type` fijo (`image/png` o `image/jpeg`) | No (imagen ya comprimida) |
+| `/healthz`, `/readyz` | `no-store` | — | No |
+| `index.html` y el *fallback* de rutas de la SPA | `no-cache` | `Content-Security-Policy` (abajo) | gzip |
+| `/assets/*` (nombre con hash) | `public, max-age=31536000, immutable` | — | gzip (JS, CSS) |
+| `/sw.js`, `/manifest.webmanifest`, `/offline.html` | `no-cache` | tipos `text/javascript`, `application/manifest+json`, `text/html` + CSP | gzip |
+| `/icons/*`, `/favicon.*` | `public, max-age=86400` | — | No |
+| Archivo con extensión inexistente (fuera de `/api/`) | `no-store` | `text/plain`, `404` (nunca `index.html`) | — |
+
+CSP de los documentos HTML (ADR-019):
+
+```text
+default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:;
+font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none';
+base-uri 'none'; form-action 'self'; frame-ancestors 'none'
+```
+
+Las reglas del handler de la SPA (métodos, *fallback*, `503` sin `index.html`) son las de
+`ui.md` §21.1; las prueba T-F007 (código Go, lo implementa `backend-developer`).
+
 ---
 
 ## 11. Estructura de paquetes
 
 ```
 crm/
-├── cmd/crm/                    # main: subcomandos `serve`, `migrate`, `tenants reprovision-roles`
+├── cmd/crm/                    # main: subcomandos `serve`, `migrate`, `tenants reprovision-roles`; importa time/tzdata
 ├── internal/
-│   ├── app/                    # composition root: arma dependencias, router raíz, arranca el worker
+│   ├── app/                    # composition root: dependencias, mux raíz (API, ops, SPA), arranca el worker
 │   ├── platform/               # técnico, sin dominio
-│   │   ├── config/             # env → struct tipado; valida al arrancar
+│   │   ├── config/             # env → struct tipado; valida al arrancar (DD-24)
 │   │   ├── db/                 # pgxpool, TxRunner/Tx, roles, MapError, interfaz DBTX de sqlc
-│   │   ├── httpx/              # problem+json, DecodeJSON, middlewares genéricos, security headers
+│   │   ├── httpx/              # problem+json, DecodeJSON, middlewares genéricos, security headers, CSRF deny
 │   │   ├── clock/              # Clock inyectable (tests de vencimientos, DD-18)
 │   │   ├── ids/                # UUIDv7
 │   │   ├── securetoken/        # generación de tokens aleatorios y su hash SHA-256
@@ -861,13 +962,16 @@ crm/
 │   │   ├── http.go
 │   │   └── store/
 │   └── testsupport/            # solo tests: pgtest (contenedor + bootstrap + migraciones), fixture, contrato
+├── web/                        # frontend (ADR-015, ADR-019); en Go, solo el paquete `web`:
+│   ├── embed.go                #   //go:embed all:dist + NewHandler (T-F007/T-F008)
+│   └── dist/                   #   build de Vite (ignorado por git salvo .gitkeep)
 ├── db/
 │   ├── bootstrap/              # SQL de roles de clúster (lo corre el DBA una vez por clúster)
 │   └── migrations/             # goose, SQL versionado; paquete Go con //go:embed
 ├── sqlc.yaml
-├── Makefile                    # generate, lint, test, test-int, check, db-reset
+├── Makefile                    # generate, lint, test, test-int, check, db-reset (+ web-build, build, check-all: T-F009)
 ├── compose.yaml                # dev: postgres:18, mailpit, minio
-└── .github/workflows/ci.yml    # make check con Docker disponible
+└── .github/workflows/ci.yml    # make check con Docker disponible (+ job de frontend: T-F009)
 ```
 
 Por qué así en Go (resumen de ADR-001):
@@ -875,7 +979,9 @@ Por qué así en Go (resumen de ADR-001):
 - **Paquetes por dominio, no por capa técnica** (`identity/` en vez de `handlers/`, `services/`,
   `repositories/`): en Go un paquete es la unidad de encapsulamiento; agrupar por dominio deja
   lo interno sin exportar y evita paquetes "utils" que todos importan.
-- **`internal/`**: el compilador impide que código fuera del módulo importe esos paquetes.
+- **`internal/`**: el compilador impide que código fuera del módulo importe esos paquetes. La
+  única excepción es `web`: `go:embed` solo embebe archivos que están en el directorio del
+  paquete o debajo, y el build de Vite vive en `web/dist` (ADR-019, nota en ADR-001).
 - **Interfaces del lado del consumidor**: `tenant` declara `AdminOnboarding` con solo los tres
   métodos que necesita de `identity`; `identity` no sabe que existe (en Go una interfaz se
   satisface sin declararlo). Así la dependencia va en un solo sentido y los tests de `tenant`
@@ -884,10 +990,26 @@ Por qué así en Go (resumen de ADR-001):
   el suyo hace visible (y verificable) qué tablas toca cada uno.
 - **`db.Tx` explícito** en los métodos que participan de una transacción ajena: la firma dice
   que la operación es parte de algo atómico más grande (INV-14).
+- **Mux raíz de la librería estándar + chi para la API**: el `ServeMux` alcanza para tres destinos
+  fijos; chi sigue siendo el router de la API por los grupos con permisos y `chi.Walk` (ADR-002).
 
 ### 11.1 Interfaces que definen las fronteras (firmas)
 
 ```go
+// ---------- internal/app ----------
+type RootDeps struct {
+    API       http.Handler // router chi montado en /api/ (con no-store, rate limit, auth)
+    Liveness  http.Handler // GET /healthz
+    Readiness http.Handler // GET /readyz
+    SPA       http.Handler // web.NewHandler(dist); en tests del backend, un stub
+}
+// NewRootHandler arma el mux raíz y lo envuelve con los middlewares comunes (DD-22).
+func NewRootHandler(deps RootDeps, common CommonMiddleware) http.Handler
+
+// ---------- web (paquete en la raíz del repo) ----------
+func DistFS() fs.FS                     // sub-FS "dist" del embed
+func NewHandler(dist fs.FS) http.Handler // reglas de ui.md §21.1–21.2, gzip incluido (DD-29)
+
 // ---------- internal/platform/db ----------
 type DBTX interface { // la que genera sqlc para pgx/v5
     Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
@@ -1040,6 +1162,16 @@ type AdminOnboarding interface {
     IssueEmailVerification(ctx context.Context, tx db.Tx, tenantID, userID uuid.UUID) error // token + outbox
 }
 
+// Logo con validador de caché (DD-23): el ETag es el UUID del objeto.
+type LogoResult struct {
+    ETag        string        // `"<uuid>"`
+    NotModified bool          // If-None-Match coincidió: no se leyó S3
+    Body        io.ReadCloser // nil si NotModified
+    ContentType string
+    Size        int64
+}
+// GetLogo(ctx, p authz.Principal, ifNoneMatch string) (LogoResult, error) // ErrLogoNotFound
+
 // ---------- Casos de uso de identity (abren su propia transacción) ----------
 // Se muestran como interfaz para documentar la frontera; en el código es un struct concreto
 // (*identity.Service) y cada consumidor declara la interfaz chica que usa.
@@ -1051,11 +1183,11 @@ type IdentityUseCases interface {
     ConfirmPasswordReset(ctx context.Context, rawToken, newPassword string, meta RequestMeta) error
     ConfirmEmailVerification(ctx context.Context, rawToken string, meta RequestMeta) error
     ResendEmailVerification(ctx context.Context, p authz.Principal) error
-    Invite(ctx context.Context, p authz.Principal, email string, role authz.Role, meta RequestMeta) (u User, reissued bool, err error)
+    Invite(ctx context.Context, p authz.Principal, email string, role authz.Role, meta RequestMeta) (u User, reissued bool, err error) // DD-26
     PreviewInvitation(ctx context.Context, rawToken string) (InvitationPreview, error)
     AcceptInvitation(ctx context.Context, rawToken, name, password string, meta RequestMeta) (SessionResult, error)
-    ListUsers(ctx context.Context, p authz.Principal) ([]User, error)
-    ChangeRole(ctx context.Context, p authz.Principal, userID uuid.UUID, role authz.Role, meta RequestMeta) (User, error)
+    ListUsers(ctx context.Context, p authz.Principal) ([]User, error) // incluye invitation_expires_at (DD-25)
+    ChangeRole(ctx context.Context, p authz.Principal, userID uuid.UUID, role authz.Role, meta RequestMeta) (User, error) // invited o active (DD-26)
     Deactivate(ctx context.Context, p authz.Principal, userID uuid.UUID, meta RequestMeta) (User, error)
     Reactivate(ctx context.Context, p authz.Principal, userID uuid.UUID, meta RequestMeta) (User, error)
     Me(ctx context.Context, p authz.Principal) (MeView, error)
@@ -1070,11 +1202,12 @@ type IdentityUseCases interface {
 
 | Señal | Dónde | Campos |
 |---|---|---|
-| Log por request | `httpx` middleware | `request_id`, `method`, `route` (patrón chi, no la URL cruda), `status`, `duration_ms`, `tenant_id`, `user_id`, `ip` |
-| Evento de seguridad | `identity`, `tenant`, `db` | `security_event` ∈ {`login_failed`, `login_locked`, `login_disabled`, `signup_email_exists`, `rls_violation`, `privilege_error`, `rate_limited`}, `tenant_id` si se conoce, `email_hmac` (nunca el email), `ip` |
+| Log por request | middleware común | `request_id`, `method`, `route` (patrón chi en la API, `ops` o `spa` fuera de ella; nunca la URL cruda), `status`, `duration_ms`, `tenant_id`, `user_id`, `ip` |
+| Evento de seguridad | `identity`, `tenant`, `db`, `httpx` | `security_event` ∈ {`login_failed`, `login_locked`, `login_disabled`, `signup_email_exists`, `csrf_rejected`, `rls_violation`, `privilege_error`, `rate_limited`}, `tenant_id` si se conoce, `email_hmac` (nunca el email), `ip` |
+| Evento operativo | `tenant` | `event=signup_timezone_defaulted` (DD-27), sin datos personales |
 | Worker | `outbox` | `message_id`, `tenant_id`, `template`, `attempt`, `outcome` ∈ {`sent`,`retry`,`failed`}, `smtp_code` |
 | Auditoría de negocio | `audit_log` | ver `data-model.md` §2.6 (acciones de FR-008 y más) |
-| Métricas | `expvar` (stdlib) en `/debug/vars`, **solo** en la interfaz interna (`METRICS_ADDR`, default `127.0.0.1:9090`) | `http_requests_total{status}`, `login_failed_total`, `login_locked_total`, `signup_email_exists_total`, `outbox_pending`, `outbox_oldest_pending_seconds`, `outbox_failed_total`, `db_pool_acquire_wait_ms`, `tenant_roles_total` |
+| Métricas | `expvar` (stdlib) en `/debug/vars`, **solo** en la interfaz interna (`METRICS_ADDR`, default `127.0.0.1:9090`) | `http_requests_total{status}`, `login_failed_total`, `login_locked_total`, `signup_email_exists_total`, `csrf_rejected_total`, `outbox_pending`, `outbox_oldest_pending_seconds`, `outbox_failed_total`, `db_pool_acquire_wait_ms`, `tenant_roles_total` |
 
 ### 12.2 Health checks
 
@@ -1082,6 +1215,7 @@ type IdentityUseCases interface {
 - `GET /readyz`: 200 si `SELECT 1` bajo `crm_auth` responde en < 1 s y la versión de migración
   en la base es la que espera el binario; si no, 503. Al arrancar se loguea `server_version`
   (control de R-4).
+- Ambos están en el mux raíz, fuera de `/api/` y fuera del handler de la SPA (DD-22).
 
 ### 12.3 Runbook: señal → qué mirar primero
 
@@ -1093,6 +1227,8 @@ type IdentityUseCases interface {
 | Algún 500 con `security_event=rls_violation` | alerta inmediata | Es un bug de aislamiento: request id → handler → query. Tratar como incidente crítico (principio III) |
 | Muchos `429 login_locked` | `login_locked_total` | Ataque de fuerza bruta o bloqueo masivo; IPs en logs; ajustar rate limit |
 | Posible barrido de emails por el registro | `signup_email_exists_total` crece sin registros exitosos equivalentes | IPs de los eventos `signup_email_exists`; bajar el límite de signup o bloquear en el proxy (DD-19) |
+| `403 forbidden` en masa desde la SPA | `csrf_rejected_total` | El proxy o el hosting está cambiando `Host`/`Origin` o quitando `Sec-Fetch-Site`; revisar su configuración antes de tocar CSRF |
+| La app muestra "La interfaz no está compilada" | `503` de la SPA | El binario se compiló sin `make web-build` (ADR-019) |
 | Latencia alta generalizada | `duration_ms` p95, `db_pool_acquire_wait_ms` | Pool agotado (transacciones largas); `pg_stat_activity`: cada empresa aparece con su rol (`crm_t_…`), lo que ubica la empresa |
 | Registro lento | `duration_ms` de `/auth/signup` | Costo de `CREATE ROLE`/`GRANT` con muchos roles (riesgo R-2); `tenant_roles_total` |
 
@@ -1115,13 +1251,15 @@ type IdentityUseCases interface {
 | Operación | Target (p95, en servidor, sin red) | Cómo se sostiene |
 |---|---|---|
 | Requests autenticados de lectura (`/me`, `/tenant`, `/users`) | < 50 ms | Resolución de sesión por índice único `token_hash`; una transacción con dos cambios de rol; tablas chicas |
+| Revalidación del logo (`304`) | < 50 ms | Solo lee la fila de la empresa y compara el `ETag`; no toca S3 (DD-23) |
 | Login | < 400 ms | Dominado por argon2id; el semáforo evita degradación por concurrencia |
 | Registro (`/auth/signup`) | < 1 s | argon2id + `CREATE ROLE` + inserts. SC-001 (3 min) es de punta a punta y tiene margen de sobra |
 | Subida de logo (2 MB) | < 2 s | Subida en streaming a S3 antes de la transacción |
 | Worker: demora de envío | 95 % de los emails despachados < 30 s tras el `COMMIT` | *Polling* cada 2 s, lote de 10, `FOR UPDATE SKIP LOCKED` |
 
 Con sesiones de 24 h de inactividad (DD-10) habrá más logins que con el diseño anterior; a la
-escala supuesta (S-3) sigue siendo un volumen chico para el semáforo de argon2id.
+escala supuesta (S-3) sigue siendo un volumen chico para el semáforo de argon2id. Los objetivos de
+carga de la SPA (tamaños gzip, LCP) son del frontend (`ui.md` §8, T-F704).
 
 Los targets se verifican en la Fase 9 con un benchmark en un contenedor con **10.000 roles de
 empresa** (T-B905, riesgo R-2): si `SET LOCAL ROLE` o el registro superan los targets, se reabre
@@ -1135,8 +1273,8 @@ ADR-005.
 
 | ID | Supuesto | Impacto si es falso |
 |---|---|---|
-| S-1 | Una sola instancia del binario en el MVP (API + worker) | Rate limit por instancia; el worker ya soporta varias instancias (`SKIP LOCKED`) |
-| S-2 | La PWA se sirve desde el **mismo origen** que la API (`/api/v1` detrás del mismo host) | Con otro origen harían falta CORS con credenciales y cambiaría la estrategia CSRF (ADR nuevo) |
+| S-1 | Una sola instancia del binario en el MVP (API + worker + SPA) | Rate limit por instancia; el worker ya soporta varias instancias (`SKIP LOCKED`) |
+| S-2 | La PWA se sirve desde el **mismo origen** que la API; el binario la embebe (ADR-019) | Con otro origen harían falta CORS con credenciales y cambiaría la estrategia CSRF (ADR nuevo) |
 | S-3 | Escala: ~1.000 empresas, ~5 usuarios c/u, < 20 req/s | Revisar pool y R-2 si se esperan decenas de miles de empresas |
 | S-4 | El hosting de PostgreSQL permite: un rol no superusuario con `CREATEROLE`, funciones `SECURITY DEFINER` y controlar `pg_hba` o equivalente | **Sin esto no se puede usar el rol por empresa** (P-1) |
 | S-5 | La auditoría se conserva indefinidamente; no hay pantalla para consultarla en 001 | Se agrega en una spec futura |
@@ -1144,7 +1282,9 @@ ADR-005.
 | S-7 | `GET /users` sin paginación (pocas decenas de usuarios por empresa) | Agregar paginación por cursor |
 | S-8 | `PATCH /tenant`: última escritura gana (sin `ETag`) | Un solo administrador suele editar estos datos |
 | S-9 | Pedir reset para un usuario `disabled` o un email inexistente no envía nada; para un `invited` reemite la invitación (DD-20). La respuesta siempre es `202` | — |
-| S-10 | Los *paths* de la SPA para los enlaces de email son configurables (`APP_LINK_*`); `ui.md` fija los valores | — |
+| S-10 | Las rutas de la SPA para los enlaces de email son `/reset-password`, `/verify-email` y `/accept-invitation` (confirmadas por el usuario; defaults de `APP_LINK_*`, DD-14) | Si `ui.md` las cambia, se cambian los defaults |
+| S-11 | El hosting no comprime las respuestas por su cuenta; si lo hace, se quita `gzhttp` (DD-29) | Doble compresión evitada quitando el wrapper |
+| S-12 | Los navegadores de desarrollo (Chrome, Firefox) aceptan la cookie `Secure` servida por `http://localhost` (S-F3 de `ui.md`, lo valida T-F006) | Desarrollo con TLS local |
 
 ### 14.2 Preguntas
 
@@ -1173,6 +1313,7 @@ ADR-005.
 | R-9 | Complejidad para el equipo (8 roles, bootstrap fuera de goose) | Media | Medio | ADR-004/005 explican el porqué; tests de catálogo detectan desvíos; `make db-reset` en desarrollo |
 | R-10 | Dependencias con soporte OpenAPI 3.1 todavía jóvenes | Baja | Bajo | Validación en tests con `libopenapi-validator`; sin generación de servidor (ADR-014) |
 | R-11 | Enumeración masiva de emails por el registro (aceptada en P-4) usando muchas IPs | Media | Bajo | Rate limit por IP contando rechazos, costo de argon2id por intento, métrica `signup_email_exists_total` y runbook (§12.3); si se vuelve un problema, CAPTCHA o límite en el proxy (spec futura) |
+| R-12 | Un proxy del hosting reescribe `Host` u `Origin` y `CrossOriginProtection` rechaza la SPA | Baja | Medio | Evento `csrf_rejected` y runbook (§12.3); si hace falta, `AddTrustedOrigin` con el origen público (cambio de configuración, no de diseño) |
 
 ---
 
@@ -1184,16 +1325,19 @@ La actualización de la documentación va **en el mismo cambio** que el código.
 |---|---|
 | Un endpoint (ruta, payload, código de error) | `contracts/openapi.yaml` (canónico) + §8 de este plan + la tabla de rutas de T-B801/T-B802 + `ui.md` si la consume |
 | Un `code` de error o un `suggested_action` | §9.1 + `components/schemas/ErrorCode` / `SuggestedAction` del contrato + mapeo en el `http.go` del módulo + `ui.md` |
-| Una transición de estado de usuario o invitación | §4.6 + la tabla de transiciones en `identity/user.go` + tests T-B603/T-B604 + catálogo de auditoría de `data-model.md` §2.6 |
+| Una transición de estado de usuario o invitación, o las reglas de cambio de rol | §4.6 + DD-26 + la tabla de transiciones en `identity/user.go` + tests T-B601/T-B603/T-B604 + catálogo de auditoría de `data-model.md` §2.6 |
 | La matriz de permisos | `authz` + tabla de T-B207 + `Permission` en el contrato + FR-007 (spec, con aprobación) + ADR-013 si cambia el mecanismo |
 | El modelo de datos | `data-model.md` (tablas, ER, privilegios por rol) + migración nueva + lista de tablas de T-B107 |
 | Una tabla de empresa nueva (cualquier spec) | Checklist de `data-model.md` §6; los tests de catálogo (T-B107..T-B110) la verifican solos |
-| Privilegios de un rol de sistema | `data-model.md` §3.4 + test T-B109 + §4.4 de este plan |
-| La duración de la sesión | DD-10 + ADR-006 + defaults de `platform/config` + T-B002/T-B305/T-B307 + descripción de la cookie en el contrato |
+| Privilegios o políticas de un rol de sistema | `data-model.md` §3.4 + test T-B109 + §4.4 de este plan |
+| La duración de la sesión | DD-10 + ADR-006 (con ADR nuevo, ya aprobado) + defaults de `platform/config` + T-B002/T-B305/T-B307 + descripción de la cookie en el contrato |
 | La postura de enumeración (registro, login, reset) | DD-19 + INV-13/INV-20 + research R-15 + tests T-B305/T-B402/T-B404/T-B501/T-B506 |
-| Estrategia de aislamiento, sesiones, email, archivos | ADR nuevo que reemplace al vigente (nunca editar uno aceptado) |
+| Las cabeceras de caché de la API o del logo | DD-23/DD-28 + INV-21 + §10.7 + contrato (`/tenant/logo`, descripción general) + T-B203/T-B705 + nota de ADR-011 si cambia la política para archivos |
+| El montaje del mux raíz, las cabeceras o la CSP de la SPA | DD-22/DD-29 + §10.7 + ADR-019 + `ui.md` §21 + T-B004/T-F007 |
+| Las reglas de `APP_BASE_URL`/`COOKIE_SECURE` o los `APP_LINK_*` | DD-14/DD-24 + §10.5 + T-B002 + `ui.md` §6.2/§21.3 |
+| Estrategia de aislamiento, sesiones, email, archivos | ADR nuevo que reemplace al vigente (nunca editar uno aceptado; solo notas fechadas de detalle) |
 | El bootstrap de roles o la operación de backups | `db/bootstrap/` + §12.4 + ADR-004/005 + README (operación) |
-| Un término nuevo (Invitación, Sesión, Outbox) | `docs/glosario.md` (propuesta en §17) |
+| Un término nuevo | `docs/glosario.md` |
 
 ---
 
@@ -1208,3 +1352,32 @@ La actualización de la documentación va **en el mismo cambio** que el código.
 | Token de un solo uso | `UserToken` | Secreto enviado por email para verificar el email, restablecer la contraseña o aceptar una invitación. |
 | Permiso | `Permission` | Capacidad concreta de la matriz de FR-007 (p. ej. `settings.manage`). |
 | Mensaje saliente | `OutboxMessage` | Email pendiente de envío, guardado junto con la operación que lo originó. |
+
+---
+
+## 18. Cambios posteriores a la aprobación (2026-09-29)
+
+Hallazgos del `frontend-architect` (`ui.md` §27), aprobados por el usuario en su totalidad
+(incluida la dependencia `gzhttp`), y decisiones del usuario sobre el frontend que afectan al
+backend. Ninguno cambia una decisión aceptada de ADR-001 a ADR-014: son detalles que se registran
+como `DD-n` y, donde corresponde, como **notas fechadas** en los ADR (regla de
+`docs/adr/README.md`). Por eso no se creó un ADR nuevo.
+
+| Hallazgo | Qué cambió | Dónde | ADR |
+|---|---|---|---|
+| H-1 Montaje de la SPA | Mux raíz: `/api/` → chi, ops, resto → `web` | DD-22, INV-22, §4.1, §11, §11.1; T-B004/T-B005/T-B011 | Notas en ADR-001 y ADR-002; decisión en ADR-019 |
+| H-2 Caché del logo | `private, no-cache` + `ETag` por objeto; parámetro `v` ignorado; `304` | DD-23, INV-21, §10.7; contrato; T-B703/T-B705/T-B801 | Nota en ADR-011 |
+| H-3 Desarrollo local | `http://localhost`/`127.0.0.1` con `COOKIE_SECURE=true` | DD-24, §10.5; T-B002 | Nota en ADR-006 |
+| H-4 Invitación vencida | `invitation_expires_at` informa la última aunque haya vencido; la limpieza la conserva | DD-25; contrato; `data-model.md` §2.4/§3.4; T-B606/T-B901 | — |
+| H-5 Rol de un invitado | Reinvitar con otro rol lo cambia; `PUT …/role` para `invited`; `disabled` → `invalid_state` | DD-26, §4.6; contrato; `data-model.md` §2.6; T-B601/T-B603/T-B606 | — |
+| H-6 Zona horaria del registro | Desconocida → default; `time/tzdata` embebido | DD-27; contrato; T-B303 | — |
+| H-7 `no-store` | En toda la API salvo el logo | DD-28, INV-21, §10.7; contrato; T-B203 | — |
+| H-8 Cabeceras y gzip de la SPA | Tabla de cabeceras y CSP; `gzhttp` aprobada solo para la SPA | DD-29, §10.7, §1 | Decisión en ADR-019 (la aprobación de la dependencia queda registrada acá) |
+| H-9 Rechazo de CSRF | *Deny handler* problem+json `forbidden` | DD-30, §10.2, §9.1; T-B203 | Nota en ADR-006 |
+| Rutas en inglés | Defaults de `APP_LINK_*` confirmados | DD-14, §10.5, S-10; T-B002/T-B213 | — |
+| Logo grande | El navegador lo achica; los límites del backend no cambian | DD-11 | — |
+
+Coordinación con la sección Frontend de `tasks.md`: T-F007 y T-F008 son código Go (paquete `web` y
+cableado de la SPA en el mux raíz), las implementa `backend-developer` y dependen de T-B005 (mux
+raíz con el punto de inyección `RootDeps.SPA`) y T-B204 (middlewares comunes). La numeración no
+cambia.

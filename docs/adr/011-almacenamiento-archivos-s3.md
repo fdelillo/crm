@@ -4,6 +4,17 @@
 **Fecha**: 2026-09-27
 **Origen**: spec 001 (logo de la empresa); lo reutilizan 004 (adjuntos) y 005 (PDF)
 
+> **Nota 2026-09-29 (detalle; no cambia la decisión)**, por el hallazgo H-2: los archivos de una
+> empresa que sirve el backend usan `Cache-Control: private, no-cache` + `ETag` propio de cada
+> objeto (en el logo, el UUIDv7 de su clave), y responden `304 Not Modified` ante un
+> `If-None-Match` que coincide **sin leer el objeto de S3** (DD-23 del plan de 001). Nunca se
+> usa `max-age` sobre una URL que es la misma para todas las empresas (`/api/v1/tenant/logo`):
+> un caché con vida fija podría mostrar el logo de otra empresa en un navegador compartido. El
+> cliente puede agregar un parámetro `v` para forzar una URL nueva tras un cambio; el servidor
+> lo ignora. El resto de la API lleva `Cache-Control: no-store` (DD-28). No se crea un ADR nuevo
+> porque el almacenamiento, el bucket privado y la subida vía backend no cambian: se fija la
+> política de caché de la respuesta.
+
 ## Contexto
 
 La constitución fija almacenamiento compatible con S3 para logos, adjuntos y PDFs. En 001 se sube
