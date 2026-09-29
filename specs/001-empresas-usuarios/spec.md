@@ -2,7 +2,7 @@
 
 **Rama**: `001-empresas-usuarios`
 **Creada**: 2026-09-27
-**Estado**: Borrador
+**Estado**: Aprobada (2026-09-29)
 **Entrada**: El sistema es SaaS multiempresa. Cada empresa se registra, invita a su
 equipo y controla qué ve cada usuario (Administrador / Operador). El acceso es con
 email y contraseña.
