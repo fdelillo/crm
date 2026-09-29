@@ -965,11 +965,752 @@ llama a la función como `crm_signup`).
 
 ## Frontend
 
-> **Pendiente: `frontend-architect`.** Esta sección la escribe el arquitecto de frontend a partir
-> de `ui.md`. Insumos del backend que necesita: `contracts/openapi.yaml` (canónico), los `code`
-> de error de `plan.md` §9.1 y el campo `suggested_action` (en 001, `password_reset` en el `409`
-> del registro: ofrecer "¿Querés recuperar la contraseña?" con el email ya ingresado), el aviso de
-> email sin verificar a partir de `user.email_verified` de `/me` (no bloquea nada, P-2), la lista
-> `permissions` de `/me` (solo para UX; la autorización es del servidor), la expiración de sesión
-> (24 h sin uso / 7 días: la UI debe manejar un `401` en cualquier request volviendo al login) y
-> los enlaces de email con el token en el fragmento (DD-14), cuyos *paths* debe fijar `ui.md`.
+Autor: `frontend-architect`. Implementa: `frontend-developer`, **una fase por invocación** (modo
+en `.claude/dev-mode`). Diseño: [`ui.md`](ui.md) · ADR-015 a ADR-023.
+
+### Convenciones de esta sección
+
+- `[T]` = tarea de test. Va **antes** de la tarea de código que la hace pasar, y el test debe
+  fallar por la razón correcta antes de implementar (Red).
+- Trazabilidad: `US-n` (historia de la spec), `FR-`, `SC-`, `P-` (plan), `DD-` (plan), `BR-F`,
+  `INV-F`, `DD-F`, `NFR-F`, `H-` (hallazgos para el backend) y secciones de `ui.md`; `ADR-`.
+- **Se prueba lo que el usuario percibe**: consultas por rol y nombre accesible
+  (`getByRole('button', { name: 'Crear cuenta' })`), nunca por clase CSS ni estructura del DOM;
+  nada de estado interno ni conteo de renders.
+- Tests de pantalla con el **árbol de rutas real** (`createMemoryRouter`), un `QueryClient` nuevo
+  por test y la red interceptada con **MSW**; handlers y fixtures tipados con los tipos generados
+  del contrato y con datos ficticios.
+- **Qué se sustituye y qué no** (ADR-022):
+
+  | Se sustituye | Nunca se sustituye |
+  |---|---|
+  | La red, con MSW (`onUnhandledRequest: 'error'`) | Hooks de datos, `QueryClient`, router, React Hook Form, Zod |
+  | El reloj (`vi.useFakeTimers` / `now` inyectado) donde hay horas | Componentes de shadcn/Radix (se usan a través de su accesibilidad) |
+  | `window.location.reload` (espía) en el test de `vite:preloadError` | El backend en los E2E (Fase F7) |
+  | `Intl.DateTimeFormat().resolvedOptions().timeZone` en el test del registro | |
+
+- En jsdom la barra inferior y la lateral están ambas en el DOM (no hay CSS aplicado): los tests
+  eligen con `within(getAllByRole('navigation', …)[0])` o equivalente.
+- Los tests con MSW **no** necesitan el backend. La **prueba independiente** de cada fase sí:
+  columna "Backend necesario" de la tabla de dependencias.
+- Versiones: la última estable de cada librería al arrancar la Fase F0, fijadas en
+  `package-lock.json`; T-F001 reporta las versiones elegidas.
+
+### Comandos de validación (los crea la Fase F0)
+
+Se corren en `web/` salvo los de `make`.
+
+| Comando | Qué corre |
+|---|---|
+| `npm run dev` | Vite en `:5173` con *proxy* de `/api` a `http://localhost:8080` |
+| `npm run gen:api` | `openapi-typescript` con `redocly.yaml` → `src/api/generated/NNN.ts` |
+| `npm run lint` | ESLint + `prettier --check` + verificación de que `gen:api` no produce diferencias |
+| `npm run typecheck` | `tsc -b` |
+| `npm test` | `vitest run --typecheck` (unitarios, pantallas con MSW y tests de tipos `*.test-d.ts`) |
+| `npm run build` | `tsc -b && vite build` (imprime tamaños gzip de cada chunk) |
+| `npm run check` | `lint` + `typecheck` + `test` + `build`. **Es el checkpoint de cada fase** |
+| `npm run e2e` | Playwright contra el binario (`make build`, `docker compose up`, `crm serve`) |
+| `make web-build` | `cd web && npm ci && npm run build` |
+| `make web-check` | `cd web && npm ci && npm run check` |
+| `make build` | `web-build` y después `go build` (binario con la SPA embebida) |
+| `make check-all` | `make check` (backend) + `make web-check` |
+
+### Dependencias con el backend
+
+| Fase | Necesita del backend (prueba independiente) | Hallazgos que deben estar acordados |
+|---|---|---|
+| F0 | T-B005 (router raíz) para T-F008; T-B013 (Makefile/CI) para T-F009 | H-1 (montaje de la SPA), H-8 (cabeceras y compresión); P-F3 (idioma de rutas) |
+| F1 | T-B310 (`/me`) | — |
+| F2 | T-B302, T-B306, T-B310 | H-3 (cookie en `localhost` para desarrollo), H-6 opcional |
+| F3 | T-B405 | — |
+| F4 | T-B507; `APP_LINK_*` configurados con los paths de `ui.md` §6.2 | — |
+| F5 | T-B607 | H-4, H-5 |
+| F6 | T-B706 | H-2 |
+| F7 | Todas las fases del backend hasta la 7 + `compose.yaml` | H-7, H-9 |
+
+---
+
+### Fase F0 — Esqueleto del frontend (Setup)
+
+**Objetivo**: existe `web/` con Vite + React + TypeScript, Tailwind + shadcn, router, TanStack
+Query, tipos generados del contrato, cliente HTTP con errores normalizados, harness de tests con
+MSW, lint; el binario Go embebe y sirve la SPA con las cabeceras de ADR-019; CI corre todo.
+
+**Prueba independiente**: `make check-all` en verde en CI; `make build` + `crm serve` y abrir
+`http://localhost:8080/login` muestra la pantalla provisoria de Ingresar; `curl -I` sobre `/`,
+`/settings/users`, un asset con hash, un asset inexistente y `/api/v1/no-existe` devuelve las
+respuestas de `ui.md` §21.1–21.2.
+
+**T-F001 — Proyecto `web/`, TypeScript y lint** · ADR-015, `ui.md` §9.1, §22
+- Plantilla Vite React + TypeScript en `web/`; React 19; `strict` y `noUncheckedIndexedAccess`;
+  alias `@/*`; `engines.node` y `.nvmrc` con Node LTS; `npm`.
+- ESLint (typescript-eslint, `react-hooks`, `jsx-a11y`, `no-console`) + Prettier. Reglas
+  `no-restricted-imports` de `ui.md` §9.1: `components/**` no importa `@/api`, `@/features`,
+  `@/app`; `features/X` no importa `features/Y` salvo `features/auth/session`; `fetch` solo en
+  `src/api/**` y `features/tenant/api.ts` (subida del logo).
+- `index.html` base: `lang="es-AR"`, viewport sin bloquear zoom, `theme-color`, `manifest`,
+  `apple-touch-icon`, `<noscript>` (`ui.md` §19.3).
+- `.gitignore`: `web/node_modules`, `web/dist/*` salvo `web/dist/.gitkeep`, `web/.api-bundle`.
+- Reportar las versiones elegidas de Vite, React, TypeScript, Tailwind, CLI de shadcn, React
+  Router, TanStack Query, openapi-fetch, openapi-typescript, React Hook Form, Zod,
+  `@hookform/resolvers` (≥ 5.1), Vitest, MSW, Playwright (RF-1).
+- **Verificación**: un archivo de fixture en `components/` que importa `@/api/client` hace fallar
+  `npm run lint` (se borra después de comprobarlo).
+
+**T-F002 — Tailwind v4, shadcn/ui y tokens** · ADR-016, `ui.md` §19, NFR-F02, NFR-F07, NFR-F08
+- `shadcn init` (base Radix, íconos lucide, alias). Variables de `ui.md` §19.1 (incluidas
+  `--success*` y `--warning*`), fuente del sistema, `--radius`, regla global de
+  `prefers-reduced-motion`, alto mínimo de 44 px en botones, inputs e ítems.
+- Componentes: `button`, `input`, `label`, `field`, `radio-group`, `select`, `alert`,
+  `alert-dialog`, `dropdown-menu`, `badge`, `card`, `skeleton`, `separator`, `sonner`.
+- `build.target` explícito: `chrome111`, `edge111`, `firefox128`, `safari16.4`, `ios16.4`.
+
+**T-F003 [T] — Harness de tests con MSW** · ADR-022, supuesto S-F2
+- **Red**:
+
+  | Caso | Esperado |
+  |---|---|
+  | Un `Request` con URL absoluta (`${window.location.origin}/api/v1/me`) enviado con `fetch` en jsdom (lo que hace openapi-fetch) | MSW lo intercepta y devuelve el JSON del handler |
+  | Un request sin handler | el test falla con un mensaje que nombra método y URL |
+  | Dos tests seguidos | caché de Query, handlers de MSW (`resetHandlers`) y `sessionStorage` limpios entre tests |
+  | `user-event` sobre un botón de shadcn | el click llega (smoke de la integración con Radix) |
+- **Green**: `vitest.config` (jsdom, `setupFiles`), `src/test/setup.ts` (jest-dom, ciclo de MSW),
+  `src/test/msw/server.ts` y `handlers.ts` (vacío), `src/test/fixtures.ts` con *builders* tipados
+  (`buildSessionInfo`, `buildCurrentUser`, `buildTenant`, `buildUser`, `problem(code, status,
+  extra)`) con datos ficticios.
+- **Refactor**: ningún fixture con datos reales; *builders* con valores por defecto y
+  `overrides`.
+- Si S-F2 falla: probar `happy-dom` y reportar (no cambia código de la app).
+
+**T-F004 [T] — Tipos generados del contrato y paso multi-spec** · ADR-018, ADR-014, DD-17, INV-F05, supuesto S-F1
+- **Red** (tests de tipos `src/api/schema.test-d.ts` y un spike):
+
+  | Caso | Esperado |
+  |---|---|
+  | Tipo de la respuesta `200` de `paths['/me']['get']` | igual a `SessionInfo` |
+  | `ErrorCode` | incluye `email_already_registered`, `email_taken`, `last_admin`, `token_invalid` |
+  | `User['name']` | `string \| null` |
+  | Utilidad de tipos `AssertDisjoint<keyof Paths001, keyof PathsOtra>` con claves disjuntas | compila |
+  | La misma utilidad con una ruta repetida (fixture de tipos) | error de compilación (`@ts-expect-error`) |
+  | **Spike S-F1**: contrato de prueba `web/test-fixtures/openapi/999.yaml` con `$ref` externo a `Problem` de 001 generado con `gen:api` | el tipo generado tiene `code: ErrorCode`; si no, aplicar el respaldo `redocly bundle` (`ui.md` §11.4) y reportar |
+  | Editar a mano `src/api/generated/001.ts` | `npm run lint` falla |
+- **Green**: `web/redocly.yaml` (entrada `001` → `src/api/generated/001.ts`), script `gen:api`,
+  `src/api/schema.ts` (`paths` combinados), `src/api/types.ts` (alias de `ui.md` §11.2), chequeo
+  de actualización en `lint`. Archivos generados versionados.
+- **Refactor**: el fixture del spike queda fuera de `redocly.yaml` de producción.
+
+**T-F005 [T] — Cliente HTTP y normalización de errores** · ADR-018, ADR-009, `ui.md` §11.3
+- **Red** (unitario sobre `toApiError`/`unwrap`/`isRetryable` y cliente con MSW):
+
+  | Respuesta o situación | Esperado |
+  |---|---|
+  | `409` problem+json `email_already_registered` con `suggested_action` | `kind: 'problem'`, `status: 409`, `code`, `suggestedAction: 'password_reset'` |
+  | `422` `ValidationProblem` con 2 errores | `fieldErrors` con los 2, en orden |
+  | `429 login_locked` con `Retry-After: 900` | `retryAfterSeconds: 900` |
+  | `429` sin `Retry-After` | `retryAfterSeconds: null` |
+  | `500` con `instance` | `requestId` = `instance` |
+  | `502` con cuerpo HTML | `kind: 'unexpected'`, `status: 502`, `code: null` |
+  | problem+json con un `code` que no está en el enum | `kind: 'problem'`, `code: null`, `problem` conservado |
+  | `fetch` rechaza (sin red) | `kind: 'network'`, `status: null` |
+  | `unwrap` con `data` | devuelve `data` |
+  | `isRetryable` | `true` para red y `503`; `false` para `500`, `429` y demás `4xx` |
+  | `api.GET('/me')` con MSW | URL `${origin}/api/v1/me`, respuesta tipada |
+  | `api.POST('/auth/login', …)` | `Content-Type: application/json`, body serializado |
+- **Green**: `src/api/client.ts`, `errors.ts`, `queryKeys.ts` (`ui.md` §10.3).
+- **Refactor**: `toApiError` es una función pura sin dependencias de React.
+
+**T-F006 — Esqueleto de rutas, providers y proxy de desarrollo** · ADR-017, ADR-019, `ui.md` §6.1, §10.2, supuesto S-F3
+- `src/app/router.tsx` con el árbol completo de `ui.md` §6.1 y **pantallas provisorias** (solo su
+  `<h1>`), guards provisorios que dejan pasar, `lazy` por grupo de rutas; `RootLayout` con
+  `<Toaster/>` y `<ScrollRestoration/>`; `createAppQueryClient` con los defaults de `ui.md` §10.2
+  (sin los manejadores globales, que llegan en F1); `main.tsx`; `src/test/renderApp.tsx`
+  (`createMemoryRouter` con el mismo árbol).
+- Test de humo: cada ruta del árbol muestra su `<h1>` provisorio; una ruta inexistente muestra
+  "No encontramos esta página."
+- `vite.config.ts`: *proxy* de `/api` a `http://localhost:8080`.
+- **Spike S-F3** (manual, cuando el backend tenga T-B306): en `http://localhost:5173`, registrarse
+  con `fetch('/api/v1/auth/signup', …)` desde la consola y verificar que `fetch('/api/v1/me')`
+  responde `200` en Chrome y Firefox. Si el backend todavía no está, se ejecuta en el checkpoint de
+  F2. Depende de H-3.
+
+**T-F007 [T] — Handler Go de la SPA** · ADR-019, H-1, DD-14, NFR-F10, `ui.md` §21
+- Implementa: `backend-developer` (código Go, `testing` nativo, table-driven, ADR-012). El handler
+  recibe un `fs.FS` para poder probarlo con `fstest.MapFS` sin compilar el frontend. Firma:
+  `func NewHandler(dist fs.FS) http.Handler` en el paquete `web`.
+- **Red** (unitario con `fstest.MapFS` + integración del mux raíz con `httptest`):
+
+  | Request | Esperado |
+  |---|---|
+  | `GET /` | `200` `text/html`, `index.html`, `Cache-Control: no-cache`, CSP exacta de ADR-019 |
+  | `GET /settings/users`, `GET /reset-password` | `200` con `index.html` |
+  | `GET /assets/index-abc123.js` (existe) | `200`, tipo JavaScript, `Cache-Control: public, max-age=31536000, immutable` |
+  | `GET /assets/viejo-def456.js` (no existe) | `404` `text/plain`, `Cache-Control: no-store`, el cuerpo no contiene `<html` |
+  | `GET /sw.js` / `GET /manifest.webmanifest` / `GET /offline.html` | `no-cache`; tipos `text/javascript` / `application/manifest+json` / `text/html` con CSP |
+  | `GET /icons/icon-192.png` | `public, max-age=86400` |
+  | `HEAD /` | `200` sin cuerpo |
+  | `POST /login` | `405` |
+  | `GET /api/v1/no-existe` (mux completo) | `404` problem+json `code: not_found` (nunca `index.html`) |
+  | `GET /healthz` (mux completo) | `200` `{"status":"ok"}` del backend |
+  | `dist` sin `index.html` (solo `.gitkeep`) | `503` `text/plain` que menciona `make web-build` |
+  | Toda respuesta de la SPA | `X-Request-Id`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` (middlewares compartidos) |
+  | `chi.Walk` sobre el router de la API | no incluye rutas de la SPA (T-B801 y el test de rutas contra el contrato siguen igual) |
+  | `Accept-Encoding: gzip` en un asset JS (si H-8 se aprueba) | `Content-Encoding: gzip` |
+- **Green**: pasa la tabla.
+- **Refactor**: las reglas de caché en una tabla (extensión/prefijo → cabecera), no en `if`
+  dispersos.
+
+**T-F008 — Implementar el paquete `web` y el mux raíz** · ADR-019, H-1
+- Implementa: `backend-developer`. `web/embed.go` (`//go:embed all:dist`), `web.NewHandler`,
+  `web/dist/.gitkeep`; en `internal/app`, mux raíz `/api/` → chi, `/healthz` y `/readyz` → ops,
+  resto → SPA, todo envuelto por los middlewares de request id, recover, logging y cabeceras de
+  seguridad. Depende de T-B005 y del acuerdo sobre H-1 (y H-8 para la compresión).
+
+**T-F009 — Makefile y CI** · ADR-019, ADR-022
+- Targets `web-build`, `web-check`, `build`, `check-all` (tabla de comandos). CI: job de frontend
+  con Node LTS y caché de npm que corre `make web-check`; el job de backend no necesita el
+  frontend (usa el marcador de `dist`); un job de build que corre `make build` y guarda el binario
+  como artefacto para los E2E (Fase F7).
+- `README` (sección de desarrollo): los dos modos de `ui.md` §21.3 y `APP_BASE_URL` /
+  `APP_LINK_*` de desarrollo.
+
+**Checkpoint Fase F0**: `make check-all` en verde local y en CI; la prueba independiente
+ejecutada con `curl`; resultados de los spikes S-F1 y S-F2 reportados (S-F3 si el backend ya
+tiene T-B306).
+
+---
+
+### Fase F1 — Fundacional: errores, sesión, guards y shell
+
+**Objetivo**: toda pantalla con sesión está protegida; un `401` en cualquier lado vuelve al login
+con aviso; los permisos ocultan lo que no corresponde; el shell es navegable por teclado y la PWA
+es instalable.
+
+**Prueba independiente**: con el backend (T-B310): abrir `/settings/users` sin sesión redirige a
+`/login?next=%2Fsettings%2Fusers`; con una sesión creada por `curl` (cookie pegada en el
+navegador) se ve el shell; borrar la sesión en la base y navegar vuelve al login con "Tu sesión se
+cerró"; Chrome ofrece "Instalar app".
+
+**T-F101 [T] — Mensajes por `code` y por campo** · ADR-009, INV-F05, `ui.md` §12.2–12.3
+- **Red**:
+
+  | Caso | Esperado |
+  |---|---|
+  | Test de tipos: el mapa de mensajes es `Record<ErrorCode, …>` | un `ErrorCode` agregado en un fixture de tipos sin mensaje no compila |
+  | `messageForError` para cada `code` de §12.2 en contexto `generic` | título y descripción de la tabla |
+  | `token_invalid` en `resetConfirm`, `verifyEmail`, `invitationPreview` | los tres textos de §12.2 |
+  | `unsupported_media_type` y `payload_too_large` en `logo` | textos del logo |
+  | `rate_limited` con `retryAfterSeconds` 61 / 1800 / `null` | "2 minutos" / "30 minutos" / "unos minutos" |
+  | `internal` con `requestId` | la descripción incluye el código |
+  | `kind: 'network'` | "No hay conexión." y `retryable: true` |
+  | `kind: 'unexpected'` con `502` / `418` | como `service_unavailable` / como `internal` |
+  | `fieldErrorMessage` para cada `FieldError.code` y cada variante por campo de §12.3 | textos de la tabla |
+  | `applyServerFieldErrors` con un campo conocido y uno desconocido | `setError` en el conocido; devuelve el desconocido |
+- **Green**: pasa la tabla.
+
+**T-F102 — Implementar `api/errorMessages.ts`** (`messageForError`, `fieldErrorMessage`,
+`applyServerFieldErrors`).
+
+**T-F103 [T] — `safeNextPath`** · INV-F07, BR-F07
+- **Red**:
+
+  | Entrada | Salida |
+  |---|---|
+  | `null`, `''` | `/` |
+  | `/settings/users`, `/settings/users?x=1` | igual |
+  | `//evil.example`, `/\evil.example`, `https://evil.example`, `javascript:alert(1)` | `/` |
+  | `settings` (sin barra inicial) | `/` |
+  | `/%2F%2Fevil.example` | `/` |
+- **Green**: pasa la tabla.
+
+**T-F104 [T] — Sesión, guards y manejadores globales** · ADR-017, ADR-018, INV-F01, INV-F02, INV-F03, INV-F06, BR-F04, `ui.md` §6.4, §12.4
+- **Red** (pantallas con MSW):
+
+  | Caso | Esperado |
+  |---|---|
+  | Ruta con sesión y `/me` pendiente | pantalla de arranque con `aria-busy`; no se ve el formulario de login |
+  | `/me` → `401` al entrar a `/settings/users` | `/login?next=%2Fsettings%2Fusers`, **sin** aviso de sesión vencida |
+  | `/me` → `200` en `/login` | redirige a `/`; con `?next=/settings/users`, a `/settings/users`; con `?next=//evil.example`, a `/` |
+  | `/me` → `503` en una ruta con sesión | estado de error con "Reintentar"; al reintentar con `200` se ve la pantalla |
+  | Operador en `/settings/users` | "No tenés acceso a esta sección" + "Volver al inicio"; **no** se pidió `GET /users` |
+  | Admin en `/settings/users` y `GET /users` → `401 unauthenticated` | caché vacía; `/login?next=%2Fsettings%2Fusers&reason=session_expired` con "Tu sesión se cerró. Ingresá de nuevo para seguir." |
+  | Dos queries responden `401` a la vez | una sola navegación |
+  | Una mutación responde `401 unauthenticated` | mismo comportamiento |
+  | `POST /auth/login` → `401 invalid_credentials` | no navega ni limpia la caché (INV-F02) |
+  | Una query responde `403 forbidden` | se vuelve a pedir `/me`; con el rol nuevo sin `settings.manage`, el guard muestra "Sin permiso" |
+  | `['session']` pasa de un usuario a `null` en un refetch al enfocar la ventana | igual que un `401` global (`reason=session_expired`) |
+  | Tras el `401`, botón atrás del navegador | se vuelve a pedir `/me`; no se ven datos anteriores |
+- **Green**: pasa la tabla.
+- **Refactor**: un solo lugar decide "¿es `401 unauthenticated`?"; los guards no conocen la red.
+
+**T-F105 — Implementar sesión y guards**: `features/auth/session.ts` (`useSession`,
+`useCurrentSession`, `useCan`), `RequireSession`, `PublicOnly`, `RequirePermission`,
+`ForbiddenState`, manejadores de `createAppQueryClient` inyectados desde `main.tsx`,
+`lib/safeNextPath.ts`.
+
+**T-F106 [T] — Shell, Ajustes y accesibilidad base** · BR-F04, INV-F10, NFR-F06, `ui.md` §13.8, §13.13, §18
+- **Red**:
+
+  | Caso | Esperado |
+  |---|---|
+  | Admin en `/` | navegación con "Inicio" y "Ajustes" (ícono y texto); en Ajustes, su nombre, email y "Administrador", y los enlaces "Datos de la empresa" y "Usuarios" |
+  | Operador en `/settings` | sin la sección "Tu empresa" |
+  | Primer Tab al cargar | enfoca "Saltar al contenido"; Enter mueve el foco a `<main>` |
+  | Navegar de Inicio a Ajustes | foco en el `<h1>` "Ajustes"; `document.title` = "Ajustes · {Empresa}" |
+  | Ítem de navegación actual | `aria-current="page"` |
+  | Encabezado | nombre de la empresa de `['tenant']`; mientras carga, `session.tenant.name`; sin logo, iniciales |
+  | Evento `offline` / `online` | aparece / desaparece "Sin conexión. Revisá tu internet." (`role="status"`) |
+  | Una pantalla que lanza un error al renderizar | "Algo salió mal al mostrar esta pantalla" con "Recargar" e "Ir al inicio" |
+  | `vite:preloadError` la primera vez / la segunda | llama a `reload` (espía) y marca `sessionStorage` / muestra "Hay una versión nueva de la app" + "Actualizar" |
+  | Ruta inexistente | "No encontramos esta página." + "Ir al inicio" |
+- **Green**: pasa la tabla.
+
+**T-F107 — Implementar el shell**: `RootLayout` (foco al `<h1>` al cambiar de ruta),
+`AppShell`, navegación inferior y lateral, `SettingsPage` (sin "Cerrar sesión", que llega en F3),
+`NotFoundPage`, `ErrorBoundary` raíz, manejo de `vite:preloadError`, `PageHeader`, `FormAlert`,
+`ErrorState`, `EmptyState`, `AppBrand`, `OfflineBanner`, `useOnlineStatus`, `useDocumentTitle`,
+`useTenant` (lectura).
+
+**T-F108 — PWA base** · ADR-020, `ui.md` §20
+- `public/manifest.webmanifest`, íconos provisorios (P-F1), `public/sw.js` y `public/offline.html`
+  según ADR-020; registro en `main.tsx` solo en producción. Verificación manual en el binario
+  (Chrome DevTools → Application: manifest sin errores, SW activo, Cache Storage con solo
+  `crm-offline-v1`); la verificación automática es T-F703.
+
+**Checkpoint Fase F1**: `npm run check` en verde + prueba independiente contra el backend.
+
+---
+
+### Fase F2 — Historia 1: Registrar una empresa (P1) — primer slice vertical
+
+**Objetivo**: un visitante se registra desde el celular en una sola pantalla y llega al panel con
+su empresa, rubro y moneda base.
+
+**Prueba independiente**: con el backend (T-B306, T-B310) y Mailpit: en `http://localhost:5173/signup`
+(o el binario), completar el formulario → panel con "Hola, {nombre}" y el rubro elegido; el email
+de verificación está en Mailpit; repetir con el mismo email → "Ya existe un usuario con ese
+email." y "Recuperar contraseña". Spike S-F3 cerrado.
+
+**T-F201 [T] — Esquema del registro** · ADR-021, DD-6, `ui.md` §13.1, §16
+- **Red** (unitario sobre el esquema Zod):
+
+  | Entrada | Esperado |
+  |---|---|
+  | Todo válido | ok; email en minúsculas y sin espacios; textos con `trim` |
+  | `name`/`company_name` vacíos o de 121 caracteres | `required` / `too_long` |
+  | Email `ana@` | `invalid_format` |
+  | Contraseña de 9 / 10 / 128 / 129 caracteres | `too_short` / ok / ok / `too_long` |
+  | Contraseña igual al email (sin distinguir mayúsculas) | `same_as_email` |
+  | Sin `industry_template_code` | `required` |
+  | Test de tipos: el esquema produce un `SignupRequest` | compila; un campo renombrado en el contrato no compila |
+- **Green**: pasa la tabla.
+
+**T-F202 [T] — Pantalla de registro** · US-1.1, US-1.2, FR-001, FR-002, SC-001, P-4, DD-19, DD-21, DD-F10, DD-F18, BR-F10, `ui.md` §13.1, §14.2
+- **Red**:
+
+  | Interacción | Resultado observable |
+  |---|---|
+  | Rubros pendientes | *skeletons* en "Rubro de tu empresa"; "Crear cuenta" deshabilitado |
+  | Rubros → `503`, "Reintentar" → `200` | aparecen "Carpintería de aluminio" y "Genérico" |
+  | Enviar vacío | un error debajo de cada campo requerido (textos de §12.3); foco en "Tu nombre"; ningún request |
+  | Datos válidos | `POST /auth/signup` con el body del contrato (email normalizado, `base_currency: 'ARS'` por defecto, `timezone` del navegador); luego el panel, toast "¡Listo! Tu empresa quedó creada."; atrás no vuelve al formulario |
+  | `409 email_already_registered` | alerta "Ya existe un usuario con ese email." con "Recuperar contraseña" (→ `/forgot-password` con el email prellenado) y "Usar otro email" (enfoca el email) |
+  | `422` con `errors: [{field: 'company_name', code: 'too_long'}]` | error debajo de "Nombre de la empresa" y foco ahí |
+  | `422` solo con `timezone` | segundo `POST` sin `timezone`; con `201`, panel |
+  | `429 rate_limited` con `Retry-After: 1800` | "Hiciste muchos intentos seguidos. Esperá 30 minutos y probá de nuevo." |
+  | `503` / sin red | mensaje con "Reintentar"; los valores siguen cargados |
+  | Doble click en "Crear cuenta" | un solo `POST`; botón "Creando cuenta…" deshabilitado |
+  | Completar todo con teclado (Tab, flechas en los radios, Enter) | se envía |
+  | Visitante con sesión vigente | redirige a `/` |
+  | Campos | todos encontrables por `getByLabelText`; `autocomplete` `name`, `email`, `new-password`, `organization`; ayuda de moneda base visible |
+- **Green**: pasa la tabla.
+
+**T-F203 — Implementar el registro**: `SignupPage`, `IndustryTemplatePicker`, `CurrencyPicker`,
+`PasswordInput`, `SubmitButton`, `useSignup`, `useIndustryTemplates`, esquema de T-F201.
+
+**T-F204 [T] — Panel inicial** · US-1 (prueba independiente), BR-F04, `ui.md` §13.7
+- **Red**:
+
+  | Caso | Esperado |
+  |---|---|
+  | Admin | "Hola, {nombre}"; tarjeta con la empresa, "Rubro: Carpintería de aluminio", "Moneda base: Pesos (ARS)"; "Primeros pasos" con "Completá los datos de tu empresa" y "Invitá a tu equipo" |
+  | Operador | sin "Primeros pasos" |
+  | `/tenant` pendiente | saludo visible; tarjeta en *skeleton* |
+  | `/tenant` → `503` | "No pudimos cargar los datos de tu empresa." + "Reintentar" |
+  | Código de rubro que no está en el catálogo | se muestra el código |
+- **Green**: pasa la tabla.
+
+**T-F205 — Implementar `DashboardPage`**.
+
+**Checkpoint Fase F2**: `npm run check` en verde + prueba independiente (registro medido: < 3
+min en una prueba manual en el celular, SC-001).
+
+---
+
+### Fase F3 — Historia 2: Ingresar, bloqueo y cerrar sesión (P1)
+
+**Objetivo**: ingresar con mensajes que no revelan si un email existe, bloqueo explicado con la
+hora, y cierre de sesión que deja el dispositivo limpio.
+
+**Prueba independiente**: con el backend (T-B405): 5 contraseñas incorrectas → el 6.º intento
+muestra "Por seguridad, pausamos el ingreso…" con la hora; "Cerrar sesión" desde Ajustes vuelve al
+login con "Cerraste sesión." y atrás no muestra datos.
+
+**T-F301 [T] — Pantalla Ingresar** · US-2.1, US-2.2, FR-003, INV-13, INV-F02, DD-F17, `ui.md` §13.2, §14.1
+- **Red**:
+
+  | Interacción | Resultado observable |
+  |---|---|
+  | Credenciales correctas sin `next` / con `next=/settings/users` / con `next=//evil.example` | `/` / `/settings/users` / `/`; atrás no vuelve al login |
+  | `401 invalid_credentials` | "El email o la contraseña no son correctos."; email conservado; contraseña vacía y enfocada; sin navegación ni limpieza de caché |
+  | `403 account_disabled` | "Tu usuario está desactivado." + "Pedile a un administrador de tu empresa que lo reactive." |
+  | `429 login_locked` con `Retry-After: 900` y reloj en 14:20 | "…Podés volver a intentar a las 14:35 (en 15 minutos)…"; "Restablecer contraseña" lleva a `/forgot-password` con el email; "Volver a intentar" muestra el formulario |
+  | `429 rate_limited` | minutos de espera |
+  | `reason=session_expired` / `password_changed` / `logged_out` / otro valor | el aviso correspondiente / ninguno |
+  | "¿Olvidaste tu contraseña?" con un email escrito | `/forgot-password` con ese email |
+  | `503` / sin red | mensaje con "Reintentar"; datos conservados |
+  | Campos | `autocomplete` `email` y `current-password`; se puede pegar en ambos |
+  | Envío con Enter desde el campo contraseña | envía |
+- **Green**: pasa la tabla.
+
+**T-F302 — Implementar `LoginPage`, `LockedNotice`, `useLogin`, `formatRetryAt`**.
+
+**T-F303 [T] — Cerrar sesión** · US-2, INV-F03, `ui.md` §13.8, §17
+- **Red**:
+
+  | Interacción | Resultado observable |
+  |---|---|
+  | "Cerrar sesión" en Ajustes → `204` | `POST /auth/logout`; `/login` con "Cerraste sesión."; al ir a `/` se vuelve a pedir `/me` (la caché quedó vacía) |
+  | "Cerrar sesión" en el menú del usuario (navegación lateral) | mismo resultado |
+  | Sin red | toast "No pudimos cerrar la sesión. Revisá tu conexión."; sigue en Ajustes con la sesión |
+  | Mientras envía | "Cerrando sesión…" deshabilitado |
+- **Green**: pasa la tabla.
+
+**T-F304 — Implementar `useLogout` y los dos puntos de salida**.
+
+**Checkpoint Fase F3**: `npm run check` en verde + prueba independiente.
+
+---
+
+### Fase F4 — Historia 2.3 y 1.3: Recuperar contraseña y confirmar email (P1)
+
+**Objetivo**: los enlaces de email funcionan de punta a punta sin exponer el token en la URL, y el
+aviso de verificación permite reenviar el email.
+
+**Prueba independiente**: con el backend (T-B507) y `APP_LINK_*` de `ui.md` §6.2: pedir el
+restablecimiento, abrir el enlace de Mailpit, definir la contraseña nueva e ingresar; reabrir el
+mismo enlace → "Este enlace ya no sirve."; confirmar el email desde su enlace y ver desaparecer el
+aviso.
+
+**T-F401 [T] — Token de los enlaces (`useLinkToken`)** · DD-14, DD-F2, INV-F08, `ui.md` §6.2
+- **Red**:
+
+  | Caso | Esperado |
+  |---|---|
+  | Montar `/reset-password#token=abc-_123` | devuelve `abc-_123`; `location.hash` vacío; `location.state.linkToken` = `abc-_123` |
+  | Volver a montar con ese `state` (recarga en la misma pestaña) | devuelve `abc-_123` |
+  | Sin fragmento ni `state` / `#token=` vacío / `#foo=bar` | `null` |
+  | En ningún momento | el token no aparece en `location.search`; `console` no fue llamado |
+- **Green**: pasa la tabla.
+
+**T-F402 [T] — Olvidé mi contraseña** · US-2.3, FR-004, INV-13, DD-20, `ui.md` §13.3
+- **Red**:
+
+  | Interacción | Resultado observable |
+  |---|---|
+  | Llegar con `state.email` | campo prellenado |
+  | Enviar → `202` | "Revisá tu email" (foco ahí) con el texto neutro de §13.3; siempre igual |
+  | Email inválido | error en el campo; sin request |
+  | `429` | minutos de espera |
+  | "¿No llegó? Pedilo de nuevo" | formulario con el email cargado |
+  | Sin red | mensaje con "Reintentar" |
+  | Con sesión vigente | redirige a `/` |
+- **Green**: pasa la tabla.
+
+**T-F403 [T] — Restablecer contraseña** · US-2.3, BR-F06, DD-F16, `ui.md` §13.4
+- **Red**:
+
+  | Interacción | Resultado observable |
+  |---|---|
+  | Sin token | "Este enlace está incompleto." + "Pedir un enlace nuevo" |
+  | Contraseña de 9 caracteres | error; sin request |
+  | Válida → `204` | body `{ token, password }` con el token del enlace; caché vacía; `/login?reason=password_changed` con "Listo, cambiaste tu contraseña. Ingresá con la nueva." |
+  | `400 token_invalid` | "Este enlace ya no sirve." + "Vence a la hora o ya se usó. Pedí uno nuevo." + "Pedir un enlace nuevo" → `/forgot-password` |
+  | `422 same_as_email` | error debajo del campo |
+  | Campo | `autocomplete="new-password"`; "Mostrar"/"Ocultar" con `aria-pressed` |
+- **Green**: pasa la tabla.
+
+**T-F404 [T] — Confirmar email** · US-1.3, DD-13, DD-F3, `ui.md` §13.5
+- **Red**:
+
+  | Interacción | Resultado observable |
+  |---|---|
+  | Montar la pantalla con token | ningún `POST` hasta tocar "Confirmar mi email" |
+  | Confirmar sin sesión → `204` | "¡Listo! Tu email quedó confirmado." + "Ingresar" |
+  | Confirmar con sesión → `204` | "Ir al inicio"; `/me` pedido de nuevo (`email_verified: true`) |
+  | `400 token_invalid` con sesión | mensaje de §12.2 + "Reenviar email de confirmación" → `POST …/resend` → "Listo, te lo reenviamos…" |
+  | `400 token_invalid` sin sesión | mensaje + "Ingresar" |
+  | Sin token | "Este enlace está incompleto." |
+- **Green**: pasa la tabla.
+
+**T-F405 [T] — Aviso "Confirmá tu email"** · US-1.3, P-2, BR-F05, `ui.md` §13.13
+- **Red**:
+
+  | Caso | Esperado |
+  |---|---|
+  | `email_verified: false` | aviso con el email en todas las pantallas con sesión |
+  | `email_verified: true` | sin aviso |
+  | "Reenviar" → `202` | "Listo, te lo reenviamos. Revisá también el correo no deseado." anunciado en `aria-live` |
+  | "Reenviar" → `429` con `Retry-After: 300` | "Ya te lo mandamos hace poco. Esperá 5 minutos." |
+  | "Ocultar" | desaparece y sigue oculto al navegar; con `sessionStorage` vacío vuelve a aparecer |
+  | Teclado | "Reenviar" y "Ocultar" alcanzables con Tab y con nombre accesible |
+- **Green**: pasa la tabla.
+
+**T-F406 — Implementar** `useLinkToken`, `ForgotPasswordPage`, `ResetPasswordPage`,
+`VerifyEmailPage`, `EmailVerificationBanner` y sus hooks.
+
+**Checkpoint Fase F4**: `npm run check` en verde + prueba independiente.
+
+---
+
+### Fase F5 — Historia 3: Usuarios e invitaciones (P2)
+
+**Objetivo**: el Administrador invita, reenvía, cambia roles, desactiva y reactiva desde el
+celular sin poder dejar la empresa sin administrador; el invitado acepta en una pantalla.
+
+**Prueba independiente**: con el backend (T-B607): invitar a un operador, abrir su enlace en otra
+ventana privada, aceptar y ver el panel sin "Primeros pasos"; como operador, `/settings/users`
+muestra "Sin permiso"; como admin, desactivarlo y ver que su ventana vuelve al login con "Tu sesión
+se cerró"; reactivarlo.
+
+**T-F501 [T] — Reglas de acciones y fechas** · BR-F01, BR-F02, BR-F03, INV-F12, ADR-023
+- **Red** (unitario):
+
+  | Entrada | Esperado de `availableUserActions` |
+  |---|---|
+  | `active`+`admin`, otro, 2 admins activos | `makeOperator` y `deactivate` habilitadas, con confirmación |
+  | `active`+`admin`, 1 admin activo (él) | ambas deshabilitadas con `disabledReason: 'last_admin'` |
+  | `active`+`admin`, es el usuario actual, 2 admins | `makeOperator` con `selfWarning: 'lose_settings_access'`; `deactivate` con `selfWarning: 'end_own_session'` |
+  | `active`+`operator` | `makeAdmin`, `deactivate` |
+  | `invited`+`operator` | `resendInvitation` (sin confirmación), `makeAdmin`, `deactivate` |
+  | `disabled` | solo `reactivate` |
+
+  | Entrada | Esperado |
+  |---|---|
+  | `countActiveAdmins` con admins `active`, `invited` y `disabled` | cuenta solo `active` + `admin` |
+  | `formatDateTime('2026-10-06T17:30:00Z', 'America/Argentina/Buenos_Aires', now=2026-09-29)` | "6/10, 14:30" |
+  | Misma fecha con `now` en otro año | incluye el año |
+- **Green**: pasa la tabla.
+
+**T-F502 [T] — Lista de usuarios** · US-3, FR-005, FR-007, H-4, `ui.md` §13.9
+- **Red**:
+
+  | Caso | Resultado observable |
+  |---|---|
+  | `GET /users` pendiente | 3 *skeletons* con `aria-busy` |
+  | Admin (vos), invitado vigente, desactivado | una tarjeta por usuario con nombre (o email si `name` es `null`), email, rol y estado **en texto**; "(vos)" en la propia; "La invitación vence el 6/10, 14:30" en la zona de la empresa |
+  | Invitado con `invitation_expires_at` pasado / `null` | "Invitación vencida" / "Invitación sin fecha" |
+  | Solo el usuario actual | "Todavía sos el único usuario." + "Invitar" |
+  | `500` con `instance` | "No pudimos cargar los usuarios." + código + "Reintentar" |
+  | Nombre de 120 caracteres | el texto completo está en el DOM (sin truncar) |
+- **Green**: pasa la tabla.
+
+**T-F503 [T] — Acciones sobre usuarios** · US-3.3, US-3.4, FR-005, P-3, DD-5, DD-F7, DD-F8, INV-F04, INV-F10, `ui.md` §13.9
+- **Red**:
+
+  | Interacción | Resultado observable |
+  |---|---|
+  | Abrir el menú de un invitado con teclado (Enter, flechas) | "Reenviar invitación", "Hacer Administrador", "Desactivar"; nombre accesible "Acciones para {email}" |
+  | Único admin activo (vos) | "Cambiar a Operador" y "Desactivar" deshabilitados con "Tiene que quedar al menos un administrador activo" |
+  | "Hacer Administrador" → confirmar → `200` | `PUT /users/{id}/role` `{ role: 'admin' }`; toast "{nombre} ahora es Administrador"; la tarjeta muestra el rol nuevo; foco de vuelta en el botón de acciones de esa fila |
+  | Cancelar o Esc en el diálogo | sin request; foco de vuelta en el botón |
+  | `409 last_admin` | toast con el mensaje de §12.2; se vuelve a pedir la lista |
+  | "Desactivar" a otro → `200` | toast "Desactivaste a {nombre}"; estado "Desactivado" |
+  | Desactivarse a sí mismo (hay otro admin) → `200` | el diálogo advertía "Se va a cerrar tu sesión."; el request siguiente da `401` y se ve el login con aviso |
+  | Bajarse a Operador → `200` | el diálogo advertía "Vas a perder el acceso a Ajustes."; `/me` pedido de nuevo; "Sin permiso" |
+  | "Reactivar" → `200` `active` / `200` `invited` | "Reactivaste a {nombre}" / "Le enviamos una invitación nueva a {email}" |
+  | "Reenviar invitación" → `200` | `POST /users/invitations` con su email y rol; "Reenviamos la invitación a {email}" |
+  | `404 not_found` / `409 invalid_state` | mensaje de §12.2 y lista pedida de nuevo |
+  | `403 forbidden` | `/me` pedido de nuevo; "Sin permiso" |
+  | Doble confirmación rápida | un solo request |
+- **Green**: pasa la tabla.
+
+**T-F504 [T] — Invitar** · US-3.1, DD-5, DD-21, BR-F08, BR-F11, DD-F6, `ui.md` §13.10, §14.3
+- **Red**:
+
+  | Interacción | Resultado observable |
+  |---|---|
+  | Abrir la pantalla | "Operador" seleccionado; descripción de cada rol visible |
+  | Email inválido | error; sin request |
+  | Enviar → `201` | vuelve a Usuarios; toast "Invitación enviada a {email}. Vence el {fecha}."; la lista incluye al invitado |
+  | Enviar → `200` | toast "{email} ya estaba invitado: le reenviamos la invitación." |
+  | `409 email_taken` | "Ese email ya tiene un usuario en el sistema." en el campo; si es de un desactivado de la lista, "Es de {nombre}, que está desactivado. Podés reactivarlo desde la lista." |
+  | "Cancelar" | vuelve a Usuarios |
+- **Green**: pasa la tabla.
+
+**T-F505 [T] — Aceptar invitación** · US-3.2, DD-1, DD-4, DD-20, BR-F12, INV-F03, `ui.md` §13.6, §14.3
+- **Red**:
+
+  | Interacción | Resultado observable |
+  |---|---|
+  | Sin token | "Este enlace está incompleto." |
+  | Vista previa pendiente | *skeleton*; el `POST …/preview` lleva el token en el body y el token no se ve en la URL |
+  | Vista previa `200` | "Te invitaron a {empresa} como Operador", vencimiento, email de solo lectura |
+  | Vista previa `400 token_invalid` | "Esta invitación ya no es válida…" + "pedí una nueva con tu email" (→ `/forgot-password`) + "Ingresá" |
+  | Contraseña igual al email de la vista previa | error; sin request |
+  | Aceptar → `201` | caché vacía y sesión nueva; `/` con "¡Bienvenido/a a {empresa}!" |
+  | Aceptar → `400 token_invalid` | estado "Esta invitación ya no es válida" |
+  | Aceptar → `422` | errores por campo |
+  | Con otra sesión abierta | "Tenés una sesión abierta como {email}. Si aceptás, se va a cerrar." |
+- **Green**: pasa la tabla.
+
+**T-F506 — Implementar** `UsersPage`, `UserListItem`, `UserStatusBadge`, `ConfirmDialog`,
+`InviteUserPage`, `AcceptInvitationPage`, `features/users/rules.ts`, `lib/format.ts`
+(`formatDateTime`) y los hooks de `features/users/api.ts` y de invitación.
+
+**Checkpoint Fase F5**: `npm run check` en verde + prueba independiente.
+
+---
+
+### Fase F6 — Historia 4: Datos de la empresa y logo (P2)
+
+**Objetivo**: el Administrador edita los datos fiscales y de contacto y el logo, y el encabezado
+se actualiza sin recargar.
+
+**Prueba independiente**: con el backend (T-B706) y MinIO: cargar un CUIT válido y un logo PNG;
+el encabezado muestra el logo nuevo al instante; cerrar sesión, entrar con otra empresa en el mismo
+navegador y verificar que **no** se ve el logo anterior (H-2).
+
+**T-F601 [T] — CUIT** · DD-16, `ui.md` §13.11
+- **Red**: la **misma tabla de casos que T-B701** (con la misma fuente citada): válido con y sin
+  guiones → `true`; dígito verificador inválido → `false`; 10 dígitos o letras → `false`; casos
+  del módulo 11 con resto 10 u 11 según la regla oficial.
+- **Green**: `lib/cuit.ts` (`isValidCuit`) pasa la tabla.
+
+**T-F602 [T] — Datos de la empresa** · US-4, DD-15, BR-F09, BR-F10, INV-F04, `ui.md` §13.11
+- **Red**:
+
+  | Interacción | Resultado observable |
+  |---|---|
+  | `GET /tenant` pendiente / `503` | *skeleton* / "No pudimos cargar los datos de tu empresa." + "Reintentar" |
+  | Datos cargados | campos con sus valores; "Moneda base: Pesos (ARS)" + "No se puede cambiar" (no editable) |
+  | Sin cambios | "Guardar cambios" deshabilitado |
+  | Cambiar solo el teléfono → Guardar | `PATCH /tenant` con `{ phone }` solamente |
+  | Vaciar la razón social → Guardar | `{ legal_name: null }` |
+  | CUIT con dígito verificador inválido | error en el campo; sin request |
+  | `422 invalid_tax_id` del servidor | error en "CUIT" |
+  | `200` | toast "Guardamos los datos de la empresa."; el encabezado muestra el nombre nuevo |
+  | Salir con cambios sin guardar | "Tenés cambios sin guardar. ¿Salir igual?"; "Salir" navega, "Quedarme" no |
+  | Zona horaria | `America/Argentina/*` primero en el selector |
+  | `503` al guardar | mensaje con "Reintentar"; valores intactos |
+- **Green**: pasa la tabla.
+
+**T-F603 [T] — Logo** · US-4, DD-11, DD-F11, DD-F12, H-2, `ui.md` §13.11
+- **Red**:
+
+  | Interacción | Resultado observable |
+  |---|---|
+  | `has_logo: false` | iniciales + "Todavía no subiste un logo"; encabezado con iniciales |
+  | `has_logo: true` | `<img alt="Logo de {empresa}">` con `src` `/api/v1/tenant/logo?v={id}-{updated_at}` (en S-11 y en el encabezado) |
+  | Elegir un GIF / un PNG de 3 MB | "El logo tiene que ser una imagen PNG o JPG." / "La imagen pesa más de 2 MB. Elegí una más liviana."; sin request |
+  | Elegir un PNG válido → `200` `Tenant` | "Subiendo logo…"; toast "Logo actualizado."; `src` con el `updated_at` nuevo en S-11 y en el encabezado |
+  | `413` / `415` / `422` del servidor | mensajes de §13.11 |
+  | "Quitar" → confirmar → `204` | iniciales; toast "Quitamos el logo." |
+  | La imagen falla al cargar | iniciales |
+  | Control de archivo | etiqueta accesible "Cambiar logo"; `accept="image/png,image/jpeg"` |
+- **Green**: pasa la tabla. Si H-2 no se resolvió, se implementa igual (S-F6) y se reporta.
+
+**T-F604 — Implementar** `CompanyPage`, `LogoUploader`, `useUpdateTenant`, `useUploadLogo`
+(`putTenantLogo`), `useDeleteLogo`, `logoUrl`, `lib/cuit.ts`; el encabezado pasa a mostrar el logo.
+
+**Checkpoint Fase F6**: `npm run check` en verde + prueba independiente.
+
+---
+
+### Fase F7 — End-to-end, PWA, accesibilidad y performance (verificación)
+
+**Objetivo**: los flujos críticos funcionan de punta a punta sobre el binario real; la PWA, la CSP
+y la accesibilidad están verificadas; los objetivos de performance están medidos. Esta fase
+**verifica y cierra huecos**: cada pantalla ya llegó con sus estados y su accesibilidad.
+
+**Prueba independiente**: `npm run e2e` en verde en CI; reporte con tamaños de bundle y métricas
+de Lighthouse.
+
+**T-F701 — Playwright** · ADR-022
+- `playwright.config.ts` (Chromium en cada PR; WebKit en la corrida previa a liberar), *global
+  setup* que verifica el binario y `docker compose` arriba, helper para leer emails y extraer el
+  enlace desde la API HTTP de Mailpit, helper de axe (`@axe-core/playwright`, reglas WCAG 2.x AA),
+  captura de eventos `securitypolicyviolation` y errores de consola.
+
+**T-F702 [T] — Flujos críticos** · SC-001, US-1..US-4, NFR-F01, NFR-F06, NFR-F10, P-5
+- **Red**:
+
+  | Flujo | Resultado observable |
+  |---|---|
+  | Registro → panel → cerrar sesión → ingresar → panel | cada paso visible; registro completo < 10 s automatizado (SC-001) |
+  | Registro con un email existente → "Recuperar contraseña" → enviar | "Revisá tu email"; llega el email |
+  | Admin invita → enlace de Mailpit → invitado acepta → panel de Operador → `/settings/users` | "Sin permiso" |
+  | Olvidé mi contraseña → enlace → contraseña nueva → ingresar; reabrir el enlace | éxito; "Este enlace ya no sirve." |
+  | Admin desactiva al operador (otro contexto de navegador) → el operador navega | login con "Tu sesión se cerró." |
+  | 5 contraseñas incorrectas → 6.º intento | estado Bloqueado con la hora |
+  | En cada pantalla visitada | axe sin violaciones *serious*/*critical*; a 320 px de ancho, `scrollWidth ≤ innerWidth`; 0 violaciones de CSP; 0 errores de consola |
+- **Green**: todos los flujos pasan en Chromium; WebKit reportado.
+
+**T-F703 [T] — PWA y service worker** · ADR-020, INV-F09, NFR-F09, NFR-F11
+- **Red**:
+
+  | Caso | Esperado |
+  |---|---|
+  | `manifest.webmanifest` | campos de `ui.md` §20; los íconos responden `200` |
+  | Tras cargar `/` en el binario | SW activo con `scope` `/` |
+  | Contexto sin conexión → navegar a `/settings` | se ve "Sin conexión. Para usar la app necesitás internet." |
+  | Cache Storage | solo `crm-offline-v1` con `offline.html`; ninguna URL `/api/` ni `/assets/` |
+  | Sin conexión, `fetch('/api/v1/me')` desde la página | falla (el SW no lo sirve) |
+  | Después de cerrar sesión | `localStorage` e IndexedDB sin datos; `sessionStorage` solo con marcas de UI |
+- **Green**: pasa la tabla.
+
+**T-F704 — Performance** · NFR-F03, NFR-F04, NFR-F05
+- Reportar los tamaños gzip de `vite build` por chunk frente al presupuesto de NFR-F05 y
+  Lighthouse *mobile* sobre el binario en `/login` y `/` (LCP, CLS; INP en un Android de gama media
+  a mano). **Si un objetivo no se cumple, frenar y volver al arquitecto** con los números.
+
+**T-F705 — Verificación manual de accesibilidad** · NFR-F06, NFR-F07, NFR-F08, `ui.md` §18
+- Checklist: todos los flujos solo con teclado; TalkBack (Chrome Android) y VoiceOver (Safari
+  iOS) en registro, ingresar, usuarios y datos de la empresa; zoom al 200 %;
+  `prefers-reduced-motion`; contraste de cada par de tokens de §19.1 con una herramienta;
+  objetivos táctiles ≥ 44 px; foco nunca tapado por la barra inferior. Resultado en el reporte de
+  la fase, con cada hallazgo y su corrección.
+
+**T-F706 — Correcciones** que surjan de T-F702..T-F705, cada una con su test de regresión.
+
+**Checkpoint Fase F7**: `npm run check` y `npm run e2e` en verde (Chromium en CI; WebKit
+reportado); reportes de T-F704 y T-F705 adjuntos.
+
+---
+
+### Trazabilidad (frontend)
+
+| Requisito / criterio / decisión | Tareas |
+|---|---|
+| FR-001 Registro autónomo | T-F201, T-F202, T-F702 |
+| FR-002 Plantillas | T-F202, T-F204 |
+| FR-003 Email + contraseña | T-F301 |
+| FR-004 Recuperar contraseña | T-F402, T-F403, T-F702 |
+| FR-005 Invitar, desactivar, cambiar rol, reactivar | T-F501..T-F504 |
+| FR-006 Aislamiento (del lado del cliente: caché vacía entre sesiones, logo por empresa) | T-F104, T-F303, T-F505, T-F603, T-F703 |
+| FR-007 Matriz de permisos (UX) | T-F104, T-F106, T-F502, T-F702 |
+| US-1 (1, 2, 3) | T-F202 (1, 2), T-F404/T-F405 (3) |
+| US-2 (1, 2, 3) | T-F301 (1, 2), T-F402/T-F403 (3), T-F303 (cerrar sesión) |
+| US-3 (1, 2, 3, 4) | T-F504 (1), T-F505 (2), T-F503 (3, 4) |
+| US-4 (1) | T-F602, T-F603 |
+| Casos borde (404 de otra empresa, 403 de operador) | T-F503 (404), T-F104, T-F502, T-F702 (403) |
+| SC-001 Panel en < 3 min | T-F202, T-F702, checkpoint F2 |
+| P-2 Verificación no bloqueante | T-F405 |
+| P-3 Reactivación | T-F503 |
+| P-4 `email_already_registered` | T-F202, T-F702 |
+| P-5 Sesión 24 h / 7 días (401 global) | T-F104, T-F702 |
+| DD-14 Token en el fragmento | T-F401, T-F007 |
+| DD-17 *Bundle* multi-spec | T-F004 |
+| ADR-006 (401 en cualquier request vuelve al login) | T-F104 |
+| ADR-019 (SPA embebida, cabeceras, CSP) | T-F007, T-F008, T-F702 |
+| ADR-020 (PWA sin offline) | T-F108, T-F703 |
+| NFR-F01..F12 | T-F002 (F02, F07, F08), T-F702 (F01, F06, F10, F12), T-F703 (F09, F11), T-F704 (F03..F05), T-F705 (F06..F08) |

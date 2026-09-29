@@ -309,3 +309,256 @@ Supuestos a validar durante la implementación (no verificados con documentació
 5. Las políticas `TO crm_auth`/`TO crm_worker` y el comportamiento de `SELECT ... FOR UPDATE`
    con RLS (aplica también las políticas de `UPDATE`) se comportan como describe
    `data-model.md` §3.4: los tests T-B109, T-B110 y T-B211 lo confirman.
+
+---
+
+## Frontend
+
+Autor: `frontend-architect` (2026-09-29). Diseño en [`ui.md`](ui.md); decisiones estructurales en
+ADR-015 a ADR-023. Las marcadas **(usuario)** las tomó el usuario; el resto son defaults del
+arquitecto pendientes de aprobación.
+
+Criterios que se repiten: (1) simplicidad para un usuario con nivel básico en React/TypeScript
+(pocas abstracciones propias, patrones de la documentación oficial); (2) accesibilidad y uso desde
+el celular; (3) el contrato OpenAPI como fuente de verdad; (4) mismo origen que la API (ADR-006);
+(5) dependencias mantenidas y justificadas contra la alternativa nativa.
+
+## R-F01 Herramienta de build y tipo de aplicación → ADR-015
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Vite + React + TypeScript, SPA** | Estándar actual; *proxy* de desarrollo incluido; build estático que Go puede embeber; Vitest comparte configuración; documentación de shadcn/Tailwind v4 lo asume | Sin SSR (no hace falta: todo está detrás del login) | **Elegida** |
+| Next.js / React Router *framework* / Remix | SSR, rutas por archivo | Runtime de servidor Node que no se embebe como estáticos; conceptos de servidor sin requisito; rompe el "un binario" | Descartada |
+| Rsbuild / Parcel / webpack | Funcionan | Menos ejemplos con el stack elegido; sin integración directa con Vitest | Descartada |
+| JavaScript sin TypeScript | Menos para aprender al principio | Se pierden los tipos derivados del contrato | Descartada (la constitución fija TypeScript) |
+
+## R-F02 Ubicación del frontend en el repositorio → ADR-015
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **`web/` en el mismo repositorio** (con `web/embed.go`) | Un PR cambia contrato, backend y frontend juntos; el contrato está a un `../`; `go:embed` necesita que `dist` esté bajo el paquete que embebe | Node y Go en la misma CI | **Elegida** |
+| Repositorio separado | Ciclos independientes | Versiones cruzadas del contrato; dos CI; sin beneficio para un equipo chico con un binario | Descartada |
+| Dentro de `internal/` | Junto al código Go | Mezcla un proyecto Node con paquetes internos; nombre poco reconocible | Descartada |
+
+## R-F03 Organización de carpetas → ADR-015
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Por feature con *colocation*** (`features/<dominio>/` con pantallas, hooks, esquemas y tests) + `components/`, `lib/`, `api/` compartidos | Lo que cambia junto vive junto; una spec = una carpeta; mismo criterio que ADR-001 en Go | Hay que decidir qué es compartido (regla: lo usan dos features) | **Elegida** |
+| Por tipo técnico (`components/`, `hooks/`, `services/` globales) | Familiar | Cada feature dispersa en cinco carpetas que crecen sin límite | Descartada |
+| *Feature-Sliced Design* u otras metodologías con capas | Reglas explícitas | Muchos conceptos (capas, slices, segmentos) para un usuario que aprende | Descartada |
+
+## R-F04 Componentes y estilos **(usuario: shadcn/ui + Tailwind)** → ADR-016
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **shadcn/ui + Tailwind CSS v4** | Accesibilidad de Radix en diálogos, menús y radios sin escribirla; componentes copiados al proyecto (código propio, legible); un solo sistema de estilos | Tailwind v4 exige Safari ≥ 16.4, Chrome ≥ 111, Firefox ≥ 128; actualizar componentes es manual | **Elegida por el usuario** |
+| MUI / Mantine / Chakra | Completas | Sistema de temas propio, bundle más grande, estilo difícil de cambiar | Descartada |
+| React Aria + estilos propios | Accesibilidad excelente | Más bajo nivel; todo el estilo a mano | Descartada |
+| Componentes a mano + CSS Modules | Control total | Reescribir diálogos, menús y selects accesibles | Descartada |
+
+Base de shadcn:
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Radix UI** | Madura, la más documentada; la mayoría de los ejemplos y respuestas la usan | Algunas piezas insertan `<style>` en runtime (CSP `style-src 'unsafe-inline'`) | **Elegida** |
+| Base UI | Más nueva, API moderna | Menos material disponible hoy | Descartada por ahora |
+
+Íconos: **lucide-react** (el set de shadcn) frente a Phosphor (sugerido por el catálogo de diseño):
+se elige lucide para no mezclar estilos con los componentes de shadcn.
+
+Tipografía: **fuente del sistema** (0 KB, LCP más rápido) frente a Inter autoalojada (aspecto
+uniforme entre plataformas, ~20–40 KB por peso, estimación no medida). Se elige la del sistema
+(DD-F14).
+
+## R-F05 Router **(usuario: React Router en modo SPA/librería)** → ADR-017
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **React Router v7, variante *data* (`createBrowserRouter`), sin loaders para datos** | `useBlocker`, `ErrorBoundary` y `lazy` por ruta incluidos; el server state queda en TanStack Query | Configuración en objetos (menos intuitiva que JSX); hay que evitar loaders por convención | **Elegida** (modo SPA: usuario; variante: arquitecto) |
+| React Router declarativo (`<BrowserRouter>`) | Lo más simple | Sin `useBlocker` ni `ErrorBoundary` por ruta; *code splitting* manual | Descartada |
+| React Router con loaders como capa de datos | Una librería menos | Sin caché compartida ni invalidación por clave; dos cachés si se combina con Query | Descartada |
+| TanStack Router | Rutas tipadas | Menos difundido; el usuario eligió React Router | Descartada |
+
+## R-F06 Server state y cliente HTTP **(usuario: TanStack Query + openapi-fetch)** → ADR-018
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **TanStack Query + openapi-fetch, hooks escritos por feature** | Caché, deduplicación, reintentos, invalidación, pausa sin conexión; cliente tipado sin código generado; claves de caché explícitas | Dos librerías a aprender | **Elegida por el usuario** |
+| `fetch` en `useEffect` | Sin dependencias | Cada pantalla reimplementa carga, error e invalidación | Descartada |
+| SWR | Más simple | Menos control de mutaciones e invalidación | Descartada |
+| RTK Query | Potente | Trae Redux y un store global | Descartada |
+| `openapi-react-query` (hooks sobre openapi-fetch) | Menos código | Claves de caché generadas (menos explícitas); otra abstracción | Descartada |
+| Generadores de hooks (orval, hey-api) | Todo generado | Mucho código generado que leer | Descartada |
+
+Estado global del cliente:
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Sin store global**: server state en Query, local con `useState`, formularios en React Hook Form, toasts en sonner | Nada que sincronizar; menos conceptos | — | **Elegida** |
+| Context propio para la sesión | Familiar | La sesión es server state (`/me`): copiarla obliga a sincronizarla | Descartada |
+| Zustand | Simple | Sin estado global que cambie seguido en 001 | Descartada |
+
+Manejo del `401` (sesión vencida):
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Global en `QueryCache`/`MutationCache.onError`, callback inyectado al crear el `QueryClient`** | Un solo lugar; se prueba aislado; distingue `unauthenticated` de `invalid_credentials` por `code` | Hay que excluir la query de sesión (mapea `401` a `null`) | **Elegida** |
+| Middleware de openapi-fetch (`onResponse`) | Antes de llegar a Query | No tiene acceso natural a la caché ni al router; mezcla transporte con navegación | Descartada |
+| Por pantalla | Control fino | Se olvida en alguna; comportamiento inconsistente | Descartada |
+| Reautenticación en un diálogo sin salir de la pantalla | No pierde lo cargado | Más estados, reintento de la mutación original, foco; desproporcionado para formularios de 001 | Descartada para 001 (DD-F5) |
+
+## R-F07 Tipos del contrato y *bundle* multi-spec **(usuario: openapi-typescript)** → ADR-018
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Un archivo de tipos por spec (`redocly.yaml` → `generated/NNN.ts`) combinados por intersección de `paths`** | Sin conflictos de nombres de componentes; diffs por spec; agregar una spec = una línea | Una ruta repetida en dos specs se mezclaría (lo detecta un test de tipos) | **Elegida** |
+| `redocly join` en un contrato único y un solo archivo de tipos | Un archivo | Conflictos de componentes y `tags` a resolver en cada spec | Descartada |
+| `redocly bundle` por spec antes de generar | Resuelve `$ref` externos seguro | Paso extra si `openapi-typescript` ya los resuelve | **Respaldo** si falla S-F1 |
+| Tipos escritos a mano | Sin herramienta | Se desincronizan; viola ADR-014 | Descartada |
+
+## R-F08 Distribución **(usuario: SPA embebida con `go:embed`, mismo origen, proxy de Vite)** → ADR-019
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Embebida en el binario, mismo origen** | Cookie y CSRF de ADR-006 sin cambios; un artefacto; versiones alineadas | Compilar el frontend antes; chunks viejos desaparecen en cada deploy | **Elegida por el usuario** |
+| CDN / otro dominio | Caché en el borde | CORS con credenciales y rediseño de CSRF | Descartada |
+| nginx/Caddy delante | Estándar | Otro proceso; hosting sin definir (P-1) | Opción futura |
+| Archivos desde disco | Cambiar la UI sin recompilar | Binario no autocontenido | Descartada |
+
+Montaje del handler de la SPA:
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Mux raíz: `/api/` → chi; `/healthz`, `/readyz`; resto → SPA** | Los tests de rutas del backend (T-B004, T-B801, rutas vs contrato) no cambian; un `/api/…` inexistente sigue en `404 problem+json` | Un nivel más de ruteo en `internal/app` | **Elegida** (hallazgo H-1 de `ui.md`) |
+| Ruta `/*` dentro de chi | Directo | Rompe `chi.Walk` y los tests de cobertura | Descartada |
+
+*Fallback* y cabeceras:
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **`index.html` para rutas sin extensión; `404` para archivos inexistentes; `no-cache` en HTML, `immutable` en assets con hash** | No sirve HTML como JS; cada carga ve la versión nueva; assets descargados una vez | — | **Elegida** |
+| `index.html` para todo lo que no exista | Simple | Chunks viejos reciben HTML (error de MIME) y pueden cachearse | Descartada |
+| HTML con `max-age` | Menos requests | Pestañas nuevas con `index.html` viejo apuntando a chunks inexistentes | Descartada |
+
+CSP:
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **`script-src 'self'` estricto + `style-src 'self' 'unsafe-inline'`** | Frena XSS por scripts; compatible con Radix/sonner | Estilos inline permitidos (riesgo bajo) | **Elegida** |
+| CSP estricta con *nonces* | Máxima | Requiere HTML generado por request | Descartada |
+| Sin CSP | Nada que mantener | Sin defensa en profundidad ante XSS | Descartada |
+
+Desarrollo local:
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Proxy de Vite (`/api` → `:8080`)** | Incluido en Vite; mismo origen para el navegador | Depende de que el navegador acepte la cookie `Secure` en `http://localhost` (S-F3) | **Elegida por el usuario** |
+| Go reenvía a Vite | Un solo puerto | Código Go solo para desarrollo | Descartada |
+
+Compresión:
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **`gzhttp` en Go envolviendo el handler de la SPA** | Funciona en cualquier hosting | Dependencia Go nueva (aprobación del backend, H-8) | **Propuesta** |
+| Archivos precomprimidos (`.br`/`.gz`) en el build | Sin costo de CPU por request | Más lógica en el handler | Descartada por ahora |
+| Delegar en el proxy del hosting | Cero código | Hosting sin definir (P-1) | Si el hosting lo trae, reemplaza a la propuesta |
+
+## R-F09 PWA y service worker → ADR-020
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Manifest + SW mínimo a mano (solo navegaciones → `offline.html`)** | Instalable; página propia sin conexión; no guarda nada de la app ni de la API | Sin precache (la caché HTTP cubre visitas repetidas) | **Elegida** |
+| vite-plugin-pwa / Workbox con precache | Arranque más rápido; base para offline | Precache de la app: aviso de versión nueva, recargas; más conceptos | Descartada hasta que haya offline |
+| Sin SW | Nada que mantener | Sin sugerencia automática de instalación; error genérico sin conexión | Descartada |
+| Cachear `/api` | Algo de lectura sin conexión | Datos viejos y de otra sesión en dispositivos compartidos | Descartada (NFR-F09) |
+
+## R-F10 Formularios y validación → ADR-021
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **React Hook Form + Zod (esquemas atados al tipo del contrato)** | Errores por campo, foco, `dirtyFields`; pocos re-renders; los `422` se aplican por nombre de campo | Dos librerías; los valores de las reglas se copian del contrato | **Elegida** |
+| Nativo controlado | Sin dependencias | Cada formulario reimplementa errores y foco | Descartada |
+| TanStack Form | Muy tipado | Más nuevo, menos ejemplos con shadcn | Descartada |
+| React 19 `useActionState` | Nativo | Pensado para SSR/acciones de servidor | Descartada |
+| Zod generado del OpenAPI | Sin duplicar reglas | Otra herramienta de generación | Descartada |
+
+Cuándo validar:
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Al enviar y, tras el primer intento, al cambiar** | No molesta mientras se escribe; el error desaparece apenas se corrige | El usuario ve los errores recién al enviar | **Elegida** |
+| Al salir de cada campo | Aviso temprano | Errores sobre campos que el usuario todavía no terminó | Descartada |
+| En cada tecla | Inmediato | Ruido y errores prematuros | Descartada |
+
+## R-F11 Tests del frontend → ADR-022
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Vitest + Testing Library + MSW (jsdom)** | Misma configuración que Vite; consultas por rol; red interceptada en el borde con el cliente real | Mantener handlers alineados al contrato (tipados) | **Elegida** |
+| Jest | Estándar histórico | Configuración de TS/ESM extra | Descartada |
+| happy-dom | Más rápido | Menos fiel | Respaldo (S-F2) |
+| Vitest modo navegador | Más fiel | Más lento y más piezas | Reevaluable |
+| Mockear hooks de datos | Rápido | No prueba la integración real | Descartada |
+
+End-to-end:
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Playwright contra el binario + `docker compose` + axe** | Prueba SW, CSP, cookies y cabeceras reales; Chromium y WebKit | Necesita Docker; minutos de CI | **Elegida** (frecuencia en P-F5) |
+| Cypress | Buena experiencia | Sin WebKit | Descartada |
+| Solo pruebas manuales | Nada que mantener | Sin regresión automática en flujos críticos | Descartada |
+
+## R-F12 Idioma y formato de fechas y dinero → ADR-023
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **es-AR sin librería de i18n; mensajes de error centralizados por `code`** | Textos directos; nada que traducir | Cambiar un texto es buscarlo en el componente | **Elegida** |
+| react-intl / i18next | Estándar multilenguaje | Innecesario con un idioma | Descartada |
+
+Dinero (se implementa en la primera spec con importes):
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Centavos → string decimal por manipulación de texto → `Intl.NumberFormat.format(string)`** | Exacto por construcción; nativo | Requiere navegadores con `Intl.NumberFormat` v3 (cubiertos por los mínimos) | **Elegida** |
+| `cents / 100` + `Intl` | Trivial | Aritmética de punto flotante (prohibida) | Descartada |
+| dinero.js / big.js | Exactas | Dependencia para algo que resuelve `Intl` | Descartada |
+| `bigint` | Sin límite | `JSON.parse` entrega `number`; habría que interceptar el parseo | Descartada |
+
+Fechas: zona horaria **de la empresa** (constitución) frente a la del navegador (más simple, pero
+un usuario de viaje vería horas distintas). Se elige la de la empresa; la del navegador solo en
+pantallas sin sesión.
+
+## R-F13 Decisiones locales de pantalla → `DD-F` de `ui.md`
+
+| Decisión | Opción elegida | Alternativa descartada y por qué |
+|---|---|---|
+| Idioma de las rutas (DD-F1) | Inglés (`/reset-password`) | Español: URLs más amigables, pero sin coherencia con endpoints en inglés y con caracteres especiales (P-F3) |
+| Token del enlace (DD-F2) | Del fragmento a `history.state` al montar | Dejarlo en el fragmento (visible, copiable al compartir la URL); `sessionStorage` (sobrevive a la pestaña más de lo necesario) |
+| Confirmar email (DD-F3) | Botón explícito | Automático al abrir: el doble montaje de React en desarrollo o un escáner de enlaces pueden consumir el token |
+| Invitar (DD-F6) | Página propia | Modal: peor con el botón atrás en el celular y más manejo de foco |
+| Cambio de rol (DD-F7) | Acción con confirmación | Selector en la fila: cambios por un toque accidental |
+| Email entre pantallas (DD-F9) | `location.state` | Query string: el email quedaría en logs de acceso del servidor |
+| Zona horaria en el registro (DD-F10) | La del navegador con reintento sin ella ante `422` | No enviarla (la empresa arranca en Buenos Aires aunque esté en otra zona) |
+| Logo grande (DD-F11) | Rechazar con indicación | Redimensionar en el navegador (P-F2): más código y difícil de probar en jsdom |
+| Tema (DD-F13) | Solo claro | Claro + oscuro: el doble de verificación de contraste sin pedido de la spec |
+| Navegación (DD-F15) | Barra inferior (celular) + lateral (escritorio) | Menú hamburguesa: oculta la navegación y queda lejos del pulgar |
+| Repetir contraseña (DD-F16) | No, con mostrar/ocultar | Campo de confirmación: un campo más sin beneficio con el control de visibilidad |
+| Bloqueo (DD-F17) | Estado de `/login` | Ruta propia: pierde el email y no hay nada que enlazar |
+
+## Fuentes consultadas (frontend)
+
+- Tailwind CSS v4, navegadores soportados: <https://tailwindcss.com/docs/compatibility>
+- Vite 8 y `build.target` por defecto (`baseline-widely-available`): <https://vite.dev/blog/announcing-vite8>, <https://vite.dev/config/build-options>
+- Vite, `vite:preloadError`: <https://vite.dev/guide/build#load-error-handling>
+- React Router, modos: <https://reactrouter.com/start/modes>
+- shadcn/ui con React Hook Form y `Field`: <https://ui.shadcn.com/docs/forms/react-hook-form>
+- `@hookform/resolvers` 5.1 con Zod 4: <https://github.com/react-hook-form/resolvers/releases>
+- openapi-typescript, varias APIs con `redocly.yaml`: <https://openapi-ts.dev/cli>
+- Redocly `bundle` / `join`: <https://redocly.com/docs/cli/commands/bundle>, <https://redocly.com/docs/cli/commands/join>
+- Chrome, criterios de instalación: <https://developer.chrome.com/blog/update-install-criteria>
+- `Intl.NumberFormat.prototype.format` con strings decimales exactos: <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/NumberFormat/format>
+
+Supuestos a validar durante la implementación (detalle en `ui.md` §25): S-F1 (`$ref` externos en
+openapi-typescript, T-F004), S-F2 (openapi-fetch + MSW en jsdom, T-F003), S-F3 (cookie `Secure` en
+`http://localhost`, T-F006).
