@@ -9,6 +9,8 @@ decisión del usuario); R-24 agregada por H-11 (límite exacto del logo y del cu
 **Tercera revisión 2026-09-30**: decisiones previas a la Fase 2 aprobadas por el usuario: R-04c
 ampliada (lock de `GRANT crm_tenant`, DD-33); R-25 (IP del cliente detrás de proxies, DD-32), R-26
 (`405 method_not_allowed`) y R-27 (cancelaciones del cliente) agregadas.
+**Cuarta revisión 2026-09-30**: R-28 agregada (primer `SET ROLE` a una empresa recién aprovisionada
+desde otra conexión, DD-34); R-04 y R-04c mencionan el hallazgo; supuesto 12 nuevo.
 
 Alternativas evaluadas por decisión. Las marcadas **(usuario)** las tomó el usuario antes del
 plan: acá se documenta por qué son razonables y qué cuestan. Las demás son defaults del
@@ -54,8 +56,8 @@ pide FR-007. (Desde 2026-09-29, chi atiende solo `/api/`; el reparto de primer n
 
 | Opción | Cómo funciona | A favor | En contra |
 |---|---|---|---|
-| **A. Rol por empresa + RLS forzada** (elegida por el usuario) | Cada empresa tiene `crm_t_<hex>`; cada transacción hace `SET LOCAL ROLE`; las políticas comparan `tenant_id` con la empresa derivada de `current_user` | Falla cerrada (el rol de login no tiene privilegios); la identidad de la empresa es la identidad de base (`pg_stat_activity`, logs por usuario); se pueden fijar límites por empresa (`ALTER ROLE ... SET`) | Requiere `CREATEROLE` en el flujo de registro; roles globales al clúster (backups, restores, entornos); `crm_app` miembro de miles de roles (rendimiento a medir); re-análisis de planes al cambiar de rol; bootstrap fuera de las migraciones; **registros serializados por el lock de `GRANT crm_tenant`** (R-04c) |
-| B. Rol único `crm_tenant` + `SET LOCAL app.tenant_id` | Cada transacción hace `SET LOCAL ROLE crm_tenant` y fija una variable; las políticas usan `current_setting('app.tenant_id')` | Misma falla cerrada si `crm_app` tampoco tiene privilegios; sin `CREATEROLE`; cero operación extra; patrón muy documentado; sin `GRANT` por registro | La empresa es una variable, no una identidad de base; menos trazabilidad en `pg_stat_activity` |
+| **A. Rol por empresa + RLS forzada** (elegida por el usuario) | Cada empresa tiene `crm_t_<hex>`; cada transacción hace `SET LOCAL ROLE`; las políticas comparan `tenant_id` con la empresa derivada de `current_user` | Falla cerrada (el rol de login no tiene privilegios); la identidad de la empresa es la identidad de base (`pg_stat_activity`, logs por usuario); se pueden fijar límites por empresa (`ALTER ROLE ... SET`) | Requiere `CREATEROLE` en el flujo de registro; roles globales al clúster (backups, restores, entornos); `crm_app` miembro de miles de roles (rendimiento a medir); re-análisis de planes al cambiar de rol; bootstrap fuera de las migraciones; **registros serializados por el lock de `GRANT crm_tenant`** (R-04c); **el primer `SET ROLE` a una empresa nueva desde otra conexión puede fallar por la caché de membresías** (R-28) |
+| B. Rol único `crm_tenant` + `SET LOCAL app.tenant_id` | Cada transacción hace `SET LOCAL ROLE crm_tenant` y fija una variable; las políticas usan `current_setting('app.tenant_id')` | Misma falla cerrada si `crm_app` tampoco tiene privilegios; sin `CREATEROLE`; cero operación extra; patrón muy documentado; sin `GRANT` por registro ni membresías nuevas en runtime | La empresa es una variable, no una identidad de base; menos trazabilidad en `pg_stat_activity` |
 | C. Solo filtro en la aplicación | `WHERE tenant_id = $1` en cada query | Simple | Viola la constitución (principio III exige RLS) |
 | D. Esquema por empresa | Un esquema por empresa, `search_path` por transacción | Aislamiento físico por esquema | Migraciones × N esquemas; miles de esquemas; `search_path` es otra variable manipulable |
 | E. Base por empresa | Una base por empresa | Aislamiento fuerte | Pool por empresa, migraciones × N, costo de hosting; desproporcionado para pymes |
@@ -71,6 +73,8 @@ pide FR-007. (Desde 2026-09-29, chi atiende solo `/api/`; el reparto de primer n
 - El costo diferencial de A es **operativo**, no de código: con el diseño de este plan la política
   RLS es idéntica en ambas (usa `app.current_tenant_id()`), y pasar de A a B cambia una función y
   `InTenantTx`.
+- La implementación sumó dos costos de A que B no tiene, los dos por cambiar membresías de roles
+  en runtime: el lock de `GRANT crm_tenant` (R-04c) y la caché de membresías por backend (R-28).
 
 Recomendación del arquitecto: B es la opción más simple con la misma protección práctica. Se
 diseña sobre A por decisión del usuario, con la reversibilidad garantizada y el riesgo del
@@ -113,7 +117,7 @@ aprovisionamiento abierta, la segunda cae por el `statement_timeout` de `crm_app
 |---|---|---|---|
 | **Aceptar la serialización y acotarla**: `lock_timeout = '2s'` en la transacción de registro (`55P03` → `503` con `Retry-After`), sin E/S de red después de aprovisionar (p95 < 250 ms), sembrado de 002 solo si entra en ese presupuesto, reprovisión con una transacción por empresa | Sin cambios de modelo; a la escala del MVP (registros raros) la espera real es de milisegundos; la falla, si ocurre, es clara y reintentable, nunca un `500` | Un pico de registros simultáneos puede dar algunos `503`; hay que vigilar la duración de la transacción de registro (T-B905) | **Elegida** |
 | Hacer el `GRANT` en una transacción previa y separada | Sin lock durante el resto del registro | Rompe INV-14: si el registro falla queda un rol huérfano con membresía; dos pasos que coordinar | Descartada |
-| *Pool* de roles creados de antemano (un job crea roles `crm_t_*` con su membresía, uno por transacción; el registro reclama uno con `FOR UPDATE SKIP LOCKED` y usa su UUID como `tenants.id`) | Elimina el lock del camino del registro | Redefine INV-14 (el rol existe antes que la empresa); una tabla y un job más; roles sin empresa que inventariar | Postergada: mejora natural si T-B905 no cumple |
+| *Pool* de roles creados de antemano (un job crea roles `crm_t_*` con su membresía, uno por transacción; el registro reclama uno con `FOR UPDATE SKIP LOCKED` y usa su UUID como `tenants.id`) | Elimina el lock del camino del registro; **también elimina el problema de R-28** (la membresía a `crm_app` se concede mucho antes del primer uso) | Redefine INV-14 (el rol existe antes que la empresa); una tabla y un job más; roles sin empresa que inventariar | Postergada: mejora natural si T-B905 no cumple o si R-17 del plan se materializa |
 | Alternativa B de ADR-005 (sin roles por empresa) | Elimina el problema de raíz | Es cambiar la decisión del usuario | Salida si T-B905 o P-1 lo piden (ADR que reemplace a ADR-005) |
 | Subir `statement_timeout` | Cero código | La espera sigue ahí, más larga y con conexiones del pool retenidas | Descartada |
 
@@ -507,6 +511,65 @@ sin clasificar y termina en `500 internal` con log `ERROR`.
 En el worker, una cancelación por apagado deja el mensaje como estaba (`pending`, sin sumar
 `attempts`): no es error recuperable ni definitivo.
 
+## R-28 Primer `SET ROLE` a una empresa recién aprovisionada desde otra conexión → DD-34, nota (b) en ADR-005
+
+Contexto (hallazgo de la Fase 1, 2026-09-30): en PostgreSQL 18.6, después de que una conexión
+aprovisiona una empresa y hace `COMMIT`, el primer `SET LOCAL ROLE crm_t_<hex>` desde **otra**
+conexión del pool de `crm_app` a veces falla con `42501 permission denied to set role`. Hipótesis
+del desarrollador: la lista de roles "SET-ables" que cada backend guarda en caché
+(`roles_is_member_of`, `acl.c`) todavía no procesó la invalidación de la membresía recién
+concedida. La reproducción es el test
+`TestTxRunner_NewCompanyIsUsableOnAnyConnectionRightAfterProvisioning`
+(`internal/platform/db/txrunner_integration_test.go`), con registros concurrentes: 64 a 105 fallas
+en 600 primeros usos. Efecto en producción: el primer request después de registrarse puede caer en
+otra conexión y dar `500`, con una falsa alerta de `rls_violation`.
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Lectura de catálogo en el mismo viaje que el `SET LOCAL ROLE` + un único reintento en `InTenantTx`** (antes de `fn`; nunca después, ni en roles de sistema, ni en `AsTenant`) | La lectura cubre **todos** los caminos que cambian de rol (medido: 0/1800 y 0 fallas en 8 corridas de la suite); el reintento es una red si la lectura deja de alcanzar en otra versión; cambio local a `platform/db`, sin tocar servicios ni contrato; el log y la métrica dejan ver si la red se usa | Depende de un comportamiento interno no documentado (R-17 del plan); el reintento no cubre `InSystemTx` → `AsTenant` (resolución de sesión, justo el primer `GET /me` después de registrarse) | **Elegida por el usuario** (DD-34) |
+| Solo el reintento | No depende de detalles internos para el caso normal: si falla, se reintenta | Cada primer uso de una empresa nueva paga un viaje fallido y un `WARN`; no cubre `AsTenant` (el camino más común después de registrarse), así que ese `500` seguiría pasando; que la **segunda** vez funcione tampoco está garantizado | Descartada como defensa única |
+| Solo la lectura de catálogo | Una sentencia más en el mismo viaje; cubre todos los caminos; medido 0/1800 | Si una versión futura cambia cuándo se procesan las invalidaciones, vuelve el `500` sin red | Descartada como defensa única (se combina con el reintento) |
+| `DISCARD ALL` o reconectar las conexiones del pool después de cada registro | Conexiones "limpias" | El registro no controla las demás conexiones del pool (cada backend tiene su caché); `DISCARD ALL` borra las sentencias preparadas que usa pgx; no está verificado que limpie esta caché; reconectar todo el pool por registro es desproporcionado | Descartada |
+| Esperar o dormir un rato antes del primer uso | Trivial | No hay un tiempo seguro; agrega latencia al registro; enmascara el problema | Descartada |
+| *Pool* de roles creados de antemano (R-04c) | La membresía a `crm_app` existe mucho antes del primer uso: el problema desaparece sin depender de detalles internos; resuelve también el lock de DD-33 | Redefine INV-14; una tabla y un job más | Postergada: salida estructural dentro de A si R-17 se materializa |
+| Alternativa B de ADR-005 (rol único + variable de sesión) | Sin membresías nuevas en runtime: el problema no existe | Es cambiar la decisión del usuario (ADR que reemplace a ADR-005) | Argumento para la comparación abierta en P-1 |
+
+Por qué el reintento es seguro **solo** en el `SET ROLE` inicial de `InTenantTx`:
+
+| Punto | ¿Reintentar? | Razón |
+|---|---|---|
+| `SET LOCAL ROLE` inicial de `InTenantTx`, antes de `fn` | Sí, una vez | La transacción no ejecutó nada: el `ROLLBACK` no deshace trabajo y `fn` corre como mucho una vez |
+| Un `42501` dentro de `fn` | No | Puede ser una violación real de RLS (INV-19); reintentar repetiría efectos y taparía un bug de aislamiento |
+| `InSystemTx` (roles de sistema) | No | Sus membresías vienen del bootstrap y no cambian en runtime: un `42501` es un bug o un problema de despliegue |
+| `Tx.AsTenant` / `Tx.AsSystem` a mitad de transacción | No | La transacción ya ejecutó la fase 1: reintentar exigiría repetir `fn` completa, y eso ya no es un detalle de `platform/db` |
+| Otro SQLSTATE (p. ej. `42704`, el rol no existe) | No | No es este problema: es el caso de restore sin roles (plan §12.4) |
+
+### ¿Conviene reportarlo a PostgreSQL?
+
+**Sí, conviene**, con una reproducción mínima fuera de la aplicación. Si es un bug, un arreglo
+upstream permitiría quitar la dependencia de un detalle interno (R-17). Si no lo es, la respuesta
+aclara la causa real (S-16) y si la lectura de catálogo es un arreglo legítimo o una casualidad.
+Qué debería tener el reporte (lo arma quien el usuario decida; no es código del repo):
+
+- **Sin pgx**: dos o más sesiones de `psql` (o un script con `libpq`) conectadas como un rol
+  equivalente a `crm_app`. En la sesión A: `CREATE ROLE r NOLOGIN; GRANT r TO app WITH INHERIT
+  FALSE, SET TRUE; COMMIT`. En la sesión B, ya conectada de antes: `BEGIN; SET LOCAL ROLE r;`.
+  Repetirlo en bucle y con varias sesiones B para medir la frecuencia de `42501`.
+- **Registrar el orden exacto** de `BEGIN` de B frente al `COMMIT` de A. Es el dato que decide si
+  es un bug. Si solo falla cuando B abrió su transacción **antes** del `COMMIT` de A, puede ser un
+  comportamiento esperado de la caché dentro de una transacción ya iniciada, y eso diría además
+  que el caso "me registro y el siguiente request falla" (secuencial) es menos probable que lo que
+  muestra el test concurrente. Si falla también cuando el `BEGIN` de B es posterior, es más
+  claramente un bug.
+- Versión exacta (18.6) y, si es posible, la misma prueba en el último *minor* de 17 y de 16, para
+  saber si es una regresión.
+- El efecto de la lectura de catálogo previa como dato, no como pedido.
+- Canal: la lista `pgsql-bugs` o el formulario de reporte de bugs del proyecto, siguiendo sus guías
+  de reporte.
+
+Hasta tener respuesta, DD-34 se mantiene tal cual; el test de reproducción queda en la suite para
+detectar cualquier cambio de comportamiento al subir de versión.
+
 ---
 
 ## Fuentes consultadas
@@ -529,6 +592,7 @@ En el worker, una cancelación por apagado deja el mensaje como estaba (`pending
 - mkcert (almacenes de confianza en Linux con `certutil`, `-cert-file`/`-key-file`, `-CAROOT`, `NODE_EXTRA_CA_CERTS` para Node, advertencia sobre `rootCA-key.pem`): <https://github.com/FiloSottile/mkcert>
 - chi v5.3.2, manejador de `405` y cabecera `Allow` (código fuente en el *module cache* del proyecto, `github.com/go-chi/chi/v5@v5.3.2/mux.go`, funciones `MethodNotAllowedHandler`, `routeHTTP`, `methodNotAllowedHandler` y `Match`; y `context.go`, campo `methodsAllowed` no exportado)
 - Lock de `GRANT crm_tenant` en PostgreSQL 16+: verificado por el revisor de la Fase 1 con un test de integración contra PostgreSQL 18 (sin fuente documental citada)
+- `42501` en el primer `SET ROLE` desde otra conexión (R-28): observado y medido por el desarrollador en la Fase 1 contra PostgreSQL 18.6 (test `TestTxRunner_NewCompanyIsUsableOnAnyConnectionRightAfterProvisioning`, commit e3d990b). La causa (`roles_is_member_of` en `acl.c`) es su hipótesis; el arquitecto **no** la verificó en el código fuente de PostgreSQL y no hay fuente documental (supuesto 12)
 
 Supuestos a validar durante la implementación (no verificados con documentación primaria):
 
@@ -559,6 +623,11 @@ Supuestos a validar durante la implementación (no verificados con documentació
     Fase 1; lo fijan los casos nuevos de T-B105.
 11. El proxy del hosting que se elija **agrega** su entrada a `X-Forwarded-For` (no la reemplaza)
     y sale desde rangos conocidos (S-14 del plan). Se verifica al cerrar P-1.
+12. La causa del `42501` de R-28 es la caché de membresías por backend, y leer un catálogo antes
+    del `SET ROLE` hace que el backend procese las invalidaciones pendientes (S-16 del plan). Es
+    consistente con la medición, pero no está verificado en el código de PostgreSQL ni
+    documentado. Lo vigila el test de reproducción de T-B103; el reporte upstream sugerido lo
+    confirmaría.
 
 ---
 

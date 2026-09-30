@@ -20,6 +20,10 @@ T-B002, T-B004, T-B005, T-B011, T-B105, T-B106, T-B112, T-B203, T-B204, T-B211, 
 T-B219 y T-B220 (nuevas), T-B303, T-B304, T-B305, T-B901, T-B902, T-B903, T-B905, T-B906, T-B907,
 T-B908. La sección Frontend no se tocó en esta revisión (lo que le pide el backend está en
 "Coordinación con la sección Frontend").
+**Cuarta revisión 2026-09-30**: primer `SET ROLE` a una empresa recién aprovisionada desde otra
+conexión (`42501` en PostgreSQL 18.6): lectura de catálogo previa y un único reintento en
+`InTenantTx` (plan DD-34, INV-27, R-17; research R-28). Tareas afectadas: T-B103 y T-B104 (y
+menciones en T-B903 y T-B905). La sección Frontend no cambia: el contrato no cambia.
 
 ---
 
@@ -31,15 +35,16 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
 
 - **Fase 0**: implementada y mergeada (PR fdelillo/crm#6).
 - **Fase 1**: implementada en la rama, **en revisión**.
-- La tercera revisión toca tareas ya implementadas. Se aplican como ajustes en la rama de la Fase 1
-  (si sigue abierta) o como primer cambio de la Fase 2, **antes** de T-B201, con `make check` en
-  verde:
+- La tercera y la cuarta revisión tocan tareas ya implementadas. Se aplican como ajustes en la rama
+  de la Fase 1 (si sigue abierta) o como primer cambio de la Fase 2, **antes** de T-B201, con
+  `make check` en verde:
 
   | Tarea ya implementada | Fase | Ajuste |
   |---|---|---|
   | T-B002 / T-B003 | 0 | Variable `TRUSTED_PROXIES` (DD-32): filas nuevas de la tabla; `Config.TrustedProxies []netip.Prefix`; `.env.example` la documenta vacía, con un comentario que remite a plan §10.5 |
   | T-B004 / T-B005 | 0 | `405` de la API con `code: method_not_allowed` (antes `malformed_request`). El cálculo de `Allow` con `Match` ya está en `internal/app/root.go` y no cambia; log de arranque con `trusted_proxies` |
   | T-B011 | 0 | Regla nueva: las cabeceras de IP solo se leen en `internal/platform/httpx` (INV-25) |
+  | T-B103 / T-B104 | 1 | (Cuarta revisión, DD-34) La lectura de catálogo antes del `SET LOCAL ROLE` ya está aplicada (commit e3d990b, con el test de reproducción); falta el reintento único en `InTenantTx` (lo está implementando el `backend-developer`) y los casos nuevos de T-B103 |
   | T-B105 / T-B106 | 1 | `db.ErrCanceled` y `55P03` → `db.ErrUnavailable`, con el orden de clasificación de plan §9.2 |
   | T-B112 | 1 | Lista exacta de las cuatro rutas de plan §4.4: `queryrules.DefaultExceptions` suma `internal/identity/store/cleanup.sql` y `internal/tenant/store/provisioning.sql` a las dos que ya tiene |
 
@@ -62,6 +67,7 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
   | `clock.Clock` (tiempo controlado) | El adaptador S3 en su propio test (contra MinIO) |
   | `industrytemplate.Seeder` solo en el test de rollback (para forzar un fallo) y como *hook* para observar la transacción de registro (T-B303) | El router, el mux raíz y los middlewares en los tests HTTP (`httptest` sobre el handler real) |
   | El handler de la SPA (`RootDeps.SPA`) en los tests del backend, por un stub que registra lo que recibe | El paquete `web` en T-F007 (se prueba con `fstest.MapFS`) |
+  | El resultado del primer `SET LOCAL ROLE` de `InTenantTx`, solo con un *hook* de test no exportado de `platform/db`, para forzar el `42501` de DD-34 de forma determinista (T-B103) | El comportamiento real de PostgreSQL que origina DD-34: lo prueba el test de reproducción contra el contenedor, sin *hooks* |
 
 - **Tests HTTP con cookie** (H-10, nota en ADR-012): los que encadenan requests con la cookie de
   sesión (registro → `/me`, login → logout → `/me`) usan `internal/testsupport/apitest`:
@@ -330,7 +336,7 @@ no modifica y no inserta filas de la otra en ninguna tabla.
 **T-B102 — Migración `00002_tenant_functions.sql`**: `app.current_tenant_id()` y
 `provisioning.provision_tenant_role(uuid)` (la segunda creada con `SET LOCAL ROLE crm_provisioner`).
 
-**T-B103 [T] — `TxRunner` y `Tx`** · INV-02, INV-03, ADR-005
+**T-B103 [T] — `TxRunner` y `Tx`** · INV-02, INV-03, INV-19, INV-27, ADR-005, DD-34, R-17
 - **Red** (integración):
 
   | Caso | Esperado |
@@ -345,11 +351,26 @@ no modifica y no inserta filas de la otra en ninguna tabla.
   | `AsTenant(A)` cuando el rol de `A` no existe | error envuelto que nombra el rol (runbook §12.3) |
   | Contexto cancelado durante `fn` | `ROLLBACK`, error de contexto |
   | Una query con el pool directo (sin `TxRunner`) sobre `app.users` | `42501` (INV-02) |
+  | (Cuarta revisión, DD-34) **Reproducción** `TestTxRunner_NewCompanyIsUsableOnAnyConnectionRightAfterProvisioning`: registros concurrentes y, justo después de cada `COMMIT`, el primer `InTenantTx` de esa empresa en **cada** conexión del pool (600 primeros usos), **sin** *hooks* | 0 fallas. Corre en `make check`: es el detector de R-17 cuando cambia la imagen de PostgreSQL |
+  | Cada cambio de rol (`InTenantTx`, `InSystemTx`, `AsTenant`, `AsSystem`), observado con un `pgx.QueryTracer` de test | la lectura de `pg_catalog.pg_auth_members` y el `SET LOCAL ROLE` salen en **una sola** llamada, en ese orden |
+  | `InTenantTx(A)` con el primer `SET LOCAL ROLE` forzado a fallar con `42501` **una** vez (*hook* de test no exportado) | `ROLLBACK`, un reintento, `fn` ejecutada exactamente **una** vez y con `current_user = crm_t_<hex A>`; log `WARN` `event=set_role_retry` con `tenant_id` y `outcome=recovered`; `set_role_retry_total` +1 |
+  | El mismo caso forzando `42501` en los **dos** intentos | `errors.Is(err, db.ErrPrivilege)`; el mensaje nombra el paso y el rol (`set role crm_t_…`); `fn` **nunca** se ejecutó; exactamente dos intentos; `outcome=failed` |
+  | `fn` devuelve un `42501` (p. ej. un `INSERT` con el `tenant_id` de otra empresa, RLS) | **sin** reintento: `fn` corrió una sola vez; `ErrPrivilege`; `set_role_retry_total` sin cambios |
+  | `InSystemTx(RoleAuth)` con el cambio de rol forzado a `42501` | sin reintento; `ErrPrivilege`; `fn` no se ejecutó |
+  | `InSystemTx(RoleAuth)` → `AsTenant(A)` con `42501` forzado | sin reintento; `ErrPrivilege`; `ROLLBACK` |
+  | `InTenantTx` de una empresa sin rol (`42704`) | sin reintento; el error nombra el rol (fila de arriba) |
+  | Contexto cancelado entre el primer intento y el reintento | `ROLLBACK`, error de contexto, sin segundo intento |
 - **Green**: `db.NewTxRunner(pool)` pasa la tabla.
 - **Refactor**: `SET LOCAL ROLE` con `pgx.Identifier{...}.Sanitize()`; una sola función privada
-  que cambia de rol.
+  que cambia de rol (con la lectura de catálogo) y la usan todos los caminos; la decisión "¿se
+  puede reintentar?" en un solo lugar de `InTenantTx`, no repartida.
 
-**T-B104 — Implementar `platform/db` (`TxRunner`, `Tx`, `TenantRoleName`)**.
+**T-B104 — Implementar `platform/db` (`TxRunner`, `Tx`, `TenantRoleName`)**. Cuarta revisión
+(DD-34, INV-27): la lectura de catálogo en la función privada de cambio de rol ya está aplicada
+(commit e3d990b); falta el reintento único en `InTenantTx` (solo ante `42501` del `SET LOCAL
+ROLE` inicial y antes de llamar a `fn`), el *hook* de test no exportado, el error envuelto con el
+paso y el rol, el log `set_role_retry` y el contador `set_role_retry_total` (se publica en
+`expvar` con el resto de las métricas, T-B904). Las firmas de `TxRunner` y `Tx` no cambian.
 
 **T-B105 [T] — Mapeo de errores de PostgreSQL y de contexto** · INV-19, INV-26, plan §9.2, §9.4, DD-33, research R-27
 - **Red** (unitario, con `*pgconn.PgError` construidos a mano):
@@ -473,8 +494,8 @@ un `POST` de origen cruzado es rechazado con problem+json; la matriz de permisos
 FR-007; con `TRUSTED_PROXIES` apuntando al proxy de prueba, el log de request muestra la IP del
 cliente y no la del proxy.
 
-Antes de T-B201: los ajustes de la tercera revisión sobre las Fases 0 y 1 (tabla de "Estado de la
-implementación").
+Antes de T-B201: los ajustes de la tercera y la cuarta revisión sobre las Fases 0 y 1 (tabla de
+"Estado de la implementación").
 
 **T-B201 [T] — problem+json y decodificación de JSON** · ADR-009, plan §9
 - **Red** (unitario):
@@ -1224,23 +1245,27 @@ registra las tareas. Las cuatro rutas de sistema ya están en `queryrules.Defaul
 - **Red**: base caída → `503 {"status":"unavailable"}`; versión de migración de la base ≠ la
   embebida → `503`; ok → `200`; `/debug/vars` solo escucha en `METRICS_ADDR` y expone las
   métricas de §12.1 (incluidas `signup_email_exists_total`, `csrf_rejected_total`,
-  `signup_lock_timeout_total` y `http_client_canceled_total`); `tenant_roles_total` = cantidad de
-  empresas, leída como `crm_worker` con la query de `internal/tenant/store/provisioning.sql`.
+  `signup_lock_timeout_total`, `http_client_canceled_total` y `set_role_retry_total`);
+  `tenant_roles_total` = cantidad de empresas, leída como `crm_worker` con la query de
+  `internal/tenant/store/provisioning.sql`.
 
 **T-B904 — Implementar `/readyz` y `expvar`**.
 
-**T-B905 — Benchmark con 10.000 empresas** · R-2, R-3, R-15, ADR-005, DD-33, INV-26
+**T-B905 — Benchmark con 10.000 empresas** · R-2, R-3, R-15, R-17, ADR-005, DD-33, DD-34, INV-26
 - Script de carga (test con build tag `bench`, fuera de `make check`) que aprovisiona 10.000
-  empresas en un contenedor con la versión exacta de producción y mide p95 de: `SET LOCAL ROLE`,
-  `GET /me`, `GET /tenant/logo` con `304`, `POST /auth/login`, `POST /auth/signup` y el tiempo de
-  conexión de `crm_app`.
+  empresas en un contenedor con la versión exacta de producción y mide p95 de: `SET LOCAL ROLE`
+  (incluida la lectura de catálogo de DD-34, que va en el mismo viaje), `GET /me`,
+  `GET /tenant/logo` con `304`, `POST /auth/login`, `POST /auth/signup` y el tiempo de conexión de
+  `crm_app`.
 - **Registros concurrentes** (tercera revisión, DD-33): con los 10.000 roles creados, tandas de
   **10** y de **50** registros simultáneos. Se mide la duración de la transacción de registro con
   el hash de contraseña precalculado (argon2 fuera de la medición), que acota por arriba el tiempo
   que se retiene el lock de `crm_tenant`. Target: **p95 < 250 ms y 0 `503` con 10 concurrentes**;
   con 50 se reporta la cantidad de `503`.
+- Al final de la corrida se reporta `set_role_retry_total` (esperado: 0; cualquier valor mayor se
+  analiza con el runbook de plan §12.3).
 - Comparar con `plan.md` §13. **Si algún target no se cumple, frenar y volver al arquitecto** (se
-  reabre ADR-005; opciones ya analizadas en research R-04c).
+  reabre ADR-005; opciones ya analizadas en research R-04c y R-28).
 
 **T-B906 [T] — Reaprovisionamiento de roles** · plan §12.4, DD-33 (R-d)
 - **Red** (integración):
@@ -1315,6 +1340,7 @@ de la fase y se agrega a plan §11.1 en el mismo cambio (matriz §16).
 | DD-32 / INV-25 IP del cliente detrás de proxies (research R-25) | T-B002, T-B004, T-B011, T-B014, T-B203, T-B204, T-B217, T-B218, T-B219, T-B220 |
 | Cancelaciones: `db.ErrCanceled`, `499` en el log, worker sin intento (research R-27) | T-B103, T-B105, T-B106, T-B202, T-B203, T-B211, T-B901, T-B908 |
 | DD-33 / INV-26 Lock de `GRANT crm_tenant` (R-a..R-d; research R-04c; nota en ADR-005) | T-B105 (`55P03`), T-B201, T-B303, T-B304, T-B305, T-B306, T-B903, T-B905, T-B906, T-B907 |
+| DD-34 / INV-27 / R-17 Primer `SET ROLE` desde otra conexión: lectura de catálogo y reintento único (research R-28; nota (b) en ADR-005) | T-B103, T-B104, T-B903, T-B905 |
 | Rutas exactas de las queries de sistema (plan §4.4, INV-04, ADR-001) | T-B112, T-B212, T-B304, T-B902, T-B903, T-B907 |
 | FK `tenant_id → tenants(id)` de `sessions` y `user_tokens` (`data-model.md` §2.3/§2.4) | T-B108, T-B111 |
 

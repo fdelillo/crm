@@ -28,6 +28,38 @@
 > que reemplace a este por B. Mejora intermedia evaluada y postergada: un *pool* de roles creados
 > de antemano (research R-04c del plan de 001).
 
+> **Nota 2026-09-30 (b) (segunda consecuencia descubierta en la implementación; no cambia la
+> decisión)**: en PostgreSQL 18.6, después de que una conexión aprovisiona una empresa (crea
+> `crm_t_<hex>` y lo concede a `crm_app` con `SET TRUE`) y hace `COMMIT`, el **primer**
+> `SET LOCAL ROLE crm_t_<hex>` desde **otra** conexión del pool a veces falla con
+> `42501 permission denied to set role`. La hipótesis del desarrollador es que la lista de roles
+> "SET-ables" que cada backend guarda en caché (`roles_is_member_of`, `acl.c`) todavía no procesó
+> la invalidación de la membresía nueva. La reproducción (test de integración con registros
+> concurrentes) daba 64 a 105 fallas en 600 primeros usos. En producción se vería así: "me
+> registro, el siguiente request cae en otra conexión y recibo un 500".
+>
+> Arreglo vigente (DD-34 del plan de 001):
+>
+> 1. `platform/db` manda en el mismo viaje de red una lectura de catálogo
+>    (`SELECT 1 FROM pg_catalog.pg_auth_members LIMIT 0`) antes del `SET LOCAL ROLE`. Leer el
+>    catálogo hace que el backend procese las invalidaciones pendientes. Medido: 0 fallas en
+>    1800 usos y 0 en 8 corridas de la suite de integración.
+> 2. `InTenantTx` hace **un único reintento** de la transacción completa si el `SET ROLE` inicial
+>    falla con `42501` antes de ejecutar nada. Nunca reintenta después de que `fn` corrió, ni para
+>    roles de sistema, ni en un `AsTenant` a mitad de transacción. Queda registrado con el log y
+>    la métrica `set_role_retry`.
+>
+> El arreglo depende de un **comportamiento interno no documentado** de PostgreSQL: que leer un
+> catálogo procese las invalidaciones pendientes antes del chequeo de `SET ROLE`. Una versión
+> futura podría cambiarlo (riesgo R-17 del plan de 001). Si pasa, lo detecta el test de
+> reproducción y la métrica `set_role_retry_total`.
+>
+> Es otra consecuencia de tener roles que cambian en runtime, y por lo tanto **un argumento más a
+> favor de la alternativa B** en la comparación que sigue abierta con P-1. Con B no hay membresías
+> nuevas por registro ni una caché de membresías que se quede atrás. Dentro de A, el *pool* de roles
+> creados de antemano (research R-04c) también lo evitaría: la membresía se concede mucho antes
+> del primer uso. Alternativas evaluadas en research R-28 del plan de 001.
+
 ## Contexto
 
 La constitución (principio III) exige que todo dato de negocio pertenezca a una empresa, que toda

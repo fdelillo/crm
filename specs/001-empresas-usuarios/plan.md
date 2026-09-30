@@ -14,6 +14,10 @@ código `method_not_allowed` (contrato v0.4.0), IP del cliente detrás de proxie
 cancelaciones del cliente (`db.ErrCanceled`) y serialización de registros por el lock de
 `GRANT crm_tenant` (DD-33); además, rutas exactas de las queries de sistema (§4.4). Se agregan
 INV-25 e INV-26. Estado de la implementación y detalle en §18.
+**Cuarta revisión 2026-09-30**: hallazgo de implementación en PostgreSQL 18.6 (primer
+`SET ROLE` a una empresa recién aprovisionada desde otra conexión falla con `42501`) y decisión
+del usuario sobre cómo defenderse: DD-34, INV-27, S-16, R-17, runbook §12.3, nota (b) en ADR-005
+y research R-28. Detalle en §18.
 
 Artefactos de esta spec:
 
@@ -38,7 +42,7 @@ funcionalidad fija las decisiones base del proyecto (ADR-001 a ADR-014).
 | Aspecto | Decisión | Fuente |
 |---|---|---|
 | Lenguaje | Go **1.27** (estable actual; 1.27.1 del 2026-09-01) | Constitución + verificación |
-| Base de datos | PostgreSQL **18**, último *minor* (debe incluir el arreglo de CVE-2026-14666) | ADR-005 |
+| Base de datos | PostgreSQL **18**, último *minor* (debe incluir el arreglo de CVE-2026-14666; el comportamiento de DD-34 se observó en 18.6) | ADR-005 |
 | Router HTTP | `github.com/go-chi/chi/v5` (v5.3.2) para la API (`/api/`); mux raíz de la librería estándar que reparte entre API, ops y SPA | ADR-002 (decisión del usuario), DD-22 |
 | Acceso a datos | `sqlc` (generador) + `github.com/jackc/pgx/v5` (`pgxpool`) | ADR-003 (decisión del usuario) |
 | Migraciones | `github.com/pressly/goose/v3`, SQL versionado embebido con `embed.FS` | ADR-004 (decisión del usuario) |
@@ -78,12 +82,12 @@ como archivos estáticos embebidos (ADR-019).
 
 | Principio | Estado | Cómo se cumple / justificación |
 |---|:---:|---|
-| **I. Simplicidad primero** | ✅ | Se construye solo lo que pide la spec. Registro y aceptación de invitación son una sola pantalla y un solo request. Un único binario (API + worker + SPA). Sin colas externas, sin caché, sin microservicios. Las únicas adiciones fuera del texto literal de la spec son consecuencias necesarias, marcadas y **confirmadas por el usuario**: reemisión de invitación (DD-5), reactivación de usuarios (P-3), los ajustes H-1 a H-11 y las cuatro decisiones de la tercera revisión (§18). El TLS local es una herramienta de desarrollo (mkcert), no una dependencia del binario. |
+| **I. Simplicidad primero** | ✅ | Se construye solo lo que pide la spec. Registro y aceptación de invitación son una sola pantalla y un solo request. Un único binario (API + worker + SPA). Sin colas externas, sin caché, sin microservicios. Las únicas adiciones fuera del texto literal de la spec son consecuencias necesarias, marcadas y **confirmadas por el usuario**: reemisión de invitación (DD-5), reactivación de usuarios (P-3), los ajustes H-1 a H-11, las cuatro decisiones de la tercera revisión y la defensa de DD-34 (§18). El TLS local es una herramienta de desarrollo (mkcert), no una dependencia del binario. |
 | **II. Genérico por configuración** | ✅ | Las plantillas de rubro son **datos** embebidos (catálogo), no código por rubro. 001 define el catálogo mínimo (código y nombre) y el puerto `industrytemplate.Seeder`; el contenido lo define 002 (DD-3), con la restricción heredada R-c de DD-33. |
-| **III. Aislamiento entre empresas** | ✅ / ⚠️ | Toda tabla de negocio tiene `tenant_id NOT NULL`, RLS habilitada y **forzada**, política por rol de empresa y filtro explícito en cada query (INV-01 a INV-07). Tests de aislamiento en BD y HTTP (Fases 1 y 8). Ninguna respuesta con datos de una empresa se reutiliza desde la caché del navegador sin revalidar (INV-21, H-2, H-7). ⚠️ **Excepciones justificadas**: (a) `tenants` no tiene `tenant_id` porque *es* la empresa: su política usa `id`; (b) `login_throttles` no tiene `tenant_id` porque se indexa por email **exista o no la cuenta** (anti-enumeración, DD-7): no es dato de negocio ni pertenece a una empresa; solo lo ve el rol `crm_auth`; (c) las queries de roles de sistema viven en cuatro archivos con ruta exacta (§4.4), los únicos eximidos del filtro por empresa. |
+| **III. Aislamiento entre empresas** | ✅ / ⚠️ | Toda tabla de negocio tiene `tenant_id NOT NULL`, RLS habilitada y **forzada**, política por rol de empresa y filtro explícito en cada query (INV-01 a INV-07). Tests de aislamiento en BD y HTTP (Fases 1 y 8). Ninguna respuesta con datos de una empresa se reutiliza desde la caché del navegador sin revalidar (INV-21, H-2, H-7). El reintento de DD-34 no debilita el aislamiento: solo repite un cambio de rol que falló antes de ejecutar nada, y un `42501` en cualquier otro punto sigue siendo un bug (INV-19, INV-27). ⚠️ **Excepciones justificadas**: (a) `tenants` no tiene `tenant_id` porque *es* la empresa: su política usa `id`; (b) `login_throttles` no tiene `tenant_id` porque se indexa por email **exista o no la cuenta** (anti-enumeración, DD-7): no es dato de negocio ni pertenece a una empresa; solo lo ve el rol `crm_auth`; (c) las queries de roles de sistema viven en cuatro archivos con ruta exacta (§4.4), los únicos eximidos del filtro por empresa. |
 | **IV. Integridad del dinero** | ✅ (N/A) | 001 no maneja importes. `tenants.base_currency` es ISO 4217 restringido a `ARS`/`USD`. Quedan listas la auditoría append-only (`audit_log`) y la atomicidad por operación (`TxRunner`) que usarán las specs financieras; el checklist de tablas nuevas (`data-model.md` §6) ya prevé tablas inmutables sin `DELETE`. |
 | **V. Spec Driven Development** | ✅ / ⚠️ | Plan derivado de `spec.md` y sus Clarificaciones; criterios Dado/Cuando/Entonces trazados a tareas `[T]` (`tasks.md`, tabla de trazabilidad). P-2 a P-5 están **resueltas** por el usuario (§14.2). ⚠️ Queda abierta P-1 (hosting): no bloquea el desarrollo, sí la elección del proveedor de producción. |
-| **VI. Tests primero** | ✅ | Todas las fases son TDD. El contrato OpenAPI se valida con tests de contrato sobre cada respuesta de los tests HTTP (ADR-014). |
+| **VI. Tests primero** | ✅ | Todas las fases son TDD. El contrato OpenAPI se valida con tests de contrato sobre cada respuesta de los tests HTTP (ADR-014). El comportamiento de PostgreSQL del que depende DD-34 lo vigila un test de reproducción que corre en `make check`. |
 | **VII. Mobile-first** | ✅ | Sesiones con expiración por inactividad, payloads chicos, logo acotado en tamaño (el navegador achica las fotos grandes antes de subir), SPA comprimida con gzip y assets con caché inmutable. PWA servida desde el mismo origen que la API (S-2, ADR-019). |
 | **Stack** | ✅ | Go, PostgreSQL, OpenAPI, monolito modular, S3 compatible, React servido por el mismo binario. Librerías registradas como ADR, como pide la constitución (`gzhttp` en ADR-019, aprobada en DD-29). |
 | **Convenciones** | ✅ | Documentación en español; tablas, columnas, endpoints, rutas de la SPA e identificadores en inglés con nombres del glosario (`Tenant`, `User`, `Role`, `IndustryTemplate`, `AuditLog`). Fechas `timestamptz` en UTC; `tenants.timezone` para mostrar. Términos nuevos incorporados al glosario (§17). |
@@ -218,11 +222,17 @@ Reglas de dependencia entre paquetes (se verifican con `depguard`, ver ADR-001):
 Toda operación de negocio corre dentro de `TxRunner.InTenantTx(ctx, tenantID, fn)`, que:
 
 1. Toma una conexión del pool (conectada como `crm_app`) y abre `BEGIN`.
-2. Ejecuta `SET LOCAL ROLE crm_t_<hex>` (identificador derivado solo del UUID y saneado con
-   `pgx.Identifier`). `SET LOCAL` se revierte solo al `COMMIT`/`ROLLBACK`, así que la conexión
-   vuelve al pool como `crm_app` sin privilegios.
+2. Cambia de rol: en **un solo viaje de red** manda la lectura de catálogo de DD-34
+   (`SELECT 1 FROM pg_catalog.pg_auth_members LIMIT 0`) y `SET LOCAL ROLE crm_t_<hex>`
+   (identificador derivado solo del UUID y saneado con `pgx.Identifier`). `SET LOCAL` se revierte
+   solo al `COMMIT`/`ROLLBACK`, así que la conexión vuelve al pool como `crm_app` sin privilegios.
+   Si **este** cambio inicial falla con `42501`, hace `ROLLBACK` y repite la transacción completa
+   **una sola vez** (DD-34, INV-27); si vuelve a fallar, devuelve `db.ErrPrivilege`.
 3. Ejecuta `fn`; todas las queries sqlc reciben además `tenant_id` como parámetro explícito.
 4. `COMMIT` si `fn` devuelve `nil`; `ROLLBACK` en cualquier otro caso (incluido *panic*).
+
+La misma función privada de cambio de rol (con la lectura de catálogo) la usan `InSystemTx`,
+`Tx.AsTenant` y `Tx.AsSystem`, pero **sin** reintento.
 
 Las políticas RLS no nombran roles: comparan `tenant_id` con `app.current_tenant_id()`, una
 función que devuelve el UUID codificado en `current_user` si sigue el patrón `crm_t_<32 hex>`, o
@@ -321,7 +331,38 @@ sequenceDiagram
 El `409` dice explícitamente que ya existe un usuario con ese email y ofrece recuperar la
 contraseña (P-4, DD-19, DD-21). No incluye empresa, nombre ni estado de la cuenta, y es el mismo
 cualquiera sea el estado del usuario existente (`invited`, `active`, `disabled`). Desde la llamada
-a `provision_tenant_role` hasta el `COMMIT` no hay ninguna E/S de red (INV-26, DD-33).
+a `provision_tenant_role` hasta el `COMMIT` no hay ninguna E/S de red (INV-26, DD-33). El
+`SET LOCAL ROLE` al rol recién creado corre en la **misma** conexión que lo creó, así que no le
+afecta el problema de DD-34; el siguiente request (`GET /me`, en otra conexión) sí.
+
+#### Primer uso de una empresa recién aprovisionada desde otra conexión (DD-34)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant A as Conexión A (registro)
+    participant DB as PostgreSQL
+    participant B as Conexión B (InTenantTx)
+
+    A->>DB: provision_tenant_role (GRANT crm_t_HEX TO crm_app) y COMMIT
+    B->>DB: BEGIN
+    B->>DB: un solo viaje con SELECT 1 FROM pg_auth_members LIMIT 0 y SET LOCAL ROLE crm_t_HEX
+    alt la lectura de catálogo procesó la invalidación (caso normal)
+        DB-->>B: OK
+        B->>DB: fn(ctx, tx) y COMMIT
+    else 42501 permission denied to set role
+        DB-->>B: 42501
+        B->>DB: ROLLBACK (todavía no se ejecutó nada de fn)
+        B->>B: log WARN event set_role_retry y set_role_retry_total más 1
+        B->>DB: BEGIN y el mismo viaje de nuevo (único reintento)
+        alt el reintento funciona
+            B->>DB: fn(ctx, tx) y COMMIT
+        else vuelve a fallar
+            B->>DB: ROLLBACK
+            B-->>B: db.ErrPrivilege envuelto con el rol (500, INV-19)
+        end
+    end
+```
 
 #### Inicio de sesión con bloqueo (Historia 2, escenarios 1 y 2; FR-003, FR-008)
 
@@ -667,7 +708,7 @@ la vigila.
 | INV-16 | Ningún email se envía dentro del request: toda notificación se encola en el outbox dentro de la transacción de la operación. | `identity`, `outbox` | T-B211, T-B303, T-B601 |
 | INV-17 | La base nunca referencia un objeto de logo inexistente: se sube a S3 **antes** del `COMMIT` y el objeto anterior se borra **después**. | `tenant.Service` | T-B703 |
 | INV-18 | Los tests de integración se conectan como `crm_app`, nunca como superusuario (un superusuario ignora la RLS y haría pasar los tests de aislamiento en falso). | `internal/testsupport/pgtest` | T-B009 |
-| INV-19 | Una violación de RLS o de privilegio (`SQLSTATE 42501`) es un bug: se responde `500`, se loguea con `level=ERROR` y `security_event=rls_violation`, nunca se traduce a `403`/`404`. | `platform/db`, `platform/httpx` | T-B105 |
+| INV-19 | Una violación de RLS o de privilegio (`SQLSTATE 42501`) es un bug: se responde `500`, se loguea con `level=ERROR` y `security_event=rls_violation`, nunca se traduce a `403`/`404`. La única excepción acotada es el reintento de INV-27. | `platform/db`, `platform/httpx` | T-B105 |
 | INV-20 | El `409 email_already_registered` del registro nunca incluye datos de la cuenta existente (empresa, nombre, estado, fechas) y es idéntico byte a byte (salvo `instance`) cualquiera sea el estado del usuario existente. | `tenant` HTTP | T-B305 |
 | INV-21 | Ninguna respuesta con datos de una empresa se reutiliza desde la caché del navegador sin preguntarle al servidor: todo `/api/v1` lleva `Cache-Control: no-store`, salvo `GET /tenant/logo`, que lleva `private, no-cache` con un `ETag` distinto por objeto (y por lo tanto por empresa). | Router chi, `tenant` HTTP | T-B203, T-B705, T-B801 |
 | INV-22 | Una ruta bajo `/api/` nunca llega al handler de la SPA (un `/api/…` inexistente es `404 problem+json`), y la SPA nunca queda registrada en el router chi. | `internal/app` (mux raíz) | T-B004, T-F007 |
@@ -675,6 +716,7 @@ la vigila.
 | INV-24 | Ningún logo guardado supera 2 097 152 bytes ni 2000×2000 px, ni es de otro tipo que PNG o JPEG, lo haya subido la SPA u otro cliente: el servidor valida por sí mismo y no depende de que el navegador haya achicado o vuelto a codificar la imagen (DD-11, DD-31). | `tenant` (HTTP y servicio) | T-B703, T-B705 |
 | INV-25 | La IP del cliente sale **solo** de `httpx.ClientIP` (DD-32): ningún otro código lee `X-Forwarded-For`, `Forwarded` ni `X-Real-IP`, y `X-Forwarded-For` se ignora por completo si la conexión no viene de un proxy de `TRUSTED_PROXIES`. Logs, rate limit, `sessions.ip` y `audit_log.ip` usan ese valor. | `platform/httpx` | T-B011, T-B219 |
 | INV-26 | La transacción de registro corre con `lock_timeout = 2s` y no hace E/S de red entre `provision_tenant_role` y el `COMMIT` (DD-33): la espera por el lock de `crm_tenant` termina en un `503` reintentable, nunca en un `500` ni en un `statement_timeout`. | `tenant.Service` | T-B303, T-B905 |
+| INV-27 | Todo cambio de rol en `platform/db` manda, en el mismo viaje de red, la lectura de catálogo de DD-34 antes del `SET LOCAL ROLE`. Un `42501` en el cambio de rol se reintenta **solo** si es el `SET LOCAL ROLE` inicial de `InTenantTx`, **una** vez y **antes** de ejecutar `fn` (que por lo tanto corre como mucho una vez). En cualquier otro punto (`InSystemTx`, `AsTenant`, `AsSystem`, dentro de `fn`) se propaga como `db.ErrPrivilege` (INV-19). | `platform/db` | T-B103 |
 
 ---
 
@@ -718,6 +760,7 @@ son locales a 001.
 | **DD-31** | **Límites exactos de la subida del logo** (H-11, decisión del usuario). Archivo ≤ `LogoMaxBytes` = **2 097 152 bytes** (2 MiB), medido sobre el contenido de la parte `file`. Cuerpo `multipart/form-data` completo ≤ `LogoMaxBodyBytes` = **2 162 688 bytes** (archivo + 64 KiB para *boundary*, encabezados de la parte y nombre de archivo), aplicado con `http.MaxBytesReader` antes de leer. El handler lee con `r.MultipartReader()` **exactamente una** parte `file`: otra parte o una segunda `file` → `400 malformed_request`; sin `file` o vacía → `422` (`file`, `required`). La parte se lee con un tope de `LogoMaxBytes + 1` bytes en memoria: si se llega al byte extra → `413 payload_too_large` sin leer el resto. `tenant.Service.SetLogo` recibe los bytes, vuelve a verificar el tamaño (defensa en profundidad), valida el tipo por firma (`415`) y las dimensiones con `image.DecodeConfig` (`422`, `file`, `invalid_value`). Las constantes viven en `internal/tenant` y **no son configurables**: son parte del contrato. | El cliente necesita un número exacto al que apuntar; medir el archivo y no el cuerpo hace que el límite no dependa del nombre de archivo ni del *boundary* que elige el navegador; `MultipartReader` evita archivos temporales en disco y partes inesperadas (R-24). | Hasta ~2 MiB en memoria por subida concurrente (irrelevante a la escala S-3); tres lugares que mantener alineados: constantes, contrato y la constante del cliente en `ui.md` (matriz §16). |
 | **DD-32** | **IP del cliente detrás de proxies** (decisión del usuario, 2026-09-30). Variable `TRUSTED_PROXIES`: lista de CIDR separada por comas, **vacía por defecto** (no se confía en ningún proxy). `0.0.0.0/0`, `::/0` y un CIDR inválido son error de arranque. Un único middleware, `httpx.ClientIP`, **primero** de la cadena común, calcula la IP y la deja en el contexto como `netip.Addr`; la usan el log (`ip`), el rate limit (DD-9), `sessions.ip` y `audit_log.ip` (INV-25). Algoritmo: (1) si `RemoteAddr` no está en `TRUSTED_PROXIES`, la IP es `RemoteAddr` y `X-Forwarded-For` se ignora; (2) si está, se recorre `X-Forwarded-For` de **derecha a izquierda** (varias cabeceras se concatenan en orden) salteando las IPs de confianza: la primera que no es de confianza es la del cliente; (3) si todas son de confianza o no hay cabecera, se usa la de más a la izquierda que sea válida o, si no hay, `RemoteAddr`; (4) si aparece una entrada mal formada antes de encontrar la del cliente, se usa `RemoteAddr` y se loguea `WARN` (`event=bad_forwarded_for`). Se normaliza con `netip.Addr.Unmap()` y sin puerto. Solo se lee `X-Forwarded-For` (no `Forwarded` ni `X-Real-IP`). Clave del rate limit: la IPv4 completa; en IPv6, el prefijo **/64**. | Detrás del proxy del hosting, `RemoteAddr` es el proxy: el rate limit por IP sería global (un atacante agota el cupo de todos) y logs y auditoría quedarían con una IP inútil. Tomar la IP de la izquierda deja que el cliente la invente. Configurable sin conocer todavía el hosting (P-1). Un cliente IPv6 controla al menos un /64 y podría rotar direcciones para esquivar el límite. | Una variable más que configurar al desplegar; si se olvida detrás de un proxy, el rate limit por IP vuelve a ser global (runbook §12.3). Clientes detrás del mismo NAT (p. ej. celulares de una operadora) comparten cupo, igual que antes. |
 | **DD-33** | **Serialización de registros por el lock de `GRANT crm_tenant`** (decisión del usuario, 2026-09-30; nota en ADR-005). Desde PostgreSQL 16, el `GRANT crm_tenant TO crm_t_<hex>` de `provision_tenant_role` toma un lock sobre `crm_tenant` hasta el fin de la transacción: los registros concurrentes esperan uno detrás de otro. Se acepta con cuatro restricciones: **R-a** la transacción de registro hace `SET LOCAL lock_timeout = '2s'` antes de aprovisionar; `55P03 lock_not_available` → `db.ErrUnavailable` → `503 service_unavailable` con `Retry-After: 2`, sin crear nada (ni el rol); métrica `signup_lock_timeout_total`. **R-b** desde `provision_tenant_role` hasta el `COMMIT` no hay E/S de red (argon2 antes, email por outbox, nada de S3) y el objetivo es **p95 < 250 ms** (§13, medido en T-B905 con registros concurrentes). **R-c** (restricción heredada para el plan de 002): el `Seeder` corre dentro de esa transacción (INV-14) solo con SQL por conjuntos y dentro del presupuesto de R-b; si el sembrado de 002 no entra, el plan de 002 lo rediseña (p. ej. estado "configuración pendiente" y siembra idempotente después del `COMMIT`). **R-d** `crm tenants reprovision-roles` usa **una transacción por empresa** y no corre en paralelo consigo mismo (advisory lock de sesión; la segunda ejecución termina con un mensaje claro). | No se puede evitar sin romper INV-14 (el rol necesita la membresía antes de insertar sus filas). A la escala del MVP los registros son raros y la transacción dura milisegundos; lo que hay que evitar es que una espera termine en `500` o que una transacción larga (reprovisión en bloque, sembrado pesado) frene todos los registros. | Un pico de registros simultáneos puede dar algunos `503` reintentables; hay que vigilar la duración de la transacción de registro. Si T-B905 no cumple: *pool* de roles pre-creados o alternativa B de ADR-005 (research R-04c). |
+| **DD-34** | **Primer `SET ROLE` a una empresa recién aprovisionada desde otra conexión** (hallazgo de implementación y decisión del usuario, 2026-09-30; nota (b) en ADR-005; research R-28). **Evidencia**: en PostgreSQL 18.6, después del `COMMIT` que crea `crm_t_<hex>` y lo concede a `crm_app` con `SET TRUE`, el primer `SET LOCAL ROLE crm_t_<hex>` desde **otra** conexión del pool a veces falla con `42501 permission denied to set role`. Hipótesis del desarrollador (no verificada en el código de PostgreSQL, S-16): la lista de roles "SET-ables" que cada backend guarda en caché (`roles_is_member_of`, `acl.c`) todavía no procesó la invalidación de la membresía nueva. El test `TestTxRunner_NewCompanyIsUsableOnAnyConnectionRightAfterProvisioning` (registros concurrentes) daba **64 a 105 fallas en 600** primeros usos. En producción: "me registro, el siguiente request cae en otra conexión y recibo un `500`". **Dos defensas**: **(1) lectura previa de catálogo** (commit e3d990b): la función privada de `platform/db` que cambia de rol manda en **un solo viaje de red** `SELECT 1 FROM pg_catalog.pg_auth_members LIMIT 0; SET LOCAL ROLE …`. Leer el catálogo hace que el backend procese las invalidaciones pendientes antes del chequeo. Vale para todo cambio de rol (`InTenantTx`, `InSystemTx`, `AsTenant`, `AsSystem`) y para los fixtures de test. Medido: **0 fallas en 1800** en la reproducción y 0 en 8 corridas de la suite de integración. **(2) Un único reintento en `InTenantTx`**: si el `SET LOCAL ROLE` inicial a un rol de empresa falla con `42501` **antes** de ejecutar `fn`, hace `ROLLBACK` y repite la transacción completa (nuevo `BEGIN`, el mismo viaje de (1)) **una** vez. Registra log `WARN` `event=set_role_retry` con `tenant_id` y `outcome` (`recovered` o `failed`, sin datos personales) y suma a la métrica `set_role_retry_total`. **Nunca** reintenta: después de que `fn` empezó, en `InSystemTx`, en `tx.AsTenant`/`tx.AsSystem` a mitad de transacción, ni ante otro SQLSTATE (p. ej. `42704`, rol inexistente, que es el caso de §12.4). Si el reintento también falla, devuelve `db.ErrPrivilege` envuelto con el nombre del rol y el paso (`set role crm_t_…`), así el `ERROR` de INV-19 distingue un cambio de rol denegado de una violación de RLS dentro de una query (INV-27). | **(1) sola** depende de un comportamiento interno no documentado de PostgreSQL (R-17). **(2) sola** cubre solo `InTenantTx` y paga un viaje fallido en cada primer uso. Juntas, (1) resuelve el caso en todos los caminos y (2) es la red si (1) deja de alcanzar en otra versión. **El reintento es seguro solo en ese punto**: la transacción todavía no ejecutó nada (solo `BEGIN` y el cambio de rol que falló), así que el `ROLLBACK` no deshace trabajo, `fn` corre como mucho una vez y ningún efecto externo quedó hecho. Después de `fn`, un `42501` puede ser una violación real de RLS (INV-19) y reintentar repetiría efectos. En `InSystemTx` las membresías son fijas desde el bootstrap, así que un `42501` es un bug. En `AsTenant` la transacción ya ejecutó la fase 1 y reintentar exigiría repetir `fn`. | Una sentencia más por cambio de rol, en el mismo viaje de red (costo a confirmar en T-B905). Dependencia de un detalle interno de PostgreSQL, vigilada por el test de reproducción (corre en `make check`) y por la métrica. **Cobertura parcial del reintento**: el camino `InSystemTx(crm_auth) → AsTenant` (resolución de sesión, login, tokens) queda cubierto **solo** por (1), y es justamente el del `GET /me` que sigue al registro. Si (1) fallara ahí, el usuario vería un `500` hasta el siguiente request. Salida estructural si R-17 se materializa: *pool* de roles pre-creados (la membresía se concede mucho antes del primer uso) o alternativa B de ADR-005. |
 
 ---
 
@@ -742,7 +785,8 @@ Detalle completo en [`data-model.md`](data-model.md).
 **Canónico**: [`contracts/openapi.yaml`](contracts/openapi.yaml) (OpenAPI 3.1, versión 0.4.0). Los
 tipos del cliente se derivan de él; los handlers Go se escriben a mano y los tests validan cada
 request y response contra el contrato (ADR-014). Si este plan y el YAML se contradicen, **manda
-el YAML** y este plan está desactualizado.
+el YAML** y este plan está desactualizado. DD-34 no cambia el contrato: si el reintento no alcanza,
+la respuesta sigue siendo el `500 internal` que ya describe.
 
 Base: `/api/v1`. Cookie de sesión: `__Host-crm_session`, siempre `Secure`. Todas las respuestas de
 la API llevan `Cache-Control: no-store`, salvo el logo (DD-28, DD-23).
@@ -813,7 +857,7 @@ salida, **`suggested_action`** (enum estable; en 001 solo `password_reset`).
 | `login_locked` | 429 | **Recuperable** | Bloqueo de 15 min vigente | Sí, después de `Retry-After` |
 | `rate_limited` | 429 | **Recuperable** | Límite por IP/email | Sí, después de `Retry-After` |
 | `service_unavailable` | 503 | **Recuperable** | BD no disponible, timeout de BD, S3 caído al subir logo, espera por el lock del registro vencida (`55P03`, con `Retry-After`, DD-33), cancelación interna (apagado del proceso) | Sí, con backoff |
-| `internal` | 500 | Bug | Error no previsto, incluida violación de RLS (INV-19) | No automático |
+| `internal` | 500 | Bug | Error no previsto, incluida violación de RLS (INV-19) y un cambio de rol denegado que el reintento de DD-34 no resolvió (o que no se reintenta, INV-27) | No automático |
 
 **Cliente que se fue** (el contexto del request está cancelado): no hay `code` ni respuesta; el
 servidor no escribe nada y lo registra como `status=499` solo en el log (§9.2, R-27).
@@ -838,6 +882,10 @@ store (sqlc/pgx) ──► platform/db.MapError ──► errores de dominio ─
   `ErrUnavailable`; `42501` → `ErrPrivilege`; `23505` → `ErrUniqueViolation`. La firma no cambia
   (`MapError(err error) error`): la decisión "¿el cliente se fue?" la toma la capa HTTP mirando
   `r.Context().Err()`, no `platform/db`.
+- **`42501` en el cambio de rol** (DD-34, INV-27): el reintento vive **dentro** de
+  `InTenantTx`, antes de que el error llegue a `MapError`; lo que sale de ahí (si el reintento
+  también falló, o si el `42501` vino de `InSystemTx`/`AsTenant`/`AsSystem`) es un
+  `db.ErrPrivilege` envuelto con el paso y el nombre del rol, y sigue el camino normal de INV-19.
 - `httpx` escribe el problem+json y tiene el mapeo por defecto de los errores de `platform/db`,
   el `404`/`405` del router chi y el rechazo de CSRF (DD-30). Ante `db.ErrCanceled`:
   si `r.Context().Err() != nil` no escribe cuerpo, marca `status=499` para el log de request
@@ -870,7 +918,7 @@ store (sqlc/pgx) ──► platform/db.MapError ──► errores de dominio ─
 var (
     ErrNotFound           = errors.New("db: not found")
     ErrUniqueViolation    = errors.New("db: unique violation")   // envuelto en *ConstraintError
-    ErrPrivilege          = errors.New("db: insufficient privilege or RLS violation")
+    ErrPrivilege          = errors.New("db: insufficient privilege or RLS violation") // incluye SET ROLE denegado (DD-34)
     ErrUnavailable        = errors.New("db: unavailable")        // conexión, timeouts, 57014, 55P03
     ErrCanceled           = errors.New("db: canceled")           // context.Canceled (el cliente se fue o apagado)
     ErrTenantAlreadyBound = errors.New("db: transaction already bound to another tenant")
@@ -927,6 +975,10 @@ func MethodNotAllowed(w http.ResponseWriter, r *http.Request) // 405 code method
 | Apagado del proceso a mitad del envío (`context.Canceled`, `db.ErrCanceled`) | **Ninguno de los dos** | El mensaje queda exactamente como estaba: `pending`, sin sumar `attempts`, sin mover `next_attempt_at`, sin `last_error`; log `INFO` (`outcome=canceled`). Se reintenta en el próximo arranque |
 | SMTP aceptó pero el `COMMIT` falló | — | Reenvío en el próximo ciclo: **entrega al menos una vez** (aceptado; los enlaces son de un solo uso) |
 
+El worker lee y marca cada mensaje con `InSystemTx(crm_worker)` → `AsTenant`: un `42501` al
+cambiar al rol de una empresa recién creada **no** se reintenta dentro de la transacción
+(INV-27); el mensaje queda `pending` y el ciclo siguiente lo vuelve a tomar.
+
 ---
 
 ## 10. Seguridad
@@ -973,6 +1025,7 @@ confianza.
 | A01 | Operador invita, cambia roles, reactiva o edita la empresa | `RequirePermission(settings.manage)` por grupo de rutas; test de matriz (T-B207) y por endpoint (T-B802) |
 | A01 | Dejar la empresa sin administrador por concurrencia | Lock de la fila `tenants` (INV-10) + tests concurrentes (T-B603, T-B604) |
 | A01 | Datos de otra empresa desde la caché del navegador en un celular compartido (logo con URL fija, JSON cacheado) | `no-store` en toda la API (DD-28); logo con `private, no-cache` + `ETag` por objeto (DD-23); INV-21; tests T-B203, T-B705, T-B801 |
+| A01 | Un reintento que tape una violación real de RLS | El reintento de DD-34 solo aplica al `SET LOCAL ROLE` inicial de `InTenantTx`, antes de ejecutar nada; un `42501` dentro de `fn` o en cualquier otro cambio de rol sigue siendo `500` + `rls_violation` (INV-19, INV-27, T-B103) |
 | A02 Cryptographic Failures | Clave de la CA local de `mkcert` de un desarrollador (permite interceptar HTTPS de ese equipo) | La CA es por equipo, queda en el directorio de mkcert y nunca se versiona ni comparte; `.certs/` (certificado y clave del servidor de desarrollo) está en `.gitignore`; en CI la CA se crea en el runner y muere con él (R-14) |
 | A07 Identification & Auth Failures | Fuerza bruta / *credential stuffing* | Bloqueo 5/15 min por email + rate limit por IP + argon2id |
 | A07 | Evasión del rate limit por IP: el cliente escribe `X-Forwarded-For`, rota direcciones IPv6, o todo el tráfico llega con la IP del proxy (límite global) | IP solo desde `httpx.ClientIP`, XFF de derecha a izquierda y solo desde `TRUSTED_PROXIES` (vacía por defecto; `0.0.0.0/0` y `::/0` rechazados); clave /64 en IPv6 (DD-32, INV-25, T-B219) |
@@ -987,11 +1040,11 @@ confianza.
 | A05 | Cookie sin `Secure` o `http://` en producción | Imposible por construcción: `APP_BASE_URL` solo acepta `https://` y no existe variable que quite `Secure` (DD-24, INV-23, T-B002) |
 | A05 | Certificado de desarrollo desplegado en producción | `TLS_CERT_FILE`/`TLS_KEY_FILE` solo se aceptan en modo local; con un `APP_BASE_URL` real, el binario no arranca (DD-24, T-B002) |
 | A05 | `TRUSTED_PROXIES` sin configurar detrás del proxy del hosting | Default seguro (no se confía en nadie); el síntoma (todas las IPs iguales, `429` masivos) está en el runbook §12.3; paso obligatorio del despliegue en P-1 |
-| A05 | Privilegios excesivos en BD | `crm_app` sin privilegios; roles por columna; `CREATEROLE` aislado en una función `SECURITY DEFINER` (§10.4) |
+| A05 | Privilegios excesivos en BD | `crm_app` sin privilegios; roles por columna; `CREATEROLE` aislado en una función `SECURITY DEFINER` (§10.4). La lectura de catálogo de DD-34 no requiere privilegios nuevos: `pg_catalog.pg_auth_members` es legible por `PUBLIC` por defecto |
 | A05 | SPA desactualizada o HTML cacheado como JS | `index.html` con `no-cache`; archivos inexistentes con extensión → `404` (nunca `index.html`); assets con hash `immutable` (§10.7) |
 | A08 Software & Data Integrity | Subida de archivo malicioso (SVG con script, bomba de descompresión, cuerpo gigante) | Solo PNG/JPEG por *magic bytes*; archivo ≤ 2 097 152 bytes y cuerpo ≤ 2 162 688 bytes con lectura acotada (DD-31); `image.DecodeConfig` ≤ 2000×2000 sin decodificar la imagen; se sirve con tipo fijo y `nosniff` (INV-24) |
 | A09 Logging Failures | Falta de trazas de seguridad | `audit_log` (FR-008) + logs con `security_event` (login fallido, bloqueo, violación RLS, email existente en registro, CSRF rechazado) y la IP real del cliente (DD-32) |
-| A09 | `ERROR` falsos que tapan bugs reales (clientes que cortan la conexión) | `db.ErrCanceled` → log `INFO` `client_canceled`, nunca `ERROR` (§9.2) |
+| A09 | `ERROR` falsos que tapan bugs reales (clientes que cortan la conexión; `SET ROLE` denegados por la caché de PostgreSQL) | `db.ErrCanceled` → log `INFO` `client_canceled`, nunca `ERROR` (§9.2); el `42501` del cambio de rol se envuelve con el paso y el rol, y el reintento exitoso es `WARN` `set_role_retry`, no `ERROR` (DD-34) |
 | A09 | Secretos en logs | Redacción de `password`, `token`, `Cookie`, `Set-Cookie`, payload del outbox |
 | DoS de aplicación | Ráfaga de hashes, bodies grandes | Semáforo de argon2id, `http.MaxBytesReader` (JSON 64 KB, logo DD-31), timeouts de servidor (`ReadHeaderTimeout` 5 s, `ReadTimeout` 15 s, `WriteTimeout` 30 s), `statement_timeout` 5 s en `crm_app` |
 | DoS de aplicación | Ráfaga de registros simultáneos que esperan el lock de `crm_tenant` y retienen conexiones del pool | `lock_timeout` 2 s + `503` con `Retry-After` (DD-33, INV-26), rate limit de signup (DD-9), transacción de registro corta (R-b) |
@@ -1014,8 +1067,9 @@ confianza.
 - **Lo que no protege**: una inyección SQL con ejecución arbitraria bajo `crm_app` podría hacer
   `SET ROLE` a cualquier rol de empresa. Es el mismo límite que tiene la alternativa con variable
   de sesión; la defensa contra eso es no tener SQL dinámico (sqlc, T-B011).
-- **Costo operativo** (DD-33): el `GRANT crm_tenant` de la función serializa los registros
-  concurrentes hasta el fin de cada transacción de registro.
+- **Costos operativos**: el `GRANT crm_tenant` de la función serializa los registros concurrentes
+  hasta el fin de cada transacción de registro (DD-33); y la membresía nueva que concede a
+  `crm_app` no siempre la ve enseguida otra conexión del pool (DD-34).
 
 ### 10.5 Secretos y configuración
 
@@ -1133,7 +1187,7 @@ crm/
 │   ├── app/                    # composition root: dependencias, mux raíz (API, ops, SPA), servidor HTTP o HTTPS local, arranca el worker y registra sus tareas periódicas
 │   ├── platform/               # técnico, sin dominio
 │   │   ├── config/             # env → struct tipado; valida al arrancar (DD-24, DD-32)
-│   │   ├── db/                 # pgxpool, TxRunner/Tx, roles, MapError, interfaz DBTX de sqlc
+│   │   ├── db/                 # pgxpool, TxRunner/Tx, cambio de rol (con la lectura de catálogo y el reintento de DD-34), MapError, interfaz DBTX de sqlc
 │   │   ├── httpx/              # problem+json, DecodeJSON, ClientIP, middlewares genéricos, security headers, CSRF deny, 405
 │   │   ├── clock/              # Clock inyectable (tests de vencimientos, DD-18)
 │   │   ├── ids/                # UUIDv7
@@ -1201,6 +1255,9 @@ Por qué así en Go (resumen de ADR-001):
   contrato en todos los entornos.
 - **`netip.Addr` para la IP del cliente** (librería estándar): es un valor comparable, sin
   asignaciones, con `Unmap()` y prefijos (`netip.Prefix`) para `TRUSTED_PROXIES` y la clave /64.
+- **El reintento de DD-34 vive dentro de `platform/db`, no en los servicios**: el llamador de
+  `InTenantTx` no sabe que existe (la firma no cambia). Es el único lugar que sabe si `fn` ya
+  empezó, que es justo la condición que hace seguro reintentar.
 
 ### 11.1 Interfaces que definen las fronteras (firmas)
 
@@ -1265,13 +1322,15 @@ const (
 type Tx interface {
     DBTX
     TenantID() (uuid.UUID, bool)
-    AsTenant(ctx context.Context, tenantID uuid.UUID) error // ErrTenantAlreadyBound si ya hay otra empresa
-    AsSystem(ctx context.Context, role SystemRole) error
+    AsTenant(ctx context.Context, tenantID uuid.UUID) error // ErrTenantAlreadyBound si ya hay otra empresa; sin reintento (INV-27)
+    AsSystem(ctx context.Context, role SystemRole) error    // sin reintento (INV-27)
 }
 
 type TxRunner interface {
+    // InTenantTx: si el SET LOCAL ROLE inicial falla con 42501, ROLLBACK y un único reintento de la
+    // transacción completa antes de llamar a fn (DD-34, INV-27). fn corre como mucho una vez.
     InTenantTx(ctx context.Context, tenantID uuid.UUID, fn func(ctx context.Context, tx Tx) error) error
-    InSystemTx(ctx context.Context, role SystemRole, fn func(ctx context.Context, tx Tx) error) error
+    InSystemTx(ctx context.Context, role SystemRole, fn func(ctx context.Context, tx Tx) error) error // sin reintento
 }
 
 func TenantRoleName(tenantID uuid.UUID) string // "crm_t_" + 32 hex
@@ -1481,19 +1540,19 @@ func NewServer(t testing.TB, root http.Handler) *Server
 |---|---|---|
 | Log por request | middleware común | `request_id`, `method`, `route` (patrón chi en la API, `ops` o `spa` fuera de ella; nunca la URL cruda), `status` (`499` si el cliente cortó la conexión: nunca se envía), `duration_ms`, `tenant_id`, `user_id`, `ip` (de `httpx.ClientIP`, DD-32) |
 | Evento de seguridad | `identity`, `tenant`, `db`, `httpx` | `security_event` ∈ {`login_failed`, `login_locked`, `login_disabled`, `signup_email_exists`, `csrf_rejected`, `rls_violation`, `privilege_error`, `rate_limited`}, `tenant_id` si se conoce, `email_hmac` (nunca el email), `ip` |
-| Evento operativo | `tenant`, `httpx`, `outbox` | `event` ∈ {`signup_timezone_defaulted` (DD-27), `signup_lock_timeout` (DD-33), `client_canceled` (`INFO`, §9.2), `bad_forwarded_for` (`WARN`, DD-32)}, sin datos personales |
+| Evento operativo | `tenant`, `httpx`, `outbox`, `db` | `event` ∈ {`signup_timezone_defaulted` (DD-27), `signup_lock_timeout` (DD-33), `client_canceled` (`INFO`, §9.2), `bad_forwarded_for` (`WARN`, DD-32), `set_role_retry` (`WARN`, DD-34, con `tenant_id` y `outcome` ∈ {`recovered`, `failed`})}, sin datos personales |
 | Worker | `outbox` | `message_id`, `tenant_id`, `template`, `attempt`, `outcome` ∈ {`sent`,`retry`,`failed`,`canceled`}, `smtp_code`; tareas periódicas: `task`, `deleted_rows`, `duration_ms` |
 | Auditoría de negocio | `audit_log` | ver `data-model.md` §2.6 (acciones de FR-008 y más) |
-| Métricas | `expvar` (stdlib) en `/debug/vars`, **solo** en la interfaz interna (`METRICS_ADDR`, default `127.0.0.1:9090`) | `http_requests_total{status}`, `http_client_canceled_total`, `login_failed_total`, `login_locked_total`, `signup_email_exists_total`, `signup_lock_timeout_total`, `csrf_rejected_total`, `outbox_pending`, `outbox_oldest_pending_seconds`, `outbox_failed_total`, `db_pool_acquire_wait_ms`, `tenant_roles_total` |
+| Métricas | `expvar` (stdlib) en `/debug/vars`, **solo** en la interfaz interna (`METRICS_ADDR`, default `127.0.0.1:9090`) | `http_requests_total{status}`, `http_client_canceled_total`, `login_failed_total`, `login_locked_total`, `signup_email_exists_total`, `signup_lock_timeout_total`, `set_role_retry_total`, `csrf_rejected_total`, `outbox_pending`, `outbox_oldest_pending_seconds`, `outbox_failed_total`, `db_pool_acquire_wait_ms`, `tenant_roles_total` |
 
 ### 12.2 Health checks
 
 - `GET /healthz`: 200 si el proceso atiende (no toca la base).
 - `GET /readyz`: 200 si `SELECT 1` bajo `crm_auth` responde en < 1 s y la versión de migración
   en la base es la que espera el binario; si no, 503. Al arrancar se loguea `server_version`
-  (control de R-4), el modo de escucha (`listen=http` o `listen=https_local`, DD-24) y la cantidad
-  de rangos de `TRUSTED_PROXIES` (`trusted_proxies=0` en desarrollo; en producción detrás de un
-  proxy debería ser mayor a 0, DD-32).
+  (control de R-4 y de R-17), el modo de escucha (`listen=http` o `listen=https_local`, DD-24) y la
+  cantidad de rangos de `TRUSTED_PROXIES` (`trusted_proxies=0` en desarrollo; en producción detrás
+  de un proxy debería ser mayor a 0, DD-32).
 - Ambos están en el mux raíz, fuera de `/api/` y fuera del handler de la SPA (DD-22).
 
 ### 12.3 Runbook: señal → qué mirar primero
@@ -1503,7 +1562,8 @@ func NewServer(t testing.TB, root http.Handler) *Server
 | Nadie recibe emails | `outbox_oldest_pending_seconds` > 600 | Logs del worker (`outcome=retry`, `smtp_code`); credenciales SMTP; que el worker esté corriendo (log de arranque) |
 | Emails que nunca llegan a un usuario | `outbox_failed_total` sube | `last_error` del mensaje (consulta como DBA); rebote `5xx` del proveedor |
 | Todos los requests de una empresa dan 500 | log `role "crm_t_…" does not exist` | Restore sin roles: correr `crm tenants reprovision-roles` (§12.4) |
-| Algún 500 con `security_event=rls_violation` | alerta inmediata | Es un bug de aislamiento: request id → handler → query. Tratar como incidente crítico (principio III) |
+| Algún 500 con `security_event=rls_violation` | alerta inmediata | Es un bug de aislamiento: request id → handler → query. Tratar como incidente crítico (principio III). **Antes**, mirar si el error dice `set role crm_t_…` (paso de cambio de rol) y si la empresa se registró hace segundos: en ese caso es el problema de DD-34 (fila siguiente), no una fuga |
+| `set_role_retry_total` > 0 **sostenido** (o eventos `set_role_retry` con `outcome=failed`, o `500` en el primer request después de registrarse) | `set_role_retry_total`; eventos `set_role_retry` | La lectura de catálogo de DD-34 dejó de alcanzar. ¿Cambió `server_version` (log de arranque)? Correr el test de reproducción de T-B103 contra esa versión exacta; ver R-17 y research R-28 (salidas: fijar el *minor* anterior, *pool* de roles pre-creados o alternativa B). Un valor aislado después de una ráfaga de registros se tolera: es la red funcionando |
 | Muchos `429 login_locked` | `login_locked_total` | Ataque de fuerza bruta o bloqueo masivo; IPs en logs; ajustar rate limit |
 | Muchos `429 rate_limited` de usuarios distintos a la vez; todas las IPs del log son iguales | `http_requests_total{status="429"}`; campo `ip` constante | `TRUSTED_PROXIES` sin configurar o sin el rango del proxy del hosting: el rate limit se volvió global (DD-32); ver `trusted_proxies=` en el log de arranque |
 | IPs raras o privadas en el log y en la auditoría | eventos `bad_forwarded_for`; `ip` de un rango interno | El proxy reemplaza `X-Forwarded-For` en vez de agregar, o `TRUSTED_PROXIES` incluye un rango de más (S-14) |
@@ -1529,6 +1589,9 @@ func NewServer(t testing.TB, root http.Handler) *Server
   `crm_tenant` en milisegundos, así que los registros no quedan frenados durante toda la corrida);
   si una empresa falla, la corrida sigue con las demás y el reporte final lista las fallidas; dos
   ejecuciones simultáneas no se permiten (la segunda termina con "otra reprovisión en curso").
+- **Actualizar PostgreSQL** (DD-34, R-17): antes de subir el *minor* o el *major* en producción,
+  correr `make check` con la imagen de la versión nueva (incluye el test de reproducción de
+  T-B103); después del cambio, vigilar `set_role_retry_total`.
 - **Un clúster por entorno**: los roles son globales al clúster; dos entornos en el mismo clúster
   compartirían (y mezclarían) roles `crm_t_*` (S-6).
 - **Inventario**: la cantidad de roles `crm_t_*` debe coincidir con la cantidad de filas de
@@ -1540,7 +1603,7 @@ func NewServer(t testing.TB, root http.Handler) *Server
 
 | Operación | Target (p95, en servidor, sin red) | Cómo se sostiene |
 |---|---|---|
-| Requests autenticados de lectura (`/me`, `/tenant`, `/users`) | < 50 ms | Resolución de sesión por índice único `token_hash`; una transacción con dos cambios de rol; tablas chicas |
+| Requests autenticados de lectura (`/me`, `/tenant`, `/users`) | < 50 ms | Resolución de sesión por índice único `token_hash`; una transacción con dos cambios de rol (cada uno con la lectura de catálogo de DD-34 en el mismo viaje); tablas chicas |
 | Revalidación del logo (`304`) | < 50 ms | Solo lee la fila de la empresa y compara el `ETag`; no toca S3 (DD-23) |
 | Login | < 400 ms | Dominado por argon2id; el semáforo evita degradación por concurrencia |
 | Registro (`/auth/signup`) | < 1 s | argon2id + `CREATE ROLE` + inserts. SC-001 (3 min) es de punta a punta y tiene margen de sobra |
@@ -1553,8 +1616,9 @@ escala supuesta (S-3) sigue siendo un volumen chico para el semáforo de argon2i
 carga de la SPA (tamaños gzip, LCP) son del frontend (`ui.md` §8, T-F704).
 
 Los targets se verifican en la Fase 9 con un benchmark en un contenedor con **10.000 roles de
-empresa** (T-B905, riesgo R-2): si `SET LOCAL ROLE`, el registro o la transacción de registro
-bajo concurrencia superan los targets, se reabre ADR-005 (opciones en research R-04c).
+empresa** (T-B905, riesgo R-2): si `SET LOCAL ROLE` (con la lectura de catálogo), el registro o la
+transacción de registro bajo concurrencia superan los targets, se reabre ADR-005 (opciones en
+research R-04c y R-28).
 
 ---
 
@@ -1577,14 +1641,15 @@ bajo concurrencia superan los targets, se reabre ADR-005 (opciones en research R
 | S-11 | El hosting no comprime las respuestas por su cuenta; si lo hace, se quita `gzhttp` (DD-29) | Doble compresión evitada quitando el wrapper |
 | S-12 | *(Reescrito por H-10; el anterior suponía que Chrome aceptaba la cookie en `http://localhost`, y era falso.)* Tras `mkcert -install` (con `certutil` en Linux), Chrome, Firefox y Safari en desarrollo, y Chromium y WebKit de Playwright en CI, confían en el certificado de `localhost`. Lo valida la primera corrida de T-F701 | Respaldo en CI: `ignoreHTTPSErrors`, solo si el service worker registra igual (T-F703); si tampoco, volver al arquitecto |
 | S-13 | Un navegador que recibe HSTS por HTTPS en `localhost` puede registrarlo y forzar HTTPS en otros proyectos locales (no verificado con fuente primaria) | Ninguno: omitir HSTS en modo local no tiene costo, así que se omite igual |
-| S-14 | El proxy del hosting que se elija **agrega** su entrada a `X-Forwarded-For` (no la reemplaza por una sola IP) y sale desde rangos de IP conocidos y publicados | Si la reemplaza, el algoritmo de DD-32 igual toma la IP correcta (la de más a la derecha no confiable); si los rangos no se conocen, el rate limit por IP queda global y hay que moverlo al proxy (R-17) |
+| S-14 | El proxy del hosting que se elija **agrega** su entrada a `X-Forwarded-For` (no la reemplaza por una sola IP) y sale desde rangos de IP conocidos y publicados | Si la reemplaza, el algoritmo de DD-32 igual toma la IP correcta (la de más a la derecha no confiable); si los rangos no se conocen, el rate limit por IP queda global y hay que moverlo al proxy (research R-17) |
 | S-15 | pgx v5.11 devuelve `context.Canceled` (o un error que lo envuelve) al cancelarse el contexto de una query (observado en la Fase 1) | Si llegara solo como `57014`, la capa HTTP igual lo detecta por `r.Context().Err()`; `MapError` lo mapearía a `ErrUnavailable` y habría que agregar el caso |
+| S-16 | La causa del `42501` de DD-34 es la caché de membresías por backend (`roles_is_member_of`) y leer un catálogo antes del `SET ROLE` hace que el backend procese las invalidaciones pendientes. Es la hipótesis del desarrollador, **consistente con la medición** (de 64–105/600 a 0/1800) pero **no verificada en el código de PostgreSQL** ni documentada por el proyecto | Si la causa es otra, la lectura de catálogo podría estar funcionando por casualidad (p. ej. por el tiempo que agrega): el test de reproducción y `set_role_retry_total` lo mostrarían; el reintento sigue cubriendo `InTenantTx`. El reporte upstream sugerido (research R-28) lo confirmaría |
 
 ### 14.2 Preguntas
 
 | ID | Pregunta | Estado | Respuesta / default |
 |---|---|---|---|
-| **P-1** | ¿Dónde se hostea PostgreSQL en producción, y permite `CREATEROLE` a un rol no superusuario, `SECURITY DEFINER` y restringir qué roles se conectan? | **Abierta. Bloquea elegir el hosting** (no bloquea empezar el desarrollo) | Default: PostgreSQL 18 (último minor) gestionado o autogestionado que lo permita, **verificado en la Fase 0 con el mismo script de bootstrap** (T-B012). Si el proveedor elegido no lo permite, se aplica la alternativa B de ADR-005 (rol único `crm_tenant` + `SET LOCAL app.tenant_id`), que solo cambia `app.current_tenant_id()` y `InTenantTx`. **Paso obligatorio al desplegar detrás del proxy del hosting**: configurar `TRUSTED_PROXIES` con sus rangos de salida y verificar S-14 (DD-32); sin eso el rate limit por IP es global. |
+| **P-1** | ¿Dónde se hostea PostgreSQL en producción, y permite `CREATEROLE` a un rol no superusuario, `SECURITY DEFINER` y restringir qué roles se conectan? | **Abierta. Bloquea elegir el hosting** (no bloquea empezar el desarrollo) | Default: PostgreSQL 18 (último minor) gestionado o autogestionado que lo permita, **verificado en la Fase 0 con el mismo script de bootstrap** (T-B012). Si el proveedor elegido no lo permite, se aplica la alternativa B de ADR-005 (rol único `crm_tenant` + `SET LOCAL app.tenant_id`), que solo cambia `app.current_tenant_id()` y `InTenantTx`. La comparación A/B suma dos argumentos de la implementación: el lock de `GRANT` (DD-33) y la caché de membresías (DD-34). **Paso obligatorio al desplegar detrás del proxy del hosting**: configurar `TRUSTED_PROXIES` con sus rangos de salida y verificar S-14 (DD-32); sin eso el rate limit por IP es global. |
 | **P-2** | ¿La verificación de email bloquea algo? | **Resuelta** (default aceptado) | No bloquea nada; la UI muestra un aviso hasta verificar (`/me` expone `email_verified`). DD-4, DD-13. |
 | **P-3** | ¿El Administrador puede reactivar un usuario desactivado? | **Resuelta** (default aceptado) | Sí: `POST /users/{id}/reactivate`, solo Administrador (`settings.manage`), auditado (`user.reactivated`). Vuelve a `active` si tenía contraseña o a `invited` con invitación nueva si no. Contrato, §4.6, `data-model.md` §2.6 y T-B604/T-B606. |
 | **P-4** | ¿Cómo responde el registro con un email ya existente? | **Resuelta** (el usuario ajustó el default) | `409` con `code: email_already_registered`, mensaje explícito "Ya existe un usuario con ese email. ¿Querés recuperar la contraseña?" y `suggested_action: password_reset`; sin empresa, nombre ni estado. Se acepta conscientemente que confirma la existencia del email. Login y reset siguen no enumerables. DD-19, DD-20, DD-21, INV-20. |
@@ -1612,6 +1677,7 @@ bajo concurrencia superan los targets, se reabre ADR-005 (opciones en research R
 | R-14 | Se filtra la clave de la CA local de mkcert de un desarrollador | Baja | Medio (permite interceptar HTTPS de ese equipo) | CA por equipo, fuera del repo; `.certs/` en `.gitignore`; en CI la CA es efímera (§10.5.1) |
 | R-15 | Registros concurrentes serializados por el lock de `GRANT crm_tenant` (DD-33): una transacción de registro larga, un sembrado pesado de 002 o una reprovisión en bloque frenan todos los registros | Media | Medio | R-a..R-d de DD-33; métrica `signup_lock_timeout_total` y runbook; medición con concurrencia en T-B905; si no alcanza, *pool* de roles pre-creados o alternativa B (research R-04c) |
 | R-16 | `TRUSTED_PROXIES` mal configurada al desplegar: vacía detrás de un proxy (rate limit global) o con rangos de más (IPs falsificables) | Media | Medio | Default seguro; `0.0.0.0/0`/`::/0` rechazados; `trusted_proxies=` en el log de arranque; runbook §12.3; paso obligatorio en P-1 |
+| R-17 | **Comportamiento interno de PostgreSQL** (DD-34, S-16): el arreglo depende de que leer un catálogo procese las invalidaciones de membresía pendientes antes del chequeo de `SET ROLE`. No está documentado: un *minor* o *major* nuevo (o un proveedor con otra compilación) podría cambiarlo, y el `42501` volvería. Donde no hay reintento (`InSystemTx` → `AsTenant`: resolución de sesión, login, tokens, worker) se vería como un `500` en el primer request después de registrarse | Baja–Media | Alto (el primer uso de la app falla justo después de registrarse; falsa alerta de `rls_violation`) | El test de reproducción de T-B103 corre en `make check`: una regresión se detecta en CI al subir la imagen de PostgreSQL, antes de producción (§12.4, "Actualizar PostgreSQL"); métrica `set_role_retry_total` y runbook §12.3; el reintento de `InTenantTx` como red; reporte upstream sugerido (research R-28); salidas estructurales: *pool* de roles pre-creados (research R-04c) o alternativa B de ADR-005 (P-1) |
 
 ---
 
@@ -1624,6 +1690,7 @@ La actualización de la documentación va **en el mismo cambio** que el código.
 | Un endpoint (ruta, payload, código de error) | `contracts/openapi.yaml` (canónico) + §8 de este plan + la tabla de rutas de T-B801/T-B802 + `ui.md` si la consume |
 | Un `code` de error o un `suggested_action` | §9.1 + `components/schemas/ErrorCode` / `SuggestedAction` del contrato (versión *minor* si se agrega un valor) + mapeo en `platform/httpx` o en el `http.go` del módulo + `ui.md` (mapa de mensajes del frontend) |
 | El mapeo de errores de PostgreSQL o de contexto (`MapError`) | §9.2/§9.3 + T-B105 + §9.4 si afecta al worker |
+| El cambio de rol en `platform/db` (lectura de catálogo, reintento, dónde aplica) o la versión de PostgreSQL | DD-34 + INV-27 + §4.3 + §9.2 + S-16/R-17 + research R-28 + T-B103/T-B104 + nota (b) en ADR-005 (nota nueva fechada si cambia la defensa); al subir la versión de PostgreSQL, correr el test de reproducción con la imagen nueva (§12.4) |
 | Una transición de estado de usuario o invitación, o las reglas de cambio de rol | §4.6 + DD-26 + la tabla de transiciones en `identity/user.go` + tests T-B601/T-B603/T-B604 + catálogo de auditoría de `data-model.md` §2.6 |
 | La matriz de permisos | `authz` + tabla de T-B207 + `Permission` en el contrato + FR-007 (spec, con aprobación) + ADR-013 si cambia el mecanismo |
 | El modelo de datos | `data-model.md` (tablas, ER, privilegios por rol) + migración nueva + lista de tablas de T-B107 |
@@ -1656,8 +1723,8 @@ La actualización de la documentación va **en el mismo cambio** que el código.
 | Permiso | `Permission` | Capacidad concreta de la matriz de FR-007 (p. ej. `settings.manage`). |
 | Mensaje saliente | `OutboxMessage` | Email pendiente de envío, guardado junto con la operación que lo originó. |
 
-"Modo local" (DD-24), "proxy de confianza" (DD-32) y "tarea periódica" (`PeriodicTask`) son
-términos técnicos, no del dominio: no van al glosario.
+"Modo local" (DD-24), "proxy de confianza" (DD-32), "tarea periódica" (`PeriodicTask`) y
+"reintento del cambio de rol" (DD-34) son términos técnicos, no del dominio: no van al glosario.
 
 ---
 
@@ -1666,10 +1733,13 @@ términos técnicos, no del dominio: no van al glosario.
 ### Estado de la implementación (2026-09-30)
 
 - **Fase 0 del backend**: implementada y **mergeada** (PR fdelillo/crm#6).
-- **Fase 1 del backend**: implementada en la rama, **en revisión**, con arreglos en curso.
+- **Fase 1 del backend**: implementada en la rama, **en revisión**, con arreglos en curso. Incluye
+  la primera defensa de DD-34 (commit e3d990b); la segunda (reintento en `InTenantTx`) la está
+  implementando el `backend-developer`.
 - Las decisiones de la tercera tanda (abajo) tocan tareas ya implementadas: T-B002 y T-B004
-  (Fase 0), T-B011 (Fase 0), T-B105 y T-B112 (Fase 1). Se aplican como ajustes en la rama de la
-  Fase 1 o al empezar la Fase 2; la lista está en la nota de revisión de `tasks.md`.
+  (Fase 0), T-B011 (Fase 0), T-B105 y T-B112 (Fase 1). La cuarta tanda toca T-B103 y T-B104
+  (Fase 1). Se aplican como ajustes en la rama de la Fase 1 o al empezar la Fase 2; la lista está
+  en la nota de revisión de `tasks.md`.
 
 ### Primera tanda (2026-09-29): H-1 a H-9
 
@@ -1735,6 +1805,26 @@ Esa ruta se mantiene, pero solo para las queries de `outbox_messages`; la limpie
 no lee ni borra tablas de otro), y hay que agregar esa ruta y `internal/tenant/store/provisioning.sql`
 a la lista de excepciones (T-B112). Como la limpieza es de la Fase 9, no hay código que mover todavía.
 
+### Cuarta tanda (2026-09-30): `SET ROLE` a una empresa recién aprovisionada
+
+Hallazgo de la implementación de la Fase 1 (test de reproducción con registros concurrentes) y
+decisión del usuario: mantener el arreglo aplicado y sumar el reintento.
+
+| Tema | Qué cambió | Dónde | ADR |
+|---|---|---|---|
+| Primer `SET ROLE` desde otra conexión falla con `42501` (PostgreSQL 18.6) | (1) Lectura de catálogo en el mismo viaje que el `SET LOCAL ROLE`, en todo cambio de rol (commit e3d990b; de 64–105/600 a 0/1800). (2) Un único reintento en `InTenantTx` si el `SET ROLE` inicial falla con `42501` antes de ejecutar `fn`; nunca después de `fn`, ni en roles de sistema, ni en `AsTenant`; log `WARN` y métrica `set_role_retry` | DD-34 (nueva), INV-27 (nueva), INV-19 (excepción acotada), §4.3, §4.5 (diagrama nuevo y nota del registro), §8, §9.1–9.4, §10.3, §10.4, §11, §11.1, §12.1–12.4, §13, S-16, R-17, P-1, §16; research R-28; T-B103, T-B104 (y la métrica en T-B903, el costo en T-B905) | **Nota 2026-09-30 (b) en ADR-005** (otra consecuencia de la alternativa A; un argumento más para B) |
+
+**Por qué no hay ADR nuevo**: la decisión de ADR-005 (rol por empresa) no cambia. DD-34 es un
+detalle de cómo `platform/db` cambia de rol, y se registra como nota fechada en ADR-005 porque es
+un costo de haber elegido A que la comparación con B (abierta en P-1) tiene que ver.
+
+**Observación para el usuario (no bloquea)**: el reintento cubre `InTenantTx`, pero el primer
+request después de registrarse (`GET /me`) resuelve la sesión con `InSystemTx(crm_auth)` →
+`AsTenant`, un camino que por decisión no se reintenta. Ese camino queda cubierto solo por la
+lectura de catálogo. Hoy alcanza (0/1800), pero si R-17 se materializa, es donde se vería primero.
+Si se quisiera cubrirlo, la opción segura sería reintentar la transacción completa de
+`ResolveSession`, que solo lee y no tiene efectos antes del `AsTenant`. No se diseña ahora.
+
 Coordinación con la sección Frontend de `tasks.md`: T-F007 y T-F008 son código Go (paquete `web` y
 cableado de la SPA en el mux raíz), las implementa `backend-developer` y dependen de T-B005 (mux
 raíz con el punto de inyección `RootDeps.SPA`) y T-B204 (middlewares comunes). La numeración no
@@ -1746,3 +1836,5 @@ su sección de `tasks.md`; este plan no lo toca):
 - Un mensaje para `method_not_allowed` en el mapa exhaustivo de `ErrorCode` (T-F101 falla al
   compilar hasta que exista, a propósito) y la referencia al contrato v0.4.0 en T-F004.
 - El `503` del registro puede traer `Retry-After` (DD-33): el mensaje de "Reintentar" puede usarlo.
+
+La cuarta tanda no le pide nada al frontend: no cambia el contrato.
