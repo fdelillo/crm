@@ -3,10 +3,12 @@ package httpx
 import (
 	"context"
 	"errors"
+	"expvar"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -26,6 +28,9 @@ const hstsValue = "max-age=31536000"
 // unmatchedRoute labels requests that no route handled (chi 404/405, mux redirects). The raw URL
 // is never logged (DD-12).
 const unmatchedRoute = "unmatched"
+
+var clientCanceledTotal = expvar.NewInt("http_client_canceled_total")
+var csrfRejectedTotal = expvar.NewInt("csrf_rejected_total")
 
 // RequestIDFrom returns the request id set by RequestID, or "" outside a request.
 func RequestIDFrom(ctx context.Context) string {
@@ -94,6 +99,7 @@ func markClientCanceled(r *http.Request) {
 	if h, ok := r.Context().Value(routeKey).(*routeHolder); ok {
 		h.canceled = true
 	}
+	clientCanceledTotal.Add(1)
 }
 
 // SetLogLevel overrides the level of this request's log line (by default INFO, or ERROR for 5xx).
@@ -160,12 +166,43 @@ func Logging(logger *slog.Logger) func(http.Handler) http.Handler {
 					"method", r.Method,
 					"route", route,
 					"status", status,
+					"event", canceledEvent(holder.canceled),
+					"ip", ClientIPFrom(r.Context()).String(),
 					"duration_ms", time.Since(start).Milliseconds())
 			}()
 			next.ServeHTTP(sw, r)
 			completed = true
 		})
 	}
+}
+
+func canceledEvent(canceled bool) string {
+	if canceled {
+		return "client_canceled"
+	}
+	return "request"
+}
+
+// CSRFDenyHandler responds with the API's standard 403 format and records a safe security event.
+func CSRFDenyHandler(logger *slog.Logger) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		csrfRejectedTotal.Add(1)
+		if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
+			w.Header().Set("Cache-Control", "no-store")
+		}
+		logger.WarnContext(r.Context(), "cross-origin request rejected",
+			"security_event", "csrf_rejected", "ip", ClientIPFrom(r.Context()).String(),
+			"route", unmatchedRoute, "request_id", RequestIDFrom(r.Context()))
+		WriteProblem(w, r, CodeForbidden)
+	})
+}
+
+// NoStore applies to all API responses. A resource handler may replace the value (e.g. logo).
+func NoStore(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // SecurityHeaders sets the headers common to every response (plan §10.7). hsts is false in local
