@@ -4,12 +4,16 @@
 -- app.current_tenant_id(): the company encoded in the current role, or NULL. Every RLS policy compares
 -- tenant_id with it, so it is the ONLY place that knows how a role maps to a company: changing the
 -- isolation strategy (ADR-005, alternative B) means changing this function and TxRunner, nothing else.
--- SECURITY INVOKER: it reads current_user, which is the role of the statement being checked.
+-- SECURITY INVOKER: it reads current_user, which is the role of the statement being checked. It has no
+-- SET search_path clause (that would stop PostgreSQL from inlining it into the policies), so the body
+-- names pg_catalog explicitly for every operator, function and type: the caller's search_path cannot
+-- change what it answers.
 -- +goose StatementBegin
 CREATE FUNCTION app.current_tenant_id() RETURNS uuid
 LANGUAGE sql STABLE PARALLEL SAFE AS $$
   SELECT CASE
-    WHEN current_user::text ~ '^crm_t_[0-9a-f]{32}$' THEN substr(current_user::text, 7)::uuid
+    WHEN current_user::pg_catalog.text OPERATOR(pg_catalog.~) '^crm_t_[0-9a-f]{32}$'
+    THEN pg_catalog.substr(current_user::pg_catalog.text, 7)::pg_catalog.uuid
   END
 $$;
 -- +goose StatementEnd

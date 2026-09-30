@@ -4,16 +4,12 @@ package fixture
 
 import (
 	"context"
-	"encoding/hex"
 	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
-
-// RoleName is the PostgreSQL role of a company: "crm_t_" + the 32 hex digits of its UUID (ADR-005).
-func RoleName(id uuid.UUID) string { return "crm_t_" + hex.EncodeToString(id[:]) }
 
 // ProvisionRole creates the role of company id exactly as registration does: as crm_app, switch to
 // crm_signup and call provisioning.provision_tenant_role, then commit. It returns the role name.

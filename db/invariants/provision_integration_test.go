@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fdelillo/crm/internal/platform/db"
 	"github.com/fdelillo/crm/internal/testsupport/fixture"
 	"github.com/fdelillo/crm/internal/testsupport/pgtest"
 	"github.com/google/uuid"
@@ -21,29 +22,37 @@ func TestProvision_CurrentTenantID(t *testing.T) {
 	id := uuid.New()
 	role := fixture.ProvisionRole(t, app, id)
 
-	current := func(t *testing.T, role string) *uuid.UUID {
+	// Simple protocol on purpose: with the extended protocol pgx caches the prepared statement per
+	// connection, and a cached plan is not re-checked for USAGE on the schema, so whether a role
+	// without that USAGE got an error would depend on which connection ran the test before.
+	current := func(t *testing.T, role string) (*uuid.UUID, error) {
 		t.Helper()
 		var got *uuid.UUID
+		var err error
 		asRole(t, app, role, func(ctx context.Context, tx pgx.Tx) {
-			if err := tx.QueryRow(ctx, `SELECT app.current_tenant_id()`).Scan(&got); err != nil {
-				t.Fatal(err)
-			}
+			err = tx.QueryRow(ctx, `SELECT app.current_tenant_id()`, pgx.QueryExecModeSimpleProtocol).Scan(&got)
 		})
-		return got
+		return got, err
 	}
 
 	t.Run("company role", func(t *testing.T) {
-		if got := current(t, role); got == nil || *got != id {
-			t.Errorf("current_tenant_id() as %s = %v, want %v", role, got, id)
+		if got, err := current(t, role); err != nil || got == nil || *got != id {
+			t.Errorf("current_tenant_id() as %s = %v (err %v), want %v", role, got, err, id)
 		}
 	})
-	for _, sys := range []string{"crm_auth", "crm_worker", "crm_signup"} {
+	for _, sys := range []string{"crm_auth", "crm_worker"} {
 		t.Run(sys, func(t *testing.T) {
-			if got := current(t, sys); got != nil {
-				t.Errorf("current_tenant_id() as %s = %v, want NULL", sys, got)
+			if got, err := current(t, sys); err != nil || got != nil {
+				t.Errorf("current_tenant_id() as %s = %v (err %v), want NULL", sys, got, err)
 			}
 		})
 	}
+	// crm_signup has no USAGE on schema app (data-model.md §3.5): it can only call the provisioning function.
+	t.Run("crm_signup has no access to schema app", func(t *testing.T) {
+		if _, err := current(t, "crm_signup"); sqlState(err) != "42501" {
+			t.Errorf("current_tenant_id() as crm_signup: err = %v, want SQLSTATE 42501", err)
+		}
+	})
 	t.Run("crm_owner", func(t *testing.T) {
 		var got *uuid.UUID
 		if err := pgtest.OwnerPool(t).QueryRow(ctx, `SELECT app.current_tenant_id()`).Scan(&got); err != nil {
@@ -81,8 +90,8 @@ func TestProvision_CurrentTenantID(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if got := current(t, lookalike); got != nil {
-				t.Errorf("current_tenant_id() as %q = %v, want NULL", lookalike, got)
+			if got, err := current(t, lookalike); err != nil || got != nil {
+				t.Errorf("current_tenant_id() as %q = %v (err %v), want NULL", lookalike, got, err)
 			}
 		})
 	}
@@ -95,7 +104,7 @@ func TestProvision_CreatesTheCompanyRole(t *testing.T) {
 	app := pgtest.AppPool(t)
 	super := pgtest.SuperuserPool(t)
 	id := uuid.New()
-	want := fixture.RoleName(id)
+	want := db.TenantRoleName(id)
 
 	if got := fixture.ProvisionRole(t, app, id); got != want {
 		t.Fatalf("provision_tenant_role returned %q, want %q", got, want)
@@ -172,7 +181,7 @@ func TestProvision_RollbackLeavesNoRole(t *testing.T) {
 		t.Fatal(err)
 	}
 	var exists bool
-	err = pgtest.SuperuserPool(t).QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = $1)`, fixture.RoleName(id)).Scan(&exists)
+	err = pgtest.SuperuserPool(t).QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = $1)`, db.TenantRoleName(id)).Scan(&exists)
 	if err != nil || exists {
 		t.Errorf("role exists after ROLLBACK = %v (err %v), want false", exists, err)
 	}
@@ -210,4 +219,41 @@ func TestProvision_IsNotCallableByOthers(t *testing.T) {
 			}
 		})
 	}
+}
+
+// current_tenant_id() runs with the search_path of whoever calls it (it is SECURITY INVOKER without a
+// SET clause, so it can be inlined into the policies). Its body must therefore name pg_catalog for every
+// operator, function and type it uses: a caller who puts a schema of their own first in the path
+// must not be able to make it answer with a company.
+func TestProvision_CurrentTenantIDIgnoresTheCallersSearchPath(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	super := pgtest.SuperuserPool(t)
+	schema := "evil_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	for _, stmt := range []string{
+		`CREATE SCHEMA ` + schema,
+		`GRANT USAGE ON SCHEMA ` + schema + ` TO PUBLIC`,
+		`CREATE FUNCTION ` + schema + `.always_true(text, text) RETURNS boolean LANGUAGE sql AS 'SELECT true'`,
+		`CREATE OPERATOR ` + schema + `.~ (LEFTARG = text, RIGHTARG = text, FUNCTION = ` + schema + `.always_true)`,
+		`CREATE FUNCTION ` + schema + `.substr(text, integer) RETURNS text LANGUAGE sql AS $$ SELECT '11111111111111111111111111111111' $$`,
+		`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA ` + schema + ` TO PUBLIC`,
+	} {
+		if _, err := super.Exec(ctx, stmt); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+	t.Cleanup(func() { _, _ = super.Exec(ctx, `DROP SCHEMA `+schema+` CASCADE`) })
+
+	asRole(t, pgtest.AppPool(t), "crm_auth", func(ctx context.Context, tx pgx.Tx) {
+		if _, err := tx.Exec(ctx, `SET LOCAL search_path = `+schema+`, pg_catalog`); err != nil {
+			t.Fatal(err)
+		}
+		var got *uuid.UUID
+		if err := tx.QueryRow(ctx, `SELECT app.current_tenant_id()`, pgx.QueryExecModeSimpleProtocol).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got != nil {
+			t.Errorf("current_tenant_id() as crm_auth with a hostile search_path = %v, want NULL", got)
+		}
+	})
 }

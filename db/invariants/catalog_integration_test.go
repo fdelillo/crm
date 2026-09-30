@@ -6,7 +6,6 @@ import (
 	"context"
 	"slices"
 	"sort"
-	"strings"
 	"testing"
 
 	"github.com/fdelillo/crm/internal/testsupport/fixture"
@@ -109,10 +108,11 @@ func TestCatalog_RowLevelSecurityOnEveryTable(t *testing.T) {
 		if cmd != "ALL" || roles != "{public}" {
 			t.Errorf("%s: tenant_isolation applies to %s for %s, want ALL for PUBLIC", table, cmd, roles)
 		}
-		for what, expr := range map[string]string{"USING": qual, "WITH CHECK": check} {
-			if !strings.Contains(expr, "current_tenant_id") || !strings.Contains(expr, col) {
-				t.Errorf("%s: tenant_isolation %s = %q, want %s compared with current_tenant_id()", table, what, expr, col)
-			}
+		// Exact equality with the form PostgreSQL 18 prints (a substring test would pass with
+		// "... OR (SELECT app.current_tenant_id()) IS NULL", which lets crm_worker see every row).
+		canonical := "(" + col + " = ( SELECT app.current_tenant_id() AS current_tenant_id))"
+		if qual != canonical || check != canonical {
+			t.Errorf("%s: tenant_isolation USING = %q, WITH CHECK = %q, want both %q", table, qual, check, canonical)
 		}
 	}
 }
@@ -170,7 +170,7 @@ func TestCatalog_RuntimeRoleHasNoTablePrivileges(t *testing.T) {
 	}
 }
 
-// T-B107, INV-08: SECURITY DEFINER only in provisioning, with a fixed search_path and no PUBLIC EXECUTE.
+// T-B107, INV-08: SECURITY DEFINER only in provisioning, with search_path = pg_catalog, pg_temp and no PUBLIC EXECUTE.
 func TestCatalog_SecurityDefinerFunctions(t *testing.T) {
 	t.Parallel()
 	pool := pgtest.OwnerPool(t)
@@ -184,7 +184,7 @@ func TestCatalog_SecurityDefinerFunctions(t *testing.T) {
 		SELECT n.nspname || '.' || p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
 		WHERE p.prosecdef AND n.nspname NOT IN ('pg_catalog', 'information_schema')
 		  AND (n.nspname <> 'provisioning'
-		       OR NOT EXISTS (SELECT 1 FROM unnest(coalesce(p.proconfig, '{}')) c WHERE c LIKE 'search_path=%')
+		       OR NOT ('search_path=pg_catalog, pg_temp' = ANY(coalesce(p.proconfig, '{}')))
 		       OR EXISTS (SELECT 1 FROM aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a WHERE a.grantee = 0 AND a.privilege_type = 'EXECUTE'))`); len(bad) > 0 {
 		t.Errorf("SECURITY DEFINER functions outside provisioning, without a fixed search_path, or executable by PUBLIC: %v", bad)
 	}

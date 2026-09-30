@@ -231,6 +231,7 @@ func (c *cluster) close() {
 		select {
 		case <-done:
 		case <-time.After(10 * time.Second):
+			fmt.Fprintln(os.Stderr, "pgtest: a pool did not close in 10 s: some test left a connection or transaction unreleased")
 		}
 	}
 	if c.container != nil {

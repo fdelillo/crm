@@ -79,7 +79,7 @@ func (r *runner) run(ctx context.Context, enter func(context.Context, *tx) error
 	if err != nil {
 		return fmt.Errorf("db: begin: %w", MapError(err))
 	}
-	t := &tx{Tx: pt}
+	t := &tx{inner: pt}
 	committed := false
 	defer func() {
 		if committed {
@@ -105,10 +105,25 @@ func (r *runner) run(ctx context.Context, enter func(context.Context, *tx) error
 	return nil
 }
 
+// tx is what business code receives. It holds the pgx transaction in a private field and delegates
+// only queries: embedding pgx.Tx would let fn COMMIT, ROLLBACK, open nested transactions or take the
+// connection, escaping the runner (INV-03).
 type tx struct {
-	pgx.Tx
+	inner  pgx.Tx
 	tenant uuid.UUID
 	bound  bool
+}
+
+func (t *tx) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	return t.inner.Exec(ctx, sql, args...)
+}
+
+func (t *tx) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	return t.inner.Query(ctx, sql, args...)
+}
+
+func (t *tx) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	return t.inner.QueryRow(ctx, sql, args...)
 }
 
 func (t *tx) TenantID() (uuid.UUID, bool) { return t.tenant, t.bound }
@@ -119,7 +134,8 @@ func (t *tx) AsTenant(ctx context.Context, tenantID uuid.UUID) error {
 	}
 	role := TenantRoleName(tenantID)
 	if err := t.setRole(ctx, role); err != nil {
-		return fmt.Errorf("db: switching to company role %s (was the company provisioned?): %w", role, err)
+		// MapError so that "permission denied to set role" is ErrPrivilege (INV-19); the message keeps the role.
+		return MapError(fmt.Errorf("db: switching to company role %s (was the company provisioned?): %w", role, err))
 	}
 	t.tenant, t.bound = tenantID, true
 	return nil
@@ -132,7 +148,7 @@ func (t *tx) AsSystem(ctx context.Context, role SystemRole) error {
 		return fmt.Errorf("db: %q is not a system role", role)
 	}
 	if err := t.setRole(ctx, string(role)); err != nil {
-		return fmt.Errorf("db: switching to system role %s: %w", role, err)
+		return MapError(fmt.Errorf("db: switching to system role %s: %w", role, err))
 	}
 	return nil
 }

@@ -12,8 +12,10 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// Sentinel errors. Services and handlers compare them with errors.Is; the original pgx error stays
-// in the chain so logs keep the SQLSTATE and the constraint.
+// Sentinel errors. Services and handlers compare them with errors.Is. MapError keeps the original pgx
+// error in the chain, so logs keep the SQLSTATE, except for a unique violation: *ConstraintError carries
+// the constraint name and not the pgx error, because that one can contain the conflicting value
+// (an email) and personal data must not travel in errors.
 var (
 	ErrNotFound           = errors.New("db: not found")
 	ErrUniqueViolation    = errors.New("db: unique violation") // wrapped in *ConstraintError

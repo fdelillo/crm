@@ -4,10 +4,13 @@ package invariants_test
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/fdelillo/crm/internal/testsupport/fixture"
+	"github.com/fdelillo/crm/internal/testsupport/isolation"
 	"github.com/fdelillo/crm/internal/testsupport/pgtest"
+	"github.com/fdelillo/crm/internal/testsupport/queryrules"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -22,15 +25,12 @@ func companyTables(t *testing.T) []string {
 		  SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid AND a.attname = 'tenant_id' AND NOT a.attisdropped))`)
 }
 
-func hasPrivilege(t *testing.T, role, table, priv string) bool {
-	t.Helper()
-	var has bool
-	if err := pgtest.SuperuserPool(t).QueryRow(context.Background(),
-		`SELECT has_table_privilege($1, $2, $3)`, role, "app."+table, priv).Scan(&has); err != nil {
-		t.Fatal(err)
-	}
-	return has
-}
+// Tables where the company role has no UPDATE at all (not even on a column) and none where it can DELETE.
+// Declared so that a table skipped by the sweep is a visible decision, not a silent one.
+var (
+	tablesWithoutCompanyUpdate = []string{"audit_log"}
+	tablesWithCompanyDelete    []string
+)
 
 // T-B110, SC-002 (database level), principle III: with two companies that have a row in every table,
 // the role of A sees nothing of B, cannot change it, cannot delete it, cannot write rows for B and cannot
@@ -45,74 +45,36 @@ func TestIsolation_CompanyRoleNeverReachesAnotherCompany(t *testing.T) {
 	if len(tables) == 0 {
 		t.Fatal("no company tables found in the catalog")
 	}
+	var noUpdate, withDelete []string
 	for _, table := range tables {
 		if _, ok := fixture.CompanyInserters[table]; !ok {
 			t.Fatalf("table %s has no fixture inserter: add it to fixture.CompanyInserters so the isolation sweep covers it", table)
 		}
+		if !isolation.HasAnyUpdate(t, a.Role, table) {
+			noUpdate = append(noUpdate, table)
+		}
+		if isolation.HasPrivilege(t, a.Role, table, "DELETE") {
+			withDelete = append(withDelete, table)
+		}
+	}
+	if !slices.Equal(noUpdate, tablesWithoutCompanyUpdate) {
+		t.Errorf("tables where the company role has no UPDATE = %v, want the declared %v (declare the change in this test)", noUpdate, tablesWithoutCompanyUpdate)
+	}
+	if !slices.Equal(withDelete, tablesWithCompanyDelete) {
+		t.Errorf("tables where the company role can DELETE = %v, want the declared %v", withDelete, tablesWithCompanyDelete)
 	}
 
 	for _, table := range tables {
-		col := "tenant_id"
-		if table == "tenants" {
-			col = "id"
+		table := table
+		ran := isolation.Sweep(t, a, b, table, a.Rows[table], b.Rows[table],
+			func(ctx context.Context, tx pgx.Tx, tenantID, userID uuid.UUID) error {
+				_, err := fixture.Insert(ctx, tx, table, tenantID, userID)
+				return err
+			})
+		wantUpdate := !slices.Contains(tablesWithoutCompanyUpdate, table)
+		if got := slices.Contains(ran, "update"); got != wantUpdate {
+			t.Errorf("%s: update cases ran = %v, want %v", table, got, wantUpdate)
 		}
-		rowOfB := b.Rows[table]
-		qualified := "app." + table
-
-		t.Run(table+"/select", func(t *testing.T) {
-			asRole(t, app, a.Role, func(ctx context.Context, tx pgx.Tx) {
-				var total, foreign int
-				if err := tx.QueryRow(ctx, `SELECT count(*), count(*) FILTER (WHERE `+col+` <> $1) FROM `+qualified, a.ID).Scan(&total, &foreign); err != nil {
-					t.Fatal(err)
-				}
-				if total < 1 || foreign != 0 {
-					t.Errorf("SELECT * without WHERE: %d rows, %d of another company; want at least A's own and none foreign", total, foreign)
-				}
-				var byID int
-				if err := tx.QueryRow(ctx, `SELECT count(*) FROM `+qualified+` WHERE id = $1`, rowOfB).Scan(&byID); err != nil {
-					t.Fatal(err)
-				}
-				if byID != 0 {
-					t.Errorf("SELECT ... WHERE id = <B's row> returned %d rows, want 0", byID)
-				}
-			})
-		})
-
-		if hasPrivilege(t, a.Role, table, "UPDATE") {
-			t.Run(table+"/update", func(t *testing.T) {
-				asRole(t, app, a.Role, func(ctx context.Context, tx pgx.Tx) {
-					tag, err := tx.Exec(ctx, `UPDATE `+qualified+` SET `+col+` = `+col+` WHERE id = $1`, rowOfB)
-					if err != nil || tag.RowsAffected() != 0 {
-						t.Errorf("UPDATE of B's row: affected %d, err %v; want 0 rows and no error", tag.RowsAffected(), err)
-					}
-					// Moving one of A's own rows to B must be refused by WITH CHECK.
-					_, err = tx.Exec(ctx, `UPDATE `+qualified+` SET `+col+` = $2 WHERE id = $1`, a.Rows[table], b.ID)
-					if sqlState(err) != "42501" {
-						t.Errorf("UPDATE of A's row setting %s = B: err = %v, want SQLSTATE 42501", col, err)
-					}
-				})
-			})
-		}
-		if hasPrivilege(t, a.Role, table, "DELETE") {
-			t.Run(table+"/delete", func(t *testing.T) {
-				asRole(t, app, a.Role, func(ctx context.Context, tx pgx.Tx) {
-					tag, err := tx.Exec(ctx, `DELETE FROM `+qualified+` WHERE id = $1`, rowOfB)
-					if err != nil || tag.RowsAffected() != 0 {
-						t.Errorf("DELETE of B's row: affected %d, err %v; want 0", tag.RowsAffected(), err)
-					}
-				})
-			})
-		}
-
-		t.Run(table+"/insert for B", func(t *testing.T) {
-			asRole(t, app, a.Role, func(ctx context.Context, tx pgx.Tx) {
-				// B's own user is used for tables that reference one, so only RLS can stop the insert.
-				_, err := fixture.Insert(ctx, tx, table, b.ID, b.UserID)
-				if sqlState(err) != "42501" {
-					t.Errorf("INSERT with tenant_id = B as A: err = %v, want SQLSTATE 42501", err)
-				}
-			})
-		})
 	}
 
 	// B's rows are intact, as seen by B.
@@ -189,4 +151,17 @@ func TestIsolation_AuthRoleSeesOnlyRoutingColumnsOfUsers(t *testing.T) {
 			t.Errorf("SELECT password_hash as crm_auth: err = %v, want SQLSTATE 42501", err)
 		}
 	})
+}
+
+// The company tables that queryrules (T-B112) reads out of the migration files must be exactly the ones
+// the database has: otherwise a table it does not see would go unchecked (INV-04).
+func TestCatalog_QueryRulesSeeTheSameCompanyTablesAsTheDatabase(t *testing.T) {
+	t.Parallel()
+	fromFiles, err := queryrules.CompanyTables("../migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fromCatalog := companyTables(t); !slices.Equal(fromFiles, fromCatalog) {
+		t.Errorf("queryrules.CompanyTables(migrations) = %v\ncatalog (tables with tenant_id, plus tenants) = %v", fromFiles, fromCatalog)
+	}
 }

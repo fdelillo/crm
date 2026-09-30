@@ -29,6 +29,27 @@ func currentUser(t *testing.T, ctx context.Context, tx db.Tx) string {
 	return u
 }
 
+// singleConn returns a runner over a pool of ONE connection, and that pool: whatever a transaction does
+// to its connection, the next query on the pool runs on the same one.
+func singleConn(t *testing.T) (db.TxRunner, *pgxpool.Pool) {
+	t.Helper()
+	pool, err := pgxpool.New(context.Background(), pgtest.AppURL(t)+"&pool_max_conns=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	return db.NewTxRunner(pool), pool
+}
+
+// assertBackToApp checks the connection is crm_app again: SET LOCAL is gone with the transaction, however it ended.
+func assertBackToApp(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	var user string
+	if err := pool.QueryRow(context.Background(), `SELECT current_user`).Scan(&user); err != nil || user != "crm_app" {
+		t.Errorf("current_user on the same connection afterwards = %q (err %v), want crm_app", user, err)
+	}
+}
+
 func newTenant(t *testing.T) (uuid.UUID, string) {
 	t.Helper()
 	id := uuid.New()
@@ -73,7 +94,7 @@ func TestTxRunner_RollsBackWhenTheFunctionFails(t *testing.T) {
 	ctx := context.Background()
 	id, _ := newTenant(t)
 	table := fixture.ProbeTable(t, pgtest.OwnerPool(t))
-	runner := db.NewTxRunner(pgtest.AppPool(t))
+	runner, pool := singleConn(t)
 	boom := errors.New("boom")
 
 	err := runner.InTenantTx(ctx, id, func(ctx context.Context, tx db.Tx) error {
@@ -85,6 +106,7 @@ func TestTxRunner_RollsBackWhenTheFunctionFails(t *testing.T) {
 	if !errors.Is(err, boom) {
 		t.Fatalf("err = %v, want it to wrap boom", err)
 	}
+	assertBackToApp(t, pool)
 	assertRows(t, runner, id, table, 0)
 }
 
@@ -127,7 +149,7 @@ func TestTxRunner_PanicRollsBackAndRepanics(t *testing.T) {
 	ctx := context.Background()
 	id, _ := newTenant(t)
 	table := fixture.ProbeTable(t, pgtest.OwnerPool(t))
-	runner := db.NewTxRunner(pgtest.AppPool(t))
+	runner, pool := singleConn(t)
 
 	func() {
 		defer func() {
@@ -143,6 +165,7 @@ func TestTxRunner_PanicRollsBackAndRepanics(t *testing.T) {
 		})
 		t.Error("InTenantTx returned after a panic")
 	}()
+	assertBackToApp(t, pool)
 	assertRows(t, runner, id, table, 0)
 }
 
@@ -262,11 +285,15 @@ func TestTxRunner_MissingCompanyRoleNamesTheRole(t *testing.T) {
 func TestTxRunner_CancelledContextRollsBack(t *testing.T) {
 	t.Parallel()
 	id, _ := newTenant(t)
-	runner := db.NewTxRunner(pgtest.AppPool(t))
+	table := fixture.ProbeTable(t, pgtest.OwnerPool(t))
+	runner, pool := singleConn(t)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	start := time.Now()
 	err := runner.InTenantTx(ctx, id, func(ctx context.Context, tx db.Tx) error {
+		if _, err := tx.Exec(ctx, `INSERT INTO `+table+` (tenant_id, note) VALUES ($1, 'x')`, id); err != nil {
+			return err
+		}
 		time.AfterFunc(100*time.Millisecond, cancel)
 		_, err := tx.Exec(ctx, `SELECT pg_sleep(4)`)
 		return err
@@ -277,9 +304,43 @@ func TestTxRunner_CancelledContextRollsBack(t *testing.T) {
 	if time.Since(start) > 3*time.Second {
 		t.Errorf("took %v: the query was not cancelled", time.Since(start))
 	}
-	// The pool is still healthy.
-	if err := pgtest.AppPool(t).Ping(context.Background()); err != nil {
-		t.Errorf("pool after cancel: %v", err)
+	assertBackToApp(t, pool)
+	assertRows(t, db.NewTxRunner(pgtest.AppPool(t)), id, table, 0) // the insert before the sleep was rolled back
+}
+
+// A PostgreSQL privilege error while switching role is INV-19's problem, not a generic failure: it must
+// classify as ErrPrivilege and still name the role.
+func TestTxRunner_RoleSwitchPrivilegeErrorIsErrPrivilege(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	id := uuid.New()
+	role := db.TenantRoleName(id)
+	// The role exists but crm_app was not granted SET on it (a broken provisioning).
+	if _, err := pgtest.SuperuserPool(t).Exec(ctx, `CREATE ROLE `+role+` NOLOGIN`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = pgtest.SuperuserPool(t).Exec(ctx, `DROP ROLE `+role) })
+
+	runner := db.NewTxRunner(pgtest.AppPool(t))
+	err := runner.InTenantTx(ctx, id, func(context.Context, db.Tx) error {
+		t.Error("fn ran without the role switch")
+		return nil
+	})
+	if !errors.Is(err, db.ErrPrivilege) {
+		t.Errorf("err = %v, want it to be ErrPrivilege", err)
+	}
+	if err == nil || !strings.Contains(err.Error(), role) {
+		t.Errorf("err = %v, want it to name %s", err, role)
+	}
+
+	// The same through the Tx method.
+	var inner error
+	err = runner.InSystemTx(ctx, db.RoleAuth, func(ctx context.Context, tx db.Tx) error {
+		inner = tx.AsTenant(ctx, id)
+		return inner // the transaction is aborted by the failed SET ROLE: give it up
+	})
+	if !errors.Is(inner, db.ErrPrivilege) || !errors.Is(err, db.ErrPrivilege) {
+		t.Errorf("AsTenant = %v, InSystemTx = %v; want both to be ErrPrivilege", inner, err)
 	}
 }
 

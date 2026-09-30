@@ -30,25 +30,29 @@ type Exception struct {
 }
 
 // DefaultExceptions are the queries that legitimately run without a company: they exist to FIND the
-// company, as a system role that sees only routing columns (plan §4.4, INV-05). Anything else that
+// company, as a system role that sees only routing columns (plan §4.4, INV-05). The paths are exact.
+// Plan §4.4 names identity/store/auth_lookup.sql; it does not fix where the worker's queries live, and
+// the Dispatcher (which also does the periodic cleanup, T-B902) is in platform/outbox, so that is the path
+// declared here. A file with either name anywhere else is a violation (see Check). Anything else that
 // needs an exception needs a design decision first.
 var DefaultExceptions = []Exception{
-	{"internal/*/store/auth_lookup.sql", "phase-one lookups as crm_auth: find the company of an email, a session or a token"},
-	{"internal/*/store/worker*.sql", "queue and cleanup queries as crm_worker: they see queue columns of every company"},
-	{"internal/platform/*/store/worker*.sql", "queue and cleanup queries as crm_worker: they see queue columns of every company"},
+	{"internal/identity/store/auth_lookup.sql", "phase-one lookups as crm_auth: find the company of an email, a session or a token"},
+	{"internal/platform/outbox/store/worker.sql", "queue and cleanup queries as crm_worker: they see queue columns of every company"},
 }
 
 var (
-	createTableRe = regexp.MustCompile(`(?is)CREATE\s+TABLE\s+app\.(\w+)\s*\((.*?)\n\)\s*;`)
+	createTableRe = regexp.MustCompile(`(?is)CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?app\.(\w+)\s*\((.*?)\n\)\s*;`)
 	tenantColRe   = regexp.MustCompile(`(?im)^\s*tenant_id\s`)
-	tableRefRe    = regexp.MustCompile(`(?i)\b(?:from|join|into|update)\s+(?:app\.)?([a-z_][a-z0-9_]*)`)
-	tenantArg     = `(?:@tenant_id\b|sqlc\.arg\(\s*'?tenant_id'?\s*\))`
-	// tenant_id = @tenant_id, with an optional alias in front of the column.
-	tenantPredRe = regexp.MustCompile(`(?i)\b(?:\w+\.)?tenant_id\s*=\s*` + tenantArg)
+	// ALTER TABLE app.x ... ADD [COLUMN] [IF NOT EXISTS] tenant_id: every ADD in the statement is looked at.
+	alterTableRe = regexp.MustCompile(`(?is)ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?app\.(\w+)\s+(.*?);`)
+	addTenantRe  = regexp.MustCompile(`(?is)\bADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?tenant_id\b`)
+	tableRefRe   = regexp.MustCompile(`(?i)\b(?:from|join|into|update)\s+(?:only\s+)?(?:app\.)?([a-z_][a-z0-9_]*)`)
+	tenantArg    = `(?:@tenant_id\b|sqlc\.arg\(\s*'?tenant_id'?\s*\))`
+	// A conjunct that is exactly tenant_id = @tenant_id (alias allowed, either order).
+	tenantPredRe = regexp.MustCompile(`(?i)^(?:(?:\w+\.)?tenant_id\s*=\s*` + tenantArg + `|` + tenantArg + `\s*=\s*(?:\w+\.)?tenant_id)$`)
 	// id = @tenant_id: how the tenants table is filtered.
-	tenantIDPredRe = regexp.MustCompile(`(?i)(?:^|[^\w.])(?:\w+\.)?id\s*=\s*` + tenantArg)
+	tenantIDPredRe = regexp.MustCompile(`(?i)^(?:(?:\w+\.)?id\s*=\s*` + tenantArg + `|` + tenantArg + `\s*=\s*(?:\w+\.)?id)$`)
 	tenantArgRe    = regexp.MustCompile(`(?i)` + tenantArg)
-	insertRe       = regexp.MustCompile(`(?i)^\s*insert\s`)
 )
 
 // CompanyTables reads the migrations (only their Up sections) and returns the tables of schema app that
@@ -70,6 +74,11 @@ func CompanyTables(migrationsDir string) ([]string, error) {
 		up, _, _ := strings.Cut(string(data), "-- +goose Down")
 		for _, m := range createTableRe.FindAllStringSubmatch(up, -1) {
 			if tenantColRe.MatchString(m[2]) {
+				set[m[1]] = true
+			}
+		}
+		for _, m := range alterTableRe.FindAllStringSubmatch(up, -1) {
+			if addTenantRe.MatchString(m[2]) {
 				set[m[1]] = true
 			}
 		}
@@ -117,7 +126,15 @@ func Check(root string, companyTables []string, exceptions []Exception) ([]Viola
 			return err
 		}
 		rel = filepath.ToSlash(rel)
-		if !strings.HasSuffix(rel, ".sql") || path.Base(path.Dir(rel)) != "store" || excepted(rel, exceptions) {
+		if !strings.HasSuffix(rel, ".sql") || path.Base(path.Dir(rel)) != "store" {
+			return nil
+		}
+		if excepted(rel, exceptions) {
+			return nil
+		}
+		if lookalike(rel, exceptions) {
+			out = append(out, Violation{File: rel, Line: 1, Detail: "has the name of an exempt file but is not at the exempt path: " +
+				"only the declared files may skip the company filter"})
 			return nil
 		}
 		data, err := os.ReadFile(p)
@@ -128,6 +145,16 @@ func Check(root string, companyTables []string, exceptions []Exception) ([]Viola
 		return nil
 	})
 	return out, err
+}
+
+// lookalike reports a file that shares its base name with an exception but is not one.
+func lookalike(rel string, exceptions []Exception) bool {
+	for _, e := range exceptions {
+		if path.Base(e.Pattern) == path.Base(rel) {
+			return true
+		}
+	}
+	return false
 }
 
 func excepted(rel string, exceptions []Exception) bool {
@@ -169,33 +196,232 @@ func splitQueries(content string) []query {
 func checkFile(rel, content string, company map[string]bool) []Violation {
 	var out []Violation
 	for _, q := range splitQueries(content) {
-		var touched []string
-		for _, m := range tableRefRe.FindAllStringSubmatch(q.sql, -1) {
-			if company[m[1]] {
-				touched = append(touched, m[1])
-			}
-		}
-		if len(touched) == 0 {
-			continue
-		}
-		onlyTenants := true
-		for _, tb := range touched {
-			onlyTenants = onlyTenants && tb == "tenants"
-		}
-		var ok bool
-		var want string
-		switch {
-		case insertRe.MatchString(q.sql):
-			ok, want = tenantArgRe.MatchString(q.sql), "@tenant_id as the value of tenant_id"
-		case onlyTenants:
-			ok, want = tenantIDPredRe.MatchString(q.sql), "id = @tenant_id"
-		default:
-			ok, want = tenantPredRe.MatchString(q.sql), "tenant_id = @tenant_id"
-		}
-		if !ok {
-			out = append(out, Violation{rel, q.line, q.name,
-				fmt.Sprintf("touches %s and lacks %s", strings.Join(touched, ", "), want)})
+		if details := analyze(q.sql, company); len(details) > 0 {
+			out = append(out, Violation{rel, q.line, q.name, strings.Join(details, "; ")})
 		}
 	}
 	return out
+}
+
+// ---- A small SQL reader: enough structure to tell the top level of a statement from what is nested. ----
+
+// mask returns s with everything inside parentheses or single quotes replaced by spaces (the parentheses
+// stay), so keywords can be searched at the top level with the same offsets as s.
+func mask(s string) string {
+	b := []byte(s)
+	depth, inQuote := 0, false
+	for i, c := range b {
+		switch {
+		case inQuote:
+			if c == '\'' {
+				inQuote = false
+			} else {
+				b[i] = ' '
+			}
+		case c == '\'':
+			inQuote = true
+			b[i] = ' '
+		case c == '(':
+			depth++
+		case c == ')':
+			depth--
+		case depth > 0:
+			b[i] = ' '
+		}
+	}
+	return string(b)
+}
+
+// extractSubqueries replaces every parenthesised SELECT/WITH with "(subquery)" and returns their texts.
+func extractSubqueries(s string) (string, []string) {
+	var subs []string
+	var out strings.Builder
+	for i := 0; i < len(s); {
+		if s[i] != '(' {
+			out.WriteByte(s[i])
+			i++
+			continue
+		}
+		depth, j := 0, i
+		for ; j < len(s); j++ {
+			if s[j] == '(' {
+				depth++
+			} else if s[j] == ')' {
+				depth--
+				if depth == 0 {
+					break
+				}
+			}
+		}
+		if j >= len(s) {
+			out.WriteString(s[i:])
+			break
+		}
+		inner := s[i+1 : j]
+		if lower := strings.ToLower(strings.TrimSpace(inner)); strings.HasPrefix(lower, "select") || strings.HasPrefix(lower, "with") {
+			subs = append(subs, inner)
+			out.WriteString("(subquery)")
+		} else {
+			// Not a subquery, but one may hide inside (IN (SELECT ...), COALESCE((SELECT ...))).
+			flat, inSubs := extractSubqueries(inner)
+			subs = append(subs, inSubs...)
+			out.WriteString("(" + flat + ")")
+		}
+		i = j + 1
+	}
+	return out.String(), subs
+}
+
+var (
+	setOpRe      = regexp.MustCompile(`(?i)\b(?:union(?:\s+all)?|intersect|except)\b`)
+	fromRe       = regexp.MustCompile(`(?i)\bfrom\b`)
+	fromEndRe    = regexp.MustCompile(`(?i)\b(?:where|group|order|limit|offset|having|returning|window|for)\b|;`)
+	whereRe      = regexp.MustCompile(`(?i)\bwhere\b`)
+	whereEndRe   = regexp.MustCompile(`(?i)\b(?:group\s+by|order\s+by|limit|offset|having|returning|window|for)\b|;`)
+	andRe        = regexp.MustCompile(`(?i)\band\b`)
+	orRe         = regexp.MustCompile(`(?i)\bor\b`)
+	insertHeadRe = regexp.MustCompile(`(?i)^\s*insert\s+into\s+(?:app\.)?([a-z_][a-z0-9_]*)`)
+	selectRe     = regexp.MustCompile(`(?i)\bselect\b`)
+	wordRe       = regexp.MustCompile(`^\s*(?:app\.)?([a-z_][a-z0-9_]*)`)
+)
+
+// analyze returns what is wrong with a statement (empty when it filters by company or touches no company table).
+func analyze(sql string, company map[string]bool) []string {
+	sql = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(sql), ";"))
+	flat, subs := extractSubqueries(sql)
+	var out []string
+	for _, sub := range subs {
+		out = append(out, analyze(sub, company)...)
+	}
+	masked := mask(flat)
+	start := 0
+	for _, loc := range append(setOpRe.FindAllStringIndex(masked, -1), []int{len(flat), len(flat)}) {
+		out = append(out, analyzeBranch(flat[start:loc[0]], company)...)
+		start = loc[1]
+	}
+	return out
+}
+
+// analyzeBranch checks one SELECT/UPDATE/DELETE/INSERT with no set operators and no nested subqueries.
+func analyzeBranch(b string, company map[string]bool) []string {
+	m := mask(b)
+	if h := insertHeadRe.FindStringSubmatch(m); h != nil {
+		return analyzeInsert(b, m, h[1], company)
+	}
+	tables := referencedTables(m, company)
+	if len(tables) == 0 {
+		return nil
+	}
+	onlyTenants := true
+	for _, t := range tables {
+		onlyTenants = onlyTenants && t == "tenants"
+	}
+	pred, want := tenantPredRe, "tenant_id = @tenant_id"
+	if onlyTenants {
+		pred, want = tenantIDPredRe, "id = @tenant_id"
+	}
+	loc := whereRe.FindStringIndex(m)
+	if loc == nil {
+		return []string{fmt.Sprintf("touches %s without a WHERE (%s)", strings.Join(tables, ", "), want)}
+	}
+	end := len(b)
+	if e := whereEndRe.FindStringIndex(m[loc[1]:]); e != nil {
+		end = loc[1] + e[0]
+	}
+	leaves, orGroups := conjuncts(b[loc[1]:end])
+	for _, g := range orGroups {
+		if pred.MatchString(g) || tenantArgRe.MatchString(g) {
+			return []string{fmt.Sprintf("the tenant predicate of the query on %s is inside an OR (%q): it does not restrict anything", strings.Join(tables, ", "), strings.TrimSpace(g))}
+		}
+	}
+	for _, leaf := range leaves {
+		if pred.MatchString(leaf) {
+			return nil
+		}
+	}
+	return []string{fmt.Sprintf("touches %s and its WHERE lacks a top-level %s", strings.Join(tables, ", "), want)}
+}
+
+// analyzeInsert: an INSERT into a company table must pass @tenant_id; an INSERT ... SELECT must also
+// filter the tables it reads.
+func analyzeInsert(b, m, target string, company map[string]bool) []string {
+	var out []string
+	if company[target] && !tenantArgRe.MatchString(b) {
+		out = append(out, fmt.Sprintf("INSERT into %s does not take @tenant_id", target))
+	}
+	if loc := selectRe.FindStringIndex(m); loc != nil {
+		out = append(out, analyzeBranch(b[loc[0]:], company)...)
+	}
+	return out
+}
+
+// referencedTables lists the company tables a masked statement reads or writes: after FROM (including
+// a comma list), JOIN, INTO and UPDATE.
+func referencedTables(m string, company map[string]bool) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(name string) {
+		name = strings.ToLower(name)
+		if company[name] && !seen[name] {
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	for _, r := range tableRefRe.FindAllStringSubmatch(m, -1) {
+		add(r[1])
+	}
+	for _, loc := range fromRe.FindAllStringIndex(m, -1) {
+		list := m[loc[1]:]
+		if e := fromEndRe.FindStringIndex(list); e != nil {
+			list = list[:e[0]]
+		}
+		for _, item := range strings.Split(list, ",")[min(1, len(strings.Split(list, ","))):] {
+			if w := wordRe.FindStringSubmatch(item); w != nil {
+				add(w[1])
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// conjuncts splits a WHERE expression at its top-level ANDs, looking through redundant parentheses. It
+// returns the leaf conditions that have no OR at their top level, and the leaves that do (each one is
+// an OR group: nothing inside it restricts the result on its own).
+func conjuncts(expr string) (leaves, orGroups []string) {
+	expr = strings.TrimSpace(expr)
+	for len(expr) > 1 && expr[0] == '(' && closingParen(expr) == len(expr)-1 {
+		expr = strings.TrimSpace(expr[1 : len(expr)-1])
+	}
+	m := mask(expr)
+	if ands := andRe.FindAllStringIndex(m, -1); len(ands) > 0 {
+		start := 0
+		for _, loc := range append(ands, []int{len(expr), len(expr)}) {
+			l, o := conjuncts(expr[start:loc[0]])
+			leaves, orGroups = append(leaves, l...), append(orGroups, o...)
+			start = loc[1]
+		}
+		return leaves, orGroups
+	}
+	if orRe.MatchString(m) {
+		return nil, []string{expr}
+	}
+	return []string{expr}, nil
+}
+
+// closingParen returns the index of the parenthesis that closes the one at s[0].
+func closingParen(s string) int {
+	depth := 0
+	for i := range len(s) {
+		switch s[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
 }
