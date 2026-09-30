@@ -11,12 +11,42 @@ La sección Frontend se revisó aparte (ver su nota de revisión).
 **Segunda revisión 2026-09-29**: hallazgos H-10 (HTTPS local con mkcert) y H-11 (límite exacto del
 logo) en la sección Backend (plan §18; tareas afectadas: T-B002, T-B004, T-B005, T-B013, T-B014
 nueva, T-B203, T-B213, T-B305, T-B404, T-B703, T-B705, T-B706). La sección Frontend se actualizó en la misma ronda (ver su nota de revisión).
+**Tercera revisión 2026-09-30**: decisiones previas a la Fase 2 aprobadas por el usuario (plan §18,
+tercera tanda): código `method_not_allowed` (contrato v0.4.0), IP del cliente detrás de proxies
+(DD-32, INV-25), cancelaciones (`db.ErrCanceled`), serialización de registros por el lock de
+`GRANT crm_tenant` (DD-33, INV-26), rutas exactas de las queries de sistema y FK de
+`sessions`/`user_tokens` alineadas en `data-model.md`. Tareas afectadas de la sección Backend:
+T-B002, T-B004, T-B005, T-B011, T-B105, T-B106, T-B112, T-B203, T-B204, T-B211, T-B217, T-B218,
+T-B219 y T-B220 (nuevas), T-B303, T-B304, T-B305, T-B901, T-B902, T-B903, T-B905, T-B906, T-B907,
+T-B908. La sección Frontend no se tocó en esta revisión (lo que le pide el backend está en
+"Coordinación con la sección Frontend").
+**Cuarta revisión 2026-09-30**: primer `SET ROLE` a una empresa recién aprovisionada desde otra
+conexión (`42501` en PostgreSQL 18.6): lectura de catálogo previa y un único reintento en
+`InTenantTx` (plan DD-34, INV-27, R-17; research R-28). Tareas afectadas: T-B103 y T-B104 (y
+menciones en T-B903 y T-B905). La sección Frontend no cambia: el contrato no cambia.
 
 ---
 
 ## Backend
 
 Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invocación**.
+
+### Estado de la implementación (2026-09-30)
+
+- **Fase 0**: implementada y mergeada (PR fdelillo/crm#6).
+- **Fase 1**: implementada en la rama, **en revisión**.
+- La tercera y la cuarta revisión tocan tareas ya implementadas. Se aplican como ajustes en la rama
+  de la Fase 1 (si sigue abierta) o como primer cambio de la Fase 2, **antes** de T-B201, con
+  `make check` en verde:
+
+  | Tarea ya implementada | Fase | Ajuste |
+  |---|---|---|
+  | T-B002 / T-B003 | 0 | Variable `TRUSTED_PROXIES` (DD-32): filas nuevas de la tabla; `Config.TrustedProxies []netip.Prefix`; `.env.example` la documenta vacía, con un comentario que remite a plan §10.5 |
+  | T-B004 / T-B005 | 0 | `405` de la API con `code: method_not_allowed` (antes `malformed_request`). El cálculo de `Allow` con `Match` ya está en `internal/app/root.go` y no cambia; log de arranque con `trusted_proxies` |
+  | T-B011 | 0 | Regla nueva: las cabeceras de IP solo se leen en `internal/platform/httpx` (INV-25) |
+  | T-B103 / T-B104 | 1 | (Cuarta revisión, DD-34) La lectura de catálogo antes del `SET LOCAL ROLE` ya está aplicada (commit e3d990b, con el test de reproducción); falta el reintento único en `InTenantTx` (lo está implementando el `backend-developer`) y los casos nuevos de T-B103 |
+  | T-B105 / T-B106 | 1 | `db.ErrCanceled` y `55P03` → `db.ErrUnavailable`, con el orden de clasificación de plan §9.2 |
+  | T-B112 | 1 | Lista exacta de las cuatro rutas de plan §4.4: `queryrules.DefaultExceptions` suma `internal/identity/store/cleanup.sql` y `internal/tenant/store/provisioning.sql` a las dos que ya tiene |
 
 ### Convenciones de esta sección
 
@@ -32,11 +62,12 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
 
   | Se sustituye (fake en memoria) | Nunca se sustituye |
   |---|---|
-  | `mailer.Mailer` en tests de servicio y HTTP | PostgreSQL (RLS, roles, constraints son lo que se prueba) |
+  | `mailer.Mailer` en tests de servicio y HTTP | PostgreSQL (RLS, roles, constraints y locks son lo que se prueba) |
   | `objectstore.ObjectStorage` en tests de servicio y HTTP | El adaptador SMTP en su propio test (contra Mailpit) |
   | `clock.Clock` (tiempo controlado) | El adaptador S3 en su propio test (contra MinIO) |
-  | `industrytemplate.Seeder` solo en el test de rollback (para forzar un fallo) | El router, el mux raíz y los middlewares en los tests HTTP (`httptest` sobre el handler real) |
+  | `industrytemplate.Seeder` solo en el test de rollback (para forzar un fallo) y como *hook* para observar la transacción de registro (T-B303) | El router, el mux raíz y los middlewares en los tests HTTP (`httptest` sobre el handler real) |
   | El handler de la SPA (`RootDeps.SPA`) en los tests del backend, por un stub que registra lo que recibe | El paquete `web` en T-F007 (se prueba con `fstest.MapFS`) |
+  | El resultado del primer `SET LOCAL ROLE` de `InTenantTx`, solo con un *hook* de test no exportado de `platform/db`, para forzar el `42501` de DD-34 de forma determinista (T-B103) | El comportamiento real de PostgreSQL que origina DD-34: lo prueba el test de reproducción contra el contenedor, sin *hooks* |
 
 - **Tests HTTP con cookie** (H-10, nota en ADR-012): los que encadenan requests con la cookie de
   sesión (registro → `/me`, login → logout → `/me`) usan `internal/testsupport/apitest`:
@@ -45,9 +76,15 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
   test necesita mkcert**. Los tests de un solo request siguen con `httptest.NewRecorder`. Como el
   `cookiejar` de Go no verifica el prefijo `__Host-`, los atributos de la cookie se afirman
   explícitamente sobre `Set-Cookie` (INV-23).
+- **IP del cliente en los tests** (DD-32): `httptest` fija `RemoteAddr` en `192.0.2.1:1234`. Los
+  tests que necesitan otra IP la fijan en `req.RemoteAddr` o configuran `TRUSTED_PROXIES` con ese
+  rango y mandan `X-Forwarded-For`; siempre con direcciones de documentación (`192.0.2.0/24`,
+  `198.51.100.0/24`, `203.0.113.0/24`, `2001:db8::/32`).
 - Los tests de integración se conectan **como `crm_app`** (INV-18). Cada test crea sus propias
   empresas con UUID y emails aleatorios: pueden correr en paralelo (`t.Parallel()`) sobre el mismo
-  contenedor sin limpiar tablas.
+  contenedor sin limpiar tablas. Excepción: los tests que retienen el lock de `crm_tenant` (T-B303,
+  T-B305, T-B906) no corren en paralelo con otros registros (`t.Parallel()` no, o un paquete
+  propio), porque frenarían a los demás a propósito.
 - Las queries que comparan vencimientos reciben `now` como parámetro desde `clock.Clock` (no usan
   `now()` de SQL), para poder controlar el tiempo en los tests (DD-18).
 
@@ -80,6 +117,8 @@ duplican acá**. Dependen de:
 | T-F009 | T-B013 | Agrega targets y el job de frontend al Makefile y a la CI del backend |
 | T-F701 (Playwright) | T-B014 y la receta de CI de plan §10.5.1 | El E2E corre contra `https://localhost:8443` con la CA de mkcert instalada en el runner (supuesto S-12) |
 | T-F604/T-F605 (preparación del logo) | T-B706 (límites de DD-31) | `LOGO_TARGET_MAX_BYTES` puede ser el límite exacto del archivo, 2 097 152 bytes (H-11) |
+| T-F004 (tipos del contrato) y T-F101 (mensajes por `code`) | Contrato **v0.4.0** (tercera revisión) | `ErrorCode` suma `method_not_allowed`: el mapa exhaustivo de T-F101 deja de compilar hasta que tenga su mensaje (a propósito). Lo actualiza el `frontend-architect` en su sección y en `ui.md` |
+| T-F202 (pantalla de registro) | T-B305 (tercera revisión) | El `503` del registro puede traer `Retry-After: 2` (DD-33); el mensaje de "Reintentar" puede usarlo. Decisión del `frontend-architect` |
 
 Orden sugerido: Fase 0 del backend completa → T-F007/T-F008 (en la misma rama o la siguiente) →
 T-F009.
@@ -104,12 +143,12 @@ PostgreSQL 18 real con los roles del proyecto. CI corre todo.
   (este último vacío hasta la Fase 9), usando `flag` de la librería estándar. `cmd/crm` importa
   `_ "time/tzdata"` (DD-27).
 
-**T-B002 [T] — Configuración** · ADR-001, ADR-006, plan §10.5, DD-10, DD-14, DD-24, INV-23, P-5, H-3, H-10
+**T-B002 [T] — Configuración** · ADR-001, ADR-006, plan §10.5, DD-10, DD-14, DD-24, DD-32, INV-23, INV-25, P-5, H-3, H-10
 - **Red**:
 
   | Entrada (env) | Resultado esperado |
   |---|---|
-  | Todas las variables obligatorias válidas, `APP_BASE_URL=https://crm.example` | `Config` poblado; `TLS == nil`; `IsLocal() == false`; defaults: `HTTP_ADDR=:8080`, `METRICS_ADDR=127.0.0.1:9090`, `SESSION_IDLE=24h`, `SESSION_ABSOLUTE=168h`, `APP_LINK_RESET=/reset-password`, `APP_LINK_VERIFY=/verify-email`, `APP_LINK_INVITATION=/accept-invitation` |
+  | Todas las variables obligatorias válidas, `APP_BASE_URL=https://crm.example` | `Config` poblado; `TLS == nil`; `IsLocal() == false`; defaults: `HTTP_ADDR=:8080`, `METRICS_ADDR=127.0.0.1:9090`, `SESSION_IDLE=24h`, `SESSION_ABSOLUTE=168h`, `APP_LINK_RESET=/reset-password`, `APP_LINK_VERIFY=/verify-email`, `APP_LINK_INVITATION=/accept-invitation`, `TrustedProxies` vacío |
   | Falta `DATABASE_URL` | error que nombra la variable |
   | `AUTH_HMAC_KEY` de menos de 32 bytes (decodificada) | error |
   | `APP_BASE_URL=https://localhost:8443`, `https://localhost:5173`, `https://127.0.0.1:8443` sin `TLS_*` | válido; `IsLocal() == true`; `TLS == nil` |
@@ -123,6 +162,11 @@ PostgreSQL 18 real con los roles del proyecto. CI corre todo.
   | `APP_LINK_*` sin `/` inicial o con `#`/`?` | error que nombra la variable |
   | `SESSION_IDLE` > `SESSION_ABSOLUTE` | error |
   | Duración mal formada | error que nombra la variable |
+  | `TRUSTED_PROXIES` ausente o vacía (tercera revisión) | válido; `TrustedProxies` vacío (no se confía en ningún proxy) |
+  | `TRUSTED_PROXIES=10.0.0.0/8, 2001:db8::/32` (con y sin espacios alrededor de la coma) | válido; dos prefijos, uno IPv4 y uno IPv6 |
+  | `TRUSTED_PROXIES=10.1.2.3` / `2001:db8::1` (IP sin prefijo) | válido; equivale a `10.1.2.3/32` / `2001:db8::1/128` |
+  | `TRUSTED_PROXIES=0.0.0.0/0`, `::/0`, o cualquiera de los dos dentro de una lista válida | error que nombra la variable (confiar en todos hace falsificable la IP, DD-32) |
+  | `TRUSTED_PROXIES=10.0.0.0/33`, `foo` o `10.0.0.0/8,,` | error que nombra la variable y la posición del valor inválido |
   | El error nunca incluye el **valor** de una variable secreta | aserción sobre el texto |
 - **Green**: `config.Load(getenv func(string) string) (Config, error)` y `Config.IsLocal()` pasan la
   tabla.
@@ -131,7 +175,7 @@ PostgreSQL 18 real con los roles del proyecto. CI corre todo.
 
 **T-B003 — Implementar `platform/config`**.
 
-**T-B004 [T] — Mux raíz, servidor HTTP/HTTPS y harness `apitest`** · ADR-002, ADR-006, ADR-019, DD-12, DD-22, DD-24, INV-22, H-1, H-10
+**T-B004 [T] — Mux raíz, servidor HTTP/HTTPS y harness `apitest`** · ADR-002, ADR-006, ADR-009, ADR-019, DD-12, DD-22, DD-24, DD-32, INV-22, H-1, H-10, research R-26
 - **Red** (`httptest` sobre `app.NewRootHandler` con un router chi de prueba y un **stub** en
   `RootDeps.SPA` que responde `200 text/plain "spa"` y registra la ruta recibida):
 
@@ -141,7 +185,9 @@ PostgreSQL 18 real con los roles del proyecto. CI corre todo.
   | `POST /healthz` | `405` (el `ServeMux` rechaza el método) |
   | `GET /api/v1/no-existe` | `404` `application/problem+json` con `code=not_found`; el stub **no** recibió nada |
   | `GET /api/v2/cualquier` y `GET /api/` | `404` problem+json (todo `/api/` es de chi) |
-  | `DELETE /api/v1/<ruta que solo acepta GET>` | `405` problem+json |
+  | `DELETE /api/v1/<ruta que solo acepta GET>` (tercera revisión) | `405` `application/problem+json` con `code=method_not_allowed` y `Allow: GET` (exactamente los métodos registrados para esa ruta); `Cache-Control: no-store`; valida contra `Problem` del contrato v0.4.0 |
+  | `PUT /api/v1/<ruta que acepta GET y POST>` | `405` `method_not_allowed`; `Allow` contiene `GET` y `POST` y nada más, en el orden fijo de la lista de plan §9.2 |
+  | Método desconocido `FOO /api/v1/<ruta que solo acepta GET>` | la misma respuesta que el `DELETE` (chi lo manda al mismo manejador) |
   | `GET /api` (sin barra) | redirección a `/api/` del `ServeMux`; nunca llega al stub |
   | `GET /`, `GET /login`, `GET /settings/users`, `GET /assets/x.js` | los atiende el stub (ruta registrada igual a la pedida) |
   | Un handler de la API que hace *panic* | `500` problem+json `code=internal`, el proceso sigue vivo, log `ERROR` con `request_id` |
@@ -152,6 +198,7 @@ PostgreSQL 18 real con los roles del proyecto. CI corre todo.
   | `app.NewServer` con `cfg.TLS` apuntando a un certificado y una clave generados en el test (`crypto/x509`, autofirmado para `127.0.0.1`; nada se versiona) | el servidor atiende por HTTPS: un cliente que confía en ese certificado recibe `200` en `/healthz`; log de arranque `listen=https_local` |
   | `app.NewServer` con `cfg.TLS` apuntando a archivos inexistentes o a un par que no coincide | error **antes** de escuchar, que nombra `TLS_CERT_FILE`/`TLS_KEY_FILE` y no incluye el contenido |
   | `app.NewServer` sin `cfg.TLS` | escucha HTTP plano; log `listen=http` |
+  | Log de arranque (tercera revisión) | incluye `trusted_proxies` con la lista de CIDR configurada (no es secreta; vacía si no hay), para el runbook de plan §12.3 |
   | `apitest.NewServer(t, root)` con un handler de prueba que fija `__Host-x=1; Secure; HttpOnly; Path=/` y otro que la lee | el `Client` del harness la reenvía en el segundo request (HTTPS + `cookiejar`) |
 - **Green**: `app.NewRootHandler(RootDeps, CommonMiddleware) http.Handler` con `http.ServeMux`
   (`/api/` → chi, `GET /healthz`, `GET /readyz`, `/` → SPA) envuelto por los middlewares
@@ -160,10 +207,13 @@ PostgreSQL 18 real con los roles del proyecto. CI corre todo.
   con `context` al recibir SIGTERM.
 
 **T-B005 — Implementar el mux raíz, el router chi de la API (con `NotFound`/`MethodNotAllowed`
-problem+json), logging `slog` JSON, `app.NewServer` (HTTP plano o HTTPS local según `cfg.TLS`,
-DD-24), `apitest` y `serve`**. Hasta T-F008, `serve` usa como `RootDeps.SPA` un handler que
-responde `503 text/plain` "La interfaz no está compilada (correr `make web-build`)" (el mismo
-mensaje que usará el paquete `web` sin `index.html`, ADR-019).
+problem+json; el `405` con `code: method_not_allowed` y `Allow` calculado con `Match`, plan §9.2),
+logging `slog` JSON, `app.NewServer` (HTTP plano o HTTPS local según `cfg.TLS`, DD-24), `apitest`
+y `serve`**. Hasta T-F008, `serve` usa como `RootDeps.SPA` un handler que responde
+`503 text/plain` "La interfaz no está compilada (correr `make web-build`)" (el mismo mensaje que
+usará el paquete `web` sin `index.html`, ADR-019). Ajuste de la tercera revisión sobre lo ya
+mergeado: `httpx.MethodNotAllowed` pasa de `CodeMalformedRequest` a `CodeMethodNotAllowed`; el
+resto de `internal/app/root.go` no cambia.
 
 **T-B006 — Bootstrap de roles y entorno local** · ADR-004, ADR-005, `data-model.md` §3.1
 - `db/bootstrap/`: SQL idempotente que crea los roles de §3.1 con sus atributos y membresías
@@ -202,7 +252,7 @@ mensaje que usará el paquete `web` sin `index.html`, ADR-019).
 
 **T-B010 — Implementar `internal/testsupport/pgtest`**.
 
-**T-B011 [T] — Reglas de repositorio** · INV-03, INV-04, INV-22, ADR-001
+**T-B011 [T] — Reglas de repositorio** · INV-03, INV-04, INV-22, INV-25, ADR-001
 - **Red** (test Go que recorre el árbol de fuentes):
 
   | Regla | Caso que debe fallar |
@@ -210,10 +260,12 @@ mensaje que usará el paquete `web` sin `index.html`, ADR-019).
   | `SET ROLE`, `SET LOCAL ROLE`, `RESET ROLE` o `set_config('role'` solo en `internal/platform/db` | Archivo de fixture en `testdata/` con `SET ROLE` en otro paquete → detectado |
   | Ningún `fmt.Sprintf`/concatenación que arme SQL fuera de `platform/db` | Fixture con `"SELECT " + x` → detectado |
   | El router chi de la API no registra rutas fuera de `/api/` (no hay `Mount("/")`, `NotFound` hacia la SPA ni `/*`) | Fixture que registra la SPA en chi → detectado |
+  | (Tercera revisión, INV-25) Los literales `"X-Forwarded-For"`, `"Forwarded"`, `"X-Real-IP"` (sin distinguir mayúsculas) y el acceso a `.RemoteAddr` solo aparecen en `internal/platform/httpx`; se excluyen los `_test.go` y `internal/testsupport` | Fixture con `r.Header.Get("X-Forwarded-For")` en otro paquete → detectado; otro con `r.RemoteAddr` fuera de `httpx` → detectado |
 - `.golangci.yml` con `depguard`: reglas de `plan.md` §4.1 (platform no importa dominio;
   `identity` no importa `tenant`; nadie importa `*/store` de otro módulo; `web` solo importa la
   librería estándar y `gzhttp`; solo `internal/app` y `cmd/crm` importan `web`).
-- **Green**: el test pasa sobre el código real y detecta los fixtures.
+- **Green**: el test pasa sobre el código real y detecta los fixtures. El log de request que ya
+  existe toma la IP de `httpx.ClientIPFrom` (T-B220), no de `RemoteAddr`.
 
 **T-B012 [T] — Spike del rol por empresa** · ADR-005, P-1, supuesto 1 de `research.md`
 - **Red** (integración, SQL directo como superusuario del contenedor para preparar):
@@ -239,7 +291,8 @@ mensaje que usará el paquete `web` sin `index.html`, ADR-019).
 - `.gitignore`: `.certs/`.
 - `.env.example` (sin secretos reales, solo marcadores) con los valores del modo "Binario
   completo" de plan §10.5.1 (`APP_BASE_URL=https://localhost:8443`, `HTTP_ADDR=:8443`,
-  `TLS_CERT_FILE`, `TLS_KEY_FILE`).
+  `TLS_CERT_FILE`, `TLS_KEY_FILE`) y, desde la tercera revisión, `TRUSTED_PROXIES=` vacía (en
+  desarrollo no hay proxy).
 - README, sección de desarrollo: instalar mkcert (y `certutil` en Linux), `mkcert -install`,
   `make dev-certs`, los tres modos de plan §10.5.1, `NODE_EXTRA_CA_CERTS`, y la advertencia de no
   compartir `rootCA-key.pem`.
@@ -283,7 +336,7 @@ no modifica y no inserta filas de la otra en ninguna tabla.
 **T-B102 — Migración `00002_tenant_functions.sql`**: `app.current_tenant_id()` y
 `provisioning.provision_tenant_role(uuid)` (la segunda creada con `SET LOCAL ROLE crm_provisioner`).
 
-**T-B103 [T] — `TxRunner` y `Tx`** · INV-02, INV-03, ADR-005
+**T-B103 [T] — `TxRunner` y `Tx`** · INV-02, INV-03, INV-19, INV-27, ADR-005, DD-34, R-17
 - **Red** (integración):
 
   | Caso | Esperado |
@@ -298,13 +351,28 @@ no modifica y no inserta filas de la otra en ninguna tabla.
   | `AsTenant(A)` cuando el rol de `A` no existe | error envuelto que nombra el rol (runbook §12.3) |
   | Contexto cancelado durante `fn` | `ROLLBACK`, error de contexto |
   | Una query con el pool directo (sin `TxRunner`) sobre `app.users` | `42501` (INV-02) |
+  | (Cuarta revisión, DD-34) **Reproducción** `TestTxRunner_NewCompanyIsUsableOnAnyConnectionRightAfterProvisioning`: registros concurrentes y, justo después de cada `COMMIT`, el primer `InTenantTx` de esa empresa en **cada** conexión del pool (600 primeros usos), **sin** *hooks* | 0 fallas. Corre en `make check`: es el detector de R-17 cuando cambia la imagen de PostgreSQL |
+  | Cada cambio de rol (`InTenantTx`, `InSystemTx`, `AsTenant`, `AsSystem`), observado con un `pgx.QueryTracer` de test | la lectura de `pg_catalog.pg_auth_members` y el `SET LOCAL ROLE` salen en **una sola** llamada, en ese orden |
+  | `InTenantTx(A)` con el primer `SET LOCAL ROLE` forzado a fallar con `42501` **una** vez (*hook* de test no exportado) | `ROLLBACK`, un reintento, `fn` ejecutada exactamente **una** vez y con `current_user = crm_t_<hex A>`; log `WARN` `event=set_role_retry` con `tenant_id` y `outcome=recovered`; `set_role_retry_total` +1 |
+  | El mismo caso forzando `42501` en los **dos** intentos | `errors.Is(err, db.ErrPrivilege)`; el mensaje nombra el paso y el rol (`set role crm_t_…`); `fn` **nunca** se ejecutó; exactamente dos intentos; `outcome=failed` |
+  | `fn` devuelve un `42501` (p. ej. un `INSERT` con el `tenant_id` de otra empresa, RLS) | **sin** reintento: `fn` corrió una sola vez; `ErrPrivilege`; `set_role_retry_total` sin cambios |
+  | `InSystemTx(RoleAuth)` con el cambio de rol forzado a `42501` | sin reintento; `ErrPrivilege`; `fn` no se ejecutó |
+  | `InSystemTx(RoleAuth)` → `AsTenant(A)` con `42501` forzado | sin reintento; `ErrPrivilege`; `ROLLBACK` |
+  | `InTenantTx` de una empresa sin rol (`22023`) | sin reintento; el error nombra el rol (fila de arriba) |
+  | Contexto cancelado entre el primer intento y el reintento | `ROLLBACK`, error de contexto, sin segundo intento |
 - **Green**: `db.NewTxRunner(pool)` pasa la tabla.
 - **Refactor**: `SET LOCAL ROLE` con `pgx.Identifier{...}.Sanitize()`; una sola función privada
-  que cambia de rol.
+  que cambia de rol (con la lectura de catálogo) y la usan todos los caminos; la decisión "¿se
+  puede reintentar?" en un solo lugar de `InTenantTx`, no repartida.
 
-**T-B104 — Implementar `platform/db` (`TxRunner`, `Tx`, `TenantRoleName`)**.
+**T-B104 — Implementar `platform/db` (`TxRunner`, `Tx`, `TenantRoleName`)**. Cuarta revisión
+(DD-34, INV-27): la lectura de catálogo en la función privada de cambio de rol ya está aplicada
+(commit e3d990b); falta el reintento único en `InTenantTx` (solo ante `42501` del `SET LOCAL
+ROLE` inicial y antes de llamar a `fn`), el *hook* de test no exportado, el error envuelto con el
+paso y el rol, el log `set_role_retry` y el contador `set_role_retry_total` (se publica en
+`expvar` con el resto de las métricas, T-B904). Las firmas de `TxRunner` y `Tx` no cambian.
 
-**T-B105 [T] — Mapeo de errores de PostgreSQL** · INV-19, plan §9.2
+**T-B105 [T] — Mapeo de errores de PostgreSQL y de contexto** · INV-19, INV-26, plan §9.2, §9.4, DD-33, research R-27
 - **Red** (unitario, con `*pgconn.PgError` construidos a mano):
 
   | Error de entrada | Salida |
@@ -313,12 +381,23 @@ no modifica y no inserta filas de la otra en ninguna tabla.
   | SQLSTATE `23505`, constraint `users_email_key` | `db.ErrUniqueViolation` y `*db.ConstraintError{Constraint:"users_email_key"}` |
   | SQLSTATE `42501` | `db.ErrPrivilege` (nunca `ErrNotFound`) |
   | Error de conexión, `57014` (statement timeout), `context.DeadlineExceeded` | `db.ErrUnavailable` |
+  | SQLSTATE `55P03` (`lock_not_available`, vence `lock_timeout`) (tercera revisión) | `db.ErrUnavailable` |
+  | `context.Canceled` solo, o envuelto con `fmt.Errorf("…: %w", …)` | `db.ErrCanceled` (y **no** `ErrUnavailable`) |
+  | Un error que envuelve a la vez `context.Canceled` y un `*pgconn.PgError` `57014` (lo que devuelve pgx cuando cancela la consulta en el servidor porque se canceló el contexto) | `db.ErrCanceled`: `Canceled` se clasifica **primero** (plan §9.2) |
+  | `57014` sin `context.Canceled` en la cadena | `db.ErrUnavailable` |
   | Otro SQLSTATE | se devuelve envuelto sin clasificar |
+  | En todos los casos | `errors.Is(err, <error original>)` sigue funcionando sobre la salida (la causa se conserva) |
   | En la capa HTTP: `db.ErrPrivilege` | `500 internal` + log `ERROR` con `security_event=rls_violation` |
   | En la capa HTTP: `db.ErrUnavailable` | `503 service_unavailable` |
-- **Green**: `db.MapError(error) error` y el mapeo por defecto de `httpx` pasan la tabla.
+  | En la capa HTTP: `db.ErrCanceled` con el contexto del request cancelado (el cliente se fue) | **no** se escribe nada; log de request `level=INFO`, `event=client_canceled`, `status=499`; `http_client_canceled_total` +1; ningún log `ERROR` |
+  | En la capa HTTP: `db.ErrCanceled` con el contexto del request **vivo** (cancelación interna, p. ej. apagado) | `503 service_unavailable` |
+- **Green**: `db.MapError(error) error` y el mapeo por defecto de `httpx` pasan la tabla. Las filas
+  de la capa HTTP se escriben acá y pasan con T-B202 (Fase 2).
 
-**T-B106 — Implementar `db.MapError`** (el mapeo HTTP por defecto va en T-B202).
+**T-B106 — Implementar `db.MapError`** (el mapeo HTTP por defecto va en T-B202). Tercera revisión:
+agrega `db.ErrCanceled` y el caso `55P03`, con el orden de clasificación de plan §9.2; la firma
+`MapError(err error) error` **no** cambia (la pregunta "¿el cliente se fue?" la responde la capa
+HTTP mirando `r.Context().Err()`, no `platform/db`).
 
 **T-B107 [T] — Invariantes de catálogo** · INV-01, INV-02, INV-06, INV-08, INV-15
 - **Red** (integración, consultas a `pg_catalog` con `OwnerPool`):
@@ -341,7 +420,9 @@ no modifica y no inserta filas de la otra en ninguna tabla.
 - **Red**: toda FK desde una tabla de `app` con `tenant_id` hacia otra tabla con `tenant_id`
   incluye `tenant_id` en ambos lados (consulta a `pg_constraint`). Fixture: insertar como
   `crm_owner` con `FORCE` desactivado **en una transacción de test que hace rollback** una sesión
-  de `A` apuntando a un usuario de `B` → violación de FK.
+  de `A` apuntando a un usuario de `B` → violación de FK. (Las FK simples `tenant_id → tenants(id)`
+  de `sessions` y `user_tokens` apuntan a `tenants`, que no tiene `tenant_id`: no entran en esta
+  regla; `data-model.md` §2.3/§2.4 quedó alineado en la tercera revisión.)
 - **Green**: pasa tras T-B111.
 
 **T-B109 [T] — Privilegios de los roles de sistema** · INV-05, plan §4.4
@@ -376,13 +457,32 @@ no modifica y no inserta filas de la otra en ninguna tabla.
   en `data-model.md` (incluida la política `worker_cleanup` de `user_tokens` que conserva la
   invitación abierta, DD-25). Cada una con `Down`.
 
-**T-B112 [T] — Queries con filtro explícito de empresa** · INV-04
+**T-B112 [T] — Queries con filtro explícito de empresa** · INV-04, plan §4.4, ADR-001
 - **Red**: test que parsea cada `internal/*/store/*.sql` y, para toda query que referencie una
   tabla de empresa, exige un predicado `tenant_id = @tenant_id` (o `id = @tenant_id` en
-  `tenants`). Excepciones solo por **lista explícita** (`auth_lookup.sql` y las del worker), cada
-  una con su motivo. Fixture en `testdata/` sin filtro → detectado.
-- **Green**: el detector funciona sobre el fixture; se vuelve efectivo a medida que las fases
-  siguientes agregan queries.
+  `tenants`). Excepciones **por ruta exacta** (tercera revisión) **y por nombre de query** (revisión
+  del PR fdelillo/crm#7): en estos archivos solo se saltean las queries listadas por nombre, cada una
+  con su motivo; el resto del archivo se revisa:
+
+  | Archivo eximido | Motivo |
+  |---|---|
+  | `internal/identity/store/auth_lookup.sql` | `crm_auth`: login, reset, sesión y tokens antes de conocer la empresa |
+  | `internal/identity/store/cleanup.sql` | `crm_worker`: limpieza de `sessions`, `user_tokens`, `login_throttles` vencidas |
+  | `internal/platform/outbox/store/worker.sql` | `crm_worker`: tomar mensajes pendientes y limpiar los terminales de `outbox_messages` |
+  | `internal/tenant/store/provisioning.sql` | `crm_worker`/`crm_signup`: listar `tenants.id` y aprovisionar roles |
+
+  | Caso | Esperado |
+  |---|---|
+  | Fixture en `testdata/` sin filtro | detectado |
+  | Fixture con el **mismo nombre** que una excepción pero en otro lugar (p. ej. `internal/tenant/store/auth_lookup.sql` o `internal/identity/store/worker.sql`) | detectado (la excepción es la ruta, no el nombre) |
+  | Una excepción cuyo archivo todavía no existe (`cleanup.sql` y `provisioning.sql` llegan en fases posteriores) | no es error si no lista queries |
+  | Query **no listada** en un archivo eximido (p. ej. `SELECT id, email FROM app.users;` en `auth_lookup.sql`) | detectada |
+  | Nombre de query listado que no está en el archivo, o archivo inexistente con queries listadas | detectado |
+  | Query eximida sin motivo | error de configuración |
+- **Green**: `queryrules.DefaultExceptions` tiene exactamente las cuatro rutas, todavía sin queries
+  listadas (cada fase agrega el nombre de la query que escribe); el detector
+  funciona sobre los fixtures y se vuelve efectivo a medida que las fases siguientes agregan
+  queries. Agregar una ruta es una decisión de diseño (plan §4.4, matriz §16).
 
 **Checkpoint Fase 1**: `make check` en verde. `go test -tags=integration -run
 'Catalog|Isolation|TxRunner|Provision' ./internal/platform/db/... ./db/...` en verde.
@@ -392,21 +492,26 @@ no modifica y no inserta filas de la otra en ninguna tabla.
 ### Fase 2 — Fundacional B: plataforma HTTP y servicios transversales
 
 **Objetivo**: todo lo que las historias usan y no es de ningún dominio: problem+json,
-middlewares de seguridad, tokens, hashing, autorización, auditoría, outbox con worker, email y
-almacenamiento de objetos.
+middlewares de seguridad, IP del cliente, tokens, hashing, autorización, auditoría, outbox con
+worker, email y almacenamiento de objetos.
 
 **Prueba independiente**: un mensaje encolado en una transacción de empresa llega a Mailpit;
 un `POST` de origen cruzado es rechazado con problem+json; la matriz de permisos coincide con
-FR-007.
+FR-007; con `TRUSTED_PROXIES` apuntando al proxy de prueba, el log de request muestra la IP del
+cliente y no la del proxy.
+
+Antes de T-B201: los ajustes de la tercera y la cuarta revisión sobre las Fases 0 y 1 (tabla de
+"Estado de la implementación").
 
 **T-B201 [T] — problem+json y decodificación de JSON** · ADR-009, plan §9
 - **Red** (unitario):
 
   | Caso | Esperado |
   |---|---|
-  | `WriteProblem(w, r, code)` para cada `code` de §9.1 | status correcto, `Content-Type: application/problem+json`, `type=/problems/{code}`, `instance`=request id, `title` en español |
+  | `WriteProblem(w, r, code)` para cada `code` de §9.1 (incluido `method_not_allowed`) | status correcto, `Content-Type: application/problem+json`, `type=/problems/{code}`, `instance`=request id, `title` en español |
   | `WriteProblem` con la opción `SuggestedPasswordReset` | el cuerpo incluye `"suggested_action": "password_reset"`; sin la opción, el campo no aparece |
   | `WriteProblem(email_already_registered, SuggestedPasswordReset)` | `409`, `title` "Ya existe un usuario con ese email", `detail` "Ya existe un usuario con ese email. ¿Querés recuperar la contraseña?"; valida contra `EmailAlreadyRegisteredProblem` del contrato |
+  | `WriteProblem(service_unavailable)` con la opción `RetryAfter(2 * time.Second)` | `503` con cabecera `Retry-After: 2`; sin la opción, sin cabecera |
   | `ValidationError` con dos campos | `422`, `errors` con `{field, code}` en orden estable |
   | `DecodeJSON` con JSON válido | struct poblado |
   | Campo desconocido | `400 malformed_request` (`DisallowUnknownFields`) |
@@ -417,31 +522,68 @@ FR-007.
 - **Green**: pasa la tabla; las respuestas validan contra `Problem`/`ValidationProblem` del
   contrato.
 
-**T-B202 — Implementar `platform/httpx` (problem+json con `suggested_action` opcional, DecodeJSON, mapeo por defecto de errores)**.
+**T-B202 — Implementar `platform/httpx` (problem+json con `suggested_action` y `Retry-After` opcionales, DecodeJSON, mapeo por defecto de errores, incluido `db.ErrCanceled` de plan §9.2)**.
 
-**T-B203 [T] — Middlewares de seguridad y observabilidad** · ADR-006, plan §10.2–10.3, §10.7, DD-12, DD-24, DD-28, DD-30, INV-21, H-7, H-9, H-10
+**T-B219 [T] — IP del cliente (`httpx.ClientIP`)** · DD-32, INV-25, plan §10.3, research R-25
+(Numeración agregada en la tercera revisión; se hace **antes** de T-B203, porque la cadena común
+empieza con `ClientIP`.)
+- **Red** (unitario, `httptest`; `trusted` = `198.51.100.0/24` y `2001:db8:ffff::/48` salvo que la
+  fila diga otra cosa; el handler interno registra `httpx.ClientIPFrom(r.Context())`):
+
+  | `RemoteAddr` | `X-Forwarded-For` | IP esperada |
+  |---|---|---|
+  | `203.0.113.5:4711` (no confiable) | `192.0.2.66` | `203.0.113.5` (la cabecera se ignora) |
+  | `203.0.113.5:4711`, con `trusted` **vacío** | `192.0.2.66` | `203.0.113.5` |
+  | `198.51.100.10:4711` (confiable) | (ausente) | `198.51.100.10` |
+  | `198.51.100.10:4711` | `192.0.2.66` | `192.0.2.66` |
+  | `198.51.100.10:4711` | `192.0.2.99, 192.0.2.66` (el cliente inventó la primera) | `192.0.2.66` (la de más a la derecha no confiable) |
+  | `198.51.100.10:4711` | `192.0.2.66, 198.51.100.20` (dos proxies de confianza en cadena) | `192.0.2.66` |
+  | `198.51.100.10:4711` | `198.51.100.30, 198.51.100.20` (todas de confianza) | `198.51.100.30` (la de más a la izquierda válida) |
+  | `198.51.100.10:4711` | dos cabeceras: `192.0.2.99` y luego `192.0.2.66` | `192.0.2.66` (se concatenan en orden) |
+  | `198.51.100.10:4711` | `192.0.2.66, basura` | `198.51.100.10` + log `WARN` `event=bad_forwarded_for` (sin el valor de la cabecera) |
+  | `198.51.100.10:4711` | `basura, 192.0.2.66` | `192.0.2.66` (la entrada mala está a la izquierda del cliente: no se llega a leer) |
+  | `198.51.100.10:4711` | `192.0.2.66:5555` | `192.0.2.66` (sin puerto) |
+  | `198.51.100.10:4711` | `[2001:db8::7]:5555` | `2001:db8::7` |
+  | `[::ffff:198.51.100.10]:4711` | `::ffff:192.0.2.66` | `192.0.2.66` (el `RemoteAddr` mapeado se reconoce como confiable y el resultado sale con `Unmap()`) |
+  | `[2001:db8:ffff::1]:4711` (confiable IPv6) | `2001:db8:1::5` | `2001:db8:1::5` |
+  | `203.0.113.5:4711` | con `Forwarded: for=192.0.2.66` y `X-Real-IP: 192.0.2.66` | `203.0.113.5` (solo se lee `X-Forwarded-For`) |
+  | Cualquiera, `ClientIPFrom` dentro del middleware | `IsValid() == true` |
+  | `ClientIPFrom` sobre un contexto sin el middleware | `netip.Addr{}` (`IsValid() == false`); el test documenta el comportamiento |
+- **Green**: pasa la tabla.
+- **Refactor**: el algoritmo es una función pura (`RemoteAddr`, valores de la cabecera, `trusted`
+  → `netip.Addr`, error) con el middleware como envoltorio fino.
+
+**T-B220 — Implementar `httpx.ClientIP` y `httpx.ClientIPFrom`** (plan §11.1). Es el único lugar
+del código que lee `X-Forwarded-For` y `RemoteAddr` (INV-25, T-B011).
+
+**T-B203 [T] — Middlewares de seguridad y observabilidad** · ADR-006, plan §10.2–10.3, §10.7, §9.2, DD-12, DD-24, DD-28, DD-30, DD-32, INV-21, INV-25, H-7, H-9, H-10
 - **Red** (unitario, `httptest` sobre el mux raíz de T-B005 con stub de SPA):
 
   | Caso | Esperado |
   |---|---|
-  | `POST /api/v1/...` con `Sec-Fetch-Site: cross-site` | `403 application/problem+json` con `code: forbidden` (*deny handler*, H-9); el handler de la API no se ejecutó; log `security_event=csrf_rejected`; `csrf_rejected_total` +1 |
+  | `POST /api/v1/...` con `Sec-Fetch-Site: cross-site` | `403 application/problem+json` con `code: forbidden` (*deny handler*, H-9); el handler de la API no se ejecutó; log `security_event=csrf_rejected` con `ip`; `csrf_rejected_total` +1 |
   | `POST` con `Origin` de otro host y sin `Sec-Fetch-Site` | `403` problem+json `forbidden` |
   | `POST` con `Sec-Fetch-Site: same-origin` | pasa |
   | `POST` con `Origin: https://localhost:5173`, `Host: localhost:5173` y `Sec-Fetch-Site: same-origin` (proxy de Vite con HTTPS local, plan §10.5.1) | pasa |
   | `GET` con `Sec-Fetch-Site: cross-site` | pasa (método seguro) |
-  | **Toda** respuesta de `/api/v1/*`: `200` JSON, `201`, `202`, `204`, `4xx` y `5xx` problem+json (H-7) | `Cache-Control: no-store` |
+  | **Toda** respuesta de `/api/v1/*`: `200` JSON, `201`, `202`, `204`, `4xx` (incluido el `405`) y `5xx` problem+json (H-7) | `Cache-Control: no-store` |
   | Un handler de prueba registrado como `GET /api/v1/tenant/logo` que fija su propio `Cache-Control` | el middleware no lo pisa (la excepción de DD-23 queda en manos del handler del logo) |
   | Toda respuesta (API, ops y SPA) con configuración no local | `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` |
   | Toda respuesta con configuración local | `X-Content-Type-Options` y `Referrer-Policy` presentes; `Strict-Transport-Security` **ausente** (DD-24) |
   | Respuesta del stub de SPA | **sin** `no-store` agregado por la API (la caché de la SPA la decide `web`, T-F007) |
   | Log de un request con body `{"password": "..."}` y cookie de sesión | el log no contiene la contraseña, el token ni el header `Cookie` |
-  | Log de request | contiene `request_id`, `route` (patrón chi, `ops` o `spa`), `status`, `duration_ms` |
+  | Log de request | contiene `request_id`, `route` (patrón chi, `ops` o `spa`), `status`, `duration_ms` e `ip` |
+  | Log de request con `TRUSTED_PROXIES` = rango del `RemoteAddr` y `X-Forwarded-For: 192.0.2.66` (tercera revisión) | `ip=192.0.2.66`; sin proxies de confianza, `ip` = la de `RemoteAddr` |
+  | Handler de la API que devuelve `db.ErrCanceled` después de que el cliente cortó (contexto del request cancelado) | no se escribe cuerpo; log de request `level=INFO`, `event=client_canceled`, `status=499`; `http_client_canceled_total` +1; **ningún** log `ERROR` (tampoco del recover) |
+  | El mismo handler con el contexto del request vivo | `503 service_unavailable` |
 - **Green**: pasa la tabla.
 
-**T-B204 — Implementar middlewares** (comunes, en el mux raíz: request id → recover → logging →
+**T-B204 — Implementar middlewares** (comunes, en el mux raíz, en este orden: `httpx.ClientIP`
+(DD-32, T-B220) → request id → recover → logging (con `ip` y el `499` de las cancelaciones) →
 security headers (HSTS según el modo, DD-24) → `CrossOriginProtection` con
 `SetDenyHandler(httpx.CSRFDenyHandler)`; de la API, dentro de chi: `no-store` → rate limit por
-ruta → autenticación por grupo).
+ruta → autenticación por grupo). `CommonMiddleware` recibe el modo local y
+`cfg.TrustedProxies`.
 
 **T-B205 [T] — Tokens y contraseñas** · ADR-007, INV-09, DD-6
 - **Red** (unitario):
@@ -506,10 +648,11 @@ ruta → autenticación por grupo).
   | Dos `Dispatcher` concurrentes con 20 mensajes | cada mensaje se envía **una** vez (`FOR UPDATE SKIP LOCKED`) |
   | Mensajes de `A` y `B` | cada uno se lee y marca bajo el rol de su empresa (`current_user` capturado por el fake vía hook de test) |
   | `UPDATE` que deja `sent` con payload | la base lo rechaza (`outbox_scrub_chk`) |
+  | (Tercera revisión) El fake bloquea hasta que se cancela el contexto del `Dispatcher` y devuelve `context.Canceled` (apagado a mitad del envío) | el mensaje queda **exactamente** como estaba: `pending`, `attempts`, `next_attempt_at` y `last_error` sin cambios; log `INFO` con `outcome=canceled`; ningún log `ERROR`; en el próximo arranque se toma de nuevo |
 - **Green**: pasa la tabla. **Refactor**: la política de backoff es una función pura con su propio
-  test unitario.
+  test unitario; la clasificación "cancelación / recuperable / definitivo" también (plan §9.4).
 
-**T-B212 — Implementar `platform/outbox` (`Enqueue`, `Dispatcher` con *polling* de 2 s y lote de 10, arranque y parada con `context`)**.
+**T-B212 — Implementar `platform/outbox` (`Enqueue`, `Dispatcher` con *polling* de 2 s y lote de 10, arranque y parada con `context`)**. Las queries del worker van en `internal/platform/outbox/store/worker.sql` (plan §4.4).
 
 **T-B213 [T] — Adaptador SMTP y plantillas** · ADR-010, DD-14, DD-24
 - **Red** (integración contra Mailpit en contenedor; su API HTTP para leer lo recibido):
@@ -539,15 +682,26 @@ ruta → autenticación por grupo).
 
 **T-B216 — Implementar `platform/objectstore` (minio-go)**.
 
-**T-B217 [T] — Rate limiter** · DD-9
+**T-B217 [T] — Rate limiter** · DD-9, DD-32, INV-25
 - **Red** (unitario, reloj falso): 5 pedidos permitidos y el 6.º rechazado con `RetryAfter > 0`;
   claves independientes; recarga con el tiempo; limpieza de claves inactivas (sin crecer sin
-  límite).
+  límite). Además (tercera revisión):
+
+  | Caso | Esperado |
+  |---|---|
+  | `ratelimit.IPKey(192.0.2.7)` | `192.0.2.7/32` |
+  | `IPKey(2001:db8:1:2:aaaa::1)` y `IPKey(2001:db8:1:2:bbbb::9)` | el mismo prefijo `2001:db8:1:2::/64` |
+  | `IPKey(2001:db8:1:2::1)` y `IPKey(2001:db8:1:3::1)` | prefijos distintos |
+  | `IPKey(::ffff:192.0.2.7)` | igual a `IPKey(192.0.2.7)` |
+  | Middleware de rate limit (httptest con `ClientIP` delante): 5 requests desde `2001:db8:1:2::1` y el 6.º desde `2001:db8:1:2::ffff` | el 6.º recibe `429` (mismo /64) |
+  | 5 requests desde `2001:db8:1:2::1` y 1 desde `2001:db8:1:3::1` | el último pasa (otro /64) |
+  | Requests con el mismo `RemoteAddr` de un proxy de confianza y `X-Forwarded-For` de dos clientes distintos | cupos independientes (la clave sale de `ClientIPFrom`, nunca de `RemoteAddr`) |
 - **Green**: pasa la tabla.
 
-**T-B218 — Implementar `platform/ratelimit` y el middleware por ruta** (`429 rate_limited` +
-`Retry-After`). El middleware consume el cupo **antes** de ejecutar el handler, así cuentan tanto
-los éxitos como los rechazos (DD-9).
+**T-B218 — Implementar `platform/ratelimit` (con `IPKey`) y el middleware por ruta** (`429
+rate_limited` + `Retry-After`). La clave por IP es `IPKey(httpx.ClientIPFrom(ctx))` (DD-32). El
+middleware consume el cupo **antes** de ejecutar el handler, así cuentan tanto los éxitos como
+los rechazos (DD-9).
 
 **Checkpoint Fase 2**: `make check` en verde.
 
@@ -576,7 +730,7 @@ de verificación. Repetir el registro con el mismo email → `409 email_already_
 
 **T-B302 — Implementar `internal/industrytemplate` (catálogo + `Seeder` sin efecto) y el handler**.
 
-**T-B303 [T] — Servicio de registro** · US-1, FR-001, FR-002, INV-14, INV-16, DD-2, DD-4, DD-13, DD-15, DD-27, H-6
+**T-B303 [T] — Servicio de registro** · US-1, FR-001, FR-002, INV-14, INV-16, INV-26, DD-2, DD-4, DD-13, DD-15, DD-27, DD-33, H-6
 - **Red** (integración, `Mailer` real no interviene: se verifica el outbox):
 
   | Caso | Esperado |
@@ -591,14 +745,22 @@ de verificación. Repetir el registro con el mismo email → `409 email_already_
   | `timezone` ausente, vacía, `Marte/Olympus` o de 64 caracteres inventados | la empresa se crea con `America/Argentina/Buenos_Aires`; log `event=signup_timezone_defaulted`; **sin** error (DD-27) |
   | `base_currency` fuera de ARS/USD | validación `invalid_value` |
   | Contraseña de 9 caracteres o igual al email | validación; **no** se calcula hash ni se abre transacción |
+  | (Tercera revisión, DD-33) **10 registros concurrentes** con emails distintos | los 10 tienen éxito (ninguno `ErrUnavailable`): 10 empresas y 10 roles |
+  | Una transacción de prueba (superusuario del contenedor) ejecuta `GRANT crm_tenant TO <rol de prueba>` y queda abierta 3 s; mientras, un `Register` | `Register` devuelve un error con `errors.Is(err, db.ErrUnavailable)` en ~2 s (entre 2 y 3 s; **nunca** los 5 s de `statement_timeout` ni un `ErrPrivilege`); no queda empresa, usuario, token, mensaje, sesión ni **rol** nuevos; después del `ROLLBACK` de la transacción de prueba, el mismo `Register` tiene éxito |
+  | Dentro de la transacción de registro (observado con el `Seeder` falso como *hook*) | `current_setting('lock_timeout')` = `2s` |
+  | Durante todo `Register` | los fakes de `Mailer` y `ObjectStorage` no registran **ninguna** llamada (el email sale por el outbox; R-b de DD-33) |
 - **Green**: pasa la tabla.
 - **Refactor**: el servicio de `tenant` no conoce SQL de `identity`; solo usa la interfaz
   `AdminOnboarding` (plan §11.1).
 
 **T-B304 — Implementar `tenant.Service.Register` y en `identity`: `CreateFirstAdmin`,
-`CreateSession`, `IssueEmailVerification`**.
+`CreateSession`, `IssueEmailVerification`**. Tercera revisión (DD-33, INV-26): validación y hash
+argon2 **antes** de abrir la transacción; al abrirla, `lock_timeout` con `tenant.SignupLockTimeout`
+mediante `SELECT set_config('lock_timeout', @timeout, true)` (equivale a `SET LOCAL`), antes de
+`provision_tenant_role`; ambas queries en `internal/tenant/store/provisioning.sql` (plan §4.4);
+desde el aprovisionamiento hasta el `COMMIT`, solo SQL (nada de SMTP, S3 ni otra E/S de red).
 
-**T-B305 [T] — `POST /auth/signup`** · US-1, SC-001, P-4, P-5, DD-9, DD-19, DD-21, DD-24, DD-27, DD-28, INV-20, INV-23
+**T-B305 [T] — `POST /auth/signup`** · US-1, SC-001, P-4, P-5, DD-9, DD-19, DD-21, DD-24, DD-27, DD-28, DD-33, INV-20, INV-23, INV-26
 - **Red** (integración HTTP con `apitest` (HTTPS + `cookiejar`), contrato validado en cada
   respuesta):
 
@@ -615,10 +777,12 @@ de verificación. Repetir el registro con el mismo email → `409 email_already_
   | Sin `Content-Type` JSON | `415` |
   | 6.º registro en una hora desde la misma IP | `429 rate_limited` con `Retry-After` |
   | 5 registros rechazados con `409` desde la misma IP y un 6.º con email nuevo | el 6.º recibe `429` (los rechazos consumen cupo, DD-9) |
+  | (Tercera revisión) Con el lock de `crm_tenant` retenido como en T-B303 | `503` `code: service_unavailable` con `Retry-After: 2` y `Cache-Control: no-store`; valida contra `ServerError` del contrato v0.4.0; sin cookie; log `event=signup_lock_timeout` (sin email); `signup_lock_timeout_total` +1 |
 - **Green**: pasa la tabla.
 
 **T-B306 — Implementar el handler de signup** (mapeo `identity.ErrEmailTaken` →
-`409 email_already_registered` + `SuggestedPasswordReset`, DD-21).
+`409 email_already_registered` + `SuggestedPasswordReset`, DD-21; `db.ErrUnavailable` que viene
+de un `55P03` → `503` con `RetryAfter(tenant.SignupLockTimeout)`, DD-33).
 
 **T-B307 [T] — Resolución de sesión (`identity.Authenticate`)** · ADR-006, INV-09, INV-11, DD-10, P-5
 - **Red** (integración, `Clock` falso):
@@ -1047,12 +1211,13 @@ III): se corrige antes de cerrar la fase, con su test de regresión.
 ### Fase 9 — Robustez y operación
 
 **Objetivo**: el sistema se puede operar: limpia lo vencido, expone salud y métricas, se
-restaura sin perder los roles, y su rendimiento con muchas empresas está medido.
+restaura sin perder los roles, y su rendimiento con muchas empresas (y con registros
+concurrentes) está medido.
 
 **Prueba independiente**: con 10.000 empresas cargadas, los targets de `plan.md` §13 se cumplen;
 borrar un rol de empresa y correr `crm tenants reprovision-roles` restablece el acceso.
 
-**T-B901 [T] — Limpieza periódica** · `data-model.md` §3.4, DD-25
+**T-B901 [T] — Limpieza periódica** · `data-model.md` §3.4, DD-25, ADR-001, plan §4.4
 - **Red** (integración): sesiones y tokens vencidos hace > 30 días, mensajes terminales de > 30
   días y `login_throttles` de > 24 h sin bloqueo vigente se borran **como `crm_worker`**; nada
   vigente o reciente se borra; un `DELETE` de `crm_worker` sobre una sesión vigente afecta 0 filas
@@ -1065,36 +1230,76 @@ borrar un rol de empresa y correr `crm tenants reprovision-roles` restablece el 
   | Usado (invitación aceptada) | Sí |
   | Revocado por desactivación | Sí |
 
-**T-B902 — Implementar la limpieza** (en el mismo `Dispatcher`, una vez por hora).
+  Tareas periódicas (tercera revisión, `outbox.PeriodicTask`):
+
+  | Caso | Esperado |
+  |---|---|
+  | `Dispatcher` con una `PeriodicTask` falsa de `Every() = 1h` y reloj falso | corre una vez por hora; entre medio el `Dispatcher` sigue enviando mensajes |
+  | Una tarea que devuelve error | log `ERROR` con `task=<Name()>`; el `Dispatcher` sigue y la tarea vuelve a correr en el próximo período |
+  | Apagado (contexto cancelado) durante una tarea | la tarea termina con `context.Canceled`, su transacción hace `ROLLBACK`, log `INFO` (no `ERROR`) |
+  | `identity.Cleanup` | limpia `sessions`, `user_tokens` y `login_throttles` con las queries de `internal/identity/store/cleanup.sql` |
+  | Limpieza de `outbox_messages` terminales | con las queries de `internal/platform/outbox/store/worker.sql` (ningún archivo de `outbox` nombra tablas de `identity`) |
+
+**T-B902 — Implementar la limpieza** (tercera revisión: repartida por dueño de las tablas, ADR-001).
+`identity.Cleanup` satisface `outbox.PeriodicTask` (una vez por hora) con sus queries en
+`internal/identity/store/cleanup.sql`; la limpieza de mensajes terminales es parte del
+`Dispatcher`, con sus queries en `internal/platform/outbox/store/worker.sql`; `internal/app`
+registra las tareas. Las cuatro rutas de sistema ya están en `queryrules.DefaultExceptions`
+(T-B112).
 
 **T-B903 [T] — `/readyz` y métricas** · plan §12
 - **Red**: base caída → `503 {"status":"unavailable"}`; versión de migración de la base ≠ la
   embebida → `503`; ok → `200`; `/debug/vars` solo escucha en `METRICS_ADDR` y expone las
-  métricas de §12.1 (incluidas `signup_email_exists_total` y `csrf_rejected_total`);
-  `tenant_roles_total` = cantidad de empresas.
+  métricas de §12.1 (incluidas `signup_email_exists_total`, `csrf_rejected_total`,
+  `signup_lock_timeout_total`, `http_client_canceled_total` y `set_role_retry_total`);
+  `tenant_roles_total` = cantidad de empresas, leída como `crm_worker` con la query de
+  `internal/tenant/store/provisioning.sql`.
 
 **T-B904 — Implementar `/readyz` y `expvar`**.
 
-**T-B905 — Benchmark con 10.000 empresas** · R-2, R-3, ADR-005
+**T-B905 — Benchmark con 10.000 empresas** · R-2, R-3, R-15, R-17, ADR-005, DD-33, DD-34, INV-26
 - Script de carga (test con build tag `bench`, fuera de `make check`) que aprovisiona 10.000
-  empresas en un contenedor con la versión exacta de producción y mide p95 de: `SET LOCAL ROLE`,
-  `GET /me`, `GET /tenant/logo` con `304`, `POST /auth/login`, `POST /auth/signup` y el tiempo de
-  conexión de `crm_app`. Comparar con `plan.md` §13. **Si algún target no se cumple, frenar y
-  volver al arquitecto** (se reabre ADR-005).
+  empresas en un contenedor con la versión exacta de producción y mide p95 de: `SET LOCAL ROLE`
+  (incluida la lectura de catálogo de DD-34, que va en el mismo viaje), `GET /me`,
+  `GET /tenant/logo` con `304`, `POST /auth/login`, `POST /auth/signup` y el tiempo de conexión de
+  `crm_app`.
+- **Registros concurrentes** (tercera revisión, DD-33): con los 10.000 roles creados, tandas de
+  **10** y de **50** registros simultáneos. Se mide la duración de la transacción de registro con
+  el hash de contraseña precalculado (argon2 fuera de la medición), que acota por arriba el tiempo
+  que se retiene el lock de `crm_tenant`. Target: **p95 < 250 ms y 0 `503` con 10 concurrentes**;
+  con 50 se reporta la cantidad de `503`.
+- Al final de la corrida se reporta `set_role_retry_total` (esperado: 0; cualquier valor mayor se
+  analiza con el runbook de plan §12.3).
+- Comparar con `plan.md` §13. **Si algún target no se cumple, frenar y volver al arquitecto** (se
+  reabre ADR-005; opciones ya analizadas en research R-04c y R-28).
 
-**T-B906 [T] — Reaprovisionamiento de roles** · plan §12.4
-- **Red**: con dos empresas, se borra el rol de `A` (como superusuario del contenedor); los
-  requests de `A` fallan con `500` y log que nombra el rol; `crm tenants reprovision-roles`
-  recrea el rol y sus membresías; los requests de `A` vuelven a funcionar; correrlo de nuevo no
-  cambia nada; `B` nunca se ve afectada.
+**T-B906 [T] — Reaprovisionamiento de roles** · plan §12.4, DD-33 (R-d)
+- **Red** (integración):
 
-**T-B907 — Implementar `crm tenants reprovision-roles`** (lista `tenants.id` como `crm_worker` y
-llama a la función como `crm_signup`).
+  | Caso | Esperado |
+  |---|---|
+  | Con dos empresas, se borra el rol de `A` (como superusuario del contenedor) | los requests de `A` fallan con `500` y log que nombra el rol; `crm tenants reprovision-roles` recrea el rol y sus membresías; los requests de `A` vuelven a funcionar; `B` nunca se ve afectada |
+  | Correrlo de nuevo | no cambia nada (idempotente) |
+  | Tres empresas sin rol; la del medio falla (forzado con un *hook* de test en el paso por empresa) | la corrida sigue: las otras dos quedan con su rol (cada una en **su propia transacción**, ya confirmada); `ReprovisionReport{Tenants: 3, Failed: [<id del medio>]}`; el comando sale con código ≠ 0 y nombra el id que falló |
+  | Dos ejecuciones simultáneas | la segunda termina enseguida con "otra reprovisión en curso" y código ≠ 0; la primera no se ve afectada |
+  | Un registro (T-B303) lanzado mientras se reprovisionan 50 empresas | el registro tiene éxito: cada transacción de la reprovisión suelta el lock de `crm_tenant` al terminar |
 
-**T-B908 [T] — Apagado ordenado**
+**T-B907 — Implementar `crm tenants reprovision-roles` y `tenant.Service.Reprovision`** (plan
+§11.1, §12.4): lista `tenants.id` como `crm_worker` con la query de
+`internal/tenant/store/provisioning.sql` (plan §4.4) y llama a `provision_tenant_role` como
+`crm_signup` en **una transacción por empresa**; durante toda la corrida sostiene un *advisory
+lock* de sesión con una clave constante declarada en `internal/tenant`. Como el lock de sesión
+necesita una conexión dedicada y las conexiones las maneja `platform/db`, la operación que lo
+toma vive en `platform/db`: si hace falta una firma nueva, el desarrollador la propone en el PR
+de la fase y se agrega a plan §11.1 en el mismo cambio (matriz §16).
+
+**T-B908 [T] — Apagado ordenado** · plan §9.4, research R-27
 - **Red**: SIGTERM con un request en curso y un mensaje en envío → el request termina, el mensaje
   queda `sent` o `pending` (nunca a medio actualizar), el proceso sale con código 0 antes del
-  timeout de apagado.
+  timeout de apagado. Tercera revisión: si el apagado cancela el envío, el mensaje queda `pending`
+  con `attempts`, `next_attempt_at` y `last_error` sin cambios, log `INFO` `outcome=canceled`; un
+  request cuyo contexto cancela el propio servidor (no el cliente) recibe `503`; en todo el
+  apagado no hay logs `ERROR` por cancelaciones.
 
 **T-B909 — Implementar el apagado ordenado del servidor y del worker**.
 
@@ -1119,7 +1324,7 @@ llama a la función como `crm_signup`).
 | US-3 (1, 2, 3, 4) | T-B601 (1), T-B602 (2), T-B604 (3), T-B603/T-B604 (4) |
 | US-4 (1) | T-B702, T-B703, T-B705 |
 | Casos borde (404 de otra empresa, 403 de operador) | T-B606, T-B801, T-B802 |
-| SC-001 Panel en < 3 min | T-B305 (un request), T-B905 (latencia de signup) |
+| SC-001 Panel en < 3 min | T-B305 (un request), T-B905 (latencia de signup, también con registros concurrentes) |
 | SC-002 0 accesos cruzados | T-B110, T-B801..T-B804 |
 | P-2 Verificación no bloqueante | T-B309, T-B504 |
 | P-3 Reactivación | T-B604, T-B605, T-B606, T-B801 |
@@ -1137,6 +1342,13 @@ llama a la función como `crm_signup`).
 | H-11 Límites exactos del logo (DD-31, INV-24) | T-B703, T-B704, T-B705, T-B706 |
 | JPEG re-codificado en el navegador (DD-F21): el backend no depende de eso (DD-11, INV-24) | T-B703 |
 | Rutas de la SPA en inglés (DD-14) | T-B002, T-B213 |
+| `405` con `method_not_allowed` y `Allow` (contrato v0.4.0, research R-26) | T-B004, T-B005, T-B201, T-B203; T-F004, T-F101 (frontend) |
+| DD-32 / INV-25 IP del cliente detrás de proxies (research R-25) | T-B002, T-B004, T-B011, T-B014, T-B203, T-B204, T-B217, T-B218, T-B219, T-B220 |
+| Cancelaciones: `db.ErrCanceled`, `499` en el log, worker sin intento (research R-27) | T-B103, T-B105, T-B106, T-B202, T-B203, T-B211, T-B901, T-B908 |
+| DD-33 / INV-26 Lock de `GRANT crm_tenant` (R-a..R-d; research R-04c; nota en ADR-005) | T-B105 (`55P03`), T-B201, T-B303, T-B304, T-B305, T-B306, T-B903, T-B905, T-B906, T-B907 |
+| DD-34 / INV-27 / R-17 Primer `SET ROLE` desde otra conexión: lectura de catálogo y reintento único (research R-28; nota (b) en ADR-005) | T-B103, T-B104, T-B903, T-B905 |
+| Rutas exactas de las queries de sistema (plan §4.4, INV-04, ADR-001) | T-B112, T-B212, T-B304, T-B902, T-B903, T-B907 |
+| FK `tenant_id → tenants(id)` de `sessions` y `user_tokens` (`data-model.md` §2.3/§2.4) | T-B108, T-B111 |
 
 ---
 

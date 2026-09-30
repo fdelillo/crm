@@ -29,6 +29,13 @@ func runServe(ctx context.Context, args []string, e env) error {
 		return err
 	}
 	logger := slog.New(slog.NewJSONHandler(e.stdout, nil))
+	// Behind a proxy that is not listed here every client looks like the proxy (one shared rate limit
+	// bucket, useless IPs in logs and audit): the first line says what is trusted (DD-32).
+	trusted := make([]string, 0, len(cfg.TrustedProxies))
+	for _, p := range cfg.TrustedProxies {
+		trusted = append(trusted, p.String())
+	}
+	logger.Info("starting", "local_mode", cfg.IsLocal(), "trusted_proxies", trusted)
 
 	root := app.NewRootHandler(app.RootDeps{
 		API:       app.NewAPIRouter(),

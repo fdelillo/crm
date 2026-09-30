@@ -4,6 +4,62 @@
 **Fecha**: 2026-09-27
 **Origen**: spec 001 (`plan.md` §4.2–4.4, `data-model.md` §3)
 
+> **Nota 2026-09-30 (consecuencia descubierta en la implementación; no cambia la decisión)**: desde
+> PostgreSQL 16, `GRANT <rol> TO x` toma un lock sobre el rol concedido que dura hasta el fin de la
+> transacción. `provision_tenant_role` hace `GRANT crm_tenant TO crm_t_<hex>`, así que **todos los
+> registros de empresa se serializan** sobre `crm_tenant` mientras dura su transacción. El revisor
+> de la Fase 1 lo verificó: con una transacción de aprovisionamiento abierta, una segunda cae por
+> el `statement_timeout` de `crm_app` (5 s) dentro del `GRANT`. No se puede evitar sin romper la
+> atomicidad del registro (INV-14): el rol de la empresa necesita esa membresía antes de insertar
+> sus filas. Se acepta a la escala del MVP (los registros son raros) con estas restricciones, que
+> fija DD-33 del plan de 001:
+>
+> - **R-a**: la transacción de registro corre con `SET LOCAL lock_timeout = '2s'`; si se vence,
+>   `55P03` → `503 service_unavailable` con `Retry-After`, y no se crea nada (ni el rol).
+> - **R-b**: desde `provision_tenant_role` hasta el `COMMIT` no hay E/S de red y el objetivo es
+>   p95 < 250 ms; se mide con registros concurrentes en T-B905.
+> - **R-c**: el sembrado de plantillas de la spec 002 corre dentro de esa transacción solo si entra
+>   en el presupuesto de R-b; si no, el plan de 002 lo rediseña (restricción heredada).
+> - **R-d**: `crm tenants reprovision-roles` usa una transacción por empresa y no corre en
+>   paralelo consigo mismo.
+>
+> Es además un argumento concreto para la comparación con la **alternativa B** (sin roles por
+> empresa no hay `GRANT` por registro): si T-B905 o el hosting (P-1) lo piden, la salida es un ADR
+> que reemplace a este por B. Mejora intermedia evaluada y postergada: un *pool* de roles creados
+> de antemano (research R-04c del plan de 001).
+
+> **Nota 2026-09-30 (b) (segunda consecuencia descubierta en la implementación; no cambia la
+> decisión)**: en PostgreSQL 18.6, después de que una conexión aprovisiona una empresa (crea
+> `crm_t_<hex>` y lo concede a `crm_app` con `SET TRUE`) y hace `COMMIT`, el **primer**
+> `SET LOCAL ROLE crm_t_<hex>` desde **otra** conexión del pool a veces falla con
+> `42501 permission denied to set role`. La hipótesis del desarrollador es que la lista de roles
+> "SET-ables" que cada backend guarda en caché (`roles_is_member_of`, `acl.c`) todavía no procesó
+> la invalidación de la membresía nueva. La reproducción (test de integración con registros
+> concurrentes) daba 64 a 105 fallas en 600 primeros usos. En producción se vería así: "me
+> registro, el siguiente request cae en otra conexión y recibo un 500".
+>
+> Arreglo vigente (DD-34 del plan de 001):
+>
+> 1. `platform/db` manda en el mismo viaje de red una lectura de catálogo
+>    (`SELECT 1 FROM pg_catalog.pg_auth_members LIMIT 0`) antes del `SET LOCAL ROLE`. Leer el
+>    catálogo hace que el backend procese las invalidaciones pendientes. Medido: 0 fallas en
+>    1800 usos y 0 en 8 corridas de la suite de integración.
+> 2. `InTenantTx` hace **un único reintento** de la transacción completa si el `SET ROLE` inicial
+>    falla con `42501` antes de ejecutar nada. Nunca reintenta después de que `fn` corrió, ni para
+>    roles de sistema, ni en un `AsTenant` a mitad de transacción. Queda registrado con el log y
+>    la métrica `set_role_retry`.
+>
+> El arreglo depende de un **comportamiento interno no documentado** de PostgreSQL: que leer un
+> catálogo procese las invalidaciones pendientes antes del chequeo de `SET ROLE`. Una versión
+> futura podría cambiarlo (riesgo R-17 del plan de 001). Si pasa, lo detecta el test de
+> reproducción y la métrica `set_role_retry_total`.
+>
+> Es otra consecuencia de tener roles que cambian en runtime, y por lo tanto **un argumento más a
+> favor de la alternativa B** en la comparación que sigue abierta con P-1. Con B no hay membresías
+> nuevas por registro ni una caché de membresías que se quede atrás. Dentro de A, el *pool* de roles
+> creados de antemano (research R-04c) también lo evitaría: la membresía se concede mucho antes
+> del primer uso. Alternativas evaluadas en research R-28 del plan de 001.
+
 ## Contexto
 
 La constitución (principio III) exige que todo dato de negocio pertenezca a una empresa, que toda

@@ -14,6 +14,7 @@ const (
 	ruleRole  = reporules.RuleRoleSwitch
 	ruleSQL   = reporules.RuleDynamicSQL
 	ruleRoute = reporules.RuleChiOutsideAPI
+	ruleIP    = reporules.RuleClientIPHeaders
 )
 
 func summarize(vs []reporules.Violation) []string {
@@ -139,5 +140,25 @@ func TestCleanTreeHasNoViolations(t *testing.T) {
 func TestCheckFailsOnAMissingRoot(t *testing.T) {
 	if _, err := reporules.Check("testdata/does-not-exist"); err == nil {
 		t.Error("Check on a directory without internal/ or cmd/ returned no error")
+	}
+}
+
+// Rule 4 (INV-25): X-Forwarded-For, Forwarded and X-Real-IP are read only in internal/platform/httpx.
+func TestRule_ProxyHeadersOnlyInHTTPX(t *testing.T) {
+	vs, err := reporules.Check("testdata/violations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, v := range vs {
+		if v.Rule == ruleIP {
+			got = append(got, fmt.Sprintf("%s:%d", filepath.ToSlash(v.File), v.Line))
+		}
+	}
+	sort.Strings(got)
+	want := []string{"internal/orders/ip.go:7", "internal/orders/ip.go:10", "internal/orders/ip.go:13"}
+	sort.Strings(want)
+	if !slices.Equal(got, want) {
+		t.Errorf("proxy-header violations:\n got %v\nwant %v", got, want)
 	}
 }

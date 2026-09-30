@@ -172,3 +172,53 @@ func waitForListenAddr(t *testing.T, out *safeBuffer, done <-chan error) string 
 		}
 	}
 }
+
+// The startup log records which proxies are trusted, so a deployment behind a proxy that forgot
+// TRUSTED_PROXIES is visible in the first line (plan runbook §12.3, DD-32).
+func TestRun_ServeLogsTheTrustedProxies(t *testing.T) {
+	for _, tt := range []struct {
+		name, value string
+		want        []any
+	}{
+		{"none", "", []any{}},
+		{"two", "10.0.0.0/8, 2001:db8::/32", []any{"10.0.0.0/8", "2001:db8::/32"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			env := validEnv()
+			env["TRUSTED_PROXIES"] = tt.value
+			stdout := &safeBuffer{}
+			ctx, cancel := context.WithCancel(context.Background())
+			done := make(chan error, 1)
+			go func() { done <- run(ctx, []string{"serve"}, mapEnv(env), stdout, io.Discard) }()
+			waitForListenAddr(t, stdout, done)
+			cancel()
+			<-done
+
+			for _, l := range strings.Split(stdout.String(), "\n") {
+				var m map[string]any
+				if json.Unmarshal([]byte(l), &m) == nil && m["msg"] == "starting" {
+					got, ok := m["trusted_proxies"].([]any)
+					if !ok || len(got) != len(tt.want) {
+						t.Fatalf("trusted_proxies = %v, want %v", m["trusted_proxies"], tt.want)
+					}
+					for i := range got {
+						if got[i] != tt.want[i] {
+							t.Errorf("trusted_proxies = %v, want %v", got, tt.want)
+						}
+					}
+					return
+				}
+			}
+			t.Errorf("no \"starting\" log line in:\n%s", stdout.String())
+		})
+	}
+}
+
+func TestRun_ServeRejectsInvalidTrustedProxies(t *testing.T) {
+	env := validEnv()
+	env["TRUSTED_PROXIES"] = "0.0.0.0/0"
+	err := run(context.Background(), []string{"serve"}, mapEnv(env), io.Discard, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "TRUSTED_PROXIES") {
+		t.Fatalf("run(serve) = %v, want an error naming TRUSTED_PROXIES", err)
+	}
+}

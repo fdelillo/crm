@@ -11,100 +11,93 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const getSpikeItem = `-- name: GetSpikeItem :one
-SELECT id, tenant_id, email, ip, parent_id, created_at
-FROM app.spike_items
-WHERE tenant_id = $1 AND id = $2
+const getTenantByID = `-- name: GetTenantByID :one
+SELECT id, name, base_currency, timezone, logo_object_key, created_at, updated_at
+FROM app.tenants
+WHERE id = $1
 `
 
-type GetSpikeItemParams struct {
-	TenantID uuid.UUID
-	ID       uuid.UUID
+type GetTenantByIDRow struct {
+	ID            uuid.UUID
+	Name          string
+	BaseCurrency  string
+	Timezone      string
+	LogoObjectKey pgtype.Text
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
-type GetSpikeItemRow struct {
-	ID        uuid.UUID
-	TenantID  uuid.UUID
-	Email     string
-	Ip        *netip.Addr
-	ParentID  uuid.NullUUID
-	CreatedAt time.Time
-}
-
-func (q *Queries) GetSpikeItem(ctx context.Context, arg GetSpikeItemParams) (GetSpikeItemRow, error) {
-	row := q.db.QueryRow(ctx, getSpikeItem, arg.TenantID, arg.ID)
-	var i GetSpikeItemRow
+func (q *Queries) GetTenantByID(ctx context.Context, tenantID uuid.UUID) (GetTenantByIDRow, error) {
+	row := q.db.QueryRow(ctx, getTenantByID, tenantID)
+	var i GetTenantByIDRow
 	err := row.Scan(
 		&i.ID,
-		&i.TenantID,
-		&i.Email,
-		&i.Ip,
-		&i.ParentID,
+		&i.Name,
+		&i.BaseCurrency,
+		&i.Timezone,
+		&i.LogoObjectKey,
 		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
 
-const insertSpikeItem = `-- name: InsertSpikeItem :one
-INSERT INTO app.spike_items (tenant_id, email, secret_hash, ip, parent_id, created_at)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, tenant_id, email, ip, parent_id, created_at
+const insertAuditLog = `-- name: InsertAuditLog :one
+INSERT INTO app.audit_log (tenant_id, actor_user_id, action, target_type, target_id, ip, user_agent, request_id)
+VALUES ($1, $2, $3, $4, $5,
+        $6, $7, $8)
+RETURNING id, occurred_at, ip
 `
 
-type InsertSpikeItemParams struct {
-	TenantID   uuid.UUID
-	Email      string
-	SecretHash []byte
+type InsertAuditLogParams struct {
+	TenantID    uuid.UUID
+	ActorUserID uuid.NullUUID
+	Action      string
+	TargetType  pgtype.Text
+	TargetID    uuid.NullUUID
+	Ip          *netip.Addr
+	UserAgent   pgtype.Text
+	RequestID   pgtype.Text
+}
+
+type InsertAuditLogRow struct {
+	ID         uuid.UUID
+	OccurredAt time.Time
 	Ip         *netip.Addr
-	ParentID   uuid.NullUUID
-	CreatedAt  time.Time
 }
 
-type InsertSpikeItemRow struct {
-	ID        uuid.UUID
-	TenantID  uuid.UUID
-	Email     string
-	Ip        *netip.Addr
-	ParentID  uuid.NullUUID
-	CreatedAt time.Time
-}
-
-func (q *Queries) InsertSpikeItem(ctx context.Context, arg InsertSpikeItemParams) (InsertSpikeItemRow, error) {
-	row := q.db.QueryRow(ctx, insertSpikeItem,
+func (q *Queries) InsertAuditLog(ctx context.Context, arg InsertAuditLogParams) (InsertAuditLogRow, error) {
+	row := q.db.QueryRow(ctx, insertAuditLog,
 		arg.TenantID,
-		arg.Email,
-		arg.SecretHash,
+		arg.ActorUserID,
+		arg.Action,
+		arg.TargetType,
+		arg.TargetID,
 		arg.Ip,
-		arg.ParentID,
-		arg.CreatedAt,
+		arg.UserAgent,
+		arg.RequestID,
 	)
-	var i InsertSpikeItemRow
-	err := row.Scan(
-		&i.ID,
-		&i.TenantID,
-		&i.Email,
-		&i.Ip,
-		&i.ParentID,
-		&i.CreatedAt,
-	)
+	var i InsertAuditLogRow
+	err := row.Scan(&i.ID, &i.OccurredAt, &i.Ip)
 	return i, err
 }
 
-const lookupSpikeItemByEmail = `-- name: LookupSpikeItemByEmail :one
-SELECT id, tenant_id FROM app.spike_items WHERE email = $1
+const lookupUserByEmail = `-- name: LookupUserByEmail :one
+SELECT id, tenant_id FROM app.users WHERE email = $1
 `
 
-type LookupSpikeItemByEmailRow struct {
+type LookupUserByEmailRow struct {
 	ID       uuid.UUID
 	TenantID uuid.UUID
 }
 
-// Phase 1 style lookup as crm_auth: routing columns only.
-func (q *Queries) LookupSpikeItemByEmail(ctx context.Context, email string) (LookupSpikeItemByEmailRow, error) {
-	row := q.db.QueryRow(ctx, lookupSpikeItemByEmail, email)
-	var i LookupSpikeItemByEmailRow
+// Phase 1 style routing lookup as crm_auth: routing columns only (plan §4.4).
+func (q *Queries) LookupUserByEmail(ctx context.Context, email string) (LookupUserByEmailRow, error) {
+	row := q.db.QueryRow(ctx, lookupUserByEmail, email)
+	var i LookupUserByEmailRow
 	err := row.Scan(&i.ID, &i.TenantID)
 	return i, err
 }

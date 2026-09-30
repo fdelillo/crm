@@ -12,6 +12,7 @@ type Code string
 const (
 	CodeMalformedRequest Code = "malformed_request"
 	CodeNotFound         Code = "not_found"
+	CodeMethodNotAllowed Code = "method_not_allowed"
 	CodeInternal         Code = "internal"
 )
 
@@ -47,10 +48,10 @@ func WriteProblem(w http.ResponseWriter, r *http.Request, code Code) {
 	write(w, r, s.status, s.title, code)
 }
 
-// MethodNotAllowed writes a 405 problem+json. The contract's ErrorCode has no dedicated code for
-// it, so it reuses malformed_request; see the open question reported for T-B004.
+// MethodNotAllowed writes a 405 problem+json with code method_not_allowed (contract v0.4.0). The caller
+// sets the Allow header first (the API router asks chi which methods the path accepts).
 func MethodNotAllowed(w http.ResponseWriter, r *http.Request) {
-	write(w, r, http.StatusMethodNotAllowed, "Método no permitido", CodeMalformedRequest)
+	write(w, r, http.StatusMethodNotAllowed, "Método no permitido", CodeMethodNotAllowed)
 }
 
 func write(w http.ResponseWriter, r *http.Request, status int, title string, code Code) {

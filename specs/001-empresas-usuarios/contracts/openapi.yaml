@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CRM - API 001 Empresas, usuarios y roles
-  version: 0.3.1
+  version: 0.4.0
   summary: Registro de empresas, autenticación, sesiones, invitaciones, usuarios y datos de la empresa.
   description: |
     Contrato **canónico** de la spec 001 (`specs/001-empresas-usuarios/spec.md`).
@@ -24,6 +24,13 @@ info:
       `GET /tenant/logo`, que usa `private, no-cache` con `ETag` (DD-23).
     - Un método no seguro (POST, PUT, PATCH, DELETE) de origen cruzado recibe `403` con
       `code: forbidden` (protección CSRF, DD-30), en cualquier ruta.
+    - Un método que la ruta no admite (p. ej. `DELETE` sobre una ruta que solo tiene `GET`)
+      recibe `405` con `code: method_not_allowed` y la cabecera `Allow` con la lista de métodos
+      que esa ruta sí admite (RFC 9110). Vale para **todas** las rutas de `/api/v1` y no se
+      repite en cada operación. Una ruta inexistente responde `404` con `code: not_found`.
+    - Cualquier operación puede responder `503 service_unavailable` (dependencia no disponible);
+      cuando el servidor sabe cuánto esperar, agrega `Retry-After` (p. ej. el registro con muchos
+      pedidos simultáneos, DD-33).
     - Solo `/api/`, `/healthz` y `/readyz` son del backend; el resto de las rutas del mismo origen
       las sirve la SPA embebida (ADR-019) y no forman parte de este contrato.
     - Los componentes `Problem`, `ValidationProblem`, `ErrorCode`, `SuggestedAction`, `Role` y
@@ -40,6 +47,10 @@ info:
       cada caso; la cookie es `Secure` en todos los entornos (H-10). Son precisiones: el único
       cambio de esquema es `additionalProperties: false` en el cuerpo multipart de
       `PUT /tenant/logo`, que declara la regla de una sola parte.
+    - 0.4.0: `method_not_allowed` agregado a `ErrorCode` (`405` con cabecera `Allow`, regla
+      global); `Retry-After` opcional en `ServerError` (registro con muchos pedidos simultáneos,
+      DD-33). Es *minor* y no *patch*: un valor nuevo en un enum obliga a los clientes con
+      manejo exhaustivo de `ErrorCode` (el mapa de mensajes del frontend) a agregar su texto.
 servers:
   - url: /api/v1
 tags:
@@ -98,6 +109,10 @@ paths:
         responde 409 `email_already_registered` con `suggested_action: password_reset`. La
         respuesta confirma que el email existe (enumeración aceptada, DD-19) pero **no** incluye
         empresa, nombre, estado ni ningún otro dato de la cuenta (INV-20).
+
+        Los registros se procesan de a uno en la base (DD-33). Si hay tantos simultáneos que uno
+        espera más de 2 segundos, responde `503 service_unavailable` con `Retry-After` y no crea
+        nada: se puede reintentar con los mismos datos.
 
         Rate limit: 5 intentos por hora por IP, contando éxitos y rechazos (DD-9).
       security: []
@@ -984,7 +999,14 @@ components:
     ServerError:
       description: |
         500 `internal` (bug, incluida una violación de RLS) o 503 `service_unavailable`
-        (base u otra dependencia no disponible; se puede reintentar con backoff)
+        (base u otra dependencia no disponible, o espera demasiado larga por el lock del registro;
+        se puede reintentar con backoff)
+      headers:
+        Retry-After:
+          description: Solo en algunos `503`, cuando el servidor sabe cuánto esperar (p. ej. el registro, DD-33)
+          schema:
+            type: integer
+            minimum: 1
       content:
         application/problem+json:
           schema:
@@ -993,7 +1015,10 @@ components:
   schemas:
     ErrorCode:
       type: string
-      description: Código estable del error. El frontend mapea cada código a un texto en español.
+      description: |
+        Código estable del error. El frontend mapea cada código a un texto en español.
+        `method_not_allowed` (405) indica un error de programación del cliente: la ruta existe
+        pero no con ese método; la respuesta trae la cabecera `Allow`.
       enum:
         - malformed_request
         - validation_failed
@@ -1004,6 +1029,7 @@ components:
         - account_disabled
         - forbidden
         - not_found
+        - method_not_allowed
         - email_already_registered
         - email_taken
         - last_admin
