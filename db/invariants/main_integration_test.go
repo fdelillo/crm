@@ -8,10 +8,10 @@ package invariants_test
 import (
 	"context"
 	"errors"
-	"github.com/fdelillo/crm/internal/testsupport/fixture"
 	"os"
 	"testing"
 
+	"github.com/fdelillo/crm/internal/testsupport/fixture"
 	"github.com/fdelillo/crm/internal/testsupport/pgtest"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"

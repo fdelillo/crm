@@ -34,3 +34,9 @@ SELECT u.id FROM app.tenants t, app.users u WHERE u.tenant_id = @tenant_id AND t
 
 -- name: NonCompanyOr :many
 SELECT 1 FROM app.login_throttles WHERE email_hmac = @a OR email_hmac = @b;
+
+-- name: OrGroupsBesideTheTenantPredicate :many
+SELECT id FROM app.users WHERE (tenant_id = @tenant_id) AND (email = @email OR status = 'active') AND (id = @id OR id = @other);
+
+-- name: QuotedTableWithFilter :many
+SELECT id FROM app."users" WHERE tenant_id = @tenant_id;

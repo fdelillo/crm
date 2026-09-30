@@ -46,7 +46,7 @@ var (
 	// ALTER TABLE app.x ... ADD [COLUMN] [IF NOT EXISTS] tenant_id: every ADD in the statement is looked at.
 	alterTableRe = regexp.MustCompile(`(?is)ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?app\.(\w+)\s+(.*?);`)
 	addTenantRe  = regexp.MustCompile(`(?is)\bADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?tenant_id\b`)
-	tableRefRe   = regexp.MustCompile(`(?i)\b(?:from|join|into|update)\s+(?:only\s+)?(?:app\.)?([a-z_][a-z0-9_]*)`)
+	tableRefRe   = regexp.MustCompile(`(?i)\b(?:from|join|into|update)\s+(?:only\s+)?(?:"?app"?\.)?"?([a-z_][a-z0-9_]*)`)
 	tenantArg    = `(?:@tenant_id\b|sqlc\.arg\(\s*'?tenant_id'?\s*\))`
 	// A conjunct that is exactly tenant_id = @tenant_id (alias allowed, either order).
 	tenantPredRe = regexp.MustCompile(`(?i)^(?:(?:\w+\.)?tenant_id\s*=\s*` + tenantArg + `|` + tenantArg + `\s*=\s*(?:\w+\.)?tenant_id)$`)
@@ -280,9 +280,9 @@ var (
 	whereEndRe   = regexp.MustCompile(`(?i)\b(?:group\s+by|order\s+by|limit|offset|having|returning|window|for)\b|;`)
 	andRe        = regexp.MustCompile(`(?i)\band\b`)
 	orRe         = regexp.MustCompile(`(?i)\bor\b`)
-	insertHeadRe = regexp.MustCompile(`(?i)^\s*insert\s+into\s+(?:app\.)?([a-z_][a-z0-9_]*)`)
+	insertHeadRe = regexp.MustCompile(`(?i)^\s*insert\s+into\s+(?:"?app"?\.)?"?([a-z_][a-z0-9_]*)`)
 	selectRe     = regexp.MustCompile(`(?i)\bselect\b`)
-	wordRe       = regexp.MustCompile(`^\s*(?:app\.)?([a-z_][a-z0-9_]*)`)
+	wordRe       = regexp.MustCompile(`^\s*(?:"?app"?\.)?"?([a-z_][a-z0-9_]*)`)
 )
 
 // analyze returns what is wrong with a statement (empty when it filters by company or touches no company table).
@@ -385,15 +385,21 @@ func referencedTables(m string, company map[string]bool) []string {
 	return out
 }
 
-// conjuncts splits a WHERE expression at its top-level ANDs, looking through redundant parentheses. It
-// returns the leaf conditions that have no OR at their top level, and the leaves that do (each one is
-// an OR group: nothing inside it restricts the result on its own).
+// conjuncts splits a WHERE expression into what must all hold, looking through redundant parentheses.
+// AND binds tighter than OR, so an OR at the top level makes the whole expression a disjunction, whatever
+// surrounds it: `a OR b AND c` is `a OR (b AND c)` and `a AND b OR c` is `(a AND b) OR c`, and in neither
+// does the predicate on the company restrict the result. Such an expression comes back as one orGroup.
+// Without a top-level OR the expression is split at its ANDs, and each part is analysed in turn (a part
+// may be a parenthesised OR). leaves are the conditions that have no OR at their top level.
 func conjuncts(expr string) (leaves, orGroups []string) {
 	expr = strings.TrimSpace(expr)
 	for len(expr) > 1 && expr[0] == '(' && closingParen(expr) == len(expr)-1 {
 		expr = strings.TrimSpace(expr[1 : len(expr)-1])
 	}
 	m := mask(expr)
+	if orRe.MatchString(m) {
+		return nil, []string{expr}
+	}
 	if ands := andRe.FindAllStringIndex(m, -1); len(ands) > 0 {
 		start := 0
 		for _, loc := range append(ands, []int{len(expr), len(expr)}) {
@@ -402,9 +408,6 @@ func conjuncts(expr string) (leaves, orGroups []string) {
 			start = loc[1]
 		}
 		return leaves, orGroups
-	}
-	if orRe.MatchString(m) {
-		return nil, []string{expr}
 	}
 	return []string{expr}, nil
 }

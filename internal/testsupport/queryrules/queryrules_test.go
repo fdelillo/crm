@@ -136,13 +136,21 @@ func TestTrickyQueriesAreDetected(t *testing.T) {
 	want := []string{
 		"internal/orders/store/tricky.sql CommaFrom",                 // users has no filter, only t.id = @tenant_id
 		"internal/orders/store/tricky.sql CteWithoutFilter",          // the CTE reads sessions unfiltered
+		"internal/orders/store/tricky.sql DeleteOrTrueBeforeAnd",     // id = @id OR (true AND tenant_id = @tenant_id): AND binds tighter
 		"internal/orders/store/tricky.sql InsertSelect",              // the SELECT reads users unfiltered
+		"internal/orders/store/tricky.sql OrBeforeAnd",               // email = @email OR (status = 'active' AND tenant_id = @tenant_id)
 		"internal/orders/store/tricky.sql OrInsideGroup",             // (tenant_id = @tenant_id OR archived)
 		"internal/orders/store/tricky.sql OrOtherColumn",             // id = @id OR tenant_id = @tenant_id
 		"internal/orders/store/tricky.sql OrTrue",                    // tenant_id = @tenant_id OR true
 		"internal/orders/store/tricky.sql PredicateOnlyInSelectList", // @tenant_id is not a filter
+		"internal/orders/store/tricky.sql QuotedCommaFrom",           // app."users" after a comma, no filter
+		"internal/orders/store/tricky.sql QuotedInsert",              // INSERT INTO app."users" without @tenant_id
+		"internal/orders/store/tricky.sql QuotedJoin",                // JOIN app."sessions" unfiltered
+		"internal/orders/store/tricky.sql QuotedSchemaAndTable",      // FROM "app"."users"
+		"internal/orders/store/tricky.sql QuotedTable",               // FROM "users"
 		"internal/orders/store/tricky.sql SubqueryWithoutFilter",     // EXISTS (SELECT ... FROM users WHERE email = ...)
 		"internal/orders/store/tricky.sql UnionSecondBranch",         // the second branch has no filter
+		"internal/orders/store/tricky.sql UpdateTrailingOr",          // (tenant_id = @tenant_id AND id = @id) OR email = @email
 	}
 	if got := summarize(vs); !slices.Equal(got, want) {
 		t.Errorf("violations:\n got %v\nwant %v", got, want)

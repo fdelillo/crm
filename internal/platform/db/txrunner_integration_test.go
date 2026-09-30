@@ -18,6 +18,7 @@ import (
 	"github.com/fdelillo/crm/internal/testsupport/fixture"
 	"github.com/fdelillo/crm/internal/testsupport/pgtest"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -281,8 +282,12 @@ func TestTxRunner_MissingCompanyRoleNamesTheRole(t *testing.T) {
 		t.Error("fn ran without a company role")
 		return nil
 	})
-	if err == nil || !strings.Contains(err.Error(), db.TenantRoleName(id)) {
-		t.Errorf("err = %v, want it to name %s", err, db.TenantRoleName(id))
+	if err == nil || !strings.Contains(err.Error(), "set role "+db.TenantRoleName(id)) {
+		t.Errorf("err = %v, want it to name the step and the role: set role %s", err, db.TenantRoleName(id))
+	}
+	// Only here is the hint right: PostgreSQL 18 answers 22023 for a role that does not exist.
+	if err == nil || !strings.Contains(err.Error(), "was the company provisioned?") {
+		t.Errorf("err = %v, want the provisioning hint for a nonexistent role", err)
 	}
 }
 
@@ -333,8 +338,11 @@ func TestTxRunner_RoleSwitchPrivilegeErrorIsErrPrivilege(t *testing.T) {
 	if !errors.Is(err, db.ErrPrivilege) {
 		t.Errorf("err = %v, want it to be ErrPrivilege", err)
 	}
-	if err == nil || !strings.Contains(err.Error(), role) {
-		t.Errorf("err = %v, want it to name %s", err, role)
+	if err == nil || !strings.Contains(err.Error(), "set role "+role) {
+		t.Errorf("err = %v, want it to name the step and the role: set role %s", err, role)
+	}
+	if err != nil && strings.Contains(err.Error(), "provisioned") {
+		t.Errorf("err = %v: the role exists, so the provisioning hint is misleading", err)
 	}
 
 	// The same through the Tx method.
@@ -369,6 +377,14 @@ func TestTxRunner_PoolWithoutARoleSwitchHasNoPrivileges(t *testing.T) {
 // `SET LOCAL ROLE crm_t_...` on it fails with "permission denied to set role" until the next role
 // invalidation reaches it. Rebuilding that list takes longer the more roles exist, which is what makes the
 // race easy to hit here: 2000 roles, 12 concurrent registrations. See TxRunner.setRole.
+//
+// This is the detector of R-17, so it must not be blunted by the defence that comes after the one it
+// guards: InTenantTx retries once, which turns most failures of the catalog read into a success. Measured
+// without the read, final failures drop from 46-93 to 2-3 in 600. Hence each path also asserts that the
+// retry counters did NOT move: the read alone has to be enough. InSystemTx -> AsTenant (the GET /me that
+// follows a registration) has no retry at all and is covered by the read only.
+//
+// Not parallel: the counters are process-wide, and parallel tests resume only after this one ends.
 func TestTxRunner_NewCompanyIsUsableOnAnyConnectionRightAfterProvisioning(t *testing.T) {
 	ctx := context.Background()
 	super := pgtest.SuperuserPool(t)
@@ -388,33 +404,60 @@ func TestTxRunner_NewCompanyIsUsableOnAnyConnectionRightAfterProvisioning(t *tes
 
 	pool := pgtest.AppPool(t)
 	runner := db.NewTxRunner(pool)
-	var (
-		mu       sync.Mutex
-		failures []error
-		wg       sync.WaitGroup
-	)
-	for range 12 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for range 50 {
-				id := uuid.New()
-				fixture.ProvisionRole(t, pool, id) // committed before it returns
-				err := runner.InTenantTx(ctx, id, func(ctx context.Context, tx db.Tx) error {
-					_, err := tx.Exec(ctx, `SELECT 1`)
+	paths := []struct {
+		name string
+		use  func(ctx context.Context, id uuid.UUID) error
+	}{
+		{"InTenantTx", func(ctx context.Context, id uuid.UUID) error {
+			return runner.InTenantTx(ctx, id, func(ctx context.Context, tx db.Tx) error {
+				_, err := tx.Exec(ctx, `SELECT 1`)
+				return err
+			})
+		}},
+		{"InSystemTx then AsTenant", func(ctx context.Context, id uuid.UUID) error {
+			return runner.InSystemTx(ctx, db.RoleAuth, func(ctx context.Context, tx db.Tx) error {
+				if err := tx.AsTenant(ctx, id); err != nil {
 					return err
-				})
-				if err != nil {
-					mu.Lock()
-					failures = append(failures, err)
-					mu.Unlock()
 				}
-			}
-		}()
+				_, err := tx.Exec(ctx, `SELECT 1`)
+				return err
+			})
+		}},
 	}
-	wg.Wait()
-	if len(failures) > 0 {
-		t.Errorf("%d of 600 first uses of a just-provisioned company failed on another connection; first: %v", len(failures), failures[0])
+	for _, path := range paths {
+		t.Run(path.name, func(t *testing.T) {
+			recovered, failed := db.SetRoleRetryCount(db.RetryRecovered), db.SetRoleRetryCount(db.RetryFailed)
+			var (
+				mu       sync.Mutex
+				failures []error
+				wg       sync.WaitGroup
+			)
+			for range 12 {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					for range 50 {
+						id := uuid.New()
+						fixture.ProvisionRole(t, pool, id) // committed before it returns
+						if err := path.use(ctx, id); err != nil {
+							mu.Lock()
+							failures = append(failures, err)
+							mu.Unlock()
+						}
+					}
+				}()
+			}
+			wg.Wait()
+			if len(failures) > 0 {
+				t.Errorf("%d of 600 first uses of a just-provisioned company failed on another connection; first: %v", len(failures), failures[0])
+			}
+			if n := db.SetRoleRetryCount(db.RetryRecovered) - recovered; n != 0 {
+				t.Errorf("%d of 600 first uses needed the retry and recovered: the catalog read is no longer enough (R-17)", n)
+			}
+			if n := db.SetRoleRetryCount(db.RetryFailed) - failed; n != 0 {
+				t.Errorf("%d of 600 first uses were retried and failed again (R-17)", n)
+			}
+		})
 	}
 }
 
@@ -459,8 +502,9 @@ func retryRunner(t *testing.T) (db.TxRunner, *logRecords) {
 
 // Second line of defence against the stale role list: entering a company is retried ONCE when the very
 // first SET LOCAL ROLE is refused, before fn has done anything; the whole transaction starts again.
+// Not parallel: the retry counter is process-wide and these tests assert it exactly (parallel tests only
+// resume once every sequential one has finished).
 func TestTxRunner_EnteringACompanyIsRetriedOnceWhenSetRoleIsRefused(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	id, role := newTenant(t)
 	runner, logs := retryRunner(t)
@@ -471,12 +515,16 @@ func TestTxRunner_EnteringACompanyIsRetriedOnceWhenSetRoleIsRefused(t *testing.T
 		}
 		return nil
 	})
-	before := db.SetRoleRetryCount()
+	recovered, failed := db.SetRoleRetryCount(db.RetryRecovered), db.SetRoleRetryCount(db.RetryFailed)
 
 	err := runner.InTenantTx(ctx, id, func(ctx context.Context, tx db.Tx) error {
 		ran.Add(1)
 		if got := currentUser(t, ctx, tx); got != role {
 			t.Errorf("current_user = %q, want %q", got, role)
+		}
+		// DD-34: the outcome is known only after the retry, so nothing is logged before fn runs.
+		if n := len(logs.retries()); n != 0 {
+			t.Errorf("%d retry records logged before the retry finished, want 0", n)
 		}
 		return nil
 	})
@@ -489,21 +537,33 @@ func TestTxRunner_EnteringACompanyIsRetriedOnceWhenSetRoleIsRefused(t *testing.T
 	if attempts.Load() != 2 {
 		t.Errorf("SET LOCAL ROLE attempted %d times, want 2 (the refused one and one retry)", attempts.Load())
 	}
-	// The counter is process-wide and other parallel tests retry too: this one only grows.
-	if got := db.SetRoleRetryCount() - before; got < 1 {
-		t.Errorf("retry counter grew by %d, want at least 1", got)
+	if got := db.SetRoleRetryCount(db.RetryRecovered) - recovered; got != 1 {
+		t.Errorf("recovered counter grew by %d, want 1", got)
 	}
+	if got := db.SetRoleRetryCount(db.RetryFailed) - failed; got != 0 {
+		t.Errorf("failed counter grew by %d, want 0", got)
+	}
+	assertRetryLog(t, logs, id, db.RetryRecovered)
+}
+
+// assertRetryLog checks the single WARN of DD-34: event set_role_retry with tenant_id and outcome, and
+// nothing that could carry personal data.
+func assertRetryLog(t *testing.T, logs *logRecords, id uuid.UUID, outcome string) {
+	t.Helper()
 	recs := logs.retries()
-	if len(recs) != 1 || recs[0]["level"] != "WARN" || recs[0]["role"] != role {
-		t.Errorf("retry log records = %v, want one WARN with event=set_role_retry and the role", recs)
+	if len(recs) != 1 {
+		t.Fatalf("retry log records = %v, want exactly one", recs)
+	}
+	r := recs[0]
+	if r["level"] != "WARN" || r["tenant_id"] != id.String() || r["outcome"] != outcome {
+		t.Errorf("retry log record = %v, want WARN with tenant_id=%s and outcome=%s", r, id, outcome)
 	}
 }
 
 func TestTxRunner_TheRetryIsSingle(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	id, role := newTenant(t)
-	runner, _ := retryRunner(t)
+	runner, logs := retryRunner(t)
 	var attempts atomic.Int32
 	db.SetFault(runner, func(r string) error {
 		if r == role {
@@ -512,6 +572,8 @@ func TestTxRunner_TheRetryIsSingle(t *testing.T) {
 		}
 		return nil
 	})
+	recovered, failed := db.SetRoleRetryCount(db.RetryRecovered), db.SetRoleRetryCount(db.RetryFailed)
+
 	err := runner.InTenantTx(ctx, id, func(context.Context, db.Tx) error {
 		t.Error("fn ran although the role was never entered")
 		return nil
@@ -519,9 +581,24 @@ func TestTxRunner_TheRetryIsSingle(t *testing.T) {
 	if !errors.Is(err, db.ErrPrivilege) {
 		t.Errorf("err = %v, want ErrPrivilege after the retry also fails", err)
 	}
+	// INV-27: the message names the step, so this ERROR is told apart from an RLS violation inside a query.
+	if err == nil || !strings.Contains(err.Error(), "set role "+role) {
+		t.Errorf("err = %v, want it to name the step %q", err, "set role "+role)
+	}
+	// The role exists (42501): the "was it provisioned?" hint would point the operator the wrong way.
+	if err != nil && strings.Contains(err.Error(), "provisioned") {
+		t.Errorf("err = %v, must not suggest the company was not provisioned", err)
+	}
 	if attempts.Load() != 2 {
 		t.Errorf("SET LOCAL ROLE attempted %d times, want exactly 2", attempts.Load())
 	}
+	if got := db.SetRoleRetryCount(db.RetryFailed) - failed; got != 1 {
+		t.Errorf("failed counter grew by %d, want 1", got)
+	}
+	if got := db.SetRoleRetryCount(db.RetryRecovered) - recovered; got != 0 {
+		t.Errorf("recovered counter grew by %d, want 0", got)
+	}
+	assertRetryLog(t, logs, id, db.RetryFailed)
 }
 
 // No retry for system roles, for AsTenant in the middle of a transaction, or once fn has run.
@@ -579,5 +656,244 @@ func TestTxRunner_NoRetryOutsideTheEntryOfACompany(t *testing.T) {
 		if ran.Load() != 1 || !errors.Is(err, denied) {
 			t.Errorf("fn runs = %d, err = %v; want 1 and the error unchanged", ran.Load(), err)
 		}
+	})
+}
+
+// queryLog is a pgx.QueryTracer that records the SQL of every call, in order.
+type queryLog struct {
+	mu   sync.Mutex
+	sqls []string
+}
+
+func (q *queryLog) TraceQueryStart(ctx context.Context, _ *pgx.Conn, d pgx.TraceQueryStartData) context.Context {
+	q.mu.Lock()
+	q.sqls = append(q.sqls, d.SQL)
+	q.mu.Unlock()
+	return ctx
+}
+
+func (q *queryLog) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {}
+
+// roleCalls returns the recorded calls that touch the role or the membership catalog, in order.
+func (q *queryLog) roleCalls() []string {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	var out []string
+	for _, s := range q.sqls {
+		if u := strings.ToUpper(s); strings.Contains(u, "ROLE") || strings.Contains(u, "PG_AUTH_MEMBERS") {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func tracedPool(t *testing.T) (*pgxpool.Pool, *queryLog) {
+	t.Helper()
+	cfg, err := pgxpool.ParseConfig(pgtest.AppURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := &queryLog{}
+	cfg.ConnConfig.Tracer = q
+	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	return pool, q
+}
+
+// assertOneRoundTripPerSwitch checks every role change left in ONE call, catalog read first, and that
+// the calls, in order, are for the wanted roles. It returns the calls so they can be compared.
+func assertOneRoundTripPerSwitch(t *testing.T, q *queryLog, roles ...string) []string {
+	t.Helper()
+	calls := q.roleCalls()
+	if len(calls) != len(roles) {
+		t.Fatalf("role-related calls = %q, want exactly %d (one per role change)", calls, len(roles))
+	}
+	for i, role := range roles {
+		read := strings.Index(calls[i], "pg_auth_members")
+		set := strings.Index(calls[i], "SET LOCAL ROLE")
+		if read < 0 || set < 0 || read > set {
+			t.Errorf("call %d = %q: want the pg_auth_members read and then SET LOCAL ROLE in the same call", i, calls[i])
+		}
+		if !strings.HasSuffix(calls[i], pgx.Identifier{role}.Sanitize()) {
+			t.Errorf("call %d = %q, want it to switch to %s", i, calls[i], role)
+		}
+	}
+	return calls
+}
+
+// DD-34 defence (1): the catalog read and the SET LOCAL ROLE leave together, in every path that changes
+// the role, and the fixtures that provision companies do the same through the same SQL.
+func TestTxRunner_EveryRoleChangeIsOneRoundTripWithTheCatalogRead(t *testing.T) {
+	ctx := context.Background()
+	id, role := newTenant(t)
+	noop := func(context.Context, db.Tx) error { return nil }
+
+	t.Run("InTenantTx", func(t *testing.T) {
+		pool, q := tracedPool(t)
+		if err := db.NewTxRunner(pool).InTenantTx(ctx, id, noop); err != nil {
+			t.Fatal(err)
+		}
+		assertOneRoundTripPerSwitch(t, q, role)
+	})
+	t.Run("InSystemTx", func(t *testing.T) {
+		pool, q := tracedPool(t)
+		if err := db.NewTxRunner(pool).InSystemTx(ctx, db.RoleAuth, noop); err != nil {
+			t.Fatal(err)
+		}
+		assertOneRoundTripPerSwitch(t, q, "crm_auth")
+	})
+	t.Run("AsTenant", func(t *testing.T) {
+		pool, q := tracedPool(t)
+		err := db.NewTxRunner(pool).InSystemTx(ctx, db.RoleAuth, func(ctx context.Context, tx db.Tx) error {
+			return tx.AsTenant(ctx, id)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertOneRoundTripPerSwitch(t, q, "crm_auth", role)
+	})
+	t.Run("AsSystem", func(t *testing.T) {
+		pool, q := tracedPool(t)
+		err := db.NewTxRunner(pool).InTenantTx(ctx, id, func(ctx context.Context, tx db.Tx) error {
+			return tx.AsSystem(ctx, db.RoleWorker)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertOneRoundTripPerSwitch(t, q, role, "crm_worker")
+	})
+	t.Run("fixture.SetRole sends what the runner sends", func(t *testing.T) {
+		poolR, qR := tracedPool(t)
+		if err := db.NewTxRunner(poolR).InTenantTx(ctx, id, noop); err != nil {
+			t.Fatal(err)
+		}
+		fromRunner := assertOneRoundTripPerSwitch(t, qR, role)
+
+		poolF, qF := tracedPool(t)
+		tx, err := poolF.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+		if err := fixture.SetRole(ctx, tx, role); err != nil {
+			t.Fatal(err)
+		}
+		fromFixture := assertOneRoundTripPerSwitch(t, qF, role)
+		if fromFixture[0] != fromRunner[0] {
+			t.Errorf("fixture.SetRole sent %q, the runner sends %q: the fixtures would not exercise the same defence", fromFixture[0], fromRunner[0])
+		}
+	})
+}
+
+// Cancelling between the first attempt and the retry: no second attempt, ErrCanceled, and nothing is
+// reported, because the outcome of the retry is unknown. Not parallel: it asserts the process-wide counters.
+func TestTxRunner_CancelBetweenTheAttemptAndTheRetryReportsNothing(t *testing.T) {
+	id, role := newTenant(t)
+	runner, logs := retryRunner(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var attempts atomic.Int32
+	db.SetFault(runner, func(r string) error {
+		if r == role {
+			attempts.Add(1)
+			cancel() // the client leaves right after the first refusal
+			return permissionDeniedToSetRole(r)
+		}
+		return nil
+	})
+	recovered, failed := db.SetRoleRetryCount(db.RetryRecovered), db.SetRoleRetryCount(db.RetryFailed)
+
+	err := runner.InTenantTx(ctx, id, func(context.Context, db.Tx) error {
+		t.Error("fn ran although the context was cancelled")
+		return nil
+	})
+	if !errors.Is(err, db.ErrCanceled) {
+		t.Errorf("err = %v, want ErrCanceled", err)
+	}
+	if attempts.Load() != 1 {
+		t.Errorf("SET LOCAL ROLE attempted %d times, want 1 (no second attempt after the cancellation)", attempts.Load())
+	}
+	if n := len(logs.retries()); n != 0 {
+		t.Errorf("%d retry records logged, want none: the retry did not finish", n)
+	}
+	if db.SetRoleRetryCount(db.RetryRecovered) != recovered || db.SetRoleRetryCount(db.RetryFailed) != failed {
+		t.Error("the retry counters moved although the retry did not finish")
+	}
+}
+
+// Only a refused first SET LOCAL ROLE is retried. Not parallel: it asserts the process-wide counters.
+func TestTxRunner_OnlyTheRefusedEntryIsRetried(t *testing.T) {
+	ctx := context.Background()
+	id, _ := newTenant(t)
+	other, _ := newTenant(t)
+	table := fixture.ProbeTable(t, pgtest.OwnerPool(t))
+
+	assertNoRetry := func(t *testing.T, logs *logRecords, recovered, failed int64) {
+		t.Helper()
+		if db.SetRoleRetryCount(db.RetryRecovered) != recovered || db.SetRoleRetryCount(db.RetryFailed) != failed {
+			t.Error("set_role_retry_total moved, want no change")
+		}
+		if n := len(logs.retries()); n != 0 {
+			t.Errorf("%d retry records logged, want none", n)
+		}
+	}
+
+	t.Run("a real RLS violation inside fn", func(t *testing.T) {
+		runner, logs := retryRunner(t)
+		var attempts, ran atomic.Int32
+		db.SetFault(runner, func(string) error { attempts.Add(1); return nil }) // counts entries, never fails
+		recovered, failed := db.SetRoleRetryCount(db.RetryRecovered), db.SetRoleRetryCount(db.RetryFailed)
+
+		err := runner.InTenantTx(ctx, id, func(ctx context.Context, tx db.Tx) error {
+			ran.Add(1)
+			// WITH CHECK of the policy: a row of another company. PostgreSQL answers 42501, like a refused SET ROLE.
+			_, err := tx.Exec(ctx, `INSERT INTO `+table+` (tenant_id, note) VALUES ($1, 'x')`, other)
+			return db.MapError(err) // what a store does with what pgx returns
+		})
+		var pgErr *pgconn.PgError
+		if !errors.Is(err, db.ErrPrivilege) || !errors.As(err, &pgErr) || pgErr.Code != "42501" {
+			t.Fatalf("err = %v, want ErrPrivilege with SQLSTATE 42501", err)
+		}
+		if ran.Load() != 1 || attempts.Load() != 1 {
+			t.Errorf("fn ran %d times and the company was entered %d times, want 1 and 1", ran.Load(), attempts.Load())
+		}
+		if strings.Contains(err.Error(), "set role") {
+			t.Errorf("err = %v: an RLS violation must not look like a refused role switch (INV-27)", err)
+		}
+		assertNoRetry(t, logs, recovered, failed)
+	})
+
+	t.Run("another 42501 while entering", func(t *testing.T) {
+		runner, logs := retryRunner(t)
+		var attempts atomic.Int32
+		db.SetFault(runner, func(string) error {
+			attempts.Add(1)
+			return &pgconn.PgError{Code: "42501", Message: `permission denied for schema app`}
+		})
+		recovered, failed := db.SetRoleRetryCount(db.RetryRecovered), db.SetRoleRetryCount(db.RetryFailed)
+		err := runner.InTenantTx(ctx, id, func(context.Context, db.Tx) error { t.Error("fn ran"); return nil })
+		if !errors.Is(err, db.ErrPrivilege) || attempts.Load() != 1 {
+			t.Errorf("err = %v, attempts = %d; want ErrPrivilege and a single attempt", err, attempts.Load())
+		}
+		assertNoRetry(t, logs, recovered, failed)
+	})
+
+	t.Run("a company without a role", func(t *testing.T) {
+		runner, logs := retryRunner(t)
+		var attempts atomic.Int32
+		db.SetFault(runner, func(string) error { attempts.Add(1); return nil })
+		recovered, failed := db.SetRoleRetryCount(db.RetryRecovered), db.SetRoleRetryCount(db.RetryFailed)
+		err := runner.InTenantTx(ctx, uuid.New(), func(context.Context, db.Tx) error { t.Error("fn ran"); return nil })
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) || pgErr.Code != "22023" {
+			t.Fatalf("err = %v, want SQLSTATE 22023 (nonexistent role in PostgreSQL 18)", err)
+		}
+		if attempts.Load() != 1 {
+			t.Errorf("the company was entered %d times, want a single attempt", attempts.Load())
+		}
+		assertNoRetry(t, logs, recovered, failed)
 	})
 }

@@ -215,10 +215,27 @@ func trustedProxies(raw string) ([]netip.Prefix, error) {
 			}
 			p = netip.PrefixFrom(addr, addr.BitLen())
 		}
+		if p.Addr().Is4In6() {
+			return nil, mappedProxyError(pos, p)
+		}
 		if p.Bits() == 0 {
 			return nil, fmt.Errorf("config: TRUSTED_PROXIES item #%d (%s) would trust every address: the client IP could be forged", pos, p)
 		}
 		out = append(out, p.Masked())
 	}
 	return out, nil
+}
+
+// mappedProxyError rejects an IPv4-mapped IPv6 prefix (::ffff:a.b.c.d/n). A client address is compared
+// unmapped, so such an entry would not mean what it says, and ::ffff:0.0.0.0/96 would be a disguised
+// 0.0.0.0/0. The error suggests the IPv4 form when there is one.
+func mappedProxyError(pos int, p netip.Prefix) error {
+	if p.Bits() < 96 {
+		return fmt.Errorf("config: TRUSTED_PROXIES item #%d (%s) is an IPv4-mapped IPv6 prefix: write the IPv4 directly", pos, p)
+	}
+	v4 := netip.PrefixFrom(p.Addr().Unmap(), p.Bits()-96)
+	if v4.Bits() == 0 {
+		return fmt.Errorf("config: TRUSTED_PROXIES item #%d (%s) is an IPv4-mapped IPv6 prefix that would trust every address: the client IP could be forged", pos, p)
+	}
+	return fmt.Errorf("config: TRUSTED_PROXIES item #%d (%s) is an IPv4-mapped IPv6 prefix: write the IPv4 directly (%s)", pos, p, v4.Masked())
 }

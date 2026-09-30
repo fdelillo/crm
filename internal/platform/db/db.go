@@ -50,7 +50,9 @@ type Tx interface {
 // TxRunner opens the transactions of the application. Business code never touches the pool.
 type TxRunner interface {
 	// InTenantTx runs fn as the role of the company tenantID. It commits if fn returns nil and rolls
-	// back if fn returns an error or panics (the panic continues).
+	// back if fn returns an error or panics (the panic continues). fn runs at most once: if PostgreSQL
+	// refuses the first SET LOCAL ROLE (DD-34) the whole transaction is started again, once, before fn
+	// has done anything; after fn started, nothing is retried.
 	InTenantTx(ctx context.Context, tenantID uuid.UUID, fn func(ctx context.Context, tx Tx) error) error
 	// InSystemTx runs fn as a system role; fn may then move to one company with AsTenant.
 	InSystemTx(ctx context.Context, role SystemRole, fn func(ctx context.Context, tx Tx) error) error
@@ -88,14 +90,33 @@ func NewTxRunner(pool *pgxpool.Pool, opts ...Option) TxRunner {
 	return r
 }
 
-// setRoleRetries counts the entries into a company that were retried after PostgreSQL refused the first
-// SET LOCAL ROLE (see InTenantTx). It is meant to be exported as a metric (expvar, T-B904): a value that
-// grows in production means the stale role-list race of PostgreSQL is happening and the first defence
-// (the pg_auth_members read in setRole) is not enough.
-var setRoleRetries atomic.Int64
+// Outcomes of the retry of DD-34, the values of the label `outcome` of set_role_retry_total and of the log.
+const (
+	// RetryRecovered: the second SET LOCAL ROLE was accepted; the stale role list was the cause.
+	RetryRecovered = "recovered"
+	// RetryFailed: the second attempt was refused too, or the company could not be entered for another reason.
+	RetryFailed = "failed"
+)
 
-// SetRoleRetryCount is the number of retried entries since the process started.
-func SetRoleRetryCount() int64 { return setRoleRetries.Load() }
+var (
+	retriesRecovered atomic.Int64
+	retriesFailed    atomic.Int64
+)
+
+// SetRoleRetryCount is the number of entries into a company that were retried after PostgreSQL refused the
+// first SET LOCAL ROLE (see InTenantTx), by outcome (RetryRecovered or RetryFailed), since the process
+// started. It is the value of set_role_retry_total{outcome}, exported with expvar in T-B904: a value that
+// grows in production means the stale role-list race of PostgreSQL is happening and the first defence
+// (the pg_auth_members read in setRole) is not enough. An unknown outcome counts 0.
+func SetRoleRetryCount(outcome string) int64 {
+	switch outcome {
+	case RetryRecovered:
+		return retriesRecovered.Load()
+	case RetryFailed:
+		return retriesFailed.Load()
+	}
+	return 0
+}
 
 func (r *runner) InTenantTx(ctx context.Context, tenantID uuid.UUID, fn func(ctx context.Context, tx Tx) error) error {
 	enter := func(ctx context.Context, t *tx) error { return t.AsTenant(ctx, tenantID) }
@@ -107,10 +128,18 @@ func (r *runner) InTenantTx(ctx context.Context, tenantID uuid.UUID, fn func(ctx
 	// SET LOCAL ROLE of the transaction, so fn has not done anything and the whole transaction, with its
 	// BEGIN, is started again, once. Never after fn ran, never for system roles, never for AsTenant in the
 	// middle of a transaction (there fn may already have written).
-	setRoleRetries.Add(1)
-	r.logger.WarnContext(ctx, "retrying the entry into a company after SET ROLE was refused",
-		"event", "set_role_retry", "role", TenantRoleName(tenantID))
-	_, err = r.run(ctx, enter, fn)
+	fnStarted, err = r.run(ctx, enter, fn)
+	if !fnStarted && errors.Is(err, ErrCanceled) {
+		return err // the client left between the attempts: the outcome of the retry is unknown, nothing to report
+	}
+	outcome := RetryRecovered
+	counter := &retriesRecovered
+	if !fnStarted && err != nil { // the second entry was refused too (or failed otherwise): fn never ran
+		outcome, counter = RetryFailed, &retriesFailed
+	}
+	counter.Add(1)
+	r.logger.WarnContext(ctx, "retried the entry into a company after SET ROLE was refused",
+		"event", "set_role_retry", "tenant_id", tenantID.String(), "outcome", outcome)
 	return err
 }
 
@@ -188,8 +217,15 @@ func (t *tx) AsTenant(ctx context.Context, tenantID uuid.UUID) error {
 	}
 	role := TenantRoleName(tenantID)
 	if err := t.setRole(ctx, role); err != nil {
-		// MapError so that "permission denied to set role" is ErrPrivilege (INV-19); the message keeps the role.
-		return MapError(fmt.Errorf("db: switching to company role %s (was the company provisioned?): %w", role, err))
+		// MapError so that "permission denied to set role" is ErrPrivilege (INV-19); the message keeps the step
+		// and the role (INV-27: it tells a refused role switch from an RLS violation inside a query). The hint
+		// only fits a role that does not exist (22023 in PostgreSQL 18); with 42501 the role exists.
+		hint := ""
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "22023" {
+			hint = " (was the company provisioned?)"
+		}
+		return MapError(fmt.Errorf("set role %s%s: %w", role, hint, err))
 	}
 	t.tenant, t.bound = tenantID, true
 	return nil
@@ -202,7 +238,7 @@ func (t *tx) AsSystem(ctx context.Context, role SystemRole) error {
 		return fmt.Errorf("db: %q is not a system role", role)
 	}
 	if err := t.setRole(ctx, string(role)); err != nil {
-		return MapError(fmt.Errorf("db: switching to system role %s: %w", role, err))
+		return MapError(fmt.Errorf("set role %s: %w", role, err))
 	}
 	return nil
 }

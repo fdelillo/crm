@@ -296,6 +296,10 @@ func TestLoad_TrustedProxiesErrors(t *testing.T) {
 		{"trust everybody IPv6", "::/0", []string{"TRUSTED_PROXIES", "::/0"}},
 		{"trust everybody inside a list", "10.0.0.0/8,0.0.0.0/0", []string{"TRUSTED_PROXIES", "#2"}},
 		{"invalid CIDR names the position", "10.0.0.0/8,not-a-cidr,192.168.0.0/16", []string{"TRUSTED_PROXIES", "#2"}},
+		{"IPv4-mapped trust everybody", "::ffff:0.0.0.0/96", []string{"TRUSTED_PROXIES", "#1", "IPv4-mapped", "every address"}},
+		{"IPv4-mapped prefix suggests the IPv4", "10.0.0.0/8,::ffff:10.0.0.0/104", []string{"TRUSTED_PROXIES", "#2", "IPv4-mapped", "write the IPv4 directly", "10.0.0.0/8"}},
+		{"IPv4-mapped bare address", "::ffff:10.0.0.1", []string{"TRUSTED_PROXIES", "#1", "IPv4-mapped", "10.0.0.1/32"}},
+		{"IPv4-mapped prefix shorter than /96", "::ffff:0:0/80", []string{"TRUSTED_PROXIES", "#1", "IPv4-mapped", "write the IPv4 directly"}},
 		{"prefix too long", "10.0.0.0/33", []string{"TRUSTED_PROXIES", "#1"}},
 		{"garbage", "???", []string{"TRUSTED_PROXIES", "#1"}},
 	}
