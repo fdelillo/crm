@@ -9,14 +9,102 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
-type AppSpikeItem struct {
-	ID         uuid.UUID
-	TenantID   uuid.UUID
-	Email      string
-	SecretHash []byte
-	Ip         *netip.Addr
-	ParentID   uuid.NullUUID
-	CreatedAt  time.Time
+type AppAuditLog struct {
+	ID          uuid.UUID
+	TenantID    uuid.UUID
+	OccurredAt  time.Time
+	ActorUserID uuid.NullUUID
+	Action      string
+	TargetType  pgtype.Text
+	TargetID    uuid.NullUUID
+	Data        []byte
+	Ip          *netip.Addr
+	UserAgent   pgtype.Text
+	RequestID   pgtype.Text
+}
+
+type AppLoginThrottle struct {
+	EmailHmac     []byte
+	FailedCount   int32
+	FirstFailedAt time.Time
+	LastFailedAt  time.Time
+	LockedUntil   *time.Time
+}
+
+type AppOutboxMessage struct {
+	ID            uuid.UUID
+	TenantID      uuid.UUID
+	Kind          string
+	Template      string
+	Recipient     string
+	Payload       []byte
+	Status        string
+	Attempts      int32
+	NextAttemptAt time.Time
+	LastError     pgtype.Text
+	CreatedAt     time.Time
+	SentAt        *time.Time
+	FailedAt      *time.Time
+}
+
+type AppSession struct {
+	ID            uuid.UUID
+	TenantID      uuid.UUID
+	UserID        uuid.UUID
+	TokenHash     []byte
+	CreatedAt     time.Time
+	LastSeenAt    time.Time
+	ExpiresAt     time.Time
+	RevokedAt     *time.Time
+	RevokedReason pgtype.Text
+	Ip            *netip.Addr
+	UserAgent     pgtype.Text
+}
+
+type AppTenant struct {
+	ID                      uuid.UUID
+	Name                    string
+	LegalName               pgtype.Text
+	TaxID                   pgtype.Text
+	Address                 pgtype.Text
+	Phone                   pgtype.Text
+	Email                   pgtype.Text
+	LogoObjectKey           pgtype.Text
+	LogoContentType         pgtype.Text
+	BaseCurrency            string
+	Timezone                string
+	IndustryTemplateCode    string
+	IndustryTemplateVersion int32
+	CreatedAt               time.Time
+	UpdatedAt               time.Time
+}
+
+type AppUser struct {
+	ID              uuid.UUID
+	TenantID        uuid.UUID
+	Email           string
+	Name            pgtype.Text
+	PasswordHash    pgtype.Text
+	Role            string
+	Status          string
+	EmailVerifiedAt *time.Time
+	StatusChangedAt time.Time
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+type AppUserToken struct {
+	ID              uuid.UUID
+	TenantID        uuid.UUID
+	UserID          uuid.UUID
+	Purpose         string
+	TokenHash       []byte
+	CreatedByUserID uuid.NullUUID
+	CreatedAt       time.Time
+	ExpiresAt       time.Time
+	UsedAt          *time.Time
+	RevokedAt       *time.Time
 }

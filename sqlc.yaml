@@ -3,12 +3,10 @@
 version: "2"
 
 sql:
-  # Spike T-B008: parsing of CREATE POLICY and column-level GRANT. Removed once Phase 1 has real queries.
+  # Canary (T-B008 spike): queries over the real schema. Removed when the first module has queries.
   - name: spike
     engine: postgresql
-    schema:
-      - db/migrations
-      - internal/testsupport/sqlcspike/schema.sql
+    schema: db/migrations
     queries: internal/testsupport/sqlcspike/queries.sql
     gen:
       go:

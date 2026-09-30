@@ -36,6 +36,7 @@ const (
 type cluster struct {
 	container *postgres.PostgresContainer
 	ownerURL  string
+	appURL    string
 	app       *pgxpool.Pool
 	owner     *pgxpool.Pool
 	super     *pgxpool.Pool
@@ -88,6 +89,10 @@ func SuperuserPool(t testing.TB) *pgxpool.Pool { t.Helper(); return get(t).super
 
 // OwnerURL is the connection URL of crm_owner, for tests that run the migrations themselves.
 func OwnerURL(t testing.TB) string { t.Helper(); return get(t).ownerURL }
+
+// AppURL is the connection URL of crm_app, for tests that need their own pool (for example a pool of
+// a single connection to observe what a connection looks like after a transaction).
+func AppURL(t testing.TB) string { t.Helper(); return get(t).appURL }
 
 // ApplyBootstrap runs db/bootstrap/ again inside the container, as a DBA would, to check it is
 // idempotent. It runs the same file the container executed at startup.
@@ -176,6 +181,7 @@ func startCluster(ctx context.Context) (*cluster, error) {
 		return u.String()
 	}
 	c.ownerURL = dsn("crm_owner", ownerPassword)
+	c.appURL = dsn("crm_app", appPassword)
 
 	if err := migrate(ctx, c.ownerURL); err != nil {
 		c.close()
@@ -215,8 +221,16 @@ func migrate(ctx context.Context, ownerURL string) error {
 
 func (c *cluster) close() {
 	for _, p := range []*pgxpool.Pool{c.app, c.owner, c.super} {
-		if p != nil {
-			p.Close()
+		if p == nil {
+			continue
+		}
+		// Close waits for every acquired connection to come back; a test that leaked one must not
+		// hang the whole package (and leave the container running).
+		done := make(chan struct{})
+		go func() { p.Close(); close(done) }()
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
 		}
 	}
 	if c.container != nil {
