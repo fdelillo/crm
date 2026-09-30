@@ -11,6 +11,10 @@ invitados (§2.6). Sin columnas, tablas ni índices nuevos; cambian la política
 **Segunda revisión 2026-09-29**: hallazgo H-11 (plan §18): límites exactos del archivo del logo
 (§2.1) y tratamiento de sus metadatos (§5). Sin cambios de esquema: el tamaño no se guarda en la
 base.
+**Tercera revisión 2026-09-30**: documentación alineada con lo implementado en la Fase 1 y con el
+checklist de §6 (`sessions.tenant_id` y `user_tokens.tenant_id` tienen FK a `tenants(id)`, §2.3 y
+§2.4); lock de `GRANT crm_tenant` en el aprovisionamiento (§3.3, DD-33); origen de las columnas
+`ip` (DD-32); archivos de las queries de sistema (§3.4, plan §4.4). Sin cambios de esquema.
 
 DDL **conceptual**: define tablas, tipos, constraints, índices, políticas y privilegios. No es
 una migración ejecutable: las migraciones goose las escribe quien implementa, respetando esto.
@@ -139,6 +143,10 @@ erDiagram
 `login_throttles` no se relaciona con ninguna tabla a propósito: se indexa por HMAC del email
 exista o no la cuenta (DD-7).
 
+Toda tabla con `tenant_id` tiene **dos** clases de FK hacia la empresa: `tenant_id → tenants(id)`
+(la empresa existe) y, cuando referencia otra tabla de empresa, una FK **compuesta** que incluye
+`tenant_id` (la fila referida es de la misma empresa, INV-07). Las tablas de §2 listan ambas.
+
 ---
 
 ## 2. Tablas
@@ -216,7 +224,7 @@ con `users_tenant_created_idx`; no justifica un índice propio. Solo cuentan `st
 | Columna | Tipo | Null | Constraint / default | Notas |
 |---|---|:---:|---|---|
 | `id` | `uuid` | no | PK, default `uuidv7()` | |
-| `tenant_id` | `uuid` | no | | |
+| `tenant_id` | `uuid` | no | FK → `tenants(id)` | |
 | `user_id` | `uuid` | no | FK `(tenant_id, user_id)` → `users(tenant_id, id)` | |
 | `token_hash` | `bytea` | no | `sessions_token_hash_key UNIQUE`; `octet_length = 32` | 🔒 SHA-256 del token de la cookie |
 | `created_at` | `timestamptz` | no | default `now()` | |
@@ -224,7 +232,7 @@ con `users_tenant_created_idx`; no justifica un índice propio. Solo cuentan `st
 | `expires_at` | `timestamptz` | no | `expires_at > created_at` | Vencimiento absoluto: `created_at + 7 días` (P-5) |
 | `revoked_at` | `timestamptz` | sí | | |
 | `revoked_reason` | `text` | sí | `IN ('logout','password_reset','user_disabled')`; `(revoked_at IS NULL) = (revoked_reason IS NULL)` | |
-| `ip` | `inet` | sí | | 🔒 |
+| `ip` | `inet` | sí | | 🔒 IP del cliente según `httpx.ClientIP` (DD-32): detrás de un proxy de confianza, la de `X-Forwarded-For`; nunca la del proxy |
 | `user_agent` | `text` | sí | `<= 512` | 🔒 |
 
 Una sesión es **válida** si `revoked_at IS NULL AND $now < expires_at AND $now < last_seen_at +
@@ -251,7 +259,7 @@ a todas en el siguiente request.
 | Columna | Tipo | Null | Constraint / default | Notas |
 |---|---|:---:|---|---|
 | `id` | `uuid` | no | PK, default `uuidv7()` | |
-| `tenant_id` | `uuid` | no | | |
+| `tenant_id` | `uuid` | no | FK → `tenants(id)` | |
 | `user_id` | `uuid` | no | FK `(tenant_id, user_id)` → `users(tenant_id, id)` | Destinatario |
 | `purpose` | `text` | no | `IN ('email_verification','password_reset','invitation')` | |
 | `token_hash` | `bytea` | no | `user_tokens_token_hash_key UNIQUE`; `octet_length = 32` | 🔒 SHA-256 |
@@ -292,7 +300,7 @@ revoca la anterior antes de crear la nueva, y la limpieza periódica no borra la
 | `recipient` | `text` | no | `<= 254` | 🔒 |
 | `payload` | `jsonb` | sí | ver `outbox_scrub_chk` | 🔒 Parámetros de la plantilla, **incluido el token en claro** |
 | `status` | `text` | no | `IN ('pending','sent','failed')`, default `'pending'` | |
-| `attempts` | `integer` | no | default `0`, `>= 0` | |
+| `attempts` | `integer` | no | default `0`, `>= 0` | No aumenta si el envío se interrumpe por el apagado del proceso (plan §9.4) |
 | `next_attempt_at` | `timestamptz` | no | default `now()` | |
 | `last_error` | `text` | sí | `<= 1000` | Sin datos personales (código SMTP y mensaje del proveedor truncado) |
 | `created_at` | `timestamptz` | no | default `now()` | |
@@ -326,7 +334,7 @@ Constraints de tabla:
 | `target_type` | `text` | sí | `<= 40` | `user`, `tenant`, `session` |
 | `target_id` | `uuid` | sí | | Sin FK (polimórfico) |
 | `data` | `jsonb` | no | default `'{}'` | Detalles **sin** secretos (nunca contraseñas ni tokens) |
-| `ip` | `inet` | sí | | 🔒 |
+| `ip` | `inet` | sí | | 🔒 IP del cliente según `httpx.ClientIP` (DD-32) |
 | `user_agent` | `text` | sí | `<= 512` | 🔒 |
 | `request_id` | `text` | sí | `<= 64` | Correlación con logs |
 
@@ -432,7 +440,15 @@ proteger; el nombre del rol es determinístico a partir del `id` de la empresa. 
   el mismo estado. Arma las sentencias con `format('%I', ...)`.
 - Corre dentro de la transacción del registro: si el registro hace `ROLLBACK`, el rol no queda
   creado (`CREATE ROLE` es transaccional en PostgreSQL).
-- La usan también `crm tenants reprovision-roles` (ops) y los tests.
+- **Lock (DD-33, nota 2026-09-30 en ADR-005)**: desde PostgreSQL 16, el
+  `GRANT crm_tenant TO crm_t_<hex>` toma un lock sobre `crm_tenant` que dura **hasta el fin de la
+  transacción que llamó a la función**. Dos registros concurrentes se serializan: el segundo espera
+  a que el primero haga `COMMIT` o `ROLLBACK`. Por eso la transacción de registro fija
+  `lock_timeout = '2s'` y no hace E/S de red después de llamar a la función (R-a y R-b de DD-33), y
+  la reprovisión usa una transacción por empresa (R-d). El `GRANT` del rol nuevo a `crm_app` toma
+  lock sobre el rol nuevo, que nadie más usa: no compite.
+- La usan también `crm tenants reprovision-roles` (ops) y los tests. La llamada vive en
+  `internal/tenant/store/provisioning.sql` (plan §4.4).
 
 ### 3.4 Privilegios y políticas por tabla
 
@@ -479,6 +495,12 @@ Notas sobre estas decisiones:
   pase un valor equivocado.
 - Columnas de ruteo por rol de sistema = el conjunto que fija el test T-B109 (INV-05).
 - Ningún rol de runtime tiene `DELETE` sobre `users`, `tenants` ni `audit_log`.
+- **Dónde viven las queries de los roles de sistema**: en cuatro archivos con ruta exacta, uno por
+  módulo dueño de las tablas (plan §4.4): `identity/store/auth_lookup.sql` (`crm_auth`),
+  `identity/store/cleanup.sql` (`crm_worker`: `sessions`, `user_tokens`, `login_throttles`),
+  `platform/outbox/store/worker.sql` (`crm_worker`: `outbox_messages`) y
+  `tenant/store/provisioning.sql` (`crm_worker` sobre `tenants(id)` y la llamada a la función de
+  §3.3). Son las únicas excepciones al filtro por `tenant_id` que admite T-B112.
 
 ### 3.5 Esquemas y funciones
 
@@ -520,7 +542,7 @@ filtra hasta el JSON.
 | Hash de contraseña | `users.password_hash` | Secreto | Nunca sale del módulo `identity`; nunca en respuestas ni logs |
 | Hash de tokens | `sessions.token_hash`, `user_tokens.token_hash` | Secreto derivado | Solo comparación |
 | Token en claro | `outbox_messages.payload` (solo `pending`) | Secreto | Borrado obligatorio al terminar (`outbox_scrub_chk`) |
-| IP y user agent | `sessions`, `audit_log` | Personal | Retención: sesiones hasta la limpieza; auditoría indefinida (S-5) |
+| IP y user agent | `sessions`, `audit_log` | Personal | La IP es la del cliente según DD-32 (no la del proxy). Retención: sesiones hasta la limpieza; auditoría indefinida (S-5) |
 | CUIT, dirección, teléfono, email de la empresa | `tenants` | Comercial; personal si es persona humana | Solo visible dentro de la empresa; las respuestas de la API llevan `Cache-Control: no-store` (DD-28) |
 | Logo de la empresa | S3 (clave en `tenants.logo_object_key`) | Comercial; **personal si un JPEG conserva metadatos EXIF** (ubicación GPS, datos del dispositivo) | `private, no-cache` + `ETag` por objeto: nunca se reutiliza sin revalidar con la sesión actual (DD-23). El servidor guarda los bytes sin modificar: la SPA vuelve a codificar todo JPEG y así quita el EXIF (DD-F21 de `ui.md`), pero un cliente que no sea la SPA podría subir un JPEG con EXIF. Riesgo aceptado (R-13 del plan): solo lo sube un Administrador de la empresa y solo lo ve esa empresa |
 | HMAC de email | `login_throttles.email_hmac` | Seudónimo | Borrado a las 24 h sin fallos |
@@ -562,3 +584,6 @@ y lo reactiva antes de terminar (ADR-004): queda explícito y versionado.
 6. Si la tabla referencia un archivo que se sirve por el backend (adjuntos de 004, PDF de 005), la
    respuesta que lo sirve sigue la política de caché del logo (DD-23, nota en ADR-011), y la
    subida define su límite de archivo y de cuerpo como el logo (DD-31).
+7. Si un rol de sistema necesita leerla o limpiarla sin empresa conocida, la query va en el archivo
+   de sistema **del módulo dueño de la tabla** y ese archivo se agrega a la tabla de plan §4.4 y a
+   la lista de excepciones de T-B112 (es una decisión de diseño, no un detalle de implementación).

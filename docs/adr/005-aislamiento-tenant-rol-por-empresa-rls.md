@@ -4,6 +4,30 @@
 **Fecha**: 2026-09-27
 **Origen**: spec 001 (`plan.md` §4.2–4.4, `data-model.md` §3)
 
+> **Nota 2026-09-30 (consecuencia descubierta en la implementación; no cambia la decisión)**: desde
+> PostgreSQL 16, `GRANT <rol> TO x` toma un lock sobre el rol concedido que dura hasta el fin de la
+> transacción. `provision_tenant_role` hace `GRANT crm_tenant TO crm_t_<hex>`, así que **todos los
+> registros de empresa se serializan** sobre `crm_tenant` mientras dura su transacción. El revisor
+> de la Fase 1 lo verificó: con una transacción de aprovisionamiento abierta, una segunda cae por
+> el `statement_timeout` de `crm_app` (5 s) dentro del `GRANT`. No se puede evitar sin romper la
+> atomicidad del registro (INV-14): el rol de la empresa necesita esa membresía antes de insertar
+> sus filas. Se acepta a la escala del MVP (los registros son raros) con estas restricciones, que
+> fija DD-33 del plan de 001:
+>
+> - **R-a**: la transacción de registro corre con `SET LOCAL lock_timeout = '2s'`; si se vence,
+>   `55P03` → `503 service_unavailable` con `Retry-After`, y no se crea nada (ni el rol).
+> - **R-b**: desde `provision_tenant_role` hasta el `COMMIT` no hay E/S de red y el objetivo es
+>   p95 < 250 ms; se mide con registros concurrentes en T-B905.
+> - **R-c**: el sembrado de plantillas de la spec 002 corre dentro de esa transacción solo si entra
+>   en el presupuesto de R-b; si no, el plan de 002 lo rediseña (restricción heredada).
+> - **R-d**: `crm tenants reprovision-roles` usa una transacción por empresa y no corre en
+>   paralelo consigo mismo.
+>
+> Es además un argumento concreto para la comparación con la **alternativa B** (sin roles por
+> empresa no hay `GRANT` por registro): si T-B905 o el hosting (P-1) lo piden, la salida es un ADR
+> que reemplace a este por B. Mejora intermedia evaluada y postergada: un *pool* de roles creados
+> de antemano (research R-04c del plan de 001).
+
 ## Contexto
 
 La constitución (principio III) exige que todo dato de negocio pertenezca a una empresa, que toda

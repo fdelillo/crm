@@ -6,6 +6,9 @@ actualizadas con las respuestas del usuario.
 **Revisión 2026-09-29**: R-19 a R-23 agregadas por los hallazgos H-1 a H-9 del frontend (plan §18).
 **Segunda revisión 2026-09-29**: R-23 reescrita por el hallazgo H-10 (HTTPS local con mkcert,
 decisión del usuario); R-24 agregada por H-11 (límite exacto del logo y del cuerpo multipart).
+**Tercera revisión 2026-09-30**: decisiones previas a la Fase 2 aprobadas por el usuario: R-04c
+ampliada (lock de `GRANT crm_tenant`, DD-33); R-25 (IP del cliente detrás de proxies, DD-32), R-26
+(`405 method_not_allowed`) y R-27 (cancelaciones del cliente) agregadas.
 
 Alternativas evaluadas por decisión. Las marcadas **(usuario)** las tomó el usuario antes del
 plan: acá se documenta por qué son razonables y qué cuestan. Las demás son defaults del
@@ -51,8 +54,8 @@ pide FR-007. (Desde 2026-09-29, chi atiende solo `/api/`; el reparto de primer n
 
 | Opción | Cómo funciona | A favor | En contra |
 |---|---|---|---|
-| **A. Rol por empresa + RLS forzada** (elegida por el usuario) | Cada empresa tiene `crm_t_<hex>`; cada transacción hace `SET LOCAL ROLE`; las políticas comparan `tenant_id` con la empresa derivada de `current_user` | Falla cerrada (el rol de login no tiene privilegios); la identidad de la empresa es la identidad de base (`pg_stat_activity`, logs por usuario); se pueden fijar límites por empresa (`ALTER ROLE ... SET`) | Requiere `CREATEROLE` en el flujo de registro; roles globales al clúster (backups, restores, entornos); `crm_app` miembro de miles de roles (rendimiento a medir); re-análisis de planes al cambiar de rol; bootstrap fuera de las migraciones |
-| B. Rol único `crm_tenant` + `SET LOCAL app.tenant_id` | Cada transacción hace `SET LOCAL ROLE crm_tenant` y fija una variable; las políticas usan `current_setting('app.tenant_id')` | Misma falla cerrada si `crm_app` tampoco tiene privilegios; sin `CREATEROLE`; cero operación extra; patrón muy documentado | La empresa es una variable, no una identidad de base; menos trazabilidad en `pg_stat_activity` |
+| **A. Rol por empresa + RLS forzada** (elegida por el usuario) | Cada empresa tiene `crm_t_<hex>`; cada transacción hace `SET LOCAL ROLE`; las políticas comparan `tenant_id` con la empresa derivada de `current_user` | Falla cerrada (el rol de login no tiene privilegios); la identidad de la empresa es la identidad de base (`pg_stat_activity`, logs por usuario); se pueden fijar límites por empresa (`ALTER ROLE ... SET`) | Requiere `CREATEROLE` en el flujo de registro; roles globales al clúster (backups, restores, entornos); `crm_app` miembro de miles de roles (rendimiento a medir); re-análisis de planes al cambiar de rol; bootstrap fuera de las migraciones; **registros serializados por el lock de `GRANT crm_tenant`** (R-04c) |
+| B. Rol único `crm_tenant` + `SET LOCAL app.tenant_id` | Cada transacción hace `SET LOCAL ROLE crm_tenant` y fija una variable; las políticas usan `current_setting('app.tenant_id')` | Misma falla cerrada si `crm_app` tampoco tiene privilegios; sin `CREATEROLE`; cero operación extra; patrón muy documentado; sin `GRANT` por registro | La empresa es una variable, no una identidad de base; menos trazabilidad en `pg_stat_activity` |
 | C. Solo filtro en la aplicación | `WHERE tenant_id = $1` en cada query | Simple | Viola la constitución (principio III exige RLS) |
 | D. Esquema por empresa | Un esquema por empresa, `search_path` por transacción | Aislamiento físico por esquema | Migraciones × N esquemas; miles de esquemas; `search_path` es otra variable manipulable |
 | E. Base por empresa | Una base por empresa | Aislamiento fuerte | Pool por empresa, migraciones × N, costo de hosting; desproporcionado para pymes |
@@ -77,18 +80,42 @@ hosting planteado en la pregunta P-1 (sigue abierta).
 
 | Opción | A favor | En contra | Veredicto |
 |---|---|---|---|
-| **Roles de sistema con privilegio por columna + política `USING (true)` solo para esas columnas** | Simple (GRANT de columnas, sin funciones); la fase 2 corre bajo RLS | Un bug en una query de fase 1 puede listar `(id, tenant_id, email)` de todas las empresas | **Elegida**, con el riesgo acotado por el test de privilegios T-B109 y un archivo de queries propio (`auth_lookup.sql`) |
+| **Roles de sistema con privilegio por columna + política `USING (true)` solo para esas columnas** | Simple (GRANT de columnas, sin funciones); la fase 2 corre bajo RLS | Un bug en una query de fase 1 puede listar `(id, tenant_id, email)` de todas las empresas | **Elegida**, con el riesgo acotado por el test de privilegios T-B109 y archivos de queries propios con ruta exacta (plan §4.4) |
 | Funciones `SECURITY DEFINER` por lookup (`lookup_user_by_email(text)`) | Imposible enumerar aun con bug: solo devuelve una fila por email exacto | Un rol dueño por función con su propia política; más objetos que mantener y entender | Descartada por complejidad; es la mejora natural si el riesgo residual se considera inaceptable |
 | Tabla global de directorio (`email → tenant_id`) sin RLS | Muy simple | Otra tabla que mantener sincronizada; mismo riesgo de enumeración | Descartada |
 | Selector de empresa en el login | Sin lookup global | Contradice "un usuario, una empresa" y agrega un paso al usuario (principio I) | Descartada |
+
+Dónde viven esas queries (2026-09-30): una ruta exacta por módulo dueño de las tablas, para que
+`queryrules` (T-B112) pueda eximir archivos y no patrones.
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Un archivo de sistema por módulo dueño de la tabla** (`identity/store/auth_lookup.sql`, `identity/store/cleanup.sql`, `platform/outbox/store/worker.sql`, `tenant/store/provisioning.sql`) | Respeta ADR-001 (un módulo no lee tablas de otro); la lista de excepciones es corta y revisable | La limpieza de tablas de `identity` necesita un gancho en el `Dispatcher` (tareas periódicas registradas por `internal/app`) | **Elegida** |
+| Todas las queries de `crm_worker` en `platform/outbox/store/worker.sql` | Un solo archivo | `platform` leería y borraría tablas de `identity` y `tenant`, rompiendo ADR-001 y `depguard` a nivel de SQL | Descartada |
+| Eximir por nombre de archivo en cualquier carpeta | Flexible | Cualquiera puede crear un `worker.sql` nuevo y saltearse el filtro sin que nadie lo decida | Descartada (el detector ya marca los homónimos fuera de lugar) |
 
 ### R-04c Cómo se crea el rol de una empresa
 
 | Opción | A favor | En contra | Veredicto |
 |---|---|---|---|
-| **Función `SECURITY DEFINER` dueña `crm_provisioner` (con `CREATEROLE`), ejecutable solo por `crm_signup`** | `crm_app` no puede crear roles arbitrarios; entrada tipada `uuid`; idempotente; transaccional con el registro | Un objeto más; la función la crea una migración con `SET ROLE crm_provisioner` | **Elegida** |
+| **Función `SECURITY DEFINER` dueña `crm_provisioner` (con `CREATEROLE`), ejecutable solo por `crm_signup`** | `crm_app` no puede crear roles arbitrarios; entrada tipada `uuid`; idempotente; transaccional con el registro | Un objeto más; la función la crea una migración con `SET ROLE crm_provisioner`; **serializa los registros** (abajo) | **Elegida** |
 | `crm_app` con `CREATEROLE` | Simple | Cualquier código (o inyección) bajo `crm_app` crea roles y se otorga membresías | Descartada |
 | Crear roles fuera de línea (job/DBA) | Sin `CREATEROLE` en runtime | El registro deja de ser autónomo e inmediato (FR-001, SC-001) | Descartada |
+
+**Lock de `GRANT crm_tenant` (2026-09-30, DD-33, nota en ADR-005).** Desde PostgreSQL 16,
+`GRANT <rol> TO x` toma un lock sobre el rol concedido hasta el fin de la transacción. Como la
+función hace `GRANT crm_tenant TO crm_t_<hex>`, los registros concurrentes esperan uno detrás de
+otro sobre `crm_tenant`. El revisor de la Fase 1 lo verificó con un test: con una transacción de
+aprovisionamiento abierta, la segunda cae por el `statement_timeout` de `crm_app` (5 s) dentro del
+`GRANT`. Qué hacer:
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Aceptar la serialización y acotarla**: `lock_timeout = '2s'` en la transacción de registro (`55P03` → `503` con `Retry-After`), sin E/S de red después de aprovisionar (p95 < 250 ms), sembrado de 002 solo si entra en ese presupuesto, reprovisión con una transacción por empresa | Sin cambios de modelo; a la escala del MVP (registros raros) la espera real es de milisegundos; la falla, si ocurre, es clara y reintentable, nunca un `500` | Un pico de registros simultáneos puede dar algunos `503`; hay que vigilar la duración de la transacción de registro (T-B905) | **Elegida** |
+| Hacer el `GRANT` en una transacción previa y separada | Sin lock durante el resto del registro | Rompe INV-14: si el registro falla queda un rol huérfano con membresía; dos pasos que coordinar | Descartada |
+| *Pool* de roles creados de antemano (un job crea roles `crm_t_*` con su membresía, uno por transacción; el registro reclama uno con `FOR UPDATE SKIP LOCKED` y usa su UUID como `tenants.id`) | Elimina el lock del camino del registro | Redefine INV-14 (el rol existe antes que la empresa); una tabla y un job más; roles sin empresa que inventariar | Postergada: mejora natural si T-B905 no cumple |
+| Alternativa B de ADR-005 (sin roles por empresa) | Elimina el problema de raíz | Es cambiar la decisión del usuario | Salida si T-B905 o P-1 lo piden (ADR que reemplace a ADR-005) |
+| Subir `statement_timeout` | Cero código | La espera sigue ahí, más larga y con conexiones del pool retenidas | Descartada |
 
 ## R-05 Migraciones **(usuario: goose embebido)** → ADR-004
 
@@ -284,6 +311,8 @@ invitación no agregaría protección.
 | En PostgreSQL | Compartido entre instancias | Escritura por request anónimo | Descartada hasta tener varias instancias |
 | En el proxy (nginx, Cloudflare) | Fuera de la app | Depende del hosting aún no elegido | Complemento posible (también contra enumeración distribuida por el registro) |
 
+La IP que usa el rate limit sale de `httpx.ClientIP` y se agrupa por /64 en IPv6 (R-25).
+
 ## R-18 Logs y métricas → DD-12
 
 | Opción | A favor | En contra | Veredicto |
@@ -304,10 +333,10 @@ tráfico sin romper los tests de rutas.
 | Router chi raíz con un subrouter `/api` y la SPA en otro subrouter | Todo chi | Mismo problema de `Walk` (hay que filtrar); más difícil de explicar que tres líneas de `ServeMux` | Descartada |
 | Proxy delante (nginx/Caddy) que separa `/api` de los estáticos | Separación en infraestructura | Otro proceso y hosting sin definir (P-1); contradice el binario único de ADR-019 | Descartada |
 
-Dónde van los middlewares: los que valen para cualquier respuesta (request id, recover, logging,
-cabeceras de seguridad, `CrossOriginProtection`) envuelven al mux raíz; los que son de la API
-(`no-store`, rate limit, sesión, permisos) quedan dentro de chi; los de la SPA (CSP, caché por
-tipo de archivo, gzip) dentro de `web`.
+Dónde van los middlewares: los que valen para cualquier respuesta (IP del cliente, request id,
+recover, logging, cabeceras de seguridad, `CrossOriginProtection`) envuelven al mux raíz; los que
+son de la API (`no-store`, rate limit, sesión, permisos) quedan dentro de chi; los de la SPA (CSP,
+caché por tipo de archivo, gzip) dentro de `web`.
 
 ## R-20 Caché del logo por empresa (H-2) → DD-23
 
@@ -423,6 +452,61 @@ Metadatos EXIF en el servidor:
 | Quitar los segmentos EXIF en Go sin decodificar | Sin GPS en el bucket | Se pierde la orientación sin aplicarla (la foto queda de costado); código de parseo de JPEG propio | Descartada |
 | Decodificar y volver a codificar en Go | Limpieza total | Decodificar imágenes en el servidor es superficie de DoS; pérdida de calidad; cambia el comportamiento del backend | Descartada |
 
+## R-25 IP del cliente detrás de proxies (`X-Forwarded-For`) → DD-32
+
+Contexto: hoy la IP sale de `RemoteAddr`. Detrás del proxy del hosting (P-1 abierta) sería la IP
+del proxy: el rate limit por IP (DD-9) pasaría a ser **global** (un atacante agota el cupo de
+todos) y los logs, las sesiones y la auditoría quedarían con una IP inútil. La política tiene que
+poder configurarse sin conocer todavía el hosting.
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **`TRUSTED_PROXIES` (lista de CIDR, vacía por defecto) + `X-Forwarded-For` leído de derecha a izquierda salteando los proxies de confianza** | Sin configurar no se confía en nadie (seguro por defecto); la IP que se toma es la que agregó un proxy propio, no la que escribió el cliente; funciona con uno o varios proxies; se configura en el despliegue | Una variable más; si se olvida detrás de un proxy, el rate limit por IP vuelve a ser global (runbook) | **Elegida** |
+| Tomar la IP de más a la izquierda de XFF | Trivial | La escribe el cliente: esquiva el rate limit y ensucia la auditoría con IPs falsas | Descartada |
+| `TRUSTED_HOPS=n` (tomar la n-ésima desde la derecha) | Una sola cifra | Se rompe en silencio si cambia la topología o si alguien llega directo sin pasar por el proxy (tomaría una IP que puso el cliente) | Descartada |
+| Leer también `Forwarded` (RFC 7239) y `X-Real-IP` | Más proxies soportados | Tres cabeceras que el cliente puede enviar y hay que reconciliar; los proxies comunes agregan XFF | Descartada por ahora (se agrega si el hosting elegido lo exige) |
+| Esperar a elegir el hosting (P-1) | Sin trabajo ahora | Bloquea la Fase 2 (rate limit y logs) sin necesidad | Descartada |
+
+Detalles:
+
+| Tema | Opción elegida | Alternativa descartada y por qué |
+|---|---|---|
+| Valores peligrosos | `0.0.0.0/0` y `::/0` rechazados al arrancar | Aceptarlos: equivale a confiar en cualquier cliente (IP falsificable) |
+| Entrada mal formada en XFF antes de encontrar la IP del cliente | Usar `RemoteAddr` y registrar `WARN` | Ignorarla y seguir: a la izquierda solo hay valores del cliente |
+| Normalización | `netip.Addr.Unmap()` (una IPv4 escrita como IPv6 cuenta como IPv4), sin puerto | Comparar texto crudo: la misma IP podría tener dos claves de rate limit |
+| Clave del rate limit en IPv6 | Prefijo /64 (IPv4: la dirección) | Dirección completa: un cliente IPv6 controla al menos un /64 y rota direcciones para esquivar el límite |
+| Dónde se calcula | Un middleware (`httpx.ClientIP`) al principio de la cadena común; el resto lee el valor del contexto | Cada consumidor lee cabeceras: se desalinean y es fácil que uno confíe en XFF |
+
+## R-26 Código de error para `405` → contrato v0.4.0
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **`method_not_allowed` en `ErrorCode`, con cabecera `Allow`, como regla global del contrato** | El `code` coincide con el status; la UI lo muestra como error de programación; el mapa exhaustivo de mensajes del frontend obliga a darle texto | Un valor más en el enum (versión *minor*) | **Elegida** |
+| Seguir usando `malformed_request` | Sin cambios de contrato | Es el código de los `400`: la UI mostraría "revisá los datos" ante un error de programación | Descartada |
+| `not_found` | Sin cambios de contrato | Oculta un error distinto (la ruta existe) y rompe la cabecera `Allow` | Descartada |
+
+`Allow` con chi v5.3.2 (verificado en el código fuente, `mux.go` líneas 411–418 y 521–532): el
+manejador de `405` **por defecto** de chi agrega `Allow` con los métodos de la ruta, pero un
+manejador propio registrado con `MethodNotAllowed` (el nuestro, para responder problem+json) se
+llama **sin** esa lista, y el campo que la guarda (`methodsAllowed`) no es exportado. Por eso el
+manejador propio arma `Allow` preguntándole al router por cada método con `Mux.Match(
+chi.NewRouteContext(), método, ruta)`, que es lo que ya hace `internal/app/root.go`.
+
+## R-27 Cancelaciones del cliente (`context.Canceled`) → plan §9.2
+
+Contexto: con pgx v5.11, cuando el contexto del request se cancela (el cliente cortó la
+conexión) la query devuelve `context.Canceled` sin envolver en un error de PostgreSQL. Hoy queda
+sin clasificar y termina en `500 internal` con log `ERROR`.
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **`db.ErrCanceled`; la capa HTTP no responde si el cliente se fue (log `INFO`, `status=499` solo en el log) y responde `503` si la cancelación vino de otro lado (apagado)** | Los `ERROR` quedan para bugs reales; no se escribe a una conexión cerrada; el apagado sigue dando una respuesta reintentable | Un centinela y una rama más | **Elegida** |
+| Mapear a `ErrUnavailable` (`503`) | Sin centinela nuevo | Cuenta como caída de la base y dispara alertas por culpa de clientes que se fueron | Descartada |
+| Dejarlo como `500` | Cero trabajo | `ERROR` falsos que tapan los bugs reales | Descartada |
+
+En el worker, una cancelación por apagado deja el mensaje como estaba (`pending`, sin sumar
+`attempts`): no es error recuperable ni definitivo.
+
 ---
 
 ## Fuentes consultadas
@@ -443,6 +527,8 @@ Metadatos EXIF en el servidor:
 - Cookies `Secure` y con prefijo en `http://localhost` por navegador (H-10, aportadas por el frontend): <https://github.com/httpwg/http-extensions/issues/2605>, <https://issues.chromium.org/issues/40202941>, <https://bugzilla.mozilla.org/show_bug.cgi?id=1618113>
 - `net/http/cookiejar` (trata `localhost`/loopback como seguro; no implementa prefijos `__Host-`/`__Secure-`): <https://raw.githubusercontent.com/golang/go/master/src/net/http/cookiejar/jar.go>
 - mkcert (almacenes de confianza en Linux con `certutil`, `-cert-file`/`-key-file`, `-CAROOT`, `NODE_EXTRA_CA_CERTS` para Node, advertencia sobre `rootCA-key.pem`): <https://github.com/FiloSottile/mkcert>
+- chi v5.3.2, manejador de `405` y cabecera `Allow` (código fuente en el *module cache* del proyecto, `github.com/go-chi/chi/v5@v5.3.2/mux.go`, funciones `MethodNotAllowedHandler`, `routeHTTP`, `methodNotAllowedHandler` y `Match`; y `context.go`, campo `methodsAllowed` no exportado)
+- Lock de `GRANT crm_tenant` en PostgreSQL 16+: verificado por el revisor de la Fase 1 con un test de integración contra PostgreSQL 18 (sin fuente documental citada)
 
 Supuestos a validar durante la implementación (no verificados con documentación primaria):
 
@@ -468,6 +554,11 @@ Supuestos a validar durante la implementación (no verificados con documentació
 9. Un navegador que recibe `Strict-Transport-Security` por HTTPS en `localhost` puede registrarlo
    y forzar HTTPS en otros puertos de `localhost` (no verificado con fuente primaria; omitirlo en
    modo local no tiene costo, así que se omite igual).
+10. pgx v5.11 devuelve `context.Canceled` (o un error que lo envuelve, comprobable con
+    `errors.Is`) cuando se cancela el contexto de una query. Observado por el desarrollador en la
+    Fase 1; lo fijan los casos nuevos de T-B105.
+11. El proxy del hosting que se elija **agrega** su entrada a `X-Forwarded-For` (no la reemplaza)
+    y sale desde rangos conocidos (S-14 del plan). Se verifica al cerrar P-1.
 
 ---
 
