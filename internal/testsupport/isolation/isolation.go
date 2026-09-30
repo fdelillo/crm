@@ -32,7 +32,7 @@ func asRole(t testing.TB, role string, fn func(ctx context.Context, tx pgx.Tx)) 
 		t.Fatal(err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx, `SET LOCAL ROLE `+pgx.Identifier{role}.Sanitize()); err != nil {
+	if err := fixture.SetRole(ctx, tx, role); err != nil {
 		t.Fatalf("SET LOCAL ROLE %s: %v", role, err)
 	}
 	fn(ctx, tx)

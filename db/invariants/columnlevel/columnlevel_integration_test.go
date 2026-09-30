@@ -29,7 +29,7 @@ func asRoleCommit(t *testing.T, role string, fn func(ctx context.Context, tx pgx
 		t.Fatal(err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx, `SET LOCAL ROLE `+pgx.Identifier{role}.Sanitize()); err != nil {
+	if err := fixture.SetRole(ctx, tx, role); err != nil {
 		t.Fatal(err)
 	}
 	fn(ctx, tx)

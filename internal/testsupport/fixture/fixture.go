@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -21,7 +22,7 @@ func ProvisionRole(t testing.TB, pool *pgxpool.Pool, id uuid.UUID) string {
 		t.Fatalf("fixture: begin: %v", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }() // no-op after Commit
-	if _, err := tx.Exec(ctx, `SET LOCAL ROLE crm_signup`); err != nil {
+	if err := SetRole(ctx, tx, "crm_signup"); err != nil {
 		t.Fatalf("fixture: SET LOCAL ROLE crm_signup: %v", err)
 	}
 	var role string
@@ -56,4 +57,13 @@ func ProbeTable(t testing.TB, owner *pgxpool.Pool) string {
 	}
 	t.Cleanup(func() { _, _ = owner.Exec(context.Background(), `DROP TABLE IF EXISTS `+table) })
 	return table
+}
+
+// SetRole switches tx to role like platform/db does (see TxRunner.setRole): a read of pg_auth_members
+// precedes SET LOCAL ROLE, in one round trip, so a role granted to crm_app by another connection a
+// moment ago is not refused by a backend whose cached list of SET-able roles is stale (upstream
+// PostgreSQL race). Tests that check that SET ROLE is refused use a plain SET LOCAL ROLE instead.
+func SetRole(ctx context.Context, tx pgx.Tx, role string) error {
+	_, err := tx.Exec(ctx, "SELECT 1 FROM pg_catalog.pg_auth_members LIMIT 0; SET LOCAL ROLE "+pgx.Identifier{role}.Sanitize())
+	return err
 }

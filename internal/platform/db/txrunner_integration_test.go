@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -355,5 +356,61 @@ func TestTxRunner_PoolWithoutARoleSwitchHasNoPrivileges(t *testing.T) {
 	}
 	if !errors.Is(db.MapError(err), db.ErrPrivilege) {
 		t.Errorf("MapError(42501) is not ErrPrivilege: %v", db.MapError(err))
+	}
+}
+
+// A company created by one connection must be usable at once from ANY other connection of the pool:
+// registration is followed by the next request, which runs on whichever connection is free. PostgreSQL
+// keeps, per backend, a cached list of the roles a role may SET ROLE to (roles_is_member_of in acl.c);
+// with many roles and concurrent registrations a backend can keep serving a stale list, and the first
+// `SET LOCAL ROLE crm_t_...` on it fails with "permission denied to set role" until the next role
+// invalidation reaches it. Rebuilding that list takes longer the more roles exist, which is what makes the
+// race easy to hit here: 2000 roles, 12 concurrent registrations. See TxRunner.setRole.
+func TestTxRunner_NewCompanyIsUsableOnAnyConnectionRightAfterProvisioning(t *testing.T) {
+	ctx := context.Background()
+	super := pgtest.SuperuserPool(t)
+	_, err := super.Exec(ctx, `
+		DO $$
+		DECLARE r text;
+		BEGIN
+		  FOR i IN 1..2000 LOOP
+		    r := 'crm_t_' || replace(uuidv7()::text, '-', '');
+		    EXECUTE format('CREATE ROLE %I NOLOGIN', r);
+		    EXECUTE format('GRANT %I TO crm_app WITH INHERIT FALSE, SET TRUE', r);
+		  END LOOP;
+		END $$`)
+	if err != nil {
+		t.Fatalf("creating the roles: %v", err)
+	}
+
+	pool := pgtest.AppPool(t)
+	runner := db.NewTxRunner(pool)
+	var (
+		mu       sync.Mutex
+		failures []error
+		wg       sync.WaitGroup
+	)
+	for range 12 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 50 {
+				id := uuid.New()
+				fixture.ProvisionRole(t, pool, id) // committed before it returns
+				err := runner.InTenantTx(ctx, id, func(ctx context.Context, tx db.Tx) error {
+					_, err := tx.Exec(ctx, `SELECT 1`)
+					return err
+				})
+				if err != nil {
+					mu.Lock()
+					failures = append(failures, err)
+					mu.Unlock()
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	if len(failures) > 0 {
+		t.Errorf("%d of 600 first uses of a just-provisioned company failed on another connection; first: %v", len(failures), failures[0])
 	}
 }

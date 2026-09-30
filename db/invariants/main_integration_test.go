@@ -8,6 +8,7 @@ package invariants_test
 import (
 	"context"
 	"errors"
+	"github.com/fdelillo/crm/internal/testsupport/fixture"
 	"os"
 	"testing"
 
@@ -38,7 +39,7 @@ func asRole(t testing.TB, pool *pgxpool.Pool, role string, fn func(ctx context.C
 		t.Fatal(err)
 	}
 	defer tx.Rollback(ctx)
-	if _, err := tx.Exec(ctx, `SET LOCAL ROLE `+pgx.Identifier{role}.Sanitize()); err != nil {
+	if err := fixture.SetRole(ctx, tx, role); err != nil {
 		t.Fatalf("SET LOCAL ROLE %s: %v", role, err)
 	}
 	fn(ctx, tx)

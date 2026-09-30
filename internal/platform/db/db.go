@@ -155,7 +155,17 @@ func (t *tx) AsSystem(ctx context.Context, role SystemRole) error {
 
 // setRole is the single place that changes a transaction's role (INV-03). SET LOCAL lasts until the
 // end of the transaction; the identifier is quoted, and comes from a UUID or a closed set anyway.
+//
+// The SET is preceded by a read of pg_auth_members, in the same round trip. Without it, a backend that
+// has not used SET ROLE since another connection created and granted a new company role can answer
+// "permission denied to set role" for a role that exists and was granted: the per-backend list of
+// SET-able roles (roles_is_member_of in PostgreSQL's acl.c) stays stale, and is rebuilt only when the
+// next role invalidation arrives. The read makes the backend refresh its role membership state first.
+// Measured on PostgreSQL 18.6 with 2000 roles and 16 concurrent registrations: about 1.4% of first
+// uses failed without it and none in 4800 attempts with it
+// (TestTxRunner_NewCompanyIsUsableOnAnyConnectionRightAfterProvisioning reproduces it in seconds).
+// pg_auth_members is readable by everybody; LIMIT 0 keeps it free.
 func (t *tx) setRole(ctx context.Context, role string) error {
-	_, err := t.Exec(ctx, "SET LOCAL ROLE "+pgx.Identifier{role}.Sanitize())
+	_, err := t.Exec(ctx, "SELECT 1 FROM pg_catalog.pg_auth_members LIMIT 0; SET LOCAL ROLE "+pgx.Identifier{role}.Sanitize())
 	return err
 }

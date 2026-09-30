@@ -63,7 +63,7 @@ func insertAs(t *testing.T, c fixture.Company, sql string, args ...any) uuid.UUI
 		t.Fatal(err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx, `SET LOCAL ROLE `+pgx.Identifier{c.Role}.Sanitize()); err != nil {
+	if err := fixture.SetRole(ctx, tx, c.Role); err != nil {
 		t.Fatal(err)
 	}
 	var id uuid.UUID
@@ -253,7 +253,7 @@ func asRoleCommit(t *testing.T, pool interface {
 		t.Fatal(err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx, `SET LOCAL ROLE `+pgx.Identifier{role}.Sanitize()); err != nil {
+	if err := fixture.SetRole(ctx, tx, role); err != nil {
 		t.Fatal(err)
 	}
 	fn(ctx, tx)

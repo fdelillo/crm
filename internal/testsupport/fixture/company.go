@@ -88,7 +88,7 @@ func NewCompany(t testing.TB, pool *pgxpool.Pool) Company {
 		t.Fatal(err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }() // no-op after Commit
-	if _, err := tx.Exec(ctx, `SET LOCAL ROLE `+pgx.Identifier{c.Role}.Sanitize()); err != nil {
+	if err := SetRole(ctx, tx, c.Role); err != nil {
 		t.Fatal(err)
 	}
 
