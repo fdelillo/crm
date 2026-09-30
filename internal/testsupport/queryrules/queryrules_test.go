@@ -63,7 +63,11 @@ func TestQueriesWithoutTheTenantFilterAreDetected(t *testing.T) {
 
 // Filtered queries, comments that mention tables, non-company tables and the explicit exceptions pass.
 func TestCleanQueriesHaveNoViolations(t *testing.T) {
-	exceptions := []queryrules.Exception{{Pattern: "internal/*/store/auth_lookup.sql", Reason: "routing lookup as crm_auth"}}
+	exceptions := []queryrules.Exception{{
+		Path:    "internal/orders/store/auth_lookup.sql",
+		Reason:  "routing lookup as crm_auth",
+		Queries: map[string]string{"UserByEmail": "finds the company of an email"},
+	}}
 	vs, err := queryrules.Check("testdata/clean", companyTables(t), exceptions)
 	if err != nil {
 		t.Fatal(err)
@@ -75,7 +79,7 @@ func TestCleanQueriesHaveNoViolations(t *testing.T) {
 
 // An exception without a reason is a mistake: exceptions are explicit and justified.
 func TestExceptionsNeedAReason(t *testing.T) {
-	_, err := queryrules.Check("testdata/clean", companyTables(t), []queryrules.Exception{{Pattern: "internal/*/store/auth_lookup.sql"}})
+	_, err := queryrules.Check("testdata/clean", companyTables(t), []queryrules.Exception{{Path: "internal/orders/store/auth_lookup.sql"}})
 	if err == nil {
 		t.Error("Check accepted an exception without a reason")
 	}
@@ -111,7 +115,7 @@ func TestRepositoryQueriesFilterByCompany(t *testing.T) {
 	}
 	for _, e := range queryrules.DefaultExceptions {
 		if e.Reason == "" {
-			t.Errorf("exception %q has no reason", e.Pattern)
+			t.Errorf("exception %q has no reason", e.Path)
 		}
 	}
 }
@@ -160,8 +164,8 @@ func TestTrickyQueriesAreDetected(t *testing.T) {
 // Only the declared paths are exempt: the same file name anywhere else is reported, even if its queries are fine.
 func TestExemptFileNamesOutsideTheirPathAreViolations(t *testing.T) {
 	exceptions := []queryrules.Exception{
-		{Pattern: "internal/identity/store/auth_lookup.sql", Reason: "routing lookups"},
-		{Pattern: "internal/platform/outbox/store/worker.sql", Reason: "queue"},
+		{Path: "internal/identity/store/auth_lookup.sql", Reason: "routing lookups"},
+		{Path: "internal/platform/outbox/store/worker.sql", Reason: "queue"},
 	}
 	vs, err := queryrules.Check("testdata/misplaced", companyTables(t), exceptions)
 	if err != nil {
@@ -179,8 +183,8 @@ func TestExemptFileNamesOutsideTheirPathAreViolations(t *testing.T) {
 
 func TestDefaultExceptionsAreExactPaths(t *testing.T) {
 	for _, e := range queryrules.DefaultExceptions {
-		if strings.ContainsAny(e.Pattern, "*?[") {
-			t.Errorf("exception %q is a pattern; defaults must be exact paths", e.Pattern)
+		if strings.ContainsAny(e.Path, "*?[") {
+			t.Errorf("exception %q is a pattern; defaults must be exact paths", e.Path)
 		}
 	}
 }
@@ -189,7 +193,7 @@ func TestDefaultExceptionsAreExactPaths(t *testing.T) {
 func TestDefaultExceptionsAreTheFourFilesOfPlanSection44(t *testing.T) {
 	var got []string
 	for _, e := range queryrules.DefaultExceptions {
-		got = append(got, e.Pattern)
+		got = append(got, e.Path)
 	}
 	sort.Strings(got)
 	want := []string{
@@ -204,8 +208,15 @@ func TestDefaultExceptionsAreTheFourFilesOfPlanSection44(t *testing.T) {
 }
 
 // The same file names in another module are violations even when they are the exact names of an exemption.
+// The real cleanup file lists its query, as it will when it is written, so only the misplaced files remain.
 func TestCleanupAndProvisioningNamesAreExemptOnlyAtTheirPath(t *testing.T) {
-	vs, err := queryrules.Check("testdata/misplaced2", companyTables(t), queryrules.DefaultExceptions)
+	exceptions := slices.Clone(queryrules.DefaultExceptions)
+	for i, e := range exceptions {
+		if e.Path == "internal/identity/store/cleanup.sql" {
+			exceptions[i].Queries = map[string]string{"DeleteExpired": "cleanup of expired sessions as crm_worker"}
+		}
+	}
+	vs, err := queryrules.Check("testdata/misplaced2", companyTables(t), exceptions)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,5 +226,93 @@ func TestCleanupAndProvisioningNamesAreExemptOnlyAtTheirPath(t *testing.T) {
 	}
 	if got := summarize(vs); !slices.Equal(got, want) {
 		t.Errorf("violations = %v, want %v", got, want)
+	}
+}
+
+// An exception exempts named queries, not a whole file: a new query added to an exempt file is checked
+// like any other. ListAllUsers would read the emails of every company as crm_auth (PR fdelillo/crm#7).
+func TestExemptionsAreByQueryNotByFile(t *testing.T) {
+	exceptions := []queryrules.Exception{{
+		Path:    "internal/identity/store/auth_lookup.sql",
+		Reason:  "routing lookups as crm_auth",
+		Queries: map[string]string{"UserByEmail": "finds the company of an email at login"},
+	}}
+	vs, err := queryrules.Check("testdata/exemptfile", companyTables(t), exceptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"internal/identity/store/auth_lookup.sql ListAllUsers"}
+	if got := summarize(vs); !slices.Equal(got, want) {
+		t.Errorf("violations:\n got %v\nwant %v", got, want)
+	}
+}
+
+// The default exceptions list no query yet: every query written in an exempt file is checked until its
+// name is added to the exception with a reason, which is where the design review happens.
+func TestDefaultExceptionsExemptNoQueryUntilListed(t *testing.T) {
+	vs, err := queryrules.Check("testdata/exemptfile", companyTables(t), queryrules.DefaultExceptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"internal/identity/store/auth_lookup.sql ListAllUsers",
+		"internal/identity/store/auth_lookup.sql UserByEmail",
+	}
+	if got := summarize(vs); !slices.Equal(got, want) {
+		t.Errorf("violations:\n got %v\nwant %v", got, want)
+	}
+}
+
+// A listed query that is not in the file is reported, so the exemptions cannot outlive their queries.
+func TestExemptQueryNamesMustExist(t *testing.T) {
+	exceptions := []queryrules.Exception{{
+		Path:   "internal/identity/store/auth_lookup.sql",
+		Reason: "routing lookups as crm_auth",
+		Queries: map[string]string{
+			"UserByEmail":  "finds the company of an email at login",
+			"ListAllUsers": "not a routing lookup, but listed on purpose for this test",
+			"GoneQuery":    "was renamed",
+		},
+	}}
+	vs, err := queryrules.Check("testdata/exemptfile", companyTables(t), exceptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"internal/identity/store/auth_lookup.sql GoneQuery"}
+	if got := summarize(vs); !slices.Equal(got, want) {
+		t.Errorf("violations:\n got %v\nwant %v", got, want)
+	}
+}
+
+// Every exempt query carries its own reason.
+func TestExemptQueriesNeedAReason(t *testing.T) {
+	exceptions := []queryrules.Exception{{
+		Path:    "internal/identity/store/auth_lookup.sql",
+		Reason:  "routing lookups as crm_auth",
+		Queries: map[string]string{"UserByEmail": " "},
+	}}
+	if _, err := queryrules.Check("testdata/exemptfile", companyTables(t), exceptions); err == nil {
+		t.Error("Check accepted an exempt query without a reason")
+	}
+}
+
+// An exception that lists queries of a file that does not exist is reported too.
+func TestExemptQueriesOfAMissingFileAreReported(t *testing.T) {
+	exceptions := []queryrules.Exception{{
+		Path:    "internal/identity/store/cleanup.sql",
+		Reason:  "periodic cleanup as crm_worker",
+		Queries: map[string]string{"DeleteExpiredSessions": "cleanup of expired sessions"},
+	}}
+	vs, err := queryrules.Check("testdata/exemptfile", companyTables(t), exceptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"internal/identity/store/auth_lookup.sql ListAllUsers",
+		"internal/identity/store/auth_lookup.sql UserByEmail",
+		"internal/identity/store/cleanup.sql DeleteExpiredSessions",
+	}
+	if got := summarize(vs); !slices.Equal(got, want) {
+		t.Errorf("violations:\n got %v\nwant %v", got, want)
 	}
 }

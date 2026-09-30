@@ -460,7 +460,9 @@ HTTP mirando `r.Context().Err()`, no `platform/db`).
 **T-B112 [T] — Queries con filtro explícito de empresa** · INV-04, plan §4.4, ADR-001
 - **Red**: test que parsea cada `internal/*/store/*.sql` y, para toda query que referencie una
   tabla de empresa, exige un predicado `tenant_id = @tenant_id` (o `id = @tenant_id` en
-  `tenants`). Excepciones **solo por ruta exacta** (tercera revisión), cada una con su motivo:
+  `tenants`). Excepciones **por ruta exacta** (tercera revisión) **y por nombre de query** (revisión
+  del PR fdelillo/crm#7): en estos archivos solo se saltean las queries listadas por nombre, cada una
+  con su motivo; el resto del archivo se revisa:
 
   | Archivo eximido | Motivo |
   |---|---|
@@ -473,8 +475,12 @@ HTTP mirando `r.Context().Err()`, no `platform/db`).
   |---|---|
   | Fixture en `testdata/` sin filtro | detectado |
   | Fixture con el **mismo nombre** que una excepción pero en otro lugar (p. ej. `internal/tenant/store/auth_lookup.sql` o `internal/identity/store/worker.sql`) | detectado (la excepción es la ruta, no el nombre) |
-  | Una excepción cuyo archivo todavía no existe (`cleanup.sql` y `provisioning.sql` llegan en fases posteriores) | no es error |
-- **Green**: `queryrules.DefaultExceptions` tiene exactamente las cuatro rutas; el detector
+  | Una excepción cuyo archivo todavía no existe (`cleanup.sql` y `provisioning.sql` llegan en fases posteriores) | no es error si no lista queries |
+  | Query **no listada** en un archivo eximido (p. ej. `SELECT id, email FROM app.users;` en `auth_lookup.sql`) | detectada |
+  | Nombre de query listado que no está en el archivo, o archivo inexistente con queries listadas | detectado |
+  | Query eximida sin motivo | error de configuración |
+- **Green**: `queryrules.DefaultExceptions` tiene exactamente las cuatro rutas, todavía sin queries
+  listadas (cada fase agrega el nombre de la query que escribe); el detector
   funciona sobre los fixtures y se vuelve efectivo a medida que las fases siguientes agregan
   queries. Agregar una ruta es una decisión de diseño (plan §4.4, matriz §16).
 

@@ -84,7 +84,7 @@ como archivos estáticos embebidos (ADR-019).
 |---|:---:|---|
 | **I. Simplicidad primero** | ✅ | Se construye solo lo que pide la spec. Registro y aceptación de invitación son una sola pantalla y un solo request. Un único binario (API + worker + SPA). Sin colas externas, sin caché, sin microservicios. Las únicas adiciones fuera del texto literal de la spec son consecuencias necesarias, marcadas y **confirmadas por el usuario**: reemisión de invitación (DD-5), reactivación de usuarios (P-3), los ajustes H-1 a H-11, las cuatro decisiones de la tercera revisión y la defensa de DD-34 (§18). El TLS local es una herramienta de desarrollo (mkcert), no una dependencia del binario. |
 | **II. Genérico por configuración** | ✅ | Las plantillas de rubro son **datos** embebidos (catálogo), no código por rubro. 001 define el catálogo mínimo (código y nombre) y el puerto `industrytemplate.Seeder`; el contenido lo define 002 (DD-3), con la restricción heredada R-c de DD-33. |
-| **III. Aislamiento entre empresas** | ✅ / ⚠️ | Toda tabla de negocio tiene `tenant_id NOT NULL`, RLS habilitada y **forzada**, política por rol de empresa y filtro explícito en cada query (INV-01 a INV-07). Tests de aislamiento en BD y HTTP (Fases 1 y 8). Ninguna respuesta con datos de una empresa se reutiliza desde la caché del navegador sin revalidar (INV-21, H-2, H-7). El reintento de DD-34 no debilita el aislamiento: solo repite un cambio de rol que falló antes de ejecutar nada, y un `42501` en cualquier otro punto sigue siendo un bug (INV-19, INV-27). ⚠️ **Excepciones justificadas**: (a) `tenants` no tiene `tenant_id` porque *es* la empresa: su política usa `id`; (b) `login_throttles` no tiene `tenant_id` porque se indexa por email **exista o no la cuenta** (anti-enumeración, DD-7): no es dato de negocio ni pertenece a una empresa; solo lo ve el rol `crm_auth`; (c) las queries de roles de sistema viven en cuatro archivos con ruta exacta (§4.4), los únicos eximidos del filtro por empresa. |
+| **III. Aislamiento entre empresas** | ✅ / ⚠️ | Toda tabla de negocio tiene `tenant_id NOT NULL`, RLS habilitada y **forzada**, política por rol de empresa y filtro explícito en cada query (INV-01 a INV-07). Tests de aislamiento en BD y HTTP (Fases 1 y 8). Ninguna respuesta con datos de una empresa se reutiliza desde la caché del navegador sin revalidar (INV-21, H-2, H-7). El reintento de DD-34 no debilita el aislamiento: solo repite un cambio de rol que falló antes de ejecutar nada, y un `42501` en cualquier otro punto sigue siendo un bug (INV-19, INV-27). ⚠️ **Excepciones justificadas**: (a) `tenants` no tiene `tenant_id` porque *es* la empresa: su política usa `id`; (b) `login_throttles` no tiene `tenant_id` porque se indexa por email **exista o no la cuenta** (anti-enumeración, DD-7): no es dato de negocio ni pertenece a una empresa; solo lo ve el rol `crm_auth`; (c) las queries de roles de sistema viven en cuatro archivos con ruta exacta (§4.4) y se eximen del filtro por empresa una por una, por nombre. |
 | **IV. Integridad del dinero** | ✅ (N/A) | 001 no maneja importes. `tenants.base_currency` es ISO 4217 restringido a `ARS`/`USD`. Quedan listas la auditoría append-only (`audit_log`) y la atomicidad por operación (`TxRunner`) que usarán las specs financieras; el checklist de tablas nuevas (`data-model.md` §6) ya prevé tablas inmutables sin `DELETE`. |
 | **V. Spec Driven Development** | ✅ / ⚠️ | Plan derivado de `spec.md` y sus Clarificaciones; criterios Dado/Cuando/Entonces trazados a tareas `[T]` (`tasks.md`, tabla de trazabilidad). P-2 a P-5 están **resueltas** por el usuario (§14.2). ⚠️ Queda abierta P-1 (hosting): no bloquea el desarrollo, sí la elección del proveedor de producción. |
 | **VI. Tests primero** | ✅ | Todas las fases son TDD. El contrato OpenAPI se valida con tests de contrato sobre cada respuesta de los tests HTTP (ADR-014). El comportamiento de PostgreSQL del que depende DD-34 lo vigila un test de reproducción que corre en `make check`. |
@@ -260,8 +260,11 @@ permite `AsSystem` → `AsTenant`, pero **nunca dos empresas distintas en una tr
 | Reaprovisionar roles (ops) | `crm_worker` + `crm_signup` | `tenants(id)` | — | No toca datos de negocio |
 
 **Rutas exactas de las queries de sistema** (las únicas que pueden omitir el filtro por
-`tenant_id`; T-B112 las exime **por ruta exacta** y marca como violación cualquier archivo con el
-mismo nombre en otro lugar):
+`tenant_id`; T-B112 exime **por ruta exacta y por nombre de query**: dentro de estos archivos solo se
+saltean las queries sqlc listadas por nombre en `queryrules.DefaultExceptions`, cada una con su motivo;
+cualquier otra query del archivo se revisa como las demás, y un nombre listado que no existe es
+violación. Un archivo con el mismo nombre en otro lugar también es violación. Corrección de la revisión
+del PR fdelillo/crm#7, 2026-09-30):
 
 | Archivo | Rol | Qué contiene | Tareas |
 |---|---|---|---|
@@ -272,7 +275,10 @@ mismo nombre en otro lugar):
 
 Regla: cada módulo guarda las queries de sistema **sobre sus propias tablas** (ADR-001). Agregar
 un archivo a esta tabla (p. ej. en una spec futura) es una decisión de diseño que actualiza esta
-sección, `data-model.md` §3.4 y la lista de excepciones de T-B112 en el mismo cambio.
+sección, `data-model.md` §3.4 y la lista de excepciones de T-B112 en el mismo cambio. Agregar una
+query a uno de estos archivos exige agregar su nombre y su motivo a la excepción en el mismo cambio:
+así la exención se revisa junto con la query (p. ej. un `SELECT id, email FROM app.users` sin filtro
+en `auth_lookup.sql` no queda eximido por estar en ese archivo).
 
 **Riesgo residual declarado**: un bug en una de las queries de fase 1 de `crm_auth` podría
 listar `(id, tenant_id, email)` de usuarios de todas las empresas. Se acota con: queries de
@@ -693,7 +699,7 @@ la vigila.
 | INV-01 | Toda tabla del esquema `app` tiene RLS **habilitada y forzada**. Toda tabla con columna `tenant_id` la tiene `NOT NULL` y tiene la política `tenant_isolation` (`tenant_id = app.current_tenant_id()`, `USING` y `WITH CHECK`). | Migraciones | T-B107, T-B110 |
 | INV-02 | `crm_app` no tiene ningún privilegio sobre tablas: toda query fuera de `InTenantTx`/`InSystemTx` falla con `permission denied` (falla cerrada). | Bootstrap + migraciones | T-B103, T-B107 |
 | INV-03 | Una transacción se asocia como máximo a **una** empresa: `Tx.AsTenant` con otra empresa devuelve `ErrTenantAlreadyBound`. `SET ROLE` solo existe como `SET LOCAL` dentro de `platform/db`. | `platform/db` | T-B103, T-B011 |
-| INV-04 | Toda query sqlc sobre una tabla de empresa filtra por `tenant_id` con parámetro explícito, además de la RLS. Las únicas excepciones son los cuatro archivos de §4.4, eximidos por ruta exacta. | `*/store/*.sql` | T-B112, T-B804 |
+| INV-04 | Toda query sqlc sobre una tabla de empresa filtra por `tenant_id` con parámetro explícito, además de la RLS. Las únicas excepciones son las queries listadas por nombre de los cuatro archivos de §4.4 (ruta exacta). | `*/store/*.sql` | T-B112, T-B804 |
 | INV-05 | Los roles de sistema solo tienen privilegios sobre las columnas de ruteo declaradas en `data-model.md` §3.4; nunca sobre columnas de negocio. | Migraciones | T-B109 |
 | INV-06 | Ningún rol de runtime tiene `BYPASSRLS`, `SUPERUSER` ni es dueño de tablas. Solo `crm_owner` es dueño, y no se usa en runtime. | Bootstrap + función de aprovisionamiento | T-B101, T-B107 |
 | INV-07 | Toda FK entre tablas de empresa es **compuesta** con `tenant_id` (`(tenant_id, user_id) → users(tenant_id, id)`): la base impide referencias entre empresas. | Migraciones | T-B108 |

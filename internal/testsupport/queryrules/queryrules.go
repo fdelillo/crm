@@ -22,22 +22,27 @@ type Violation struct {
 	Detail string
 }
 
-// Exception excludes the files that match Pattern (path.Match on the slash-separated relative path).
-// Every exception carries the reason it exists.
+// Exception names a store file whose listed queries run without a company filter. Only the queries in
+// Queries (sqlc name -> reason) are exempt; every other query of the file is checked like any other, so
+// adding a query to an exempt file never exempts it by accident (PR fdelillo/crm#7). A listed name that
+// is not in the file is a violation. Path is exact and slash-separated; the file and every query carry
+// the reason they exist.
 type Exception struct {
-	Pattern string
+	Path    string
 	Reason  string
+	Queries map[string]string
 }
 
-// DefaultExceptions are the queries that legitimately run without a company: they exist to FIND the
-// company or to clean up, as a system role that sees only routing columns (plan §4.4, INV-05). The four
-// paths are exact ("Rutas exactas de las queries de sistema"); a file with any of these names anywhere
-// else is a violation (see Check). Anything else that needs an exception needs a design decision first.
+// DefaultExceptions are the files of the queries that legitimately run without a company: they exist to
+// FIND the company or to clean up, as a system role that sees only routing columns (plan §4.4, INV-05).
+// The four paths are exact ("Rutas exactas de las queries de sistema"); a file with any of these names
+// anywhere else is a violation (see Check). No query is listed yet: each one is added here by name, with
+// its reason, in the change that writes it, so that the exemption is reviewed with the query.
 var DefaultExceptions = []Exception{
-	{"internal/identity/store/auth_lookup.sql", "phase-one lookups as crm_auth: find the company of an email, a session or a token"},
-	{"internal/identity/store/cleanup.sql", "periodic cleanup as crm_worker: DELETE of expired rows of sessions, user_tokens and login_throttles; the policies of data-model §3.4 bound which rows"},
-	{"internal/platform/outbox/store/worker.sql", "queue and cleanup queries as crm_worker: they see queue columns of every company"},
-	{"internal/tenant/store/provisioning.sql", "crm_worker and crm_signup: list tenants.id (reprovisioning, tenant_roles_total) and call provision_tenant_role (registration)"},
+	{Path: "internal/identity/store/auth_lookup.sql", Reason: "phase-one lookups as crm_auth: find the company of an email, a session or a token"},
+	{Path: "internal/identity/store/cleanup.sql", Reason: "periodic cleanup as crm_worker: DELETE of expired rows of sessions, user_tokens and login_throttles; the policies of data-model §3.4 bound which rows"},
+	{Path: "internal/platform/outbox/store/worker.sql", Reason: "queue and cleanup queries as crm_worker: they see queue columns of every company"},
+	{Path: "internal/tenant/store/provisioning.sql", Reason: "crm_worker and crm_signup: list tenants.id (reprovisioning, tenant_roles_total) and call provision_tenant_role (registration)"},
 }
 
 var (
@@ -94,11 +99,21 @@ func CompanyTables(migrationsDir string) ([]string, error) {
 // Check scans internal/**/store/*.sql under root. A query that references a company table must contain
 // tenant_id = @tenant_id (or id = @tenant_id when the only company table is tenants; an INSERT must
 // pass @tenant_id). One predicate per query is required, not one per joined table: RLS is the second
-// line. Files matching an exception are skipped. It fails if root has no internal/ directory.
+// line. In a file named by an exception, only the listed queries are skipped; a listed query that does not
+// exist, in the file or because the file is missing, is a violation. It fails if root has no internal/
+// directory.
 func Check(root string, companyTables []string, exceptions []Exception) ([]Violation, error) {
 	for _, e := range exceptions {
 		if strings.TrimSpace(e.Reason) == "" {
-			return nil, fmt.Errorf("queryrules: exception %q has no reason", e.Pattern)
+			return nil, fmt.Errorf("queryrules: exception %q has no reason", e.Path)
+		}
+		if strings.ContainsAny(e.Path, "*?[") {
+			return nil, fmt.Errorf("queryrules: exception %q is a pattern; exceptions are exact paths", e.Path)
+		}
+		for name, reason := range e.Queries {
+			if strings.TrimSpace(reason) == "" {
+				return nil, fmt.Errorf("queryrules: exempt query %s in %q has no reason", name, e.Path)
+			}
 		}
 	}
 	internal := filepath.Join(root, "internal")
@@ -111,6 +126,7 @@ func Check(root string, companyTables []string, exceptions []Exception) ([]Viola
 	}
 
 	var out []Violation
+	visited := map[string]bool{}
 	err := filepath.WalkDir(internal, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -129,10 +145,9 @@ func Check(root string, companyTables []string, exceptions []Exception) ([]Viola
 		if !strings.HasSuffix(rel, ".sql") || path.Base(path.Dir(rel)) != "store" {
 			return nil
 		}
-		if excepted(rel, exceptions) {
-			return nil
-		}
-		if lookalike(rel, exceptions) {
+		exc, isExempt := exceptionFor(rel, exceptions)
+		visited[rel] = isExempt
+		if !isExempt && lookalike(rel, exceptions) {
 			out = append(out, Violation{File: rel, Line: 1, Detail: "has the name of an exempt file but is not at the exempt path: " +
 				"only the declared files may skip the company filter"})
 			return nil
@@ -141,29 +156,45 @@ func Check(root string, companyTables []string, exceptions []Exception) ([]Viola
 		if err != nil {
 			return err
 		}
-		out = append(out, checkFile(rel, string(data), company)...)
+		out = append(out, checkFile(rel, string(data), company, exc.Queries)...)
 		return nil
 	})
-	return out, err
+	if err != nil {
+		return out, err
+	}
+	for _, e := range exceptions {
+		if visited[e.Path] {
+			continue
+		}
+		names := make([]string, 0, len(e.Queries))
+		for name := range e.Queries {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			out = append(out, Violation{e.Path, 1, name, "is listed as an exempt query but the file does not exist"})
+		}
+	}
+	return out, nil
 }
 
 // lookalike reports a file that shares its base name with an exception but is not one.
 func lookalike(rel string, exceptions []Exception) bool {
 	for _, e := range exceptions {
-		if path.Base(e.Pattern) == path.Base(rel) {
+		if path.Base(e.Path) == path.Base(rel) {
 			return true
 		}
 	}
 	return false
 }
 
-func excepted(rel string, exceptions []Exception) bool {
+func exceptionFor(rel string, exceptions []Exception) (Exception, bool) {
 	for _, e := range exceptions {
-		if ok, _ := path.Match(e.Pattern, rel); ok {
-			return true
+		if e.Path == rel {
+			return e, true
 		}
 	}
-	return false
+	return Exception{}, false
 }
 
 type query struct {
@@ -193,12 +224,29 @@ func splitQueries(content string) []query {
 	return qs
 }
 
-func checkFile(rel, content string, company map[string]bool) []Violation {
+// checkFile analyzes every query of a file except the exempt ones, and reports exempt names that the
+// file does not have.
+func checkFile(rel, content string, company map[string]bool, exempt map[string]string) []Violation {
 	var out []Violation
+	seen := map[string]bool{}
 	for _, q := range splitQueries(content) {
+		seen[q.name] = true
+		if _, ok := exempt[q.name]; ok {
+			continue
+		}
 		if details := analyze(q.sql, company); len(details) > 0 {
 			out = append(out, Violation{rel, q.line, q.name, strings.Join(details, "; ")})
 		}
+	}
+	var stale []string
+	for name := range exempt {
+		if !seen[name] {
+			stale = append(stale, name)
+		}
+	}
+	sort.Strings(stale)
+	for _, name := range stale {
+		out = append(out, Violation{rel, 1, name, "is listed as an exempt query but the file has no query with that name"})
 	}
 	return out
 }
