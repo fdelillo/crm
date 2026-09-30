@@ -1,0 +1,123 @@
+# golangci-lint v2. Run through `make lint` (go tool -modfile=tools.mod golangci-lint).
+version: "2"
+
+run:
+  timeout: 5m
+  # Lint the integration tests too (they carry the `integration` build tag).
+  build-tags:
+    - integration
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - depguard # package boundaries of ADR-001 / plan §4.1
+    - errorlint
+    - noctx
+    - nolintlint
+    - misspell
+    - bodyclose
+  settings:
+    errcheck:
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+    depguard:
+      rules:
+        # platform/* is technical: it imports no domain module and not authz (plan §4.1).
+        platform-has-no-domain:
+          files:
+            - "**/internal/platform/**"
+          deny:
+            - pkg: github.com/fdelillo/crm/internal/identity
+              desc: platform/* must not import a domain module
+            - pkg: github.com/fdelillo/crm/internal/tenant
+              desc: platform/* must not import a domain module
+            - pkg: github.com/fdelillo/crm/internal/authz
+              desc: platform/* must not import authz
+            - pkg: github.com/fdelillo/crm/internal/industrytemplate
+              desc: platform/* must not import a domain module
+            - pkg: github.com/fdelillo/crm/internal/app
+              desc: platform/* must not import the composition root
+        # authz and industrytemplate only know platform/*.
+        authz-and-templates-know-only-platform:
+          files:
+            - "**/internal/authz/**"
+            - "**/internal/industrytemplate/**"
+          deny:
+            - pkg: github.com/fdelillo/crm/internal/identity
+              desc: authz and industrytemplate only import platform/*
+            - pkg: github.com/fdelillo/crm/internal/tenant
+              desc: authz and industrytemplate only import platform/*
+            - pkg: github.com/fdelillo/crm/internal/app
+              desc: authz and industrytemplate only import platform/*
+        # identity never imports tenant (tenant -> identity is the only direction in 001).
+        identity-does-not-import-tenant:
+          files:
+            - "**/internal/identity/**"
+          deny:
+            - pkg: github.com/fdelillo/crm/internal/tenant
+              desc: identity must not import tenant (the dependency goes tenant -> identity)
+            - pkg: github.com/fdelillo/crm/internal/app
+              desc: modules must not import the composition root
+        tenant-does-not-import-app:
+          files:
+            - "**/internal/tenant/**"
+          deny:
+            - pkg: github.com/fdelillo/crm/internal/app
+              desc: modules must not import the composition root
+        # Nobody imports the store (sqlc code) of another module: a module never reads another module's tables.
+        # Add one entry per module here when a spec adds a module (matrix in plan §16).
+        no-foreign-store-in-identity:
+          files:
+            - "**/internal/identity/**"
+          deny:
+            - pkg: github.com/fdelillo/crm/internal/tenant/store
+              desc: a module must not import the store of another module
+        no-foreign-store-in-tenant:
+          files:
+            - "**/internal/tenant/**"
+          deny:
+            - pkg: github.com/fdelillo/crm/internal/identity/store
+              desc: a module must not import the store of another module
+        no-store-in-platform:
+          files:
+            - "**/internal/platform/**"
+            - "**/internal/authz/**"
+            - "**/internal/industrytemplate/**"
+          deny:
+            - pkg: github.com/fdelillo/crm/internal/identity/store
+              desc: only the owning module imports its store
+            - pkg: github.com/fdelillo/crm/internal/tenant/store
+              desc: only the owning module imports its store
+        # web (the embedded SPA, ADR-019) only imports the standard library and gzhttp.
+        web-imports-only-stdlib-and-gzhttp:
+          files:
+            - "**/web/**"
+          list-mode: strict
+          allow:
+            - $gostd
+            - github.com/klauspost/compress/gzhttp
+            - github.com/fdelillo/crm/web
+        # Only internal/app and cmd/crm import web.
+        only-app-and-cmd-import-web:
+          files:
+            - $all
+            - "!**/internal/app/**"
+            - "!**/cmd/crm/**"
+            - "!**/web/**"
+          deny:
+            - pkg: github.com/fdelillo/crm/web
+              desc: only internal/app and cmd/crm may import the web package
+  exclusions:
+    rules:
+      # Tests: unchecked cleanups cannot change the outcome, and httptest helpers need no context.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - bodyclose
+          - noctx
+
+formatters:
+  enable:
+    - gofmt

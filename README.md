@@ -4,7 +4,8 @@ Sistema web **sencillo** para gestionar clientes, proyectos, presupuestos y fluj
 caja (clientes, proveedores, empleados y socios). El primer usuario es una carpintería
 de aluminio; el diseño es genérico y se adapta a otros rubros mediante configuración.
 
-> Estado: **especificación** (Spec Driven Development). Aún no hay código.
+> Estado: **especificación** (Spec Driven Development) con el esqueleto del backend (spec 001, Fase 0).
+> Todavía no hay funcionalidades: ver [`specs/001-empresas-usuarios/tasks.md`](specs/001-empresas-usuarios/tasks.md).
 
 ## Documentación
 
@@ -52,3 +53,79 @@ spec; ver [`CLAUDE.md`](CLAUDE.md#agentes-y-skills-del-proyecto-claude).
 Para instalar los comandos de Spec Kit en este repo:
 `uvx --from git+https://github.com/github/spec-kit.git specify init --here`
 (si pregunta, **conservar** la constitución existente).
+
+## Desarrollo
+
+Requisitos: Go 1.27 (con `GOTOOLCHAIN=auto` el comando `go` descarga la versión fijada en `go.mod`),
+Docker, `make`, y [`mkcert`](https://github.com/FiloSottile/mkcert#installation) para HTTPS local.
+`sqlc` y `golangci-lint` no se instalan: `make` los corre desde `tools.mod` (`go tool -modfile=tools.mod`).
+
+### Comandos
+
+| Comando | Qué hace |
+|---------|----------|
+| `make check` | `lint` + `test` + `test-int`. Es el checkpoint de cada fase; no necesita mkcert |
+| `make lint` | `gofmt`, `go vet`, `golangci-lint` (con `depguard`) y `sqlc diff` |
+| `make test` | Tests unitarios (`go test -race ./...`); no necesitan Docker |
+| `make test-int` | Además, tests de integración con PostgreSQL 18 real (necesita Docker) |
+| `make generate` | Regenera el código de `sqlc` |
+| `make db-reset` | Solo desarrollo: recrea el PostgreSQL local, corre el bootstrap y las migraciones |
+| `make dev-certs` | Solo desarrollo y E2E: genera `.certs/localhost.pem` y `.certs/localhost-key.pem` con mkcert |
+
+### Primera vez
+
+1. Instalar `mkcert`. En Linux instalar también `certutil` (paquete `libnss3-tools` o equivalente).
+2. `mkcert -install` (una vez por equipo: crea una CA local y la agrega a los navegadores).
+3. `make dev-certs` (genera el certificado de `localhost` y `127.0.0.1`; `.certs/` no se versiona).
+4. `cp .env.example .env` y reemplazar `AUTH_HMAC_KEY` (`openssl rand -base64 32`).
+
+> **No compartas ni copies al repositorio `rootCA-key.pem`** (está en `mkcert -CAROOT`): con esa
+> clave se puede interceptar el HTTPS de tu equipo. La CA es de cada persona.
+
+### Levantar todo
+
+```sh
+docker compose up -d --wait        # PostgreSQL 18 (con los roles y la base), Mailpit y MinIO
+set -a && . ./.env && set +a       # carga la configuración en el shell
+go run ./cmd/crm migrate up        # migraciones, con el rol crm_owner
+go run ./cmd/crm serve             # loguea listen=https_local
+curl https://localhost:8443/healthz   # sin -k: {"status":"ok"}
+```
+
+Hasta que exista el frontend embebido, `https://localhost:8443/` responde `503` ("La interfaz no
+está compilada"): es esperado.
+
+### Modos de desarrollo (plan 001, §10.5.1)
+
+La sesión es una cookie `__Host-` `Secure`, así que el navegador solo la guarda por HTTPS. En
+desarrollo `APP_BASE_URL` es siempre `https://`; `TLS_CERT_FILE` y `TLS_KEY_FILE` solo se aceptan
+cuando el host es `localhost` o `127.0.0.1`.
+
+| Modo | `crm serve` | El navegador abre | `APP_BASE_URL` |
+|------|-------------|-------------------|----------------|
+| Binario completo (y E2E) | `HTTP_ADDR=:8443` con `TLS_CERT_FILE` y `TLS_KEY_FILE` | `https://localhost:8443` | `https://localhost:8443` |
+| Vite + API | igual que arriba | `https://localhost:5173` (Vite con el mismo certificado; *proxy* de `/api` a `https://localhost:8443`) | `https://localhost:5173` |
+| Solo backend (`curl`, sin navegador) | sin `TLS_*` (HTTP plano en `:8080`) | — | `https://localhost:8080` |
+
+Node no usa el almacén de certificados del sistema: para que el *proxy* de Vite y los scripts de
+Node confíen en el certificado, exportar
+`NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem"`.
+
+### Base de datos: bootstrap y migraciones (ADR-004)
+
+Son dos mecanismos:
+
+- **Bootstrap** (`db/bootstrap/`): crea los roles del clúster y la base `crm`. Lo corre un DBA una
+  vez por clúster; en desarrollo, lo ejecuta el contenedor de PostgreSQL al inicializarse. Es
+  idempotente y necesita `psql`. Las contraseñas de `crm_owner` y `crm_app` **no** están en el
+  script: se toman de `CRM_OWNER_PASSWORD` y `CRM_APP_PASSWORD` si están definidas.
+
+  ```sh
+  psql -v ON_ERROR_STOP=1 -U postgres -d postgres -f db/bootstrap/001_roles_and_database.sql
+  ```
+
+- **Migraciones** (`db/migrations/`, goose embebido en el binario): `crm migrate up|down|status`,
+  siempre con `DATABASE_MIGRATION_URL` (rol `crm_owner`), como paso de despliegue.
+
+Los roles son globales al clúster: **un clúster de PostgreSQL por entorno**, y los respaldos
+necesitan también los roles (`pg_dumpall --roles-only`) o un backup físico del clúster.

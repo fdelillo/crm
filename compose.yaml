@@ -1,0 +1,48 @@
+# Development services only (never used in production). See README.md, "Desarrollo".
+name: crm
+
+services:
+  postgres:
+    image: postgres:18 # latest 18.x minor; the plan requires the latest minor (R-4, CVE-2026-14666)
+    environment:
+      # Local development credentials. Override them with a .env file (see .env.example).
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:-postgres_dev}
+      # Read by db/bootstrap/001_roles_and_database.sql through psql \getenv.
+      CRM_OWNER_PASSWORD: ${CRM_OWNER_PASSWORD:-crm_owner_dev}
+      CRM_APP_PASSWORD: ${CRM_APP_PASSWORD:-crm_app_dev}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      # PostgreSQL 18 images keep PGDATA under /var/lib/postgresql/<major>/docker.
+      - pgdata:/var/lib/postgresql
+      # The bootstrap runs once, when the volume is empty (roles + database `crm`, ADR-004).
+      - ./db/bootstrap/001_roles_and_database.sql:/docker-entrypoint-initdb.d/001_roles_and_database.sql:ro
+    healthcheck:
+      # -h 127.0.0.1 on purpose: during initialisation the entrypoint runs a temporary server that
+      # only listens on the Unix socket, so a socket check would report ready before the bootstrap ends.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  mailpit:
+    image: axllent/mailpit:v1.27 # tag verified to exist; bump on purpose
+    ports:
+      - "127.0.0.1:1025:1025" # SMTP
+      - "127.0.0.1:8025:8025" # web UI
+
+  minio:
+    image: quay.io/minio/minio:latest # official MinIO location (not verified from the sandbox: quay.io is blocked there)
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio_dev}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_dev_secret}
+    ports:
+      - "127.0.0.1:9000:9000" # S3 API
+      - "127.0.0.1:9001:9001" # console
+    volumes:
+      - miniodata:/data
+
+volumes:
+  pgdata:
+  miniodata:
