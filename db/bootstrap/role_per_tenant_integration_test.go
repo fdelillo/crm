@@ -51,15 +51,17 @@ GRANT EXECUTE ON FUNCTION spike_provisioning.create_role(text), spike_provisioni
 GRANT USAGE ON SCHEMA spike_provisioning TO crm_signup;
 `
 
-var setupOnce sync.Once
+var (
+	setupOnce sync.Once
+	setupErr  error // kept next to the Once so every test sees a failed setup, not only the first
+)
 
 func setup(t *testing.T) {
 	t.Helper()
 	pool := pgtest.SuperuserPool(t) // fixture only: it needs to create objects owned by crm_provisioner
-	var err error
-	setupOnce.Do(func() { _, err = pool.Exec(context.Background(), spikeSetup) })
-	if err != nil {
-		t.Fatalf("spike setup: %v", err)
+	setupOnce.Do(func() { _, setupErr = pool.Exec(context.Background(), spikeSetup) })
+	if setupErr != nil {
+		t.Fatalf("spike setup: %v", setupErr)
 	}
 }
 
@@ -286,5 +288,76 @@ func TestSpike_ProvisionerCannotCreateBypassRLSRole(t *testing.T) {
 	_, err = tx.Exec(ctx, `SELECT spike_provisioning.create_bypass_role($1)`, newRoleName())
 	if sqlState(err) != "42501" {
 		t.Errorf("creating a BYPASSRLS role through crm_provisioner: err = %v, want SQLSTATE 42501", err)
+	}
+}
+
+// Inside the same transaction that created it, the new role already has the privileges of
+// crm_tenant (it inherits them) and the forced RLS of a company table applies to it: it can insert
+// and read its own rows and not write another company's. Nothing is committed.
+func TestSpike_NewRoleHasCompanyPrivilegesBeforeCommit(t *testing.T) {
+	t.Parallel()
+	setup(t)
+	ctx := context.Background()
+	tenantID := uuid.New()
+	role := "crm_t_" + strings.ReplaceAll(tenantID.String(), "-", "")
+	table := "app.spike_probe_" + strings.ReplaceAll(tenantID.String(), "-", "")
+
+	// A company table as a migration creates it: crm_owner owns it, RLS is forced, and the default
+	// privileges of migration 00001 give crm_tenant SELECT and INSERT. The policy avoids
+	// app.current_tenant_id(), which arrives in Phase 1.
+	owner := pgtest.OwnerPool(t)
+	for _, q := range []string{
+		`CREATE TABLE ` + table + ` (id uuid NOT NULL DEFAULT uuidv7(), tenant_id uuid NOT NULL, note text NOT NULL)`,
+		`ALTER TABLE ` + table + ` ENABLE ROW LEVEL SECURITY`,
+		`ALTER TABLE ` + table + ` FORCE ROW LEVEL SECURITY`,
+		`CREATE POLICY tenant_isolation ON ` + table + ` FOR ALL TO PUBLIC
+		   USING (replace(tenant_id::text, '-', '') = substr(current_user, 7))
+		   WITH CHECK (replace(tenant_id::text, '-', '') = substr(current_user, 7))`,
+	} {
+		if _, err := owner.Exec(ctx, q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	t.Cleanup(func() { _, _ = owner.Exec(ctx, `DROP TABLE IF EXISTS `+table) })
+
+	tx, err := pgtest.AppPool(t).Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	for _, q := range []struct {
+		sql  string
+		args []any
+	}{
+		{`SET LOCAL ROLE crm_signup`, nil},
+		{`SELECT spike_provisioning.create_role($1)`, []any{role}},
+		{`SET LOCAL ROLE ` + pgx.Identifier{role}.Sanitize(), nil},
+	} {
+		if _, err := tx.Exec(ctx, q.sql, q.args...); err != nil {
+			t.Fatalf("%s: %v", q.sql, err)
+		}
+	}
+
+	if _, err := tx.Exec(ctx, `INSERT INTO `+table+` (tenant_id, note) VALUES ($1, 'mine')`, tenantID); err != nil {
+		t.Fatalf("INSERT as the new role (privileges of crm_tenant, before COMMIT): %v", err)
+	}
+	var n int
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM `+table).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("SELECT as the new role: count = %d err = %v, want 1", n, err)
+	}
+	// UPDATE and DELETE are not part of the default privileges: granted per table, never here.
+	if _, err := tx.Exec(ctx, `SAVEPOINT s`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM `+table); sqlState(err) != "42501" {
+		t.Errorf("DELETE as the new role: err = %v, want SQLSTATE 42501", err)
+	}
+	if _, err := tx.Exec(ctx, `ROLLBACK TO SAVEPOINT s`); err != nil {
+		t.Fatal(err)
+	}
+	// The forced RLS rejects a row of another company (WITH CHECK).
+	_, err = tx.Exec(ctx, `INSERT INTO `+table+` (tenant_id, note) VALUES ($1, 'theirs')`, uuid.New())
+	if sqlState(err) != "42501" {
+		t.Errorf("INSERT of another company's row: err = %v, want SQLSTATE 42501", err)
 	}
 }

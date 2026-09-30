@@ -6,8 +6,10 @@
 --
 --   psql -v ON_ERROR_STOP=1 -U postgres -d postgres -f db/bootstrap/001_roles_and_database.sql
 --
--- It is idempotent: running it again converges the roles, memberships and settings to the state
--- described here. It needs psql (it uses \getenv and \gexec), PostgreSQL >= 16 (per-grant
+-- It is idempotent and convergent: running it again brings the roles, memberships, database
+-- privileges and settings back to the state described here, revoking what drifted (surplus
+-- memberships of crm_app and crm_owner, extra privileges of crm_app on the database). Company roles
+-- crm_t_<32 hex> are legitimate members-to-be of crm_app and are left alone. It needs psql (it uses \getenv and \gexec), PostgreSQL >= 16 (per-grant
 -- INHERIT/SET options) and psql >= 15.
 --
 -- Passwords are NOT part of this file. To set them, export CRM_OWNER_PASSWORD and/or
@@ -53,6 +55,31 @@ ALTER ROLE crm_app SET idle_in_transaction_session_timeout = '30s';
 -- ---------------------------------------------------------------------------------------------
 -- Memberships (PostgreSQL >= 16: options per grant)
 -- ---------------------------------------------------------------------------------------------
+-- Drift first: revoke every membership of crm_app that is not a system role or a company role, every
+-- membership of crm_owner other than crm_provisioner, and the grants of the memberships below that
+-- were made by someone else (they are re-created right after with the intended options).
+DO $$
+DECLARE
+  r record;
+BEGIN
+  FOR r IN
+    SELECT pg_get_userbyid(m.roleid) AS role_name,
+           pg_get_userbyid(m.member) AS member_name,
+           pg_get_userbyid(m.grantor) AS grantor_name
+    FROM pg_catalog.pg_auth_members m
+    WHERE (pg_get_userbyid(m.member) = 'crm_app'
+           AND pg_get_userbyid(m.roleid) !~ '^crm_t_[0-9a-f]{32}$'
+           AND (pg_get_userbyid(m.roleid) NOT IN ('crm_auth', 'crm_worker', 'crm_signup')
+                OR m.grantor <> (SELECT oid FROM pg_catalog.pg_roles WHERE rolname = current_user)))
+       OR (pg_get_userbyid(m.member) = 'crm_owner'
+           AND (pg_get_userbyid(m.roleid) <> 'crm_provisioner'
+                OR m.grantor <> (SELECT oid FROM pg_catalog.pg_roles WHERE rolname = current_user)))
+  LOOP
+    EXECUTE format('REVOKE %I FROM %I GRANTED BY %I', r.role_name, r.member_name, r.grantor_name);
+  END LOOP;
+END
+$$;
+
 -- crm_owner can become crm_provisioner so a migration creates the provisioning function with it,
 -- but it does not inherit CREATEROLE.
 GRANT crm_provisioner TO crm_owner WITH INHERIT FALSE, SET TRUE;
@@ -74,4 +101,5 @@ WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_database WHERE datname = 'crm')
 
 ALTER DATABASE crm OWNER TO crm_owner;
 REVOKE ALL ON DATABASE crm FROM PUBLIC;
+REVOKE ALL ON DATABASE crm FROM crm_app;
 GRANT CONNECT ON DATABASE crm TO crm_app;

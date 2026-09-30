@@ -56,6 +56,8 @@ func TestRule_RoleSwitchOnlyInPlatformDB(t *testing.T) {
 		"internal/orders/setrole.go:8",              // RESET ROLE
 		"internal/orders/setrole.go:10",             // set_config('role'
 		"internal/platform/httpx/setrole_sql.sql:1", // .sql files count too
+		"internal/orders/sqlcalls.go:56",            // set_config with the GUC name as a parameter
+		"internal/orders/sqlcalls.go:58",            // set_config('session_authorization'...)
 	}
 	sort.Strings(want)
 	if !slices.Equal(got, want) {
@@ -81,6 +83,16 @@ func TestRule_NoDynamicSQLOutsidePlatformDB(t *testing.T) {
 		"internal/orders/sqlsprintf.go:11", // "SELECT " + "id ..." + id
 		"internal/orders/sqlsprintf.go:14", // "SELECT " + x
 		"internal/orders/sqlsprintf.go:17", // "UPDATE " + table + " SET ..."
+		"internal/orders/sqlcalls.go:20",   // Exec(ctx, q): the SQL argument is a variable
+		"internal/orders/sqlcalls.go:25",   // strings.Builder.WriteString of SQL
+		"internal/orders/sqlcalls.go:27",   // Query(ctx, sb.String())
+		"internal/orders/sqlcalls.go:32",   // q += " AND name = '" + name + "'"
+		"internal/orders/sqlcalls.go:33",   // QueryRow(ctx, q)
+		"internal/orders/sqlcalls.go:37",   // strings.Join([]string{"DELETE FROM", t}, " ")
+		"internal/orders/sqlcalls.go:41",   // Sprintf with a comment before SELECT
+		"internal/orders/sqlcalls.go:45",   // Batch.Queue(q)
+		"internal/orders/sqlcalls.go:49",   // strings.ReplaceAll on a SQL literal
+		"internal/orders/sqlcalls.go:53",   // fmt.Fprintf building SQL
 	}
 	sort.Strings(want)
 	if !slices.Equal(got, want) {

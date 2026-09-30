@@ -129,7 +129,8 @@ func hmacKey(raw string) ([]byte, error) {
 	return key, nil
 }
 
-// baseURL validates APP_BASE_URL: always https (H-10, DD-24).
+// baseURL validates APP_BASE_URL: always https (H-10, DD-24), origin only (email links are
+// APP_BASE_URL + APP_LINK_*), and normalized without a trailing slash.
 func baseURL(raw string) (*url.URL, error) {
 	if raw == "" {
 		return nil, errors.New("config: APP_BASE_URL is required")
@@ -138,6 +139,11 @@ func baseURL(raw string) (*url.URL, error) {
 	if err != nil || u.Scheme != "https" || u.Hostname() == "" {
 		return nil, errors.New("config: APP_BASE_URL must be an absolute https:// URL")
 	}
+	if u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" ||
+		strings.ContainsAny(raw, "?#") || (u.Path != "" && u.Path != "/") {
+		return nil, errors.New("config: APP_BASE_URL must be only scheme, host and optional port (no user info, path, query or fragment)")
+	}
+	u.Path, u.RawPath = "", ""
 	return u, nil
 }
 

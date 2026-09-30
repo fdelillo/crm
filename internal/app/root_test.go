@@ -10,8 +10,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/fdelillo/crm/internal/app"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 // syncBuffer is a bytes.Buffer safe for the concurrent writes of the server goroutines.
@@ -82,9 +85,8 @@ type harness struct {
 	logs    *syncBuffer
 }
 
-// newHarness builds the real root handler with a test chi router and the SPA stub.
-func newHarness(t *testing.T, local bool) *harness {
-	t.Helper()
+// testAPI is a chi router with the routes the tests need.
+func testAPI() *chi.Mux {
 	api := app.NewAPIRouter()
 	api.Get("/api/v1/ping", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -94,7 +96,17 @@ func newHarness(t *testing.T, local bool) *harness {
 		_, _ = io.WriteString(w, "thing")
 	})
 	api.Get("/api/v1/boom", func(http.ResponseWriter, *http.Request) { panic("api boom") })
+	return api
+}
 
+// newHarness builds the real root handler with a test chi router and the SPA stub.
+func newHarness(t *testing.T, local bool) *harness {
+	t.Helper()
+	return newHarnessWithAPI(t, local, testAPI())
+}
+
+func newHarnessWithAPI(t *testing.T, local bool, api http.Handler) *harness {
+	t.Helper()
 	logs := &syncBuffer{}
 	logger := slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	spa := &spaStub{}
@@ -198,7 +210,12 @@ func TestRoot_ReadyzNeverReachesSPA(t *testing.T) {
 
 // Everything under /api/ belongs to chi: unknown paths are problem+json 404, never the SPA (INV-22).
 func TestRoot_APINotFound(t *testing.T) {
-	for _, target := range []string{"/api/v1/no-existe", "/api/v2/cualquier", "/api/", "/api/v1/things"} {
+	for _, target := range []string{
+		"/api/v1/no-existe", "/api/v2/cualquier", "/api/", "/api/v1/things",
+		// The ServeMux routes on the escaped path, so these would reach the SPA's catch-all with an
+		// unescaped URL.Path under /api/ (INV-22).
+		"/api%2Fv1%2Fno-existe", "/api%2f", "/%61pi/v1/no-existe",
+	} {
 		t.Run(target, func(t *testing.T) {
 			h := newHarness(t, false)
 			rec := h.do(http.MethodGet, target)
@@ -456,5 +473,120 @@ func TestNewRootHandler_PanicsOnMissingDependency(t *testing.T) {
 			}()
 			app.NewRootHandler(deps, nil)
 		})
+	}
+}
+
+// middleware.GetHead (and any chi middleware that inspects the route context) must work behind the
+// root mux, and the request log still carries the chi pattern.
+func TestRoot_ChiMiddlewareThatNeedsTheRouteContext(t *testing.T) {
+	api := app.NewAPIRouter()
+	api.Use(middleware.GetHead)
+	api.Get("/api/v1/things/{id}", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = io.WriteString(w, "thing")
+	})
+	h := newHarnessWithAPI(t, false, api)
+
+	rec := h.do(http.MethodHead, "/api/v1/things/12345")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("HEAD status = %d, want 200 (GetHead routes it to the GET handler)", rec.Code)
+	}
+	reqID := rec.Header().Get("X-Request-Id")
+	for _, l := range h.logs.lines(t) {
+		if l["request_id"] == reqID && l["route"] != nil {
+			if l["route"] != "/api/v1/things/{id}" || l["method"] != http.MethodHead {
+				t.Errorf("log route = %v method = %v, want the chi pattern for a HEAD", l["route"], l["method"])
+			}
+			return
+		}
+	}
+	t.Errorf("no request log for %s:\n%s", reqID, h.logs.String())
+}
+
+// A panic after part of the response went out cannot become a 500: the client must see the
+// connection cut (never a "complete" 200), and the log must say ERROR with the request id (and the
+// request line must not claim status 200 at INFO).
+func TestRoot_PanicAfterTheResponseStarted(t *testing.T) {
+	api := app.NewAPIRouter()
+	api.Get("/api/v1/partial", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "partial")
+		w.(http.Flusher).Flush()
+		panic("boom after writing")
+	})
+	h := newHarnessWithAPI(t, false, api)
+	srv := httptest.NewServer(h.handler)
+	defer srv.Close()
+
+	client := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
+	resp, err := client.Get(srv.URL + "/api/v1/partial")
+	if err != nil {
+		return // the connection died before the headers arrived: also acceptable
+	}
+	defer resp.Body.Close()
+	body, readErr := io.ReadAll(resp.Body)
+	if readErr == nil {
+		t.Fatalf("client read the whole body %q without error: a corrupted response looked complete", body)
+	}
+	reqID := resp.Header.Get("X-Request-Id")
+	if reqID == "" {
+		t.Fatal("response has no X-Request-Id")
+	}
+
+	deadline := time.Now().Add(3 * time.Second)
+	var sawPanicError, sawRequestLine bool
+	for time.Now().Before(deadline) && (!sawPanicError || !sawRequestLine) {
+		for _, l := range h.logs.lines(t) {
+			if l["request_id"] != reqID {
+				continue
+			}
+			if l["level"] == "ERROR" && l["msg"] == "panic recovered" {
+				sawPanicError = true
+			}
+			if l["msg"] == "request" {
+				sawRequestLine = true
+				if l["status"] != float64(500) || l["level"] != "ERROR" {
+					t.Errorf("request line status = %v level = %v, want 500 ERROR", l["status"], l["level"])
+				}
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !sawPanicError || !sawRequestLine {
+		t.Errorf("panic ERROR logged = %v, request line logged = %v; logs:\n%s", sawPanicError, sawRequestLine, h.logs.String())
+	}
+}
+
+// The 503 of the readiness placeholder and of the "SPA not built" handler are expected while those
+// pieces do not exist yet: they are logged as WARN, not as ERROR.
+func TestRoot_ExpectedPlaceholders503AreWarnings(t *testing.T) {
+	logs := &syncBuffer{}
+	logger := slog.New(slog.NewJSONHandler(logs, nil))
+	root := app.NewRootHandler(app.RootDeps{
+		API:       app.NewAPIRouter(),
+		Liveness:  app.LivenessHandler(),
+		Readiness: app.ReadinessPlaceholder(),
+		SPA:       app.SPAUnavailableHandler(),
+	}, app.NewCommonMiddleware(logger, true))
+
+	for _, path := range []string{"/readyz", "/login"} {
+		rec := httptest.NewRecorder()
+		root.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusServiceUnavailable {
+			t.Fatalf("%s status = %d, want 503", path, rec.Code)
+		}
+		reqID := rec.Header().Get("X-Request-Id")
+		found := false
+		for _, l := range logs.lines(t) {
+			if l["request_id"] == reqID && l["msg"] == "request" {
+				found = true
+				if l["level"] != "WARN" || l["status"] != float64(503) {
+					t.Errorf("%s: level = %v status = %v, want WARN 503", path, l["level"], l["status"])
+				}
+			}
+		}
+		if !found {
+			t.Errorf("%s: no request line", path)
+		}
 	}
 }

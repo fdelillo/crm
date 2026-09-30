@@ -33,6 +33,9 @@ func usagef(format string, args ...any) error { return &usageError{msg: fmt.Spri
 func main() {
 	// SIGTERM is what the hosting sends to stop the process: serve shuts down gracefully on it.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	// After the first signal, restore the default behaviour: a second Ctrl-C during a slow
+	// graceful shutdown kills the process instead of being swallowed.
+	go func() { <-ctx.Done(); stop() }()
 	err := run(ctx, os.Args[1:], os.Getenv, os.Stdout, os.Stderr)
 	stop()
 	if err == nil {

@@ -1,10 +1,10 @@
 package app
 
 import (
-	"context"
 	"log/slog"
 	"net/http"
 	"slices"
+	"strings"
 
 	"github.com/fdelillo/crm/internal/platform/httpx"
 	"github.com/go-chi/chi/v5"
@@ -51,12 +51,12 @@ func NewRootHandler(deps RootDeps, common CommonMiddleware) http.Handler {
 		}
 	}
 	mux := http.NewServeMux()
-	mux.Handle("/api/", withChiRoute(deps.API))
+	mux.Handle("/api/", deps.API)
 	// Not "GET /healthz": with the catch-all "/" below, a POST would match "/" and reach the SPA
 	// instead of getting a 405 from the mux. The method check is done here.
 	mux.Handle("/healthz", httpx.WithRoute("ops", getOnly(deps.Liveness)))
 	mux.Handle("/readyz", httpx.WithRoute("ops", getOnly(deps.Readiness)))
-	mux.Handle("/", httpx.WithRoute("spa", deps.SPA))
+	mux.Handle("/", spaUnlessAPI(deps.API, deps.SPA))
 	if common == nil {
 		return mux
 	}
@@ -75,18 +75,17 @@ func getOnly(next http.Handler) http.Handler {
 	})
 }
 
-// withChiRoute reports the chi route pattern to the request log. It hands chi a route context
-// (chi reuses one that already exists in the request) and reads the matched pattern afterwards.
-func withChiRoute(api http.Handler) http.Handler {
+// spaUnlessAPI serves the SPA, except for anything that is under /api/ once decoded. The ServeMux
+// routes on the escaped path, so "/api%2Fv1%2Fx" would otherwise fall into the SPA's catch-all with
+// URL.Path "/api/v1/x" (INV-22): it goes to the API, which answers 404 problem+json.
+func spaUnlessAPI(api, spa http.Handler) http.Handler {
+	spa = httpx.WithRoute("spa", spa)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		rctx := chi.NewRouteContext()
-		r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
-		defer func() {
-			if pattern := rctx.RoutePattern(); pattern != "" {
-				httpx.SetRoute(r, pattern)
-			}
-		}()
-		api.ServeHTTP(w, r)
+		if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
+			api.ServeHTTP(w, r)
+			return
+		}
+		spa.ServeHTTP(w, r)
 	})
 }
 
@@ -94,6 +93,18 @@ func withChiRoute(api http.Handler) http.Handler {
 // Modules register their routes on it; the SPA is never registered here.
 func NewAPIRouter() *chi.Mux {
 	r := chi.NewRouter()
+	// First middleware: once the request has been routed (or not), report the chi pattern to the
+	// request log. It runs on 404 and 405 too, and lets chi build its own route context.
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			defer func() {
+				if pattern := chi.RouteContext(req.Context()).RoutePattern(); pattern != "" {
+					httpx.SetRoute(req, pattern)
+				}
+			}()
+			next.ServeHTTP(w, req)
+		})
+	})
 	r.NotFound(func(w http.ResponseWriter, req *http.Request) {
 		httpx.WriteProblem(w, req, httpx.CodeNotFound)
 	})

@@ -4,9 +4,11 @@ package pgtest_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/fdelillo/crm/internal/testsupport/pgtest"
+	"github.com/google/uuid"
 )
 
 // Roles and memberships of data-model.md §3.1, as created by db/bootstrap/.
@@ -90,12 +92,13 @@ func TestBootstrap_RolesAndMemberships(t *testing.T) {
 		}
 	}
 
-	// crm_app is a member of nothing else (no crm_tenant, no crm_owner, no crm_provisioner).
+	// crm_app is a member of nothing else but company roles (no crm_tenant, crm_owner, crm_provisioner).
 	var n int
 	if err := pool.QueryRow(ctx, `
 		SELECT count(*) FROM pg_auth_members
 		WHERE member = 'crm_app'::regrole
-		  AND roleid NOT IN ('crm_auth'::regrole, 'crm_worker'::regrole, 'crm_signup'::regrole)`).Scan(&n); err != nil {
+		  AND roleid NOT IN ('crm_auth'::regrole, 'crm_worker'::regrole, 'crm_signup'::regrole)
+		  AND pg_get_userbyid(roleid) !~ '^crm_t_[0-9a-f]{32}$'`).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
 	if n != 0 {
@@ -158,5 +161,72 @@ func TestBootstrap_IsIdempotent(t *testing.T) {
 	// The pools created with the initial passwords still work (the passwords were re-applied from the same environment).
 	if err := pgtest.AppPool(t).Ping(ctx); err != nil {
 		t.Errorf("app pool after re-bootstrap: %v", err)
+	}
+}
+
+// Re-running the bootstrap does not only add: it brings the cluster back to the described state,
+// revoking memberships and database privileges that drifted (ADR-004, ADR-005 INV-02). Company
+// roles crm_t_<hex> are legitimate memberships of crm_app and must survive. Sequential on purpose:
+// it changes cluster state that the parallel catalog tests read afterwards.
+func TestBootstrap_RevertsDrift(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.SuperuserPool(t)
+	companyRole := "crm_t_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+
+	mustExec := func(sql string) {
+		t.Helper()
+		if _, err := pool.Exec(ctx, sql); err != nil {
+			t.Fatalf("%s: %v", sql, err)
+		}
+	}
+	mustExec(`CREATE ROLE ` + companyRole + ` NOLOGIN`)
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DROP ROLE IF EXISTS `+companyRole) })
+	mustExec(`GRANT ` + companyRole + ` TO crm_app WITH INHERIT FALSE, SET TRUE`)
+
+	// The drift: a group role that lets crm_app inherit table privileges, a role that gives crm_owner
+	// more than crm_provisioner, weaker options on a legitimate grant, and extra database privileges.
+	mustExec(`GRANT crm_tenant TO crm_app WITH INHERIT TRUE, SET TRUE`)
+	mustExec(`GRANT crm_worker TO crm_owner`)
+	mustExec(`GRANT crm_auth TO crm_app WITH INHERIT TRUE, SET TRUE`)
+	mustExec(`GRANT CREATE, TEMPORARY ON DATABASE crm TO crm_app`)
+
+	pgtest.ApplyBootstrap(t)
+
+	member := func(role, member string) (exists, inherit bool) {
+		t.Helper()
+		err := pool.QueryRow(ctx, `
+			SELECT count(*) > 0, coalesce(bool_or(inherit_option), false) FROM pg_auth_members
+			WHERE roleid = $1::regrole AND member = $2::regrole`, role, member).Scan(&exists, &inherit)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return exists, inherit
+	}
+	if ok, _ := member("crm_tenant", "crm_app"); ok {
+		t.Error("crm_app is still a member of crm_tenant")
+	}
+	if ok, _ := member("crm_worker", "crm_owner"); ok {
+		t.Error("crm_owner is still a member of crm_worker")
+	}
+	if ok, inherit := member("crm_auth", "crm_app"); !ok || inherit {
+		t.Errorf("crm_auth in crm_app: exists = %v inherit = %v, want a grant without INHERIT", ok, inherit)
+	}
+	if ok, _ := member("crm_provisioner", "crm_owner"); !ok {
+		t.Error("crm_owner lost its legitimate membership in crm_provisioner")
+	}
+	if ok, _ := member(companyRole, "crm_app"); !ok {
+		t.Errorf("crm_app lost its membership in the company role %s", companyRole)
+	}
+
+	var create, temp, connect bool
+	err := pool.QueryRow(ctx, `
+		SELECT has_database_privilege('crm_app', 'crm', 'CREATE'),
+		       has_database_privilege('crm_app', 'crm', 'TEMPORARY'),
+		       has_database_privilege('crm_app', 'crm', 'CONNECT')`).Scan(&create, &temp, &connect)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if create || temp || !connect {
+		t.Errorf("crm_app on database crm: CREATE = %v TEMPORARY = %v CONNECT = %v, want false/false/true", create, temp, connect)
 	}
 }

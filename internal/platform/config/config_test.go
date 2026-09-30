@@ -95,6 +95,24 @@ func TestLoad_Overrides(t *testing.T) {
 	}
 }
 
+// Email links are built as APP_BASE_URL + APP_LINK_*, so a trailing slash is normalized away.
+func TestLoad_BaseURLIsNormalized(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://crm.example":      "https://crm.example",
+		"https://crm.example/":     "https://crm.example",
+		"https://localhost:8443/":  "https://localhost:8443",
+		"https://crm.example:8443": "https://crm.example:8443",
+	} {
+		cfg, err := config.Load(env(map[string]string{"APP_BASE_URL": in}))
+		if err != nil {
+			t.Fatalf("%s: %v", in, err)
+		}
+		if got := cfg.AppBaseURL.String(); got != want {
+			t.Errorf("APP_BASE_URL %q -> %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestLoad_MigrationURLIsOptional(t *testing.T) {
 	cfg, err := config.Load(env(map[string]string{"DATABASE_MIGRATION_URL": ""}))
 	if err != nil {
@@ -175,6 +193,11 @@ func TestLoad_Errors(t *testing.T) {
 		{"host:port looks like a scheme", map[string]string{"APP_BASE_URL": "localhost:8443"}, "APP_BASE_URL"},
 		{"ftp scheme", map[string]string{"APP_BASE_URL": "ftp://crm.example"}, "APP_BASE_URL"},
 		{"https without host", map[string]string{"APP_BASE_URL": "https://"}, "APP_BASE_URL"},
+		{"with user info", map[string]string{"APP_BASE_URL": "https://admin:s3cr3t-userinfo@crm.example"}, "APP_BASE_URL"},
+		{"with query", map[string]string{"APP_BASE_URL": "https://crm.example?x=1"}, "APP_BASE_URL"},
+		{"with fragment", map[string]string{"APP_BASE_URL": "https://crm.example#x"}, "APP_BASE_URL"},
+		{"with a path", map[string]string{"APP_BASE_URL": "https://crm.example/app"}, "APP_BASE_URL"},
+		{"with an empty query marker", map[string]string{"APP_BASE_URL": "https://crm.example/?"}, "APP_BASE_URL"},
 		{"APP_LINK_RESET without slash", map[string]string{"APP_LINK_RESET": "reset"}, "APP_LINK_RESET"},
 		{"APP_LINK_VERIFY with fragment", map[string]string{"APP_LINK_VERIFY": "/verify#x"}, "APP_LINK_VERIFY"},
 		{"APP_LINK_INVITATION with query", map[string]string{"APP_LINK_INVITATION": "/i?x=1"}, "APP_LINK_INVITATION"},
@@ -184,7 +207,7 @@ func TestLoad_Errors(t *testing.T) {
 		{"SESSION_IDLE zero", map[string]string{"SESSION_IDLE": "0s"}, "SESSION_IDLE"},
 		{"SESSION_ABSOLUTE negative", map[string]string{"SESSION_ABSOLUTE": "-1h"}, "SESSION_ABSOLUTE"},
 	}
-	secrets := []string{secretDBPassword, secretDatabase, secretMigration, secretKey, badKey}
+	secrets := []string{"s3cr3t-userinfo", secretDBPassword, secretDatabase, secretMigration, secretKey, badKey}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := config.Load(env(tt.env))

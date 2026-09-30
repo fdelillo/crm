@@ -44,10 +44,14 @@ func RequestID(next http.Handler) http.Handler {
 }
 
 // Recover turns a panic in any handler into a 500 problem+json and an ERROR log with the request id,
-// so the process survives. http.ErrAbortHandler keeps its net/http meaning and is re-panicked.
+// so the process survives. If the response already started, a 500 is impossible and writing more
+// would corrupt it: it logs and re-panics with http.ErrAbortHandler so net/http cuts the connection
+// and the client sees a failed read instead of a "complete" 200. A panic that already is
+// http.ErrAbortHandler keeps its meaning and is re-panicked untouched.
 func Recover(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			sw := trackWriter(w)
 			defer func() {
 				rec := recover()
 				if rec == nil {
@@ -59,16 +63,40 @@ func Recover(logger *slog.Logger) func(http.Handler) http.Handler {
 				logger.ErrorContext(r.Context(), "panic recovered",
 					"request_id", RequestIDFrom(r.Context()),
 					"panic", fmt.Sprint(rec),
+					"response_started", sw.wroteHeader,
 					"stack", string(debug.Stack()))
-				WriteProblem(w, r, CodeInternal)
+				if sw.wroteHeader {
+					panic(http.ErrAbortHandler)
+				}
+				WriteProblem(sw, r, CodeInternal)
 			}()
-			next.ServeHTTP(w, r)
+			next.ServeHTTP(sw, r)
 		})
 	}
 }
 
+// trackWriter wraps w in a statusWriter unless it already is one.
+func trackWriter(w http.ResponseWriter) *statusWriter {
+	if sw, ok := w.(*statusWriter); ok {
+		return sw
+	}
+	return &statusWriter{ResponseWriter: w}
+}
+
 // routeHolder lets handlers deeper in the chain tell Logging which route label to record.
-type routeHolder struct{ label string }
+type routeHolder struct {
+	label string
+	level *slog.Level
+}
+
+// SetLogLevel overrides the level of this request's log line (by default INFO, or ERROR for 5xx).
+// For responses that are expected even though they are 5xx, such as a placeholder answering 503.
+// A panic still logs at ERROR. It is a no-op outside Logging.
+func SetLogLevel(r *http.Request, level slog.Level) {
+	if h, ok := r.Context().Value(routeKey).(*routeHolder); ok {
+		h.level = &level
+	}
+}
 
 // SetRoute records the route label for the request log. The root mux calls it through WithRoute
 // and the API wrapper with the chi pattern. It is a no-op outside Logging.
@@ -95,20 +123,25 @@ func Logging(logger *slog.Logger) func(http.Handler) http.Handler {
 			start := time.Now()
 			holder := &routeHolder{}
 			r = r.WithContext(context.WithValue(r.Context(), routeKey, holder))
-			sw := &statusWriter{ResponseWriter: w}
+			sw := trackWriter(w)
 			completed := false
 			defer func() {
 				status := sw.statusCode()
-				if !completed && !sw.wroteHeader {
-					status = http.StatusInternalServerError // panicking: Recover will answer 500
+				if !completed {
+					// A panic is in flight: Recover answers 500 or, if the response had started, cuts
+					// the connection. Either way 200 would be a lie.
+					status = http.StatusInternalServerError
 				}
 				route := holder.label
 				if route == "" {
 					route = unmatchedRoute
 				}
 				level := slog.LevelInfo
-				if status >= http.StatusInternalServerError {
+				switch {
+				case !completed || (status >= http.StatusInternalServerError && holder.level == nil):
 					level = slog.LevelError
+				case holder.level != nil:
+					level = *holder.level
 				}
 				logger.Log(r.Context(), level, "request",
 					"request_id", RequestIDFrom(r.Context()),

@@ -9,6 +9,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -23,7 +24,8 @@ const (
 	// internal/platform/db, where the role of a transaction is decided (INV-03, ADR-005).
 	RuleRoleSwitch = "role-switch"
 	// RuleDynamicSQL: SQL is never built with fmt.Sprintf or string concatenation outside
-	// internal/platform/db (INV-04, ADR-003).
+	// internal/platform/db (INV-04, ADR-003): Sprintf/Fprintf/concatenation/+=/builders/Join/Replace, and
+	// any Exec/Query/QueryRow/Batch.Queue whose SQL argument is not a string literal or a const.
 	RuleDynamicSQL = "dynamic-sql"
 	// RuleChiOutsideAPI: the chi router of the API never registers the SPA: no Mount("/"), no
 	// NotFound towards the SPA and no "/*" (INV-22, DD-22).
@@ -39,11 +41,56 @@ type Violation struct {
 }
 
 var (
-	roleRe = regexp.MustCompile(`(?i)(\bset\s+(?:(?:local|session)\s+)?role\b|\breset\s+role\b|\bset_config\s*\(\s*'role')`)
-	// sqlRe matches the shape of a SQL statement in a string assembled from parts. Non-constant
-	// parts are replaced by \x00 first, so "UPDATE " + table + " SET x = 1" still looks like an UPDATE.
-	sqlRe = regexp.MustCompile(`(?is)^\s*(select\s|insert\s+into\s|update\s+\S+\s+set\s|delete\s+from\s|with\s+\S+\s+as\s*\()`)
+	roleRe = regexp.MustCompile(`(?i)(\bset\s+(?:(?:local|session)\s+)?role\b|\breset\s+role\b)`)
+	// setConfigRe finds set_config( calls; what follows the parenthesis decides (see setConfigSwitch).
+	setConfigRe = regexp.MustCompile(`(?i)\bset_config\s*\(\s*`)
+
+	// SQL detection works on a "template": string literals joined, with \x00 for every non-constant
+	// part, so "UPDATE " + table + " SET x = 1" still reads as an UPDATE.
+	//
+	// stmtStartRe: a statement at the start (case-insensitive), after optional comments.
+	stmtStartRe = regexp.MustCompile(`(?is)^\s*(?:/\*.*?\*/\s*|--[^\n]*\n\s*)*(?:select\s|insert\s+into\s|update\s+\S+\s+set\s|delete\s+from\s|with\s+\S+\s+as\s*\()`)
+	// stmtAnyRe: an UPPERCASE statement anywhere. Case-sensitive on purpose, so a lowercase message such
+	// as "failed to delete from cache" is not taken for SQL.
+	stmtAnyRe = regexp.MustCompile(`\b(?:SELECT\s|INSERT\s+INTO\s|UPDATE\s+\S+\s+SET\s|DELETE\s+FROM\s|WITH\s+\S+\s+AS\s*\()`)
+	// fragRe: clauses that only appear in SQL, for statements built in several steps (q += " AND x = ...").
+	fragRe = regexp.MustCompile(`(?i:\bwhere\s+\S+\s*(?:=|<|>|\blike\b|\bin\b|\bis\b)|\border\s+by\s|\bgroup\s+by\s|\bvalues\s*\(|\bset\s+[\w."]+\s*=|\bjoin\s+[\w."]+\s+on\b)|\b(?:AND|OR)\s+[\w."\x00]+\s*(?:=|<>|<|>|LIKE\b|IN\b)`)
 )
+
+func looksLikeSQL(template string) bool {
+	return stmtStartRe.MatchString(template) || stmtAnyRe.MatchString(template) || fragRe.MatchString(template)
+}
+
+// roleSwitch reports the first place in s that changes the role of a transaction: SET [LOCAL|SESSION]
+// ROLE, RESET ROLE, or set_config with 'role' / 'session_authorization' or with a GUC name that is not
+// a literal (a parameter could carry "role"). It returns the byte offset and the matched text.
+func roleSwitch(s string) (offset int, text string, ok bool) {
+	best := -1
+	if loc := roleRe.FindStringIndex(s); loc != nil {
+		best, text = loc[0], s[loc[0]:loc[1]]
+	}
+	for _, loc := range setConfigRe.FindAllStringIndex(s, -1) {
+		rest := s[loc[1]:]
+		if strings.HasPrefix(rest, "'") {
+			name, _, closed := strings.Cut(rest[1:], "'")
+			if closed && !isRoleGUC(name) {
+				continue
+			}
+		}
+		if best == -1 || loc[0] < best {
+			best, text = loc[0], strings.TrimSpace(s[loc[0]:loc[1]])+"…"
+		}
+	}
+	return best, text, best >= 0
+}
+
+func isRoleGUC(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "role", "session_authorization":
+		return true
+	}
+	return false
+}
 
 // Check scans internal/ and cmd/ under root. Test files, generated code and testdata are skipped;
 // internal/platform/db is exempt from the role-switch and dynamic-SQL rules and so is
@@ -117,7 +164,7 @@ func checkSQLFile(path, rel string) ([]Violation, error) {
 		if before, _, found := strings.Cut(line, "--"); found {
 			line = before
 		}
-		if m := roleRe.FindString(line); m != "" {
+		if _, m, ok := roleSwitch(line); ok {
 			out = append(out, Violation{RuleRoleSwitch, rel, i + 1, fmt.Sprintf("%q outside internal/platform/db", m)})
 		}
 	}
@@ -133,9 +180,13 @@ func checkGo(path, rel string) ([]Violation, error) {
 	if isGenerated(file) {
 		return nil, nil
 	}
-	c := &goChecker{fset: fset, rel: rel, sqlRules: !exemptFromSQLRules(rel), seen: map[*ast.BinaryExpr]bool{}}
+	consts, err := packageConsts(filepath.Dir(path))
+	if err != nil {
+		return nil, err
+	}
+	c := &goChecker{fset: fset, rel: rel, sqlRules: !exemptFromSQLRules(rel), consts: consts, seen: map[*ast.BinaryExpr]bool{}}
 	ast.Inspect(file, c.visit)
-	return c.out, nil
+	return dedupe(c.out), nil
 }
 
 func isGenerated(f *ast.File) bool {
@@ -149,10 +200,58 @@ func isGenerated(f *ast.File) bool {
 	return false
 }
 
+// packageConsts lists the names declared with const in the Go files of dir (generated ones
+// included): sqlc emits its queries as consts of the store package.
+func packageConsts(dir string) (map[string]bool, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	names := map[string]bool{}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(token.NewFileSet(), filepath.Join(dir, e.Name()), nil, parser.SkipObjectResolution)
+		if err != nil {
+			return nil, fmt.Errorf("reporules: parsing %s: %w", e.Name(), err)
+		}
+		ast.Inspect(f, func(n ast.Node) bool {
+			if gd, ok := n.(*ast.GenDecl); ok && gd.Tok == token.CONST {
+				for _, spec := range gd.Specs {
+					for _, id := range spec.(*ast.ValueSpec).Names {
+						names[id.Name] = true
+					}
+				}
+			}
+			return true
+		})
+	}
+	return names, nil
+}
+
+// dedupe keeps one violation per rule and line (a call argument can trip two checks).
+func dedupe(vs []Violation) []Violation {
+	type key struct {
+		rule string
+		line int
+	}
+	seen := map[key]bool{}
+	var out []Violation
+	for _, v := range vs {
+		if k := (key{v.Rule, v.Line}); !seen[k] {
+			seen[k] = true
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
 type goChecker struct {
 	fset     *token.FileSet
 	rel      string
 	sqlRules bool
+	consts   map[string]bool
 	seen     map[*ast.BinaryExpr]bool // concatenation nodes already reported as part of a chain
 	out      []Violation
 }
@@ -173,7 +272,9 @@ func (c *goChecker) visit(n ast.Node) bool {
 		}
 	case *ast.CallExpr:
 		if c.sqlRules {
-			c.checkSprintf(n)
+			c.checkFormatCall(n)
+			c.checkStringBuilding(n)
+			c.checkSQLCall(n)
 		}
 		c.checkRouterCall(n)
 	}
@@ -185,13 +286,13 @@ func (c *goChecker) checkRoleLiteral(lit *ast.BasicLit) {
 	if err != nil {
 		return
 	}
-	loc := roleRe.FindStringIndex(val)
-	if loc == nil {
+	offset, text, ok := roleSwitch(val)
+	if !ok {
 		return
 	}
-	line := c.fset.Position(lit.Pos()).Line + strings.Count(val[:loc[0]], "\n")
+	line := c.fset.Position(lit.Pos()).Line + strings.Count(val[:offset], "\n")
 	c.out = append(c.out, Violation{RuleRoleSwitch, c.rel, line,
-		fmt.Sprintf("%q outside internal/platform/db", val[loc[0]:loc[1]])})
+		fmt.Sprintf("%q outside internal/platform/db", text)})
 }
 
 // template renders an expression made of string literals and "+" with \x00 for anything else.
@@ -241,22 +342,130 @@ func (c *goChecker) checkConcat(b *ast.BinaryExpr) {
 		}
 	}
 	mark(b)
-	if hasDynamic && sqlRe.MatchString(template(b)) {
+	if hasDynamic && looksLikeSQL(template(b)) {
 		c.add(RuleDynamicSQL, b.Pos(), "SQL built by concatenation")
 	}
 }
 
-func (c *goChecker) checkSprintf(call *ast.CallExpr) {
+// checkFormatCall flags fmt.Sprintf / fmt.Fprintf whose format string is SQL and that has arguments.
+func (c *goChecker) checkFormatCall(call *ast.CallExpr) {
 	sel, ok := call.Fun.(*ast.SelectorExpr)
-	if !ok || sel.Sel.Name != "Sprintf" || len(call.Args) < 2 {
+	if !ok || !isPkg(sel.X, "fmt") {
 		return
 	}
-	if pkg, ok := sel.X.(*ast.Ident); !ok || pkg.Name != "fmt" {
+	format := 0
+	switch sel.Sel.Name {
+	case "Sprintf":
+	case "Fprintf":
+		format = 1
+	default:
 		return
 	}
-	if sqlRe.MatchString(template(call.Args[0])) {
-		c.add(RuleDynamicSQL, call.Pos(), "SQL built with fmt.Sprintf")
+	if len(call.Args) > format+1 && looksLikeSQL(template(call.Args[format])) {
+		c.add(RuleDynamicSQL, call.Pos(), "SQL built with fmt."+sel.Sel.Name)
 	}
+}
+
+func isPkg(e ast.Expr, name string) bool {
+	id, ok := e.(*ast.Ident)
+	return ok && id.Name == name
+}
+
+// checkStringBuilding flags the other ways of assembling SQL text: a builder's WriteString,
+// strings.Join over a slice with non-constant parts, and strings.Replace(All) on a SQL literal.
+func (c *goChecker) checkStringBuilding(call *ast.CallExpr) {
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || len(call.Args) == 0 {
+		return
+	}
+	switch {
+	case sel.Sel.Name == "WriteString":
+		if looksLikeSQL(template(call.Args[0])) {
+			c.add(RuleDynamicSQL, call.Pos(), "SQL assembled piece by piece with WriteString")
+		}
+	case isPkg(sel.X, "strings") && sel.Sel.Name == "Join":
+		lit, ok := call.Args[0].(*ast.CompositeLit)
+		if !ok {
+			return
+		}
+		var parts []string
+		dynamic := false
+		for _, e := range lit.Elts {
+			t := template(e)
+			dynamic = dynamic || t == "\x00"
+			parts = append(parts, t)
+		}
+		if dynamic && looksLikeSQL(strings.Join(parts, " ")) {
+			c.add(RuleDynamicSQL, call.Pos(), "SQL built with strings.Join")
+		}
+	case isPkg(sel.X, "strings") && (sel.Sel.Name == "Replace" || sel.Sel.Name == "ReplaceAll") && len(call.Args) >= 3:
+		if looksLikeSQL(template(call.Args[0])) && (template(call.Args[2]) == "\x00" || template(call.Args[1]) == "\x00") {
+			c.add(RuleDynamicSQL, call.Pos(), "SQL built with strings."+sel.Sel.Name)
+		}
+	}
+}
+
+// sqlCallMethods are the pgx and database/sql methods whose SQL argument must be constant.
+var sqlCallMethods = map[string]bool{
+	"Exec": true, "Query": true, "QueryRow": true,
+	"ExecContext": true, "QueryContext": true, "QueryRowContext": true,
+}
+
+// checkSQLCall: the SQL text passed to Exec / Query / QueryRow / Batch.Queue must be a string literal
+// or a const (sqlc emits `const name = ...`), never a value computed at run time (INV-04, ADR-003).
+// The SQL argument is the first one that is not a context. A selector (pkg.Const) is accepted: without
+// type information it cannot be told from a constant.
+func (c *goChecker) checkSQLCall(call *ast.CallExpr) {
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return
+	}
+	name := sel.Sel.Name
+	isQueue := name == "Queue" && strings.Contains(strings.ToLower(types.ExprString(sel.X)), "batch")
+	if !sqlCallMethods[name] && !isQueue {
+		return
+	}
+	args := call.Args
+	for len(args) > 0 && isContextArg(args[0]) {
+		args = args[1:]
+	}
+	if len(args) == 0 || c.isConstantSQL(args[0]) {
+		return
+	}
+	c.add(RuleDynamicSQL, args[0].Pos(), fmt.Sprintf("%s: the SQL argument must be a string literal or a const", name))
+}
+
+func isContextArg(e ast.Expr) bool {
+	switch e := e.(type) {
+	case *ast.Ident:
+		return strings.HasSuffix(strings.ToLower(e.Name), "ctx") || strings.EqualFold(e.Name, "context")
+	case *ast.SelectorExpr:
+		return strings.HasSuffix(strings.ToLower(e.Sel.Name), "ctx")
+	case *ast.CallExpr:
+		if sel, ok := e.Fun.(*ast.SelectorExpr); ok {
+			switch sel.Sel.Name {
+			case "Context", "Background", "TODO", "WithTimeout", "WithCancel", "WithDeadline", "WithValue":
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (c *goChecker) isConstantSQL(e ast.Expr) bool {
+	switch e := e.(type) {
+	case *ast.BasicLit:
+		return true // a non-string literal is not SQL; either way nothing is built at run time
+	case *ast.Ident:
+		return c.consts[e.Name]
+	case *ast.ParenExpr:
+		return c.isConstantSQL(e.X)
+	case *ast.BinaryExpr:
+		return e.Op == token.ADD && c.isConstantSQL(e.X) && c.isConstantSQL(e.Y)
+	case *ast.SelectorExpr:
+		return true
+	}
+	return false
 }
 
 var routeMethods = map[string]bool{
