@@ -85,8 +85,15 @@ func trackWriter(w http.ResponseWriter) *statusWriter {
 
 // routeHolder lets handlers deeper in the chain tell Logging which route label to record.
 type routeHolder struct {
-	label string
-	level *slog.Level
+	label    string
+	level    *slog.Level
+	canceled bool
+}
+
+func markClientCanceled(r *http.Request) {
+	if h, ok := r.Context().Value(routeKey).(*routeHolder); ok {
+		h.canceled = true
+	}
 }
 
 // SetLogLevel overrides the level of this request's log line (by default INFO, or ERROR for 5xx).
@@ -127,6 +134,9 @@ func Logging(logger *slog.Logger) func(http.Handler) http.Handler {
 			completed := false
 			defer func() {
 				status := sw.statusCode()
+				if holder.canceled {
+					status = 499
+				}
 				if !completed {
 					// A panic is in flight: Recover answers 500 or, if the response had started, cuts
 					// the connection. Either way 200 would be a lie.
@@ -138,6 +148,8 @@ func Logging(logger *slog.Logger) func(http.Handler) http.Handler {
 				}
 				level := slog.LevelInfo
 				switch {
+				case holder.canceled:
+					level = slog.LevelInfo
 				case !completed || (status >= http.StatusInternalServerError && holder.level == nil):
 					level = slog.LevelError
 				case holder.level != nil:
