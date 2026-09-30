@@ -176,3 +176,36 @@ func TestDefaultExceptionsAreExactPaths(t *testing.T) {
 		}
 	}
 }
+
+// The four system-query files of plan §4.4, by exact path and nothing else.
+func TestDefaultExceptionsAreTheFourFilesOfPlanSection44(t *testing.T) {
+	var got []string
+	for _, e := range queryrules.DefaultExceptions {
+		got = append(got, e.Pattern)
+	}
+	sort.Strings(got)
+	want := []string{
+		"internal/identity/store/auth_lookup.sql",
+		"internal/identity/store/cleanup.sql",
+		"internal/platform/outbox/store/worker.sql",
+		"internal/tenant/store/provisioning.sql",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("default exceptions = %v, want %v", got, want)
+	}
+}
+
+// The same file names in another module are violations even when they are the exact names of an exemption.
+func TestCleanupAndProvisioningNamesAreExemptOnlyAtTheirPath(t *testing.T) {
+	vs, err := queryrules.Check("testdata/misplaced2", companyTables(t), queryrules.DefaultExceptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"internal/orders/store/cleanup.sql ",
+		"internal/orders/store/provisioning.sql ",
+	}
+	if got := summarize(vs); !slices.Equal(got, want) {
+		t.Errorf("violations = %v, want %v", got, want)
+	}
+}

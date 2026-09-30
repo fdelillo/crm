@@ -4,10 +4,13 @@ package db_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"log/slog"
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -413,4 +416,168 @@ func TestTxRunner_NewCompanyIsUsableOnAnyConnectionRightAfterProvisioning(t *tes
 	if len(failures) > 0 {
 		t.Errorf("%d of 600 first uses of a just-provisioned company failed on another connection; first: %v", len(failures), failures[0])
 	}
+}
+
+// permissionDeniedToSetRole is what PostgreSQL answers when a backend's cached list of SET-able roles is stale.
+func permissionDeniedToSetRole(role string) error {
+	return &pgconn.PgError{Code: "42501", Message: `permission denied to set role "` + role + `"`}
+}
+
+type logRecords struct {
+	mu   sync.Mutex
+	recs []map[string]any
+}
+
+func (l *logRecords) Write(p []byte) (int, error) {
+	var m map[string]any
+	if err := json.Unmarshal(p, &m); err == nil {
+		l.mu.Lock()
+		l.recs = append(l.recs, m)
+		l.mu.Unlock()
+	}
+	return len(p), nil
+}
+
+func (l *logRecords) retries() []map[string]any {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var out []map[string]any
+	for _, r := range l.recs {
+		if r["event"] == "set_role_retry" {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+func retryRunner(t *testing.T) (db.TxRunner, *logRecords) {
+	t.Helper()
+	logs := &logRecords{}
+	runner := db.NewTxRunner(pgtest.AppPool(t), db.WithLogger(slog.New(slog.NewJSONHandler(logs, nil))))
+	return runner, logs
+}
+
+// Second line of defence against the stale role list: entering a company is retried ONCE when the very
+// first SET LOCAL ROLE is refused, before fn has done anything; the whole transaction starts again.
+func TestTxRunner_EnteringACompanyIsRetriedOnceWhenSetRoleIsRefused(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	id, role := newTenant(t)
+	runner, logs := retryRunner(t)
+	var attempts, ran atomic.Int32
+	db.SetFault(runner, func(r string) error {
+		if r == role && attempts.Add(1) == 1 {
+			return permissionDeniedToSetRole(r)
+		}
+		return nil
+	})
+	before := db.SetRoleRetryCount()
+
+	err := runner.InTenantTx(ctx, id, func(ctx context.Context, tx db.Tx) error {
+		ran.Add(1)
+		if got := currentUser(t, ctx, tx); got != role {
+			t.Errorf("current_user = %q, want %q", got, role)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("InTenantTx = %v, want success after one retry", err)
+	}
+	if ran.Load() != 1 {
+		t.Errorf("fn ran %d times, want exactly once", ran.Load())
+	}
+	if attempts.Load() != 2 {
+		t.Errorf("SET LOCAL ROLE attempted %d times, want 2 (the refused one and one retry)", attempts.Load())
+	}
+	// The counter is process-wide and other parallel tests retry too: this one only grows.
+	if got := db.SetRoleRetryCount() - before; got < 1 {
+		t.Errorf("retry counter grew by %d, want at least 1", got)
+	}
+	recs := logs.retries()
+	if len(recs) != 1 || recs[0]["level"] != "WARN" || recs[0]["role"] != role {
+		t.Errorf("retry log records = %v, want one WARN with event=set_role_retry and the role", recs)
+	}
+}
+
+func TestTxRunner_TheRetryIsSingle(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	id, role := newTenant(t)
+	runner, _ := retryRunner(t)
+	var attempts atomic.Int32
+	db.SetFault(runner, func(r string) error {
+		if r == role {
+			attempts.Add(1)
+			return permissionDeniedToSetRole(r)
+		}
+		return nil
+	})
+	err := runner.InTenantTx(ctx, id, func(context.Context, db.Tx) error {
+		t.Error("fn ran although the role was never entered")
+		return nil
+	})
+	if !errors.Is(err, db.ErrPrivilege) {
+		t.Errorf("err = %v, want ErrPrivilege after the retry also fails", err)
+	}
+	if attempts.Load() != 2 {
+		t.Errorf("SET LOCAL ROLE attempted %d times, want exactly 2", attempts.Load())
+	}
+}
+
+// No retry for system roles, for AsTenant in the middle of a transaction, or once fn has run.
+func TestTxRunner_NoRetryOutsideTheEntryOfACompany(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	id, role := newTenant(t)
+
+	t.Run("system role", func(t *testing.T) {
+		runner, _ := retryRunner(t)
+		var attempts atomic.Int32
+		db.SetFault(runner, func(r string) error {
+			if r == "crm_auth" {
+				attempts.Add(1)
+				return permissionDeniedToSetRole(r)
+			}
+			return nil
+		})
+		err := runner.InSystemTx(ctx, db.RoleAuth, func(context.Context, db.Tx) error {
+			t.Error("fn ran")
+			return nil
+		})
+		if !errors.Is(err, db.ErrPrivilege) || attempts.Load() != 1 {
+			t.Errorf("err = %v, attempts = %d; want ErrPrivilege and a single attempt", err, attempts.Load())
+		}
+	})
+
+	t.Run("AsTenant inside a transaction", func(t *testing.T) {
+		runner, _ := retryRunner(t)
+		var attempts, ran atomic.Int32
+		db.SetFault(runner, func(r string) error {
+			if r == role {
+				attempts.Add(1)
+				return permissionDeniedToSetRole(r)
+			}
+			return nil
+		})
+		err := runner.InSystemTx(ctx, db.RoleAuth, func(ctx context.Context, tx db.Tx) error {
+			ran.Add(1)
+			return tx.AsTenant(ctx, id)
+		})
+		if !errors.Is(err, db.ErrPrivilege) || attempts.Load() != 1 || ran.Load() != 1 {
+			t.Errorf("err = %v, attempts = %d, fn runs = %d; want ErrPrivilege, 1 and 1", err, attempts.Load(), ran.Load())
+		}
+	})
+
+	t.Run("fn already ran", func(t *testing.T) {
+		runner, _ := retryRunner(t)
+		var ran atomic.Int32
+		denied := &pgconn.PgError{Code: "42501", Message: `permission denied to set role "x"`}
+		err := runner.InTenantTx(ctx, id, func(context.Context, db.Tx) error {
+			ran.Add(1)
+			return denied // fn itself reports the same error: it may have done work, so no second run
+		})
+		if ran.Load() != 1 || !errors.Is(err, denied) {
+			t.Errorf("fn runs = %d, err = %v; want 1 and the error unchanged", ran.Load(), err)
+		}
+	})
 }

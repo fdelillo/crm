@@ -30,6 +30,10 @@ const (
 	// RuleChiOutsideAPI: the chi router of the API never registers the SPA: no Mount("/"), no
 	// NotFound towards the SPA and no "/*" (INV-22, DD-22).
 	RuleChiOutsideAPI = "chi-outside-api"
+	// RuleClientIPHeaders: the proxy headers X-Forwarded-For, Forwarded and X-Real-IP are read only in
+	// internal/platform/httpx (ClientIP), so an untrusted client cannot choose the IP that logs, the rate
+	// limit and the audit trail record (INV-25, DD-32).
+	RuleClientIPHeaders = "client-ip-header"
 )
 
 // Violation is one broken rule at a place in the tree.
@@ -184,7 +188,8 @@ func checkGo(path, rel string) ([]Violation, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &goChecker{fset: fset, rel: rel, sqlRules: !exemptFromSQLRules(rel), consts: consts, seen: map[*ast.BinaryExpr]bool{}}
+	c := &goChecker{fset: fset, rel: rel, sqlRules: !exemptFromSQLRules(rel), ipRules: !strings.HasPrefix(rel, "internal/platform/httpx/") && !strings.HasPrefix(rel, "internal/testsupport/"),
+		consts: consts, seen: map[*ast.BinaryExpr]bool{}}
 	ast.Inspect(file, c.visit)
 	return dedupe(c.out), nil
 }
@@ -251,6 +256,7 @@ type goChecker struct {
 	fset     *token.FileSet
 	rel      string
 	sqlRules bool
+	ipRules  bool // false inside internal/platform/httpx (the only reader of the proxy headers) and test support
 	consts   map[string]bool
 	seen     map[*ast.BinaryExpr]bool // concatenation nodes already reported as part of a chain
 	out      []Violation
@@ -265,6 +271,9 @@ func (c *goChecker) visit(n ast.Node) bool {
 	case *ast.BasicLit:
 		if c.sqlRules && n.Kind == token.STRING {
 			c.checkRoleLiteral(n)
+		}
+		if c.ipRules && n.Kind == token.STRING {
+			c.checkProxyHeader(n)
 		}
 	case *ast.BinaryExpr:
 		if c.sqlRules {
@@ -293,6 +302,22 @@ func (c *goChecker) checkRoleLiteral(lit *ast.BasicLit) {
 	line := c.fset.Position(lit.Pos()).Line + strings.Count(val[:offset], "\n")
 	c.out = append(c.out, Violation{RuleRoleSwitch, c.rel, line,
 		fmt.Sprintf("%q outside internal/platform/db", text)})
+}
+
+var proxyHeaders = []string{"x-forwarded-for", "forwarded", "x-real-ip"}
+
+// checkProxyHeader flags a string literal that is exactly one of the proxy headers.
+func (c *goChecker) checkProxyHeader(lit *ast.BasicLit) {
+	val, err := strconv.Unquote(lit.Value)
+	if err != nil {
+		return
+	}
+	for _, h := range proxyHeaders {
+		if strings.EqualFold(strings.TrimSpace(val), h) {
+			c.add(RuleClientIPHeaders, lit.Pos(), fmt.Sprintf("%q is read outside internal/platform/httpx: the client IP comes only from httpx.ClientIP", val))
+			return
+		}
+	}
 }
 
 // template renders an expression made of string literals and "+" with \x00 for anything else.

@@ -243,14 +243,29 @@ func TestRoot_APIMethodNotAllowed(t *testing.T) {
 		t.Fatalf("status = %d, want 405", rec.Code)
 	}
 	p := decodeProblem(t, rec)
-	if p.Status != 405 || p.Code == "" || p.Instance == "" {
-		t.Errorf("problem = %+v", p)
+	if p.Status != 405 || p.Code != "method_not_allowed" || p.Type != "/problems/method_not_allowed" || p.Instance == "" {
+		t.Errorf("problem = %+v, want status 405 and code method_not_allowed", p)
 	}
 	if allow := rec.Header().Get("Allow"); !strings.Contains(allow, "GET") {
 		t.Errorf("Allow = %q, want it to list GET", allow)
 	}
 	if got := h.spa.received(); len(got) != 0 {
 		t.Errorf("SPA received %v, want nothing", got)
+	}
+}
+
+// A method chi does not know still gets the same 405 with Allow.
+func TestRoot_APIUnknownMethodIsMethodNotAllowed(t *testing.T) {
+	h := newHarness(t, false)
+	rec := h.do("FOO", "/api/v1/ping")
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want 405", rec.Code)
+	}
+	if p := decodeProblem(t, rec); p.Code != "method_not_allowed" {
+		t.Errorf("code = %q, want method_not_allowed", p.Code)
+	}
+	if allow := rec.Header().Get("Allow"); !strings.Contains(allow, "GET") {
+		t.Errorf("Allow = %q, want it to list GET", allow)
 	}
 }
 

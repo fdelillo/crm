@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/netip"
 	"net/url"
 	"strings"
 	"time"
@@ -35,6 +36,9 @@ type Config struct {
 	HTTPAddr             string
 	MetricsAddr          string
 	TLS                  *TLSFiles // nil except in local mode with TLS_* set
+	// TrustedProxies are the proxies whose X-Forwarded-For is believed (TRUSTED_PROXIES, DD-32).
+	// Empty (the default) trusts nobody: the client IP is then always RemoteAddr.
+	TrustedProxies []netip.Prefix
 }
 
 // Load reads the environment through getenv and validates the rules of plan §10.5.
@@ -79,6 +83,9 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	if c.SessionIdle > c.SessionAbsolute {
 		return Config{}, errors.New("config: SESSION_IDLE must not be greater than SESSION_ABSOLUTE")
+	}
+	if c.TrustedProxies, err = trustedProxies(getenv("TRUSTED_PROXIES")); err != nil {
+		return Config{}, err
 	}
 	c.HTTPAddr = orDefault(getenv("HTTP_ADDR"), ":8080")
 	c.MetricsAddr = orDefault(getenv("METRICS_ADDR"), "127.0.0.1:9090")
@@ -185,4 +192,33 @@ func duration(getenv func(string) string, name string, fallback time.Duration) (
 		return 0, fmt.Errorf("config: %s must be a positive duration such as 24h", name)
 	}
 	return d, nil
+}
+
+// trustedProxies parses TRUSTED_PROXIES: CIDRs or bare addresses separated by commas (blanks around
+// them are fine; empty items are skipped). A bare address is a /32 or /128. Trusting every address
+// (0.0.0.0/0, ::/0) would let any client forge its IP, so it is a startup error, and so is anything
+// that does not parse; the error names the variable and the item's position, not more.
+func trustedProxies(raw string) ([]netip.Prefix, error) {
+	var out []netip.Prefix
+	pos := 0
+	for _, item := range strings.Split(raw, ",") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		pos++
+		p, err := netip.ParsePrefix(item)
+		if err != nil {
+			addr, addrErr := netip.ParseAddr(item)
+			if addrErr != nil {
+				return nil, fmt.Errorf("config: TRUSTED_PROXIES item #%d is not a CIDR or an IP address", pos)
+			}
+			p = netip.PrefixFrom(addr, addr.BitLen())
+		}
+		if p.Bits() == 0 {
+			return nil, fmt.Errorf("config: TRUSTED_PROXIES item #%d (%s) would trust every address: the client IP could be forged", pos, p)
+		}
+		out = append(out, p.Masked())
+	}
+	return out, nil
 }

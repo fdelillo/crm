@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"encoding/base64"
+	"net/netip"
 	"reflect"
 	"strings"
 	"testing"
@@ -249,5 +250,66 @@ func TestLoad_CookieSecureIsIgnored(t *testing.T) {
 		if strings.Contains(name, "cookie") || strings.Contains(name, "secure") || strings.Contains(name, "insecure") {
 			t.Errorf("Config.%s must not exist (INV-23)", typ.Field(i).Name)
 		}
+	}
+}
+
+// TRUSTED_PROXIES (DD-32, plan §10.5): the proxies whose X-Forwarded-For is believed. Empty by default.
+func TestLoad_TrustedProxies(t *testing.T) {
+	pfx := func(ss ...string) []netip.Prefix {
+		var out []netip.Prefix
+		for _, s := range ss {
+			out = append(out, netip.MustParsePrefix(s))
+		}
+		return out
+	}
+	tests := []struct {
+		name, value string
+		want        []netip.Prefix
+	}{
+		{"unset", "", nil},
+		{"one IPv4 CIDR", "10.0.0.0/8", pfx("10.0.0.0/8")},
+		{"IPv4 and IPv6 with spaces around the commas", "10.0.0.0/8 , 2001:db8::/32", pfx("10.0.0.0/8", "2001:db8::/32")},
+		{"a bare IPv4 address is a /32", "10.1.2.3", pfx("10.1.2.3/32")},
+		{"a bare IPv6 address is a /128", "2001:db8::1", pfx("2001:db8::1/128")},
+		{"host bits are masked", "10.1.2.3/8", pfx("10.0.0.0/8")},
+		{"trailing comma and blanks are ignored", "10.0.0.0/8, ,", pfx("10.0.0.0/8")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := config.Load(env(map[string]string{"TRUSTED_PROXIES": tt.value}))
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if !reflect.DeepEqual(cfg.TrustedProxies, tt.want) {
+				t.Errorf("TrustedProxies = %v, want %v", cfg.TrustedProxies, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoad_TrustedProxiesErrors(t *testing.T) {
+	tests := []struct {
+		name, value string
+		wantInError []string
+	}{
+		{"trust everybody IPv4", "0.0.0.0/0", []string{"TRUSTED_PROXIES", "0.0.0.0/0"}},
+		{"trust everybody IPv6", "::/0", []string{"TRUSTED_PROXIES", "::/0"}},
+		{"trust everybody inside a list", "10.0.0.0/8,0.0.0.0/0", []string{"TRUSTED_PROXIES", "#2"}},
+		{"invalid CIDR names the position", "10.0.0.0/8,not-a-cidr,192.168.0.0/16", []string{"TRUSTED_PROXIES", "#2"}},
+		{"prefix too long", "10.0.0.0/33", []string{"TRUSTED_PROXIES", "#1"}},
+		{"garbage", "???", []string{"TRUSTED_PROXIES", "#1"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := config.Load(env(map[string]string{"TRUSTED_PROXIES": tt.value}))
+			if err == nil {
+				t.Fatal("Load returned nil error")
+			}
+			for _, want := range tt.wantInError {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q does not contain %q", err, want)
+				}
+			}
+		})
 	}
 }

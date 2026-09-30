@@ -20,7 +20,8 @@ var (
 	ErrNotFound           = errors.New("db: not found")
 	ErrUniqueViolation    = errors.New("db: unique violation") // wrapped in *ConstraintError
 	ErrPrivilege          = errors.New("db: insufficient privilege or RLS violation")
-	ErrUnavailable        = errors.New("db: unavailable")
+	ErrUnavailable        = errors.New("db: unavailable") // connection, timeouts, 57014, 55P03
+	ErrCanceled           = errors.New("db: canceled")    // context.Canceled: the client left, or the process is stopping
 	ErrTenantAlreadyBound = errors.New("db: transaction already bound to another tenant")
 )
 
@@ -41,9 +42,11 @@ func (e *ConstraintError) Unwrap() error { return e.Err }
 //
 //	pgx.ErrNoRows                          → ErrNotFound
 //	23505 unique_violation                 → *ConstraintError{Err: ErrUniqueViolation}
+//	context.Canceled (bare or wrapped)     → ErrCanceled, checked FIRST: a canceled query also comes back
+//	                                         as 57014, and that one is not a database failure
 //	42501 insufficient_privilege (RLS)     → ErrPrivilege (a bug: never a 403 or 404, INV-19)
 //	connection errors, 08xxx, 57014 (statement timeout), 57P01..03, 53300,
-//	deadline exceeded, network errors      → ErrUnavailable
+//	55P03 (lock_timeout), deadline exceeded, network errors → ErrUnavailable
 //
 // Anything else is wrapped without classification. It is idempotent and MapError(nil) is nil.
 func MapError(err error) error {
@@ -51,7 +54,7 @@ func MapError(err error) error {
 		return nil
 	}
 	var ce *ConstraintError
-	for _, s := range []error{ErrNotFound, ErrPrivilege, ErrUnavailable, ErrTenantAlreadyBound} {
+	for _, s := range []error{ErrNotFound, ErrPrivilege, ErrUnavailable, ErrCanceled, ErrTenantAlreadyBound} {
 		if errors.Is(err, s) {
 			return err
 		}
@@ -60,6 +63,9 @@ func MapError(err error) error {
 		return err
 	}
 
+	if errors.Is(err, context.Canceled) {
+		return fmt.Errorf("%w: %w", ErrCanceled, err)
+	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("%w: %w", ErrNotFound, err)
 	}
@@ -83,7 +89,7 @@ func MapError(err error) error {
 
 func unavailableCode(code string) bool {
 	switch code {
-	case "57014", "57P01", "57P02", "57P03", "53300":
+	case "57014", "57P01", "57P02", "57P03", "53300", "55P03":
 		return true
 	}
 	return strings.HasPrefix(code, "08") // connection_exception class

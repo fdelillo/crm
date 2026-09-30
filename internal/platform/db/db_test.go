@@ -63,6 +63,17 @@ func TestMapError(t *testing.T) {
 		{"connect error", &pgconn.ConnectError{Config: &pgconn.Config{}}, []error{db.ErrUnavailable}, nil},
 		{"network error", &net.OpError{Op: "read", Err: errors.New("connection reset by peer")}, []error{db.ErrUnavailable}, nil},
 		{"unexpected EOF", io.ErrUnexpectedEOF, []error{db.ErrUnavailable}, nil},
+		{"lock timeout (55P03)", pgErr("55P03", ""), []error{db.ErrUnavailable}, []error{db.ErrCanceled, db.ErrPrivilege}},
+		// Cancellation: the client left or the process is stopping (plan §9.2). It is never a failure
+		// of the database and must not become an ERROR log or a 500.
+		{"context canceled", context.Canceled, []error{db.ErrCanceled}, []error{db.ErrUnavailable, db.ErrPrivilege}},
+		{"wrapped context canceled", fmt.Errorf("query: %w", context.Canceled), []error{db.ErrCanceled}, []error{db.ErrUnavailable}},
+		{"57014 together with a canceled context", fmt.Errorf("%w: %w", pgErr("57014", ""), context.Canceled),
+			[]error{db.ErrCanceled}, []error{db.ErrUnavailable}},
+		{"57014 joined with a canceled context", errors.Join(pgErr("57014", ""), context.Canceled),
+			[]error{db.ErrCanceled}, []error{db.ErrUnavailable}},
+		{"57014 alone is a statement timeout", pgErr("57014", ""), []error{db.ErrUnavailable}, []error{db.ErrCanceled}},
+		{"deadline is not a cancellation", context.DeadlineExceeded, []error{db.ErrUnavailable}, []error{db.ErrCanceled}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -101,7 +112,7 @@ func TestMapError_Unclassified(t *testing.T) {
 	if got == nil || !errors.Is(got, cause) {
 		t.Fatalf("MapError = %v, want an error that wraps the cause", got)
 	}
-	for _, s := range []error{db.ErrNotFound, db.ErrUniqueViolation, db.ErrPrivilege, db.ErrUnavailable, db.ErrTenantAlreadyBound} {
+	for _, s := range []error{db.ErrNotFound, db.ErrUniqueViolation, db.ErrPrivilege, db.ErrUnavailable, db.ErrCanceled, db.ErrTenantAlreadyBound} {
 		if errors.Is(got, s) {
 			t.Errorf("unclassified error matches %v", s)
 		}
@@ -122,5 +133,11 @@ func TestMapError_IsIdempotent(t *testing.T) {
 	}
 	if !errors.Is(db.MapError(db.MapError(pgx.ErrNoRows)), db.ErrNotFound) {
 		t.Error("second MapError lost ErrNotFound")
+	}
+	if !errors.Is(db.MapError(db.MapError(context.Canceled)), db.ErrCanceled) {
+		t.Error("second MapError lost ErrCanceled")
+	}
+	if !errors.Is(db.MapError(db.MapError(pgErr("55P03", ""))), db.ErrUnavailable) {
+		t.Error("second MapError lost ErrUnavailable")
 	}
 }

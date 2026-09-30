@@ -30,14 +30,14 @@ type Exception struct {
 }
 
 // DefaultExceptions are the queries that legitimately run without a company: they exist to FIND the
-// company, as a system role that sees only routing columns (plan §4.4, INV-05). The paths are exact.
-// Plan §4.4 names identity/store/auth_lookup.sql; it does not fix where the worker's queries live, and
-// the Dispatcher (which also does the periodic cleanup, T-B902) is in platform/outbox, so that is the path
-// declared here. A file with either name anywhere else is a violation (see Check). Anything else that
-// needs an exception needs a design decision first.
+// company or to clean up, as a system role that sees only routing columns (plan §4.4, INV-05). The four
+// paths are exact ("Rutas exactas de las queries de sistema"); a file with any of these names anywhere
+// else is a violation (see Check). Anything else that needs an exception needs a design decision first.
 var DefaultExceptions = []Exception{
 	{"internal/identity/store/auth_lookup.sql", "phase-one lookups as crm_auth: find the company of an email, a session or a token"},
+	{"internal/identity/store/cleanup.sql", "periodic cleanup as crm_worker: DELETE of expired rows of sessions, user_tokens and login_throttles; the policies of data-model §3.4 bound which rows"},
 	{"internal/platform/outbox/store/worker.sql", "queue and cleanup queries as crm_worker: they see queue columns of every company"},
+	{"internal/tenant/store/provisioning.sql", "crm_worker and crm_signup: list tenants.id (reprovisioning, tenant_roles_total) and call provision_tenant_role (registration)"},
 }
 
 var (

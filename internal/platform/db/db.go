@@ -3,7 +3,11 @@ package db
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"log/slog"
+	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -61,25 +65,74 @@ func TenantRoleName(tenantID uuid.UUID) string {
 // rollbackTimeout bounds the ROLLBACK issued after the caller's context is gone.
 const rollbackTimeout = 5 * time.Second
 
-type runner struct{ pool *pgxpool.Pool }
+type runner struct {
+	pool   *pgxpool.Pool
+	logger *slog.Logger
+	// fault, when set (tests only, through export_test.go), runs before every SET LOCAL ROLE and may
+	// return an error as if PostgreSQL had refused the switch.
+	fault func(role string) error
+}
+
+// Option configures a TxRunner.
+type Option func(*runner)
+
+// WithLogger sets the logger for the runner's own events (default: slog.Default()).
+func WithLogger(l *slog.Logger) Option { return func(r *runner) { r.logger = l } }
 
 // NewTxRunner returns the TxRunner over a pool connected as crm_app.
-func NewTxRunner(pool *pgxpool.Pool) TxRunner { return &runner{pool: pool} }
+func NewTxRunner(pool *pgxpool.Pool, opts ...Option) TxRunner {
+	r := &runner{pool: pool, logger: slog.Default()}
+	for _, o := range opts {
+		o(r)
+	}
+	return r
+}
+
+// setRoleRetries counts the entries into a company that were retried after PostgreSQL refused the first
+// SET LOCAL ROLE (see InTenantTx). It is meant to be exported as a metric (expvar, T-B904): a value that
+// grows in production means the stale role-list race of PostgreSQL is happening and the first defence
+// (the pg_auth_members read in setRole) is not enough.
+var setRoleRetries atomic.Int64
+
+// SetRoleRetryCount is the number of retried entries since the process started.
+func SetRoleRetryCount() int64 { return setRoleRetries.Load() }
 
 func (r *runner) InTenantTx(ctx context.Context, tenantID uuid.UUID, fn func(ctx context.Context, tx Tx) error) error {
-	return r.run(ctx, func(ctx context.Context, t *tx) error { return t.AsTenant(ctx, tenantID) }, fn)
+	enter := func(ctx context.Context, t *tx) error { return t.AsTenant(ctx, tenantID) }
+	fnStarted, err := r.run(ctx, enter, fn)
+	if err == nil || fnStarted || !isSetRoleDenied(err) {
+		return err
+	}
+	// Second line of defence against the stale role list (see setRole): PostgreSQL refused the very first
+	// SET LOCAL ROLE of the transaction, so fn has not done anything and the whole transaction, with its
+	// BEGIN, is started again, once. Never after fn ran, never for system roles, never for AsTenant in the
+	// middle of a transaction (there fn may already have written).
+	setRoleRetries.Add(1)
+	r.logger.WarnContext(ctx, "retrying the entry into a company after SET ROLE was refused",
+		"event", "set_role_retry", "role", TenantRoleName(tenantID))
+	_, err = r.run(ctx, enter, fn)
+	return err
 }
 
 func (r *runner) InSystemTx(ctx context.Context, role SystemRole, fn func(ctx context.Context, tx Tx) error) error {
-	return r.run(ctx, func(ctx context.Context, t *tx) error { return t.AsSystem(ctx, role) }, fn)
+	_, err := r.run(ctx, func(ctx context.Context, t *tx) error { return t.AsSystem(ctx, role) }, fn)
+	return err
 }
 
-func (r *runner) run(ctx context.Context, enter func(context.Context, *tx) error, fn func(context.Context, Tx) error) error {
+// isSetRoleDenied recognises PostgreSQL's refusal of SET ROLE: SQLSTATE 42501 "permission denied to set role".
+func isSetRoleDenied(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "42501" && strings.HasPrefix(pgErr.Message, "permission denied to set role")
+}
+
+// run executes one transaction. fnStarted reports whether fn was called, so callers know whether
+// starting over is safe.
+func (r *runner) run(ctx context.Context, enter func(context.Context, *tx) error, fn func(context.Context, Tx) error) (fnStarted bool, err error) {
 	pt, err := r.pool.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("db: begin: %w", MapError(err))
+		return false, fmt.Errorf("db: begin: %w", MapError(err))
 	}
-	t := &tx{inner: pt}
+	t := &tx{inner: pt, fault: r.fault}
 	committed := false
 	defer func() {
 		if committed {
@@ -93,16 +146,16 @@ func (r *runner) run(ctx context.Context, enter func(context.Context, *tx) error
 	}()
 
 	if err := enter(ctx, t); err != nil {
-		return err
+		return false, err
 	}
 	if err := fn(ctx, t); err != nil {
-		return err
+		return true, err
 	}
 	if err := pt.Commit(ctx); err != nil {
-		return fmt.Errorf("db: commit: %w", MapError(err))
+		return true, fmt.Errorf("db: commit: %w", MapError(err))
 	}
 	committed = true
-	return nil
+	return true, nil
 }
 
 // tx is what business code receives. It holds the pgx transaction in a private field and delegates
@@ -112,6 +165,7 @@ type tx struct {
 	inner  pgx.Tx
 	tenant uuid.UUID
 	bound  bool
+	fault  func(role string) error // tests only
 }
 
 func (t *tx) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
@@ -166,6 +220,11 @@ func (t *tx) AsSystem(ctx context.Context, role SystemRole) error {
 // (TestTxRunner_NewCompanyIsUsableOnAnyConnectionRightAfterProvisioning reproduces it in seconds).
 // pg_auth_members is readable by everybody; LIMIT 0 keeps it free.
 func (t *tx) setRole(ctx context.Context, role string) error {
+	if t.fault != nil {
+		if err := t.fault(role); err != nil {
+			return err
+		}
+	}
 	_, err := t.Exec(ctx, "SELECT 1 FROM pg_catalog.pg_auth_members LIMIT 0; SET LOCAL ROLE "+pgx.Identifier{role}.Sanitize())
 	return err
 }
