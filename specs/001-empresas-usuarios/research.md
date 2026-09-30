@@ -542,7 +542,7 @@ Por qué el reintento es seguro **solo** en el `SET ROLE` inicial de `InTenantTx
 | Un `42501` dentro de `fn` | No | Puede ser una violación real de RLS (INV-19); reintentar repetiría efectos y taparía un bug de aislamiento |
 | `InSystemTx` (roles de sistema) | No | Sus membresías vienen del bootstrap y no cambian en runtime: un `42501` es un bug o un problema de despliegue |
 | `Tx.AsTenant` / `Tx.AsSystem` a mitad de transacción | No | La transacción ya ejecutó la fase 1: reintentar exigiría repetir `fn` completa, y eso ya no es un detalle de `platform/db` |
-| Otro SQLSTATE (p. ej. `42704`, el rol no existe) | No | No es este problema: es el caso de restore sin roles (plan §12.4) |
+| Otro SQLSTATE (p. ej. `22023`, el rol no existe; verificado en PostgreSQL 18) | No | No es este problema: es el caso de restore sin roles (plan §12.4) |
 
 ### ¿Conviene reportarlo a PostgreSQL?
 

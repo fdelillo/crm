@@ -358,7 +358,7 @@ no modifica y no inserta filas de la otra en ninguna tabla.
   | `fn` devuelve un `42501` (p. ej. un `INSERT` con el `tenant_id` de otra empresa, RLS) | **sin** reintento: `fn` corrió una sola vez; `ErrPrivilege`; `set_role_retry_total` sin cambios |
   | `InSystemTx(RoleAuth)` con el cambio de rol forzado a `42501` | sin reintento; `ErrPrivilege`; `fn` no se ejecutó |
   | `InSystemTx(RoleAuth)` → `AsTenant(A)` con `42501` forzado | sin reintento; `ErrPrivilege`; `ROLLBACK` |
-  | `InTenantTx` de una empresa sin rol (`42704`) | sin reintento; el error nombra el rol (fila de arriba) |
+  | `InTenantTx` de una empresa sin rol (`22023`) | sin reintento; el error nombra el rol (fila de arriba) |
   | Contexto cancelado entre el primer intento y el reintento | `ROLLBACK`, error de contexto, sin segundo intento |
 - **Green**: `db.NewTxRunner(pool)` pasa la tabla.
 - **Refactor**: `SET LOCAL ROLE` con `pgx.Identifier{...}.Sanitize()`; una sola función privada
