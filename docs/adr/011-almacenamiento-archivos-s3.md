@@ -34,6 +34,33 @@
 > backend y la validación antes de guardar no cambian: se fija el valor exacto de una regla que ya
 > estaba y cómo se mide.
 
+> **Nota 2026-10-01 (detalle; qué imagen de MinIO se usa en desarrollo y tests; no cambia la
+> decisión)**, por el hallazgo M10 de la revisión del PR fdelillo/crm#8 (DD-36 y research R-30 del
+> plan de 001; **Accepted** 2026-10-01):
+>
+> 1. **Situación de MinIO** (verificada con búsqueda web el 2026-10-01): desde octubre de 2025 el
+>    proyecto dejó de publicar binarios e imágenes de la edición comunitaria (solo código fuente);
+>    el repositorio `minio/minio` está archivado desde abril de 2026, con
+>    `RELEASE.2025-10-15T17-29-55Z` como última versión (incluye el arreglo de CVE-2025-62506);
+>    `minio/minio` desapareció de Docker Hub en septiembre de 2026 y **`quay.io/minio/minio`
+>    responde `401` a todo pull anónimo desde el 2026-09-24/25**, para todos los tags y digests. El
+>    fallo de descarga del entorno de Codex no fue del entorno.
+> 2. **Imagen elegida para `compose.yaml` y para los tests de integración, la misma en ambos**:
+>    `ghcr.io/coollabsio/minio:RELEASE.2025-10-15T17-29-55Z`, fijada además por el digest de su
+>    índice multiplataforma (`…:RELEASE.2025-10-15T17-29-55Z@sha256:<digest>`). Es una
+>    recompilación de la última versión oficial desde su código fuente, con el `docker-entrypoint.sh`
+>    de MinIO (mismo comando `server /data` y mismas variables `MINIO_ROOT_*`), pública y sin login.
+>    Se descartan `bitnamilegacy/minio` (congelada en una versión anterior al arreglo de seguridad y
+>    con otra estructura de arranque) y `cgr.dev/chainguard/minio` (mantenida y parcheada, pero su
+>    nivel gratuito solo publica `latest` y no promete que un digest viejo siga disponible), que
+>    queda como **respaldo**.
+> 3. Producción no usa ninguna de estas imágenes: el servicio S3 compatible de producción se elige
+>    con el hosting (P-1 del plan de 001). Como MinIO ya no tiene mantenimiento upstream, si la
+>    imagen elegida deja de estar disponible o el cliente `minio-go` deja de ser compatible con ella,
+>    se reabre la elección del servidor S3 **de desarrollo** (research R-30: Chainguard, una copia
+>    propia en GHCR, o SeaweedFS/Garage); la decisión de este ADR (S3 compatible, bucket privado,
+>    subida vía backend, `minio-go`) no depende de eso.
+
 ## Contexto
 
 La constitución fija almacenamiento compatible con S3 para logos, adjuntos y PDFs. En 001 se sube

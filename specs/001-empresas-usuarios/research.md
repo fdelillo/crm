@@ -212,6 +212,10 @@ Librería SMTP:
 *Polling* vs `LISTEN/NOTIFY`: polling cada 2 s es suficiente para el target (95 % < 30 s) y no
 depende de mantener una conexión dedicada. `NOTIFY` queda como optimización futura.
 
+> **Nota 2026-10-01**: la fila de go-mail decía "timeouts con `context`". Verificado en el código de
+> v0.8.1: el `context` solo acota el *dial*; el resto de la conversación lo acotan *deadlines* por
+> etapa (`WithTimeout`). Consecuencias y clasificación de errores en R-29 y ADR-024.
+
 ## R-12 Almacenamiento de archivos **(usuario: S3 compatible, subida vía backend)** → ADR-011
 
 | Opción | A favor | En contra | Veredicto |
@@ -570,6 +574,94 @@ Qué debería tener el reporte (lo arma quien el usuario decida; no es código d
 Hasta tener respuesta, DD-34 se mantiene tal cual; el test de reproducción queda en la suite para
 detectar cualquier cambio de comportamiento al subir de versión.
 
+## R-29 Clasificación de fallos SMTP, `last_error` y presupuesto del envío → ADR-024, DD-35
+
+Contexto (revisión del PR fdelillo/crm#8, hallazgos I1, I2, M1 y M7): la Fase 2 trató todo `5xx`
+como definitivo, incluidos los de la conexión (saludo `554` por IP bloqueada, `535` de AUTH), lo
+que pasa toda la cola a `failed`; `last_error` no servía para diagnosticar; el envío corre con la
+transacción del worker abierta, y un mensaje que falla antes de enviarse frenaba a todos.
+
+Verificado en el código de go-mail v0.8.1 (*module cache*: `client.go`, `senderror.go`,
+`smtp/smtp.go`):
+
+- `DialAndSendWithContext` llama a `DialToSMTPClientWithContext` (TCP o TLS en 465, saludo en
+  `smtp.NewClient`, `Hello`, STARTTLS, `auth`) y envuelve **cualquier** error de esa etapa como
+  `dial failed: %w`; los errores de MAIL, RCPT y DATA son `*SendError` envueltos como
+  `send failed: %w`.
+- `*SendError` **no** implementa `Unwrap`; expone `Reason`, `ErrorCode()`, `EnhancedStatusCode()`
+  (solo si el servidor anuncia `ENHANCEDSTATUSCODES`) e `IsTemp()` (si el texto empieza con `4`). Su
+  `Error()` agrega `affected recipient(s): <direcciones>` y `affected message ID: …`.
+- El `context` solo se usa en el *dial* (`context.WithDeadline(ctx, now + connTimeout)`). Después:
+  `conn.SetDeadline` (saludo), `UpdateDeadline` (EHLO, STARTTLS, AUTH) y `checkConn` renueva el
+  *deadline* antes del envío y antes del `RSET` (salvo `WithoutRset`). Ventanas: 5 con `RSET`, 4 sin
+  él. `DefaultTimeout` = 15 s.
+- `Msg.IsDelivered()` es `true` desde la respuesta al fin de datos, aunque después fallen el `RSET`
+  o el `QUIT`.
+- Con un `DialContextFunc` propio, go-mail no hace TLS implícito y considera la conexión no cifrada:
+  el autodescubrimiento de AUTH deja de elegir `PLAIN`/`LOGIN`.
+
+Qué fallos son definitivos:
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| Todo `5xx` definitivo (estado anterior) | Simple | Un problema propio de configuración destruye la cola | Descartada |
+| Definitivo = `5xx` de un `SendError` (sugerencia de la revisión) | Usa la separación natural de go-mail | Remitente no verificado (MAIL FROM), *relay* denegado `5.7.1` (RCPT TO) o rechazo de contenido (DATA) son de configuración y seguirían siendo definitivos para todos | Descartada como regla final; se toma la idea |
+| `SendError.IsTemp()` | Ya viene en la librería | No distingue destinatario de configuración; no existe para el *dial* | Descartada |
+| **Causa + fase, con la regla del destinatario** (`5.1.x`/`5.2.x` en RCPT TO o DATA; `550`/`551`/`553` en RCPT TO sin código extendido) | Solo es definitivo lo que es del mensaje; el sesgo a recuperable queda acotado por los 8 intentos | Algunos rechazos definitivos reales se reintentan 8 veces | **Elegida** |
+
+Error de configuración persistente (`535`):
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Recuperable que consume intentos + `ERROR` por intento + corte del ciclo + métrica por causa** | Final acotado (~19 h) del payload con el token; visible; sin estado nuevo | Una caída de más de ~19 h hace fallar los mensajes de ese período | **Elegida** |
+| No consumir intentos ante `config` | No se pierde nada mientras dure la caída | Mensajes y payloads pendientes sin plazo; los tokens de reset y verificación vencen igual | Descartada |
+| *Circuit breaker* en memoria que pausa el worker | Menos intentos por segundo | Más estado; no reduce el total de intentos | Descartada |
+| Alerta propia (email o *pager*) | Aviso activo | Sin infraestructura de alertas en 001; avisar por email cuando el SMTP no anda no sirve | Descartada |
+
+Presupuesto del envío frente a `idle_in_transaction_session_timeout` (30 s):
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Presupuesto fijo de 20 s + 5 s por etapa + `WithoutRset` + tests que fijan la relación** | Cambio local al adaptador y al `Dispatcher`; verificable | Un proveedor lento en una etapa produce reintentos | **Elegida** (DD-35) |
+| Subir `idle_in_transaction_session_timeout` de `crm_app` | Cero código | Debilita la protección contra transacciones olvidadas en toda la aplicación | Descartada |
+| Enviar fuera de la transacción (*lease* sobre `next_attempt_at`) | Sin acoplamiento; libera la conexión durante el envío | Cambia el modelo de reclamo de ADR-010 y la semántica de cancelación ya probada | Postergada (salida si S-17 falla) |
+| `DialContextFunc` propio que cierra la conexión al cancelar | `context` respetado en toda la conversación | Rompe TLS implícito y la elección de AUTH | Descartada |
+
+Aislamiento por mensaje:
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Aplazar en otra transacción (`next_attempt_at`, demora por la edad del mensaje)** | Privilegio y política existentes; *backoff* exponencial sin estado; el ciclo sigue | Una escritura nueva como `crm_worker` | **Elegida** |
+| Excluir los ids fallidos dentro del ciclo | Sin escrituras | El mensaje vuelve a ocupar el primer lugar en cada ciclo; un `ERROR` cada 2 s | Descartada |
+| `SAVEPOINT` en la misma transacción | Sin carrera entre transacciones | Amplía la interfaz `db.Tx` | Descartada |
+| Contador de aplazamientos en una columna nueva | *Backoff* exacto | Migración y privilegio nuevos; la edad da lo mismo | Descartada |
+
+## R-30 Imagen de MinIO para desarrollo y tests → DD-36, nota en ADR-011
+
+Contexto (hallazgo M10): el test de integración usa `bitnamilegacy/minio@sha256:…` porque desde el
+entorno de Codex no se pudo descargar `quay.io/minio/minio`; `compose.yaml` usa
+`quay.io/minio/minio:latest` sin fijar. Situación verificada con búsqueda web el 2026-10-01:
+
+- Octubre de 2025: MinIO deja de publicar binarios e imágenes de la edición comunitaria (solo
+  código fuente). Última versión: `RELEASE.2025-10-15T17-29-55Z`, que corrige CVE-2025-62506.
+- Abril de 2026: el repositorio `minio/minio` queda archivado.
+- Septiembre de 2026: se borran `minio/minio` y `minio/mc` de Docker Hub, y desde el 2026-09-24/25
+  `quay.io/minio/minio` responde `401` a todo pull anónimo (todos los tags y digests). **El fallo
+  de descarga no fue del entorno.**
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| `quay.io/minio/minio` (`latest` o un `RELEASE.*` fijo) | Oficial | `401` sin login desde 2026-09-24/25; sin versiones comunitarias nuevas | Descartada |
+| `minio/minio` en Docker Hub | — | Borrado | Descartada |
+| `bitnamilegacy/minio@sha256:…` (lo que usa hoy el test) | Se descarga | Congelada en 2025-05-24, antes del arreglo de CVE-2025-62506; arranque y rutas de Bitnami distintos de los de MinIO, así que `compose.yaml` necesitaría otra configuración que los tests | Descartada |
+| `cgr.dev/chainguard/minio` | Mantenida y parcheada (Chainguard compila un *fork* con los arreglos), procedencia SLSA, gratis, mismo entrypoint y comando | El nivel gratuito solo publica `latest`; no promete que un digest viejo siga disponible (otros proyectos terminaron copiándola a su propio registro por eso) | **Respaldo** |
+| **`ghcr.io/coollabsio/minio:RELEASE.2025-10-15T17-29-55Z` + digest** | Última versión oficial compilada desde el código fuente con el `docker-entrypoint.sh` de MinIO; tag de versión reproducible; pública | Tercero; congelada, sin parches futuros | **Elegida** |
+| Copia propia en GHCR (`ghcr.io/fdelillo/…`) | Control total | Un paso operativo y un paquete que mantener | Postergada (salida si la elegida desaparece) |
+| Otro servidor S3 (SeaweedFS, Garage, RustFS) | Mantenidos | Más configuración (credenciales, *layout*); RustFS anterior a 1.0; ADR-011 fija MinIO en desarrollo | Postergada |
+
+Por qué los parches no pesan para elegir: el contenedor solo escucha en `127.0.0.1` en desarrollo
+y es efímero en tests; producción usa el servicio S3 que se elija con el hosting (P-1).
+
 ---
 
 ## Fuentes consultadas
@@ -593,6 +685,9 @@ detectar cualquier cambio de comportamiento al subir de versión.
 - chi v5.3.2, manejador de `405` y cabecera `Allow` (código fuente en el *module cache* del proyecto, `github.com/go-chi/chi/v5@v5.3.2/mux.go`, funciones `MethodNotAllowedHandler`, `routeHTTP`, `methodNotAllowedHandler` y `Match`; y `context.go`, campo `methodsAllowed` no exportado)
 - Lock de `GRANT crm_tenant` en PostgreSQL 16+: verificado por el revisor de la Fase 1 con un test de integración contra PostgreSQL 18 (sin fuente documental citada)
 - `42501` en el primer `SET ROLE` desde otra conexión (R-28): observado y medido por el desarrollador en la Fase 1 contra PostgreSQL 18.6 (test `TestTxRunner_NewCompanyIsUsableOnAnyConnectionRightAfterProvisioning`, commit e3d990b). La causa (`roles_is_member_of` en `acl.c`) es su hipótesis; el arquitecto **no** la verificó en el código fuente de PostgreSQL y no hay fuente documental (supuesto 12)
+- go-mail v0.8.1, comportamiento de errores, *deadlines* y `context` (R-29): código fuente en el *module cache* del proyecto (`github.com/wneessen/go-mail@v0.8.1/client.go`: `DialAndSendWithContext`, `DialToSMTPClientWithContext`, `auth`, `sendSingleMsg`, `checkConn`, `ResetWithSMTPClient`, `WithDialContextFunc`; `senderror.go`; `smtp/smtp.go`: `NewClient`, `Hello`, `StartTLS`); `db/bootstrap/001_roles_and_database.sql` (`idle_in_transaction_session_timeout`)
+- Códigos de estado extendidos de SMTP (RFC 3463): <https://www.rfc-editor.org/rfc/rfc3463>
+- Imágenes de MinIO (R-30): <https://www.chainguard.dev/unchained/secure-and-free-minio-chainguard-containers>, <https://github.com/gofr-dev/gofr/pull/4378>, <https://github.com/HeliosSoftware/hfs/issues/1520>, <https://github.com/ponack/crucible-iap/issues/387>, <https://bex.co/blog/2026/09/25/minio-docker-hub-removal-quay-repoint>, <https://github.com/enorm-labs/event-junkie/issues/1859>, <https://github.com/coollabsio/minio>, CVE-2025-62506: <https://asec.ahnlab.com/en/91238/>
 
 Supuestos a validar durante la implementación (no verificados con documentación primaria):
 
@@ -628,6 +723,11 @@ Supuestos a validar durante la implementación (no verificados con documentació
     consistente con la medición, pero no está verificado en el código de PostgreSQL ni
     documentado. Lo vigila el test de reproducción de T-B103; el reporte upstream sugerido lo
     confirmaría.
+13. El proveedor SMTP transaccional de producción responde cada etapa en menos de 5 s (S-17 del
+    plan, DD-35). Se mide al elegir el proveedor (P-1).
+14. `ghcr.io/coollabsio/minio:RELEASE.2025-10-15T17-29-55Z` sigue descargable sin login y arranca
+    como la imagen oficial (`server /data`, `MINIO_ROOT_*`, `/minio/health/ready`) (S-18 del plan,
+    DD-36). Lo confirma el test de T-B215; si falla, respaldo de R-30.
 
 ---
 

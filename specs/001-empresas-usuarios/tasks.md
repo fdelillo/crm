@@ -24,6 +24,12 @@ T-B908. La sección Frontend no se tocó en esta revisión (lo que le pide el ba
 conexión (`42501` en PostgreSQL 18.6): lectura de catálogo previa y un único reintento en
 `InTenantTx` (plan DD-34, INV-27, R-17; research R-28). Tareas afectadas: T-B103 y T-B104 (y
 menciones en T-B903 y T-B905). La sección Frontend no cambia: el contrato no cambia.
+**Quinta revisión 2026-10-01** (**Accepted** por el usuario): decisiones de la
+revisión del PR fdelillo/crm#8 (plan §18, quinta tanda): clasificación de fallos de entrega,
+`last_error` saneado, presupuesto del envío y aislamiento de fallos por mensaje (ADR-024, DD-35,
+INV-28 a INV-31); imagen de MinIO (DD-36). Tareas afectadas: T-B112, T-B211, T-B212, T-B213,
+T-B214, T-B215, T-B216 (Fase 2, en el PR abierto) y T-B903, T-B908, T-B909 (Fase 9). La sección
+Frontend no cambia: el contrato no cambia.
 
 ---
 
@@ -47,6 +53,18 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
   | T-B103 / T-B104 | 1 | (Cuarta revisión, DD-34) La lectura de catálogo antes del `SET LOCAL ROLE` ya está aplicada (commit e3d990b, con el test de reproducción); falta el reintento único en `InTenantTx` (lo está implementando el `backend-developer`) y los casos nuevos de T-B103 |
   | T-B105 / T-B106 | 1 | `db.ErrCanceled` y `55P03` → `db.ErrUnavailable`, con el orden de clasificación de plan §9.2 |
   | T-B112 | 1 | Lista exacta de las cuatro rutas de plan §4.4: `queryrules.DefaultExceptions` suma `internal/identity/store/cleanup.sql` y `internal/tenant/store/provisioning.sql` a las dos que ya tiene |
+
+- **Fase 2** (2026-10-01): implementada en `feat/001-backend-phase-2` (PR fdelillo/crm#8), en
+  revisión. La quinta revisión se aplica en esa misma rama, una vez aprobada, junto con los demás
+  hallazgos de la revisión del PR:
+
+  | Tarea | Ajuste |
+  |---|---|
+  | T-B112 (Fase 1) | `queryrules.DefaultExceptions` lista `DeferMessage` en `internal/platform/outbox/store/worker.sql`, con el motivo "crm_worker: aplazar un mensaje pendiente cuya fase de empresa falló (ADR-024 §6)" |
+  | T-B211 / T-B212 | Casos nuevos de T-B211 (marcados "Quinta revisión"); `DeliveryError` reemplaza a `PermanentError`; aislamiento por mensaje; contextos y presupuesto; `Enqueue` con el reloj inyectable |
+  | T-B213 / T-B214 | Casos nuevos de T-B213 (servidor SMTP falso); adaptador con `WithTimeout(5 s)`, `WithoutRset()` e `IsDelivered()`; el handler de plantillas devuelve `DeliveryError{bug, compose}` |
+  | T-B215 / T-B216 | Imagen de MinIO de DD-36 y paquete `internal/testsupport/containers` con su test contra `compose.yaml` |
+  | T-B903 / T-B908 / T-B909 (Fase 9) | Métricas `outbox_delivery_errors_total{cause}` y `outbox_deferred_total`; envío que termina bien durante el apagado queda `sent`; timeout de apagado ≥ 25 s |
 
 ### Convenciones de esta sección
 
@@ -633,28 +651,61 @@ ruta → autenticación por grupo). `CommonMiddleware` recibe el modo local y
 
 **T-B210 — Implementar `platform/audit`**.
 
-**T-B211 [T] — Outbox y worker** · ADR-010, INV-09, INV-16, plan §9.4
-- **Red** (integración, `Mailer` falso configurable, `Clock` falso):
+**T-B211 [T] — Outbox y worker** · ADR-010, ADR-024, INV-09, INV-16, INV-28, INV-29, INV-30, INV-31, DD-35, plan §9.4
+- **Red** (integración, `Handler` falso configurable, `Clock` falso; los *hooks* de test no
+  exportados del `Dispatcher` pueden forzar fallos en `GetMessage` y en el marcado):
 
   | Caso | Esperado |
   |---|---|
   | `Enqueue` en `InTenantTx(A)` + `COMMIT`, luego un ciclo del `Dispatcher` | el fake recibe 1 email; fila `sent`, `payload IS NULL`, `sent_at` puesto |
   | `Enqueue` + `ROLLBACK` | el worker no envía nada |
-  | Fake devuelve error recuperable | `pending`, `attempts=1`, `next_attempt_at = now + 1 min`, `last_error` sin datos personales |
+  | Fake devuelve `DeliveryError{Cause: network, Phase: data, Detail: "timeout"}` (quinta revisión) | `pending`, `attempts=1`, `next_attempt_at = now + 1 min`, `last_error = "network data: timeout"`; log `WARN` `outcome=retry` con `error_cause=network` y `smtp_phase=data` |
+  | (Quinta revisión, M6) `Enqueue` con el `Clock` falso | `created_at` y `next_attempt_at` de la fila son exactamente `clock.Now()` (sin compensaciones de +1 s en los tests) |
   | Errores recuperables sucesivos | backoff 1, 5, 15, 60 min, 6 h (y 6 h en adelante) |
-  | 8.º error recuperable | `failed`, `payload IS NULL`, `failed_at` puesto |
-  | Fake devuelve `*outbox.PermanentError` | `failed` al primer intento |
+  | 8.º error recuperable | `failed`, `payload IS NULL`, `failed_at` puesto; log `ERROR` `outcome=failed`, `reason=max_attempts` |
+  | (Quinta revisión) `DeliveryError{config, connection, 535, "5.7.8", "Authentication credentials invalid"}` | `pending`, `attempts=1`, `last_error = "config connection 535 5.7.8: Authentication credentials invalid"`; log **`ERROR`** `outcome=retry`, `error_cause=config`, `smtp_code=535`; **no** pasa a `failed` |
+  | (Quinta revisión) Dos mensajes vencidos; el fake falla el primero en `Phase: connection` (cualquier causa) | el ciclo termina después del primero: el fake recibió **una** llamada; el segundo sigue intacto y lo toma el ciclo siguiente |
+  | (Quinta revisión) Dos mensajes vencidos; el fake falla el primero con `DeliveryError{transient, rcpt_to, 452, "4.2.2", "Mailbox full"}` | recuperable con log `WARN`; el ciclo **sigue** y el segundo se envía |
+  | (Quinta revisión) `DeliveryError{recipient, rcpt_to, 550, "5.1.1", "<persona@example.com>: User unknown"}` | `failed` al primer intento, `payload IS NULL`; `last_error = "recipient rcpt_to 550 5.1.1: [redacted] User unknown"`; log `WARN` `outcome=failed`; ni `last_error` ni el log contienen `@` |
+  | (Quinta revisión) `DeliveryError{bug, compose, Detail: "unknown email template"}` | `failed` al primer intento; log **`ERROR`** |
+  | (Quinta revisión) El fake devuelve `errors.New("x")` (no es `DeliveryError`) | recuperable con `last_error = "config unknown: unclassified handler error"`; log `ERROR` con `err_type`, sin el texto `x` |
+  | (Quinta revisión) El fake devuelve `context.DeadlineExceeded` con el contexto del ciclo vivo | recuperable, `last_error = "network unknown: timeout"` |
+  | (Quinta revisión) El fake captura el `ctx` que recibe | tiene *deadline* ≤ `now + outbox.SendBudget` (20 s) |
+  | (Quinta revisión) Payload con JSON inválido (lo escribe el test como dueño de la tabla) | `failed`, `last_error = "bug compose: invalid payload"`; log **`ERROR`** (hoy sale en `WARN`) |
   | Mensaje con `next_attempt_at` futuro | no se toma |
   | Dos `Dispatcher` concurrentes con 20 mensajes | cada mensaje se envía **una** vez (`FOR UPDATE SKIP LOCKED`) |
   | Mensajes de `A` y `B` | cada uno se lee y marca bajo el rol de su empresa (`current_user` capturado por el fake vía hook de test) |
   | `UPDATE` que deja `sent` con payload | la base lo rechaza (`outbox_scrub_chk`) |
   | (Tercera revisión) El fake bloquea hasta que se cancela el contexto del `Dispatcher` y devuelve `context.Canceled` (apagado a mitad del envío) | el mensaje queda **exactamente** como estaba: `pending`, `attempts`, `next_attempt_at` y `last_error` sin cambios; log `INFO` con `outcome=canceled`; ningún log `ERROR`; en el próximo arranque se toma de nuevo |
-- **Green**: pasa la tabla. **Refactor**: la política de backoff es una función pura con su propio
-  test unitario; la clasificación "cancelación / recuperable / definitivo" también (plan §9.4).
+  | (Quinta revisión, DD-35) El fake bloquea hasta que se cancela el contexto del `Dispatcher` y después devuelve **`nil`** (el envío terminó durante el apagado) | el mensaje queda `sent` (la transacción usa `context.WithoutCancel`); no se reenvía en el próximo arranque |
+  | (Quinta revisión, DD-35) El contexto del `Dispatcher` ya está cancelado antes del ciclo | no toma ningún mensaje |
+  | (Quinta revisión, INV-31) Mensaje viejo de una empresa `X` cuya fila de `tenants` existe pero su rol no (el test borra `crm_t_<X>` como superusuario del contenedor) + mensaje más nuevo de `A` | en el **primer** ciclo el de `A` queda `sent`; el de `X` sigue `pending`, con `attempts` y `last_error` sin cambios y `next_attempt_at = now + 10 s` (edad < 10 s); log `ERROR` `outcome=deferred`, `step=as_tenant`, con `err` |
+  | (Quinta revisión) *Hook* que hace fallar `GetMessage` para un mensaje | aplazado como arriba, `step=get_message`; el lote sigue |
+  | (Quinta revisión) *Hook* que hace fallar `MarkSent` con un error que no es `db.ErrUnavailable` | el mensaje queda `pending` y aplazado (`step=mark`); durante ese ciclo el fake recibió **una** sola llamada por ese mensaje |
+  | (Quinta revisión) *Hook* que hace fallar `AsTenant` con `db.ErrUnavailable` | el ciclo termina; el mensaje **no** se aplaza (`next_attempt_at` sin cambios); log `ERROR` `event=outbox_cycle_failed` con `err` |
+  | (Quinta revisión) Aplazar un mensaje que otro `Dispatcher` ya marcó `sent`, o cuyo `next_attempt_at` cambió | 0 filas, sin error |
+  | (Quinta revisión) `Run` con un ciclo que falla | el log `outbox_cycle_failed` incluye `err` |
+  | (Quinta revisión, INV-29) `SHOW idle_in_transaction_session_timeout` en una conexión de `crm_app` | ≥ `outbox.SendBudget + 10 s` |
 
-**T-B212 — Implementar `platform/outbox` (`Enqueue`, `Dispatcher` con *polling* de 2 s y lote de 10, arranque y parada con `context`)**. Las queries del worker van en `internal/platform/outbox/store/worker.sql` (plan §4.4).
+  Unitarios (quinta revisión):
 
-**T-B213 [T] — Adaptador SMTP y plantillas** · ADR-010, DD-14, DD-24
+  | Caso | Esperado |
+  |---|---|
+  | `deferDelay(edad)` con edad −5 s / 0 / 9 s / 12 s / 14 min / 20 min | 10 s / 10 s / 10 s / 12 s / 14 min / 15 min |
+  | `DeliveryError.LastError()` con y sin código, con y sin código extendido, y fase `unknown` | el formato exacto de ADR-024 §3 |
+  | `Detail` con `\r\n`, tabulaciones y espacios repetidos | una sola línea, espacios simples, sin espacios en los extremos |
+  | `Detail` con `<a@b.example>`, `a@b.example,` y `"a@b.example"` | cada token → `[redacted]`; el resultado no contiene `@` |
+  | `Detail` de 2000 caracteres multibyte | exactamente 1000 runas, terminando en `…` |
+  | `err.Error()` de un `*DeliveryError` | igual a `LastError()` |
+  | `errors.As` sobre `fmt.Errorf("x: %w", deliveryErr)` | recupera el `*DeliveryError` |
+  | `Cause.Permanent()` y `Cause.LogLevel()` para las 5 causas | `recipient` y `bug` definitivos; `config` y `bug` en `ERROR`; el resto `WARN` |
+- **Green**: pasa la tabla. **Refactor**: backoff, `deferDelay` y la decisión "cancelación /
+  recuperable / definitivo / aplazar / terminar el ciclo" como funciones puras con su propio test
+  (plan §9.4); un único lugar arma los campos de log del worker.
+
+**T-B212 — Implementar `platform/outbox` (`Enqueue`, `Dispatcher` con *polling* de 2 s y lote de 10, arranque y parada con `context`)**. Las queries del worker van en `internal/platform/outbox/store/worker.sql` (plan §4.4). Quinta revisión: `DeliveryError`, `Cause`, `Phase` y `SendBudget` según plan §9.3 (se borra `PermanentError`); `Enqueue` recibe el `clock.Clock` y fija `created_at` y `next_attempt_at` con `clock.Now()` (DD-18; resuelve M6); `LockDueMessage` devuelve también `next_attempt_at` y `created_at`; query `DeferMessage` (plan §9.4) y su nombre en `queryrules.DefaultExceptions`; `deferDelay`; transacción con `context.WithoutCancel` y `Handle` con `context.WithTimeout(…, SendBudget)` (DD-35).
+
+**T-B213 [T] — Adaptador SMTP y plantillas** · ADR-010, ADR-024, DD-14, DD-24, DD-35, INV-28, INV-29, INV-30
 - **Red** (integración contra Mailpit en contenedor; su API HTTP para leer lo recibido):
 
   | Caso | Esperado |
@@ -662,15 +713,52 @@ ruta → autenticación por grupo). `CommonMiddleware` recibe el modo local y
   | Enviar `password_reset` con `{link}` y `APP_BASE_URL=https://crm.example` | llega a Mailpit con asunto en español, partes texto y HTML, enlace `https://crm.example/reset-password#token=…` (token en el **fragmento**, DD-14) |
   | Plantillas `email_verification` e `invitation` | enlaces `…/verify-email#token=…` y `…/accept-invitation#token=…`; nombre de empresa y rol en español ("Administrador"/"Operador"); sin campos vacíos |
   | `APP_BASE_URL=https://localhost:5173` | enlaces a `https://localhost:5173/…` (desarrollo con Vite y HTTPS local, plan §10.5.1) |
-  | Destinatario con `\r\n` | error antes de conectar |
-  | SMTP inalcanzable (puerto cerrado) | error recuperable (no `PermanentError`), respeta timeout de `context` |
-  | Respuesta `5xx` simulada | `PermanentError` (si Mailpit no permite simularla, test unitario del clasificador de códigos) |
+  | Destinatario con `\r\n` | `DeliveryError{recipient, compose}` antes de conectar |
+  | SMTP inalcanzable (puerto cerrado) | `DeliveryError{network, connection}`, `LastError() = "network connection: connection refused"` |
+- **Red** (quinta revisión, ADR-024; integración contra un **servidor SMTP falso en proceso**: un
+  `net.Listener` que responde un guion fijo y registra los comandos recibidos; responde `250` a
+  `NOOP`. Para los casos de AUTH, el servidor anuncia `AUTH CRAM-MD5` sin TLS, porque go-mail sin
+  cifrado solo autodescubre SCRAM, NTLM o CRAM-MD5, y el test arma el adaptador con usuario y sin
+  TLS con un constructor no exportado para tests; en producción la política TLS no cambia):
+
+  | Guion del servidor falso | Esperado (`LastError()` del `*DeliveryError`) |
+  |---|---|
+  | Saludo `554 5.7.1 client host blocked` | `config connection 554 5.7.1: client host blocked`; `Cause.Permanent() == false` (el caso de la revisión) |
+  | Saludo `421 4.3.2 Service not available` | `transient connection 421 4.3.2: Service not available` |
+  | `EHLO` y `HELO` responden `550 not allowed` | causa `config`, fase `connection`, código `550` |
+  | `AUTH` responde `535 5.7.8 Authentication credentials invalid` | `config connection 535 5.7.8: Authentication credentials invalid` (el caso de la revisión) |
+  | `AUTH` responde `454 4.7.0 Temporary authentication failure` | `transient connection 454 4.7.0: Temporary authentication failure` |
+  | Con usuario configurado y sin `AUTH` anunciado | causa `config`, fase `connection`, código 0, sin `@` |
+  | `MAIL FROM` responde `550 5.7.1 Sender not authorized` | `config mail_from 550 5.7.1: Sender not authorized` |
+  | `MAIL FROM` responde `451 4.3.0 Try again later` | `transient mail_from 451 4.3.0: Try again later` |
+  | `RCPT TO` responde `550 5.1.1 <destinatario del mensaje>: User unknown`, con `ENHANCEDSTATUSCODES` anunciado | `recipient rcpt_to 550 5.1.1: [redacted] User unknown`; `Permanent() == true`; sin `@` |
+  | `RCPT TO` responde `550 User unknown`, sin `ENHANCEDSTATUSCODES` | `recipient rcpt_to 550: User unknown` |
+  | `RCPT TO` responde `554 5.7.1 Relay access denied` | `config rcpt_to 554 5.7.1: Relay access denied` (recuperable) |
+  | `RCPT TO` responde `452 4.2.2 Mailbox full` | `transient rcpt_to 452 4.2.2: Mailbox full` |
+  | Fin de datos responde `554 5.7.1 Message rejected` | `config data 554 5.7.1: Message rejected` |
+  | Fin de datos responde `550 5.1.1 Recipient rejected` | `recipient data 550 5.1.1: Recipient rejected` |
+  | Fin de datos `250` y después cierra la conexión sin responder el `QUIT` | `nil` (entregado: `IsDelivered()`) |
+  | Fin de datos `250` | el comando siguiente registrado es `QUIT`, no `RSET` (`WithoutRset`) |
+  | Respuesta `5xx` de 3 líneas, 2000 caracteres y una dirección con `@` en el medio | `LastError()` en una línea, ≤ 1000 caracteres, sin `@` |
+  | Acepta la conexión TCP y nunca manda el saludo | `network connection: timeout`, en ≤ 6 s (5 s por etapa + tolerancia) |
+  | Responde bien hasta `DATA` (`354`) y nunca responde al fin de datos | `network data: timeout`, en ≤ 6 s después de enviar el contenido |
+  | Contexto cancelado antes de llamar | `context.Canceled` (`errors.Is`), sin conectar |
+  | Contexto cancelado mientras el servidor demora el saludo | cuando `Send` vuelve, devuelve `context.Canceled`, no un `DeliveryError` |
+
+  Unitarios (quinta revisión):
+
+  | Caso | Esperado |
+  |---|---|
+  | Constantes del adaptador: 4 × timeout por etapa | ≤ `outbox.SendBudget` |
+  | Regla del destinatario (fase, código, extendido): `rcpt_to 550 ""`, `rcpt_to 551 ""`, `rcpt_to 553 ""`, `rcpt_to 554 ""`, `rcpt_to 550 5.1.1`, `rcpt_to 550 5.2.2`, `rcpt_to 550 5.7.1`, `data 550 5.1.1`, `data 550 ""`, `mail_from 550 5.1.1`, `connection 550 5.1.1` | `recipient` solo para `rcpt_to 550 ""`, `rcpt_to 551 ""`, `rcpt_to 553 ""`, `rcpt_to 550 5.1.1`, `rcpt_to 550 5.2.2` y `data 550 5.1.1`; todos los demás `config` |
+  | Errores de la fase de conexión: `net.Error` con `Timeout()`, `*net.DNSError`, `ECONNREFUSED`, `io.EOF`, error de certificado x509 | `network` (`timeout`, `dns lookup failed`, `connection refused`, `connection closed`) y `config` (`tls handshake failed`) |
+  | Handler de plantillas con plantilla desconocida, token faltante o rol inválido | `DeliveryError{bug, compose}` con texto fijo; el texto no contiene el token |
 - **Green**: pasa la tabla.
 
-**T-B214 — Implementar `platform/mailer` (go-mail) y las plantillas `identity/emails` (es-AR)**.
+**T-B214 — Implementar `platform/mailer` (go-mail) y las plantillas `identity/emails` (es-AR)**. Quinta revisión: clasificación de ADR-024 §1–§3 en el adaptador (`gomail.WithTimeout(5 * time.Second)`, `gomail.WithoutRset()`, `nil` si `Msg.IsDelivered()`); el detalle de un `SendError` se arma como dice ADR-024 §3 (sin `affected recipient(s)`); destinatario inválido → `recipient`, asunto inválido → `bug`, remitente inválido → `config`, todos en fase `compose`; el handler de plantillas devuelve `DeliveryError{Cause: CauseBug, Phase: PhaseCompose}` con textos fijos.
 
-**T-B215 [T] — Adaptador S3** · ADR-011
-- **Red** (integración contra MinIO en contenedor):
+**T-B215 [T] — Adaptador S3** · ADR-011, DD-36
+- **Red** (integración contra MinIO en contenedor, con la imagen `containers.MinIO` de DD-36):
 
   | Caso | Esperado |
   |---|---|
@@ -678,9 +766,11 @@ ruta → autenticación por grupo). `CommonMiddleware` recibe el modo local y
   | `Get` de clave inexistente | `objectstore.ErrNotFound` |
   | `Delete` de clave inexistente | sin error (idempotente) |
   | Endpoint caído | error envuelto clasificado como no disponible |
+  | (Quinta revisión) Test unitario de `internal/testsupport/containers` que lee `compose.yaml` | el `image:` de los servicios `postgres`, `mailpit` y `minio` es exactamente `containers.Postgres`, `containers.Mailpit` y `containers.MinIO` |
+  | (Quinta revisión) `containers.MinIO` | contiene `ghcr.io/coollabsio/minio:RELEASE.2025-10-15T17-29-55Z@sha256:`; ningún archivo del repo fuera de la documentación nombra `quay.io/minio`, `minio/minio:` ni `bitnamilegacy/` |
 - **Green**: pasa la tabla.
 
-**T-B216 — Implementar `platform/objectstore` (minio-go)**.
+**T-B216 — Implementar `platform/objectstore` (minio-go)**. Quinta revisión (DD-36): paquete `internal/testsupport/containers` con las constantes `Postgres` (`postgres:18`), `Mailpit` (`axllent/mailpit:v1.27`) y `MinIO` (`ghcr.io/coollabsio/minio:RELEASE.2025-10-15T17-29-55Z@sha256:<digest>`); `pgtest`, los dos tests que levantan Mailpit y el de MinIO usan esas constantes; `compose.yaml` usa las mismas referencias, mantiene `command: server /data --console-address ":9001"` y pierde el comentario sobre `quay.io`. El digest es el del **índice multiplataforma** de ese tag (lo obtiene el desarrollador con `docker buildx imagetools inspect`). Si ese tag no se puede descargar sin login, no se elige otra imagen por cuenta propia: se usa el respaldo de DD-36 (`cgr.dev/chainguard/minio` por digest) y se avisa al arquitecto para actualizar DD-36 y la nota de ADR-011.
 
 **T-B217 [T] — Rate limiter** · DD-9, DD-32, INV-25
 - **Red** (unitario, reloj falso): 5 pedidos permitidos y el 6.º rechazado con `RetryAfter > 0`;
@@ -703,7 +793,7 @@ rate_limited` + `Retry-After`). La clave por IP es `IPKey(httpx.ClientIPFrom(ctx
 middleware consume el cupo **antes** de ejecutar el handler, así cuentan tanto los éxitos como
 los rechazos (DD-9).
 
-**Checkpoint Fase 2**: `make check` en verde.
+**Checkpoint Fase 2**: `make check` en verde. Quinta revisión: además, `docker compose up -d` levanta MinIO con la imagen de DD-36 sin login a ningún registro.
 
 ---
 
@@ -1251,7 +1341,8 @@ registra las tareas. Las cuatro rutas de sistema ya están en `queryrules.Defaul
 - **Red**: base caída → `503 {"status":"unavailable"}`; versión de migración de la base ≠ la
   embebida → `503`; ok → `200`; `/debug/vars` solo escucha en `METRICS_ADDR` y expone las
   métricas de §12.1 (incluidas `signup_email_exists_total`, `csrf_rejected_total`,
-  `signup_lock_timeout_total`, `http_client_canceled_total` y `set_role_retry_total`);
+  `signup_lock_timeout_total`, `http_client_canceled_total`, `set_role_retry_total` y, desde la
+  quinta revisión, `outbox_delivery_errors_total{cause}` y `outbox_deferred_total`, ADR-024);
   `tenant_roles_total` = cantidad de empresas, leída como `crm_worker` con la query de
   `internal/tenant/store/provisioning.sql`.
 
@@ -1299,9 +1390,11 @@ de la fase y se agrega a plan §11.1 en el mismo cambio (matriz §16).
   timeout de apagado. Tercera revisión: si el apagado cancela el envío, el mensaje queda `pending`
   con `attempts`, `next_attempt_at` y `last_error` sin cambios, log `INFO` `outcome=canceled`; un
   request cuyo contexto cancela el propio servidor (no el cliente) recibe `503`; en todo el
-  apagado no hay logs `ERROR` por cancelaciones.
+  apagado no hay logs `ERROR` por cancelaciones. Quinta revisión (DD-35): si el envío termina con
+  éxito durante el apagado, el mensaje queda `sent` (no se reenvía al volver a arrancar), y el
+  proceso espera un envío en curso hasta `outbox.SendBudget` antes de salir.
 
-**T-B909 — Implementar el apagado ordenado del servidor y del worker**.
+**T-B909 — Implementar el apagado ordenado del servidor y del worker**. Quinta revisión (DD-35): el timeout de apagado es ≥ 25 s (`outbox.SendBudget` + 5 s), porque go-mail no corta una conversación SMTP en curso al cancelarse el contexto.
 
 **Checkpoint Fase 9**: `make check` en verde + resultado de T-B905 reportado con los números.
 
@@ -1349,6 +1442,10 @@ de la fase y se agrega a plan §11.1 en el mismo cambio (matriz §16).
 | DD-34 / INV-27 / R-17 Primer `SET ROLE` desde otra conexión: lectura de catálogo y reintento único (research R-28; nota (b) en ADR-005) | T-B103, T-B104, T-B903, T-B905 |
 | Rutas exactas de las queries de sistema (plan §4.4, INV-04, ADR-001) | T-B112, T-B212, T-B304, T-B902, T-B903, T-B907 |
 | FK `tenant_id → tenants(id)` de `sessions` y `user_tokens` (`data-model.md` §2.3/§2.4) | T-B108, T-B111 |
+| ADR-024 / INV-28 / INV-30 Clasificación de fallos de entrega y `last_error` saneado (research R-29) | T-B211, T-B212, T-B213, T-B214, T-B903 |
+| DD-35 / INV-29 Presupuesto del envío frente a `idle_in_transaction_session_timeout` | T-B211, T-B213, T-B214, T-B908, T-B909 |
+| INV-31 Aislamiento de fallos por mensaje del `Dispatcher` | T-B112, T-B211, T-B212 |
+| DD-36 Imagen de MinIO en desarrollo y tests (research R-30) | T-B215, T-B216 |
 
 ---
 

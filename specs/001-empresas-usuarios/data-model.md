@@ -15,6 +15,11 @@ base.
 checklist de §6 (`sessions.tenant_id` y `user_tokens.tenant_id` tienen FK a `tenants(id)`, §2.3 y
 §2.4); lock de `GRANT crm_tenant` en el aprovisionamiento (§3.3, DD-33); origen de las columnas
 `ip` (DD-32); archivos de las queries de sistema (§3.4, plan §4.4). Sin cambios de esquema.
+**Cuarta revisión 2026-10-01** (Accepted; revisión del PR fdelillo/crm#8, ADR-024): formato y
+saneamiento de `outbox_messages.last_error`, efecto de los aplazamientos del `Dispatcher` sobre
+`attempts` y `next_attempt_at`, y `created_at` fijado por `Enqueue` con el reloj inyectable (§2.5);
+el worker escribe `next_attempt_at` como `crm_worker` para aplazar un mensaje, con el privilegio y
+la política que ya tenía (§3.4). Sin cambios de esquema, privilegios ni políticas.
 
 DDL **conceptual**: define tablas, tipos, constraints, índices, políticas y privilegios. No es
 una migración ejecutable: las migraciones goose las escribe quien implementa, respetando esto.
@@ -300,10 +305,10 @@ revoca la anterior antes de crear la nueva, y la limpieza periódica no borra la
 | `recipient` | `text` | no | `<= 254` | 🔒 |
 | `payload` | `jsonb` | sí | ver `outbox_scrub_chk` | 🔒 Parámetros de la plantilla, **incluido el token en claro** |
 | `status` | `text` | no | `IN ('pending','sent','failed')`, default `'pending'` | |
-| `attempts` | `integer` | no | default `0`, `>= 0` | No aumenta si el envío se interrumpe por el apagado del proceso (plan §9.4) |
-| `next_attempt_at` | `timestamptz` | no | default `now()` | |
-| `last_error` | `text` | sí | `<= 1000` | Sin datos personales (código SMTP y mensaje del proveedor truncado) |
-| `created_at` | `timestamptz` | no | default `now()` | |
+| `attempts` | `integer` | no | default `0`, `>= 0` | No aumenta si el envío se interrumpe por el apagado del proceso ni cuando el `Dispatcher` aplaza el mensaje (plan §9.4, ADR-024 §6) |
+| `next_attempt_at` | `timestamptz` | no | default `now()` | `Enqueue` lo fija con `clock.Now()` (DD-18). Lo mueven el reintento (rol de la empresa, con backoff) y el aplazamiento del `Dispatcher` (`crm_worker`, demora `clamp(edad, 10 s, 15 min)`; ADR-024 §6) |
+| `last_error` | `text` | sí | `<= 1000` | Último fallo de entrega en el formato de ADR-024 §3: `<causa> <fase>[ <código SMTP>[ <código extendido>]]: <detalle>` (p. ej. `config connection 535 5.7.8: …`, `recipient rcpt_to 550 5.1.1: [redacted] …`). Saneado: todo token con `@` → `[redacted]` (**nunca** el destinatario), una sola línea, truncado a 1000 caracteres. Se escribe al reprogramar y al pasar a `failed`; `NULL` al pasar a `sent`; no cambia al aplazar ni al cancelar |
+| `created_at` | `timestamptz` | no | default `now()` | `Enqueue` lo fija con `clock.Now()` (DD-18): es la base de la demora del aplazamiento (ADR-024 §6). La limpieza de terminales lo compara con `now()` de la base (§3.4) |
 | `sent_at` | `timestamptz` | sí | | |
 | `failed_at` | `timestamptz` | sí | | |
 
@@ -479,8 +484,11 @@ Notas sobre estas decisiones:
 
 - **Por qué `crm_worker` necesita `UPDATE (next_attempt_at)`**: `SELECT ... FOR UPDATE SKIP LOCKED`
   exige privilegio `UPDATE` sobre al menos una columna y aplica también las políticas de
-  `UPDATE`. El worker **no** actualiza nada como `crm_worker`: marca el mensaje como enviado ya con
-  el rol de la empresa.
+  `UPDATE`. El worker marca el mensaje (enviado, reintento, fallido) con el rol de la empresa. La
+  **única** escritura como `crm_worker` es el **aplazamiento** (`DeferMessage`, ADR-024 §6, desde la
+  revisión del 2026-10-01): cuando la fase con el rol de la empresa falla para un mensaje, mueve
+  solo su `next_attempt_at` (si sigue `pending` y con el mismo `next_attempt_at` leído). Usa este
+  mismo privilegio y la política `worker_lock`; no hace falta ningún privilegio nuevo.
 - **Por qué `worker_read USING (true)`**: una sentencia `DELETE` con `WHERE` aplica también las
   políticas de `SELECT`; si la de lectura filtrara por `pending`, la limpieza no vería las filas
   terminales. La lectura amplia es segura porque el privilegio es **por columna** (solo ruteo y

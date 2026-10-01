@@ -1,8 +1,25 @@
 # ADR-010: Envío de emails con outbox transaccional, worker en el binario y puerto `Mailer` SMTP
 
-**Status**: Accepted (decisión del usuario; librería SMTP y políticas de reintento: propuesta del arquitecto)
+**Status**: Accepted (decisión del usuario; librería SMTP y políticas de reintento: propuesta del arquitecto). La clasificación de errores de la viñeta "Reintentos" la reemplaza [ADR-024](024-clasificacion-fallos-outbox-y-presupuesto-smtp.md) (ver nota 2026-10-01).
 **Fecha**: 2026-09-27
 **Origen**: spec 001 (verificación de email, reset de contraseña, invitaciones)
+
+> **Nota 2026-10-01 (reemplazo parcial; el resto de la decisión no cambia)**, por la revisión del
+> PR fdelillo/crm#8 (hallazgos I1, I2, M1, M7): la frase "Errores definitivos (`5xx`, plantilla
+> inválida) pasan a `failed` de inmediato" de la viñeta **Reintentos** era demasiado amplia: aplicada
+> a los `5xx` de la conexión (saludo `554` por IP bloqueada, `535` de AUTH por credenciales
+> vencidas) pasa toda la cola a `failed` y borra los payloads. La clasificación de fallos, el formato
+> de `last_error`, el presupuesto de tiempo del envío frente a `idle_in_transaction_session_timeout`
+> y el aislamiento de fallos por mensaje del `Dispatcher` quedan en
+> [ADR-024](024-clasificacion-fallos-outbox-y-presupuesto-smtp.md) (**Accepted** 2026-10-01). En resumen: solo es definitivo un rechazo del **destinatario** (`5xx` en RCPT
+> TO o DATA con código extendido `5.1.x`/`5.2.x`, o `550`/`551`/`553` en RCPT TO sin código
+> extendido) o un **bug** (plantilla o payload inválidos); todo otro `5xx` es un error de
+> configuración recuperable que se loguea en `ERROR`. Siguen vigentes sin cambios: outbox
+> transaccional, worker en el binario con *polling* de 2 s y lote de 10, un mensaje por transacción
+> con `FOR UPDATE SKIP LOCKED`, backoff 1, 5, 15, 60 min y 6 h con 8 intentos, entrega al menos una
+> vez, borrado del payload al terminar, puerto `Mailer` con go-mail, Mailpit en desarrollo. Se
+> corrige además un dato de "Puerto `Mailer`": go-mail v0.8.1 respeta el `context` solo durante el
+> *dial*; el resto de la conversación lo acotan *deadlines* por etapa (ADR-024 §5).
 
 ## Contexto
 
