@@ -3,6 +3,7 @@ package httpx
 import (
 	"bytes"
 	"context"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -39,15 +40,12 @@ func TestClientIP(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var log bytes.Buffer
 			logger := slog.New(slog.NewTextHandler(&log, nil))
-			previous := slog.Default()
-			slog.SetDefault(logger)
-			defer slog.SetDefault(previous)
 			prefixes := trusted
 			if tc.untrusted {
 				prefixes = nil
 			}
 			var got netip.Addr
-			h := ClientIP(prefixes)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			h := ClientIP(prefixes, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				got = ClientIPFrom(r.Context())
 			}))
 			r := httptest.NewRequest("GET", "/", nil)
@@ -66,5 +64,23 @@ func TestClientIP(t *testing.T) {
 	}
 	if ClientIPFrom(context.Background()).IsValid() {
 		t.Fatal("IP outside middleware must be invalid")
+	}
+}
+
+// INV-25 / DD-32 (T-B219): only X-Forwarded-For is ever read. Forwarded and X-Real-IP, which a
+// client could set freely, must never influence the selected address.
+func TestClientIPIgnoresForwardedAndRealIP(t *testing.T) {
+	trusted := []netip.Prefix{netip.MustParsePrefix("198.51.100.0/24")}
+	var got netip.Addr
+	h := ClientIP(trusted, slog.New(slog.NewTextHandler(io.Discard, nil)))(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = ClientIPFrom(r.Context())
+	}))
+	r := httptest.NewRequest("GET", "/", nil)
+	r.RemoteAddr = "198.51.100.10:4711"
+	r.Header.Set("Forwarded", "for=192.0.2.99")
+	r.Header.Set("X-Real-IP", "192.0.2.99")
+	h.ServeHTTP(httptest.NewRecorder(), r)
+	if !got.IsValid() || got.String() != "198.51.100.10" {
+		t.Fatalf("got %v want the peer address, unaffected by Forwarded/X-Real-IP", got)
 	}
 }

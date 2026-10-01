@@ -190,6 +190,9 @@ func CSRFDenyHandler(logger *slog.Logger) http.Handler {
 		if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
 			w.Header().Set("Cache-Control", "no-store")
 		}
+		// route is always unmatchedRoute here, and correctly so: CrossOriginProtection sits before
+		// routing in the common chain (NewCommonMiddleware), so a rejected request never reaches
+		// chi and SetRoute is never called for it.
 		logger.WarnContext(r.Context(), "cross-origin request rejected",
 			"security_event", "csrf_rejected", "ip", ClientIPFrom(r.Context()).String(),
 			"route", unmatchedRoute, "request_id", RequestIDFrom(r.Context()))

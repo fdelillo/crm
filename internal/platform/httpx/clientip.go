@@ -18,13 +18,16 @@ func ClientIPFrom(ctx context.Context) netip.Addr {
 	return ip
 }
 
-// ClientIP accepts X-Forwarded-For only from explicitly trusted peer proxies.
-func ClientIP(trusted []netip.Prefix) func(http.Handler) http.Handler {
+// ClientIP accepts X-Forwarded-For only from explicitly trusted peer proxies (DD-32). logger is
+// required (not the global slog.Default()): with the server's own JSON handler not installed as
+// the default (cmd/crm/serve.go never calls slog.SetDefault), a global log call would print in
+// plain text, outside the request's JSON line and without its request_id (M4 of the PR #8 review).
+func ClientIP(trusted []netip.Prefix, logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ip, err := selectClientIP(r.RemoteAddr, r.Header.Values("X-Forwarded-For"), trusted)
 			if err != nil {
-				slog.WarnContext(r.Context(), "invalid forwarded address", "event", "bad_forwarded_for")
+				logger.WarnContext(r.Context(), "invalid forwarded address", "event", "bad_forwarded_for")
 			}
 			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), clientIPKey{}, ip)))
 		})

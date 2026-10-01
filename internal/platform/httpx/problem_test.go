@@ -1,12 +1,18 @@
 package httpx
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/fdelillo/crm/internal/platform/db"
 )
 
 func TestProblemCodes(t *testing.T) {
@@ -24,9 +30,17 @@ func TestProblemCodes(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(string(tc.code), func(t *testing.T) {
 			w := httptest.NewRecorder()
-			WriteProblem(w, httptest.NewRequest(http.MethodGet, "/api/v1/test", nil), tc.code)
+			// RequestID (not a bare httptest.NewRequest) so instance can be checked against the
+			// same id the response header carries (T-B201).
+			RequestID(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				WriteProblem(w, r, tc.code)
+			})).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/test", nil))
 			if w.Code != tc.status || w.Header().Get("Content-Type") != "application/problem+json" {
 				t.Fatalf("status=%d content-type=%q", w.Code, w.Header().Get("Content-Type"))
+			}
+			var raw map[string]any
+			if err := json.Unmarshal(w.Body.Bytes(), &raw); err != nil {
+				t.Fatal(err)
 			}
 			var p struct {
 				Type, Title, Instance string
@@ -38,6 +52,12 @@ func TestProblemCodes(t *testing.T) {
 			}
 			if p.Type != "/problems/"+string(tc.code) || p.Status != tc.status || p.Code != tc.code || p.Title == "" {
 				t.Fatalf("problem=%+v", p)
+			}
+			if p.Instance == "" || p.Instance != w.Header().Get("X-Request-Id") {
+				t.Fatalf("instance=%q header=%q", p.Instance, w.Header().Get("X-Request-Id"))
+			}
+			if _, present := raw["suggested_action"]; present {
+				t.Fatalf("suggested_action present without the option: %v", raw)
 			}
 		})
 	}
@@ -78,6 +98,67 @@ func TestValidationErrorSorted(t *testing.T) {
 	}
 	if w.Code != 422 || p.Code != CodeValidationFailed || len(p.Errors) != 2 || p.Errors[0].Field != "a" || p.Errors[1].Field != "z" {
 		t.Fatalf("response=%d %+v", w.Code, p)
+	}
+}
+
+func TestWriteDBError(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{"not found", db.ErrNotFound, 404},
+		{"unavailable", db.ErrUnavailable, 503},
+		{"privilege", db.ErrPrivilege, 500},
+		{"unclassified", errors.New("boom"), 500},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var logs bytes.Buffer
+			logger := slog.New(slog.NewJSONHandler(&logs, nil))
+			w := httptest.NewRecorder()
+			WriteDBError(w, httptest.NewRequest(http.MethodGet, "/api/v1/test", nil), tc.err, logger)
+			if w.Code != tc.status {
+				t.Fatalf("status=%d want=%d", w.Code, tc.status)
+			}
+			if tc.name == "privilege" {
+				if !strings.Contains(logs.String(), `"security_event":"rls_violation"`) {
+					t.Fatalf("missing security event: %s", logs.String())
+				}
+				if !strings.Contains(logs.String(), `"err":"db: insufficient privilege or RLS violation"`) {
+					t.Fatalf("missing err in log: %s", logs.String())
+				}
+			} else if logs.Len() != 0 {
+				t.Fatalf("unexpected log for %s: %s", tc.name, logs.String())
+			}
+		})
+	}
+}
+
+// A nil logger must not drop the ErrPrivilege log (I3 of the PR #8 review): it falls back to
+// slog.Default() instead of skipping it.
+func TestWriteDBErrorWithNilLoggerStillLogsPrivilege(t *testing.T) {
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, nil)))
+	defer slog.SetDefault(previous)
+	w := httptest.NewRecorder()
+	WriteDBError(w, httptest.NewRequest(http.MethodGet, "/api/v1/test", nil), db.ErrPrivilege, nil)
+	if w.Code != 500 {
+		t.Fatalf("status=%d", w.Code)
+	}
+	if !strings.Contains(logs.String(), `"security_event":"rls_violation"`) {
+		t.Fatalf("missing security event with a nil logger: %s", logs.String())
+	}
+}
+
+func TestWriteDBErrorCanceledByClientWritesNothing(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/test", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+	WriteDBError(w, r, db.ErrCanceled, nil)
+	if w.Body.Len() != 0 {
+		t.Fatalf("canceled response has a body: %q", w.Body.String())
 	}
 }
 

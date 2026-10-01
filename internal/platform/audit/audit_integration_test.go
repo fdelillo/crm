@@ -107,7 +107,8 @@ func TestRecordTransactionIsolationAndPrivileges(t *testing.T) {
 
 func TestRecordRejectsSecrets(t *testing.T) {
 	recorder := audit.NewRecorder()
-	for _, data := range []map[string]any{{"password": "secret"}, {"token": "secret"}, {"nested": map[string]any{"reset_token": "secret"}}} {
+	for _, data := range []map[string]any{{"password": "secret"}, {"token": "secret"}, {"nested": map[string]any{"reset_token": "secret"}},
+		{"headers": map[string]string{"Authorization": "secret"}}} {
 		err := recorder.Record(context.Background(), nil, audit.Entry{Data: data})
 		if err == nil {
 			t.Fatalf("accepted secret data: %v", data)

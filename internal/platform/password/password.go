@@ -85,8 +85,11 @@ func (h *hasher) Verify(ctx context.Context, plain, encoded string) (bool, bool,
 	defer h.release()
 	actual := h.derive([]byte(plain), salt, params)
 	ok := subtle.ConstantTimeCompare(actual, expected) == 1
+	// Key length is not part of parameters: every hash this package has ever produced derives with
+	// the same hardcoded 32-byte key (see derive above), so comparing it could never trigger a
+	// rehash. Only the three Argon2id cost parameters can actually fall behind current.
 	rehash := params.memory < h.params.memory || params.iterations < h.params.iterations ||
-		params.parallelism < h.params.parallelism || len(expected) < 32
+		params.parallelism < h.params.parallelism
 	return ok, ok && rehash, nil
 }
 

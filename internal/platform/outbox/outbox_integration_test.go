@@ -41,6 +41,10 @@ type fakeHandler struct {
 	wait         bool
 	afterWait    error
 	afterWaitSet bool
+	// entered, when set, is closed the instant Handle starts blocking (wait=true): a test cancels
+	// the context only after reading from it, instead of guessing a sleep duration (M8 of the PR #8
+	// review: the previous version raced a fixed 20ms sleep against goroutine scheduling).
+	entered chan struct{}
 }
 
 func (f *fakeHandler) Handle(ctx context.Context, m Message) error {
@@ -50,9 +54,12 @@ func (f *fakeHandler) Handle(ctx context.Context, m Message) error {
 	if deadline, ok := ctx.Deadline(); ok {
 		f.deadlines = append(f.deadlines, deadline)
 	}
-	wait, afterWait, afterWaitSet, fn := f.wait, f.afterWait, f.afterWaitSet, f.fn
+	wait, afterWait, afterWaitSet, fn, entered := f.wait, f.afterWait, f.afterWaitSet, f.fn, f.entered
 	f.mu.Unlock()
 	if wait {
+		if entered != nil {
+			close(entered)
+		}
 		<-ctx.Done()
 		if afterWaitSet {
 			return afterWait
@@ -435,11 +442,12 @@ func TestFutureMessageIsNotTaken(t *testing.T) {
 }
 
 func TestCancellationLeavesTheMessageUntouched(t *testing.T) {
-	runner, tenant, fake, dispatcher := newFixture(t)
+	var logs bytes.Buffer
+	runner, tenant, fake, dispatcher := newLoggedFixture(t, &logs)
 	enqueue(t, runner, dispatcher.clock, tenant, "password_reset")
-	fake.wait = true
+	fake.wait, fake.entered = true, make(chan struct{})
 	ctx, cancel := context.WithCancel(context.Background())
-	go func() { time.Sleep(20 * time.Millisecond); cancel() }()
+	go func() { <-fake.entered; cancel() }()
 	if err := dispatcher.RunOnce(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
@@ -447,14 +455,29 @@ func TestCancellationLeavesTheMessageUntouched(t *testing.T) {
 	if status != "pending" || count != 0 || !payload || last != "" || !next.Equal(dispatcher.clock.Now()) {
 		t.Fatalf("canceled: %s %d %v %s %q", status, count, payload, next, last)
 	}
+	if !strings.Contains(logs.String(), `"outcome":"canceled"`) {
+		t.Fatalf("missing INFO outcome=canceled log: %s", logs.String())
+	}
+	if strings.Contains(logs.String(), `"level":"ERROR"`) {
+		t.Fatalf("unexpected ERROR log on cancellation: %s", logs.String())
+	}
+	// The message is retaken on the next cycle, with a clock past the cancellation.
+	fake.wait = false
+	dispatcher.clock = fakeClock{dispatcher.clock.Now().Add(time.Second)}
+	if err := dispatcher.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if fake.Count() != 2 {
+		t.Fatalf("message was not retaken: calls=%d", fake.Count())
+	}
 }
 
 func TestCanceledSendThatSucceedsAnywayIsMarkedSent(t *testing.T) {
 	runner, tenant, fake, dispatcher := newFixture(t)
 	enqueue(t, runner, dispatcher.clock, tenant, "password_reset")
-	fake.wait, fake.afterWait, fake.afterWaitSet = true, nil, true
+	fake.wait, fake.afterWait, fake.afterWaitSet, fake.entered = true, nil, true, make(chan struct{})
 	ctx, cancel := context.WithCancel(context.Background())
-	go func() { time.Sleep(20 * time.Millisecond); cancel() }()
+	go func() { <-fake.entered; cancel() }()
 	if err := dispatcher.RunOnce(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}

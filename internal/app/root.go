@@ -22,18 +22,15 @@ type RootDeps struct {
 // CommonMiddleware wraps the whole root mux, so it applies to the API, ops and the SPA alike.
 type CommonMiddleware func(http.Handler) http.Handler
 
-// NewCommonMiddleware builds the middlewares shared by every destination: request id, recover,
-// logging and security headers, outermost first (T-B204). local omits HSTS (DD-24).
-// CrossOriginProtection joins this chain in T-B204.
-func NewCommonMiddleware(logger *slog.Logger, local bool, trustedProxies ...[]netip.Prefix) CommonMiddleware {
-	var trusted []netip.Prefix
-	if len(trustedProxies) > 0 {
-		trusted = trustedProxies[0]
-	}
+// NewCommonMiddleware builds the middlewares shared by every destination: client IP, request id,
+// recover, logging, security headers and cross-origin protection, outermost first (T-B204). local
+// omits HSTS (DD-24). trusted is explicit (not variadic, M5 of the PR #8 review): an omitted
+// argument used to silently ignore TRUSTED_PROXIES; every caller must now say "nil" on purpose.
+func NewCommonMiddleware(logger *slog.Logger, local bool, trusted []netip.Prefix) CommonMiddleware {
 	csrf := http.NewCrossOriginProtection()
 	csrf.SetDenyHandler(httpx.CSRFDenyHandler(logger))
 	chain := []func(http.Handler) http.Handler{
-		httpx.ClientIP(trusted),
+		httpx.ClientIP(trusted, logger),
 		httpx.RequestID,
 		httpx.Recover(logger),
 		httpx.Logging(logger),

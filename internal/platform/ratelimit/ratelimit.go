@@ -36,9 +36,17 @@ type Limiter struct {
 	nextCleanup time.Time
 }
 
+// NewLimiter returns a token-bucket Limiter of limit events/second with the given burst, keyed by
+// caller (DD-9). idleTTL is raised to at least burst/limit if it is shorter (M3 of the PR #8
+// review): a bucket evicted for being idle, then recreated on the next request, starts full again,
+// so an idleTTL shorter than the time a full refill takes would let a caller that paces its
+// requests just past idleTTL get more than burst requests per refill window.
 func NewLimiter(limit rate.Limit, burst int, c clock.Clock, idleTTL time.Duration) *Limiter {
 	if limit <= 0 || burst <= 0 || idleTTL <= 0 || c == nil {
 		panic("ratelimit: invalid configuration")
+	}
+	if refill := time.Duration(float64(burst) / float64(limit) * float64(time.Second)); refill > idleTTL {
+		idleTTL = refill
 	}
 	return &Limiter{buckets: map[string]*bucket{}, limit: limit, burst: burst, clock: c, idleTTL: idleTTL}
 }

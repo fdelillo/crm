@@ -75,12 +75,24 @@ func (recorder) Record(ctx context.Context, tx db.Tx, e Entry) error {
 	return nil
 }
 
+// containsSecret rejects an Entry.Data whose keys look like a credential, at any depth: a caller
+// that builds Data from, say, request headers could otherwise write a password or token to
+// audit_log (append-only, never scrubbed). map[string]string is checked explicitly and not only
+// through the map[string]any case: a type switch does not see through a concrete map type, so a
+// caller that passes one directly (headers, form values) would otherwise skip the check entirely.
 func containsSecret(value any) bool {
 	switch v := value.(type) {
 	case map[string]any:
 		for key, item := range v {
 			normalized := strings.ToLower(key)
 			if strings.Contains(normalized, "password") || strings.Contains(normalized, "token") || containsSecret(item) {
+				return true
+			}
+		}
+	case map[string]string:
+		for key := range v {
+			normalized := strings.ToLower(key)
+			if strings.Contains(normalized, "password") || strings.Contains(normalized, "token") {
 				return true
 			}
 		}

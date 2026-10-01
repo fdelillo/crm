@@ -1,6 +1,8 @@
 package ratelimit
 
 import (
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -40,6 +42,28 @@ func TestTokenBucketAndCleanup(t *testing.T) {
 	}
 }
 
+// M3 of the PR #8 review: with idleTTL (10 min) shorter than a full refill (burst/limit = 1h for
+// 5 requests/hour), a pause longer than idleTTL used to evict the bucket and recreate it with a
+// full burst instead of the single token a real refill grants.
+func TestNewLimiterRaisesIdleTTLToCoverFullRefill(t *testing.T) {
+	clock := &fakeClock{now: time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)}
+	limiter := NewLimiter(rate.Every(time.Hour/5), 5, clock, 10*time.Minute)
+	for i := 0; i < 5; i++ {
+		if allowed, _ := limiter.Allow("a"); !allowed {
+			t.Fatalf("request %d denied", i+1)
+		}
+	}
+	// One token refills every 12 minutes (5/hour): enough time for the old, too-short idleTTL to
+	// have evicted the bucket at least once by now.
+	clock.now = clock.now.Add(12*time.Minute + time.Second)
+	if allowed, _ := limiter.Allow("a"); !allowed {
+		t.Fatal("the naturally refilled token was denied")
+	}
+	if allowed, retry := limiter.Allow("a"); allowed || retry <= 0 {
+		t.Fatalf("bucket was reset to a full burst instead of refilling one token: allowed=%v retry=%s", allowed, retry)
+	}
+}
+
 func TestIPKey(t *testing.T) {
 	ipv4 := netip.MustParseAddr("192.0.2.7")
 	if got := IPKey(ipv4).String(); got != "192.0.2.7/32" {
@@ -73,7 +97,7 @@ func TestMiddlewareUsesClientIPAndIPv6Prefix(t *testing.T) {
 			clock := &fakeClock{now: time.Now()}
 			limiter := NewLimiter(rate.Every(time.Hour/5), 5, clock, time.Hour)
 			called := 0
-			h := httpx.ClientIP(tc.trusted)(Middleware(limiter)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			h := httpx.ClientIP(tc.trusted, slog.New(slog.NewTextHandler(io.Discard, nil)))(Middleware(limiter)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				called++
 				w.WriteHeader(204)
 			})))
@@ -116,7 +140,7 @@ func TestMiddlewareCountsRejectedHandlerResponses(t *testing.T) {
 	clock := &fakeClock{now: time.Now()}
 	limiter := NewLimiter(rate.Every(time.Hour/5), 5, clock, time.Hour)
 	called := 0
-	h := httpx.ClientIP(nil)(Middleware(limiter)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := httpx.ClientIP(nil, slog.New(slog.NewTextHandler(io.Discard, nil)))(Middleware(limiter)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called++
 		w.WriteHeader(http.StatusForbidden)
 	})))
