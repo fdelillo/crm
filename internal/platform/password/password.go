@@ -14,9 +14,15 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
+// Hasher is argon2id password hashing (ADR-007), bounded to a fixed concurrency so a burst of
+// logins cannot exhaust memory (argon2id's cost is memory, not just CPU).
 type Hasher interface {
 	Hash(ctx context.Context, plain string) (string, error)
+	// Verify also reports needsRehash: true when encoded used weaker parameters than current, so
+	// the caller can re-hash the plaintext it already has while it is still available.
 	Verify(ctx context.Context, plain, encoded string) (ok bool, needsRehash bool, err error)
+	// VerifyDummy spends the same work as Verify against a fixed dummy hash, so a login attempt
+	// for an email that does not exist takes as long as one that does (timing side channel).
 	VerifyDummy(ctx context.Context, plain string)
 }
 
@@ -36,6 +42,8 @@ type hasher struct {
 	dummy  string
 }
 
+// NewHasher returns a Hasher that runs at most concurrency derivations at once (a semaphore, not a
+// pool): concurrency < 1 defaults to 4.
 func NewHasher(concurrency int) Hasher { return newHasher(concurrency, current, nil) }
 func newHasher(concurrency int, params parameters, derive deriveFunc) *hasher {
 	if concurrency < 1 {

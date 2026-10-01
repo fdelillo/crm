@@ -15,6 +15,8 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+// Entry is one audit_log row to write (data-model.md §2.6, plan FR-008): who (ActorUserID, IP,
+// UserAgent), when (the database's own now(), not set here), and what (Action, Target*, Data).
 type Entry struct {
 	TenantID    uuid.UUID
 	ActorUserID *uuid.UUID
@@ -25,11 +27,15 @@ type Entry struct {
 	IP          netip.Addr
 	UserAgent   string
 }
+
+// Recorder writes one Entry to audit_log in the caller's own transaction (tx), so the audit trail
+// commits or rolls back with the operation it documents (plan FR-008).
 type Recorder interface {
 	Record(ctx context.Context, tx db.Tx, e Entry) error
 }
 type recorder struct{}
 
+// NewRecorder returns the Recorder. It has no state: every call is independent.
 func NewRecorder() Recorder { return recorder{} }
 
 func (recorder) Record(ctx context.Context, tx db.Tx, e Entry) error {

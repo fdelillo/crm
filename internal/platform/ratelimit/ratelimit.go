@@ -11,6 +11,8 @@ import (
 	"golang.org/x/time/rate"
 )
 
+// IPKey is the rate-limit key of ip (DD-9, DD-32): the full address for IPv4, the /64 for IPv6
+// (one client usually controls a whole /64 and could otherwise rotate addresses within it).
 func IPKey(ip netip.Addr) netip.Prefix {
 	if !ip.IsValid() {
 		return netip.Prefix{}
@@ -26,6 +28,9 @@ type bucket struct {
 	limiter  *rate.Limiter
 	lastSeen time.Time
 }
+
+// Limiter is a token bucket per key (DD-9), with idle buckets evicted so memory does not grow
+// without bound.
 type Limiter struct {
 	mu          sync.Mutex
 	buckets     map[string]*bucket

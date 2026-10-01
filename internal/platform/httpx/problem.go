@@ -72,6 +72,7 @@ var problems = map[Code]spec{
 // reset when registration finds the email already taken).
 type SuggestedAction string
 
+// SuggestedPasswordReset: registration found the email already taken (CodeEmailAlreadyRegistered).
 const SuggestedPasswordReset SuggestedAction = "password_reset"
 
 // FieldError is one entry of a ValidationError's "errors" array: which field, which code.
@@ -127,6 +128,7 @@ func WriteProblem(w http.ResponseWriter, r *http.Request, code Code, options ...
 	writeBody(w, body{Type: "/problems/" + string(code), Title: s.title, Status: s.status, Detail: s.detail,
 		Instance: RequestIDFrom(r.Context()), Code: code, SuggestedAction: opts.action})
 }
+
 // ValidationError writes a 422 problem+json with one FieldError per invalid field, sorted by field
 // name so the response is deterministic.
 func ValidationError(w http.ResponseWriter, r *http.Request, fields map[string]string) {
@@ -143,6 +145,7 @@ func ValidationError(w http.ResponseWriter, r *http.Request, fields map[string]s
 	writeBody(w, body{Type: "/problems/" + string(CodeValidationFailed), Title: s.title, Status: s.status,
 		Instance: RequestIDFrom(r.Context()), Code: CodeValidationFailed, Errors: list})
 }
+
 // writeBody encodes p as the response: every problem+json response goes through here, so the
 // content type and status line are set in exactly one place.
 func writeBody(w http.ResponseWriter, p body) {

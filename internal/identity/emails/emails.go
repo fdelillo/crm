@@ -29,6 +29,8 @@ var (
 	errInvalidRole        = errors.New("emails: invalid role")
 )
 
+// LinkPaths are the frontend routes each template links to (DD-14: the token travels in the URL
+// fragment, never queried by the backend). Empty fields default in NewHandler.
 type LinkPaths struct{ Reset, Verify, Invitation string }
 type handler struct {
 	mailer mailer.Mailer
@@ -37,6 +39,9 @@ type handler struct {
 }
 type templateData struct{ Link, CompanyName, Role string }
 
+// NewHandler returns the outbox.Handler that renders the three email templates (password_reset,
+// email_verification, invitation) and sends them with m. base must be an https origin with no
+// path, query or fragment (every link is base+path+"#token=..."); paths' empty fields default.
 func NewHandler(m mailer.Mailer, base string, paths LinkPaths) (outbox.Handler, error) {
 	u, err := url.Parse(base)
 	if err != nil || u.Scheme != "https" || u.Host == "" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
