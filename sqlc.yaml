@@ -60,3 +60,14 @@ sql:
         out: internal/platform/audit/store
         sql_package: pgx/v5
         overrides: *overrides
+
+  - name: outbox
+    engine: postgresql
+    schema: db/migrations
+    queries: internal/platform/outbox/store
+    gen:
+      go:
+        package: store
+        out: internal/platform/outbox/store
+        sql_package: pgx/v5
+        overrides: *overrides
