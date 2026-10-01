@@ -64,6 +64,7 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
   | T-B211 / T-B212 | Casos nuevos de T-B211 (marcados "Quinta revisión"); `DeliveryError` reemplaza a `PermanentError`; aislamiento por mensaje; contextos y presupuesto; `Enqueue` con el reloj inyectable |
   | T-B213 / T-B214 | Casos nuevos de T-B213 (servidor SMTP falso); adaptador con `WithTimeout(5 s)`, `WithoutRset()` e `IsDelivered()`; el handler de plantillas devuelve `DeliveryError{bug, compose}` |
   | T-B215 / T-B216 | Imagen de MinIO de DD-36 y paquete `internal/testsupport/containers` con su test contra `compose.yaml` |
+  | T-B201 (pendiente) / T-B004 | La validación de las respuestas contra `Problem`/`ValidationProblem` del contrato con `libopenapi-validator` (ya elegido, ADR-012:38, ADR-014:22) no se implementó: el hueco viene de T-B004 (Fase 0). Se difiere al inicio de la Fase 3, donde T-B305 ya la exige ("contrato validado en cada respuesta"). Mientras tanto, `TestProblemCodesMatchContract` (`internal/platform/httpx`) es un control provisorio y más barato: compara el conjunto de claves de `problems` contra el enum `ErrorCode` del contrato, como `authz_test.go` ya hace con `Permission` |
   | T-B903 / T-B908 / T-B909 (Fase 9) | Métricas `outbox_delivery_errors_total{cause}` y `outbox_deferred_total`; envío que termina bien durante el apagado queda `sent`; timeout de apagado ≥ 25 s |
 
 ### Convenciones de esta sección
