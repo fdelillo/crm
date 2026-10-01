@@ -9,11 +9,14 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/fdelillo/crm/internal/platform/db"
+	"go.yaml.in/yaml/v3"
 )
 
 func TestProblemCodes(t *testing.T) {
@@ -61,6 +64,39 @@ func TestProblemCodes(t *testing.T) {
 				t.Fatalf("suggested_action present without the option: %v", raw)
 			}
 		})
+	}
+}
+
+// Provisional control for the T-B201/T-B004 gap (deferred to the start of Phase 3, tasks.md): a
+// full libopenapi-validator check of every response against Problem/ValidationProblem is not wired
+// up yet, so this at least catches a Code added, renamed or removed on one side without the other
+// (as internal/authz/authz_test.go:56 does for Permission).
+func TestProblemCodesMatchContract(t *testing.T) {
+	data, err := os.ReadFile("../../../specs/001-empresas-usuarios/contracts/openapi.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var contract struct {
+		Components struct {
+			Schemas struct {
+				ErrorCode struct {
+					Enum []string `yaml:"enum"`
+				} `yaml:"ErrorCode"`
+			} `yaml:"schemas"`
+		} `yaml:"components"`
+	}
+	if err := yaml.Unmarshal(data, &contract); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for code := range problems {
+		got = append(got, string(code))
+	}
+	slices.Sort(got)
+	want := slices.Clone(contract.Components.Schemas.ErrorCode.Enum)
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Fatalf("error code drift: code=%v contract=%v", got, want)
 	}
 }
 
