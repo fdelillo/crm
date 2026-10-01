@@ -20,17 +20,19 @@ import (
 func phase2Root(t *testing.T, local bool, trusted []netip.Prefix, logs *bytes.Buffer, called *int) http.Handler {
 	t.Helper()
 	api := app.NewAPIRouter()
+	logger := slog.New(slog.NewJSONHandler(logs, nil))
 	api.Post("/api/v1/test", func(w http.ResponseWriter, r *http.Request) { *called++; w.WriteHeader(201) })
 	api.Get("/api/v1/test", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte("{}")) })
 	api.Get("/api/v1/tenant/logo", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "private, no-cache")
 		w.WriteHeader(200)
 	})
-	api.Get("/api/v1/error", func(w http.ResponseWriter, r *http.Request) { httpx.WriteDBError(w, r, db.ErrCanceled, nil) })
+	// logger must not be nil (N2 of the second PR #8 review): WriteDBError panics instead of
+	// falling back to slog.Default().
+	api.Get("/api/v1/error", func(w http.ResponseWriter, r *http.Request) { httpx.WriteDBError(w, r, db.ErrCanceled, logger) })
 	api.Post("/api/v1/accepted", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(202) })
 	api.Delete("/api/v1/nocontent", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) })
 	api.Get("/api/v1/boom", func(w http.ResponseWriter, r *http.Request) { httpx.WriteProblem(w, r, httpx.CodeInternal) })
-	logger := slog.New(slog.NewJSONHandler(logs, nil))
 	return app.NewRootHandler(app.RootDeps{
 		API:       api,
 		Liveness:  http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }),
