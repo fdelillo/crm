@@ -58,14 +58,21 @@ func cleanCompany(t *testing.T) fixture.Company {
 	t.Helper()
 	c := fixture.NewCompany(t, pgtest.AppPool(t))
 	runner := db.NewTxRunner(pgtest.AppPool(t))
-	err := runner.InTenantTx(context.Background(), c.ID, func(ctx context.Context, tx db.Tx) error {
-		_, err := tx.Exec(ctx, `UPDATE app.outbox_messages SET status = 'sent', payload = NULL, sent_at = now()
-			WHERE tenant_id = $1`, c.ID)
-		return err
-	})
-	if err != nil {
+	clearPending := func() error {
+		return runner.InTenantTx(context.Background(), c.ID, func(ctx context.Context, tx db.Tx) error {
+			_, err := tx.Exec(ctx, `UPDATE app.outbox_messages SET status = 'sent', payload = NULL, sent_at = now()
+				WHERE tenant_id = $1 AND status = 'pending'`, c.ID)
+			return err
+		})
+	}
+	if err := clearPending(); err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if err := clearPending(); err != nil {
+			t.Errorf("clean outbox for tenant %s: %v", c.ID, err)
+		}
+	})
 	return c
 }
 func enqueue(t *testing.T, runner db.TxRunner, tenant uuid.UUID, template string) {
