@@ -32,8 +32,13 @@ type Email struct {
 // Mailer sends one Email. The SMTP adapter is the only implementation; identity/emails depends on
 // this interface, not on go-mail, so a future provider needs no change above this package.
 type Mailer interface {
-	// Send returns nil, a *outbox.DeliveryError classified per ADR-024 §1-§2, or context.Canceled
-	// if ctx ended the attempt. ctx carries the SendBudget deadline the Dispatcher sets (DD-35).
+	// Send returns nil, a *outbox.DeliveryError classified per ADR-024 §1-§2, or ctx.Err() verbatim
+	// (context.Canceled or context.DeadlineExceeded) if ctx ended before the attempt finished. ctx
+	// carries the SendBudget deadline the Dispatcher sets (DD-35); the budget-timeout case is turned
+	// into a *outbox.DeliveryError{Cause: network, Detail: "timeout"} one layer up, in
+	// outbox.classifyHandleResult, not here — unlike DD-35's text, which describes that
+	// classification as part of this adapter (nit of the second PR #8 review; reported, not
+	// changed, since the Dispatcher is where every other *outbox.DeliveryError is already built).
 	Send(ctx context.Context, e Email) error
 }
 
