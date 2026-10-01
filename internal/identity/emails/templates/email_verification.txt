@@ -1,0 +1,6 @@
+Hola:
+
+Verificá tu email abriendo este enlace:
+{{.Link}}
+
+Si no creaste una cuenta, podés ignorar este email.
