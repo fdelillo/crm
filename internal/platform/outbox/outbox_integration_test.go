@@ -50,7 +50,8 @@ func newFixture(t *testing.T) (db.TxRunner, uuid.UUID, *fakeHandler, *Dispatcher
 	c := cleanCompany(t)
 	runner := db.NewTxRunner(pgtest.AppPool(t))
 	fake := &fakeHandler{}
-	dispatcher := NewDispatcher(runner, fake, fakeClock{time.Now().UTC().Add(time.Second)}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	now := time.Now().UTC().Truncate(time.Microsecond).Add(time.Second)
+	dispatcher := NewDispatcher(runner, fake, fakeClock{now}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	return runner, c.ID, fake, dispatcher
 }
 
