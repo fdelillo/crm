@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -134,21 +135,18 @@ func TestWriteDBError(t *testing.T) {
 	}
 }
 
-// A nil logger must not drop the ErrPrivilege log (I3 of the PR #8 review): it falls back to
-// slog.Default() instead of skipping it.
-func TestWriteDBErrorWithNilLoggerStillLogsPrivilege(t *testing.T) {
-	var logs bytes.Buffer
-	previous := slog.Default()
-	slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, nil)))
-	defer slog.SetDefault(previous)
+// A nil logger must panic instead of silently falling back to slog.Default() (N2 of the second PR
+// #8 review, replacing I3's fallback): a text-handler default or one nobody reads would still lose
+// INV-19's ErrPrivilege log, just less visibly. logger is a caller bug when missing, not a runtime
+// condition to degrade from.
+func TestWriteDBErrorPanicsOnNilLogger(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected a panic with a nil logger")
+		}
+	}()
 	w := httptest.NewRecorder()
 	WriteDBError(w, httptest.NewRequest(http.MethodGet, "/api/v1/test", nil), db.ErrPrivilege, nil)
-	if w.Code != 500 {
-		t.Fatalf("status=%d", w.Code)
-	}
-	if !strings.Contains(logs.String(), `"security_event":"rls_violation"`) {
-		t.Fatalf("missing security event with a nil logger: %s", logs.String())
-	}
 }
 
 func TestWriteDBErrorCanceledByClientWritesNothing(t *testing.T) {
@@ -156,7 +154,7 @@ func TestWriteDBErrorCanceledByClientWritesNothing(t *testing.T) {
 	cancel()
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/test", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
-	WriteDBError(w, r, db.ErrCanceled, nil)
+	WriteDBError(w, r, db.ErrCanceled, slog.New(slog.NewJSONHandler(io.Discard, nil)))
 	if w.Body.Len() != 0 {
 		t.Fatalf("canceled response has a body: %q", w.Body.String())
 	}

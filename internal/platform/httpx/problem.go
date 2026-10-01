@@ -161,12 +161,14 @@ func MethodNotAllowed(w http.ResponseWriter, r *http.Request) {
 }
 
 // WriteDBError maps a platform/db error to its HTTP response (plan §9.2); endpoint-specific errors
-// belong to their own HTTP modules, not here. logger is required: INV-19 needs the ErrPrivilege
-// case logged every time a bug of this severity happens, so a nil logger falls back to
-// slog.Default() instead of silently dropping the log (I3 of the PR #8 review).
+// belong to their own HTTP modules, not here. logger must not be nil: INV-19 needs the ErrPrivilege
+// case logged every time a bug of this severity happens, and a silent fallback to slog.Default()
+// (I3 of the first PR #8 review) can log in a different format than the rest of the request, or to
+// a handler nobody watches, so the event is effectively still lost. A missing logger is the
+// caller's bug, not a condition to recover from, so it panics instead (N2 of the second review).
 func WriteDBError(w http.ResponseWriter, r *http.Request, err error, logger *slog.Logger) {
 	if logger == nil {
-		logger = slog.Default()
+		panic("httpx: WriteDBError requires a non-nil logger (INV-19)")
 	}
 	switch {
 	case errors.Is(err, db.ErrCanceled):
