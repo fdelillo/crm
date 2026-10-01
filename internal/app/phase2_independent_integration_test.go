@@ -76,7 +76,7 @@ func TestPhase2EnqueueAndDeliverToMailpit(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = runner.InTenantTx(ctx, company.ID, func(ctx context.Context, tx db.Tx) error {
-		return outbox.NewEnqueuer().Enqueue(ctx, tx, outbox.Message{
+		return outbox.NewEnqueuer(clock.Real{}).Enqueue(ctx, tx, outbox.Message{
 			TenantID: company.ID, Kind: "email", Template: "password_reset", Recipient: "user@example.com",
 			Payload: map[string]string{"token": "phase2token"},
 		})

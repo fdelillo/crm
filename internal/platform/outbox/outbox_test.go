@@ -3,6 +3,9 @@ package outbox
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 )
@@ -15,17 +18,151 @@ func TestRetryDelay(t *testing.T) {
 		}
 	}
 }
-func TestClassifyDeliveryError(t *testing.T) {
+
+func TestDeferDelay(t *testing.T) {
 	for _, tc := range []struct {
-		err  error
-		want failureKind
+		age  time.Duration
+		want time.Duration
 	}{
-		{context.Canceled, failureCanceled},
-		{errors.New("temporary"), failureRecoverable},
-		{&PermanentError{Err: errors.New("bad address")}, failurePermanent},
+		{-5 * time.Second, 10 * time.Second},
+		{0, 10 * time.Second},
+		{9 * time.Second, 10 * time.Second},
+		{12 * time.Second, 12 * time.Second},
+		{14 * time.Minute, 14 * time.Minute},
+		{20 * time.Minute, 15 * time.Minute},
 	} {
-		if got := classifyFailure(tc.err); got != tc.want {
-			t.Errorf("%v: %v != %v", tc.err, got, tc.want)
+		if got := deferDelay(tc.age); got != tc.want {
+			t.Errorf("age %s: got %s want %s", tc.age, got, tc.want)
 		}
+	}
+}
+
+func TestCausePermanentAndLogLevel(t *testing.T) {
+	for _, tc := range []struct {
+		cause     Cause
+		permanent bool
+		level     slog.Level
+	}{
+		{CauseNetwork, false, slog.LevelWarn},
+		{CauseTransient, false, slog.LevelWarn},
+		{CauseConfig, false, slog.LevelError},
+		{CauseRecipient, true, slog.LevelWarn},
+		{CauseBug, true, slog.LevelError},
+	} {
+		if got := tc.cause.Permanent(); got != tc.permanent {
+			t.Errorf("%s.Permanent()=%v want %v", tc.cause, got, tc.permanent)
+		}
+		if got := tc.cause.LogLevel(); got != tc.level {
+			t.Errorf("%s.LogLevel()=%v want %v", tc.cause, got, tc.level)
+		}
+	}
+}
+
+func TestDeliveryErrorLastErrorFormat(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  *DeliveryError
+		want string
+	}{
+		{"code and extended", &DeliveryError{Cause: CauseConfig, Phase: PhaseConnection, SMTPCode: 535, Enhanced: "5.7.8", Detail: "Authentication credentials invalid"},
+			"config connection 535 5.7.8: Authentication credentials invalid"},
+		{"code without extended", &DeliveryError{Cause: CauseRecipient, Phase: PhaseRcptTo, SMTPCode: 550, Detail: "User unknown"},
+			"recipient rcpt_to 550: User unknown"},
+		{"no code", &DeliveryError{Cause: CauseNetwork, Phase: PhaseConnection, Detail: "timeout"},
+			"network connection: timeout"},
+		{"phase unknown", &DeliveryError{Cause: CauseConfig, Phase: PhaseUnknown, Detail: "unclassified handler error"},
+			"config unknown: unclassified handler error"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.err.LastError(); got != tc.want {
+				t.Errorf("got %q want %q", got, tc.want)
+			}
+			if got := tc.err.Error(); got != tc.want {
+				t.Errorf("Error()=%q want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestDeliveryErrorSanitizesControlCharactersAndSpaces(t *testing.T) {
+	de := &DeliveryError{Cause: CauseConfig, Phase: PhaseConnection, Detail: "line one\r\nline\ttwo   three  "}
+	got := de.LastError()
+	if strings.ContainsAny(got, "\r\n\t") {
+		t.Fatalf("control characters survived: %q", got)
+	}
+	if got != "config connection: line one line two three" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestDeliveryErrorRedactsAddresses(t *testing.T) {
+	de := &DeliveryError{Cause: CauseRecipient, Phase: PhaseRcptTo, SMTPCode: 550,
+		Detail: `<a@b.example> a@b.example, "a@b.example"`}
+	got := de.LastError()
+	if strings.Contains(got, "@") {
+		t.Fatalf("address survived: %q", got)
+	}
+	want := "recipient rcpt_to 550: [redacted] [redacted] [redacted]"
+	if got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
+}
+
+func TestDeliveryErrorTruncatesToRunes(t *testing.T) {
+	de := &DeliveryError{Cause: CauseConfig, Phase: PhaseData, Detail: strings.Repeat("á", 2000)}
+	got := []rune(de.LastError())
+	if len(got) != maxLastErrorRunes {
+		t.Fatalf("length=%d want %d", len(got), maxLastErrorRunes)
+	}
+	if got[len(got)-1] != '…' {
+		t.Fatalf("did not end in an ellipsis: %q", string(got[len(got)-5:]))
+	}
+}
+
+func TestDeliveryErrorUnwrapNeverExposedByLastError(t *testing.T) {
+	cause := errors.New("SMTP failed, affected recipient(s): user@example.com")
+	de := &DeliveryError{Cause: CauseNetwork, Phase: PhaseConnection, Detail: "connection refused", Err: cause}
+	if !errors.Is(de, cause) {
+		t.Fatal("Unwrap does not expose Err to errors.Is")
+	}
+	if strings.Contains(de.LastError(), "user@example.com") {
+		t.Fatalf("LastError leaked the wrapped error: %q", de.LastError())
+	}
+}
+
+func TestErrorsAsRecoversDeliveryErrorThroughWrapping(t *testing.T) {
+	de := &DeliveryError{Cause: CauseBug, Phase: PhaseCompose, Detail: "unknown email template"}
+	wrapped := fmt.Errorf("handler: %w", de)
+	var got *DeliveryError
+	if !errors.As(wrapped, &got) || got != de {
+		t.Fatalf("errors.As did not recover the DeliveryError: %v", got)
+	}
+}
+
+func TestClassifyHandleResult(t *testing.T) {
+	budgetTimeout := &DeliveryError{Cause: CauseNetwork, Phase: PhaseUnknown, Detail: "timeout"}
+	for _, tc := range []struct {
+		name       string
+		err        error
+		cycleAlive bool
+		wantCause  Cause
+		canceled   bool
+		unclass    bool
+	}{
+		{"delivery error passthrough", &DeliveryError{Cause: CauseTransient, Phase: PhaseRcptTo}, true, CauseTransient, false, false},
+		{"budget timeout, cycle alive", context.DeadlineExceeded, true, budgetTimeout.Cause, false, false},
+		{"cycle canceled", context.Canceled, true, "", true, false},
+		{"cycle deadline exceeded, not alive", context.DeadlineExceeded, false, "", true, false},
+		{"bare error is unclassified", errors.New("boom"), true, CauseConfig, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			de, canceled, unclassified := classifyHandleResult(tc.err, tc.cycleAlive)
+			if canceled != tc.canceled || unclassified != tc.unclass {
+				t.Fatalf("canceled=%v unclassified=%v", canceled, unclassified)
+			}
+			if !tc.canceled && de.Cause != tc.wantCause {
+				t.Fatalf("cause=%v want %v", de.Cause, tc.wantCause)
+			}
+		})
 	}
 }

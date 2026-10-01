@@ -42,7 +42,10 @@ var DefaultExceptions = []Exception{
 	{Path: "internal/identity/store/auth_lookup.sql", Reason: "phase-one lookups as crm_auth: find the company of an email, a session or a token"},
 	{Path: "internal/identity/store/cleanup.sql", Reason: "periodic cleanup as crm_worker: DELETE of expired rows of sessions, user_tokens and login_throttles; the policies of data-model §3.4 bound which rows"},
 	{Path: "internal/platform/outbox/store/worker.sql", Reason: "queue and cleanup queries as crm_worker: they see queue columns of every company",
-		Queries: map[string]string{"LockDueMessage": "crm_worker locks one due routing row across tenants; recipient and payload are read only after AsTenant"}},
+		Queries: map[string]string{
+			"LockDueMessage": "crm_worker locks one due routing row across tenants; recipient and payload are read only after AsTenant",
+			"DeferMessage":   "crm_worker: aplazar un mensaje pendiente cuya fase de empresa falló (ADR-024 §6)",
+		}},
 	{Path: "internal/tenant/store/provisioning.sql", Reason: "crm_worker and crm_signup: list tenants.id (reprovisioning, tenant_roles_total) and call provision_tenant_role (registration)"},
 }
 

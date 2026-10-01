@@ -18,6 +18,17 @@ import (
 //go:embed templates/*.txt templates/*.html
 var templates embed.FS
 
+// Sentinel render errors, each mapped by renderFailureDetail to a fixed DeliveryError.Detail text
+// (ADR-024 §3): render's own fmt.Errorf wrapping (template parse/execute) never reaches a log or
+// last_error, only these.
+var (
+	errUnknownKind        = errors.New("emails: unknown message kind")
+	errMissingToken       = errors.New("emails: missing token")
+	errUnknownTemplate    = errors.New("emails: unknown email template")
+	errMissingCompanyName = errors.New("emails: missing company name")
+	errInvalidRole        = errors.New("emails: invalid role")
+)
+
 type LinkPaths struct{ Reset, Verify, Invitation string }
 type handler struct {
 	mailer mailer.Mailer
@@ -50,20 +61,44 @@ func NewHandler(m mailer.Mailer, base string, paths LinkPaths) (outbox.Handler, 
 	}
 	return &handler{mailer: m, base: base, paths: paths}, nil
 }
+
+// Handle renders message's template and hands it to the Mailer. A rendering failure is always a
+// bug (ADR-024 §1, CauseBug/PhaseCompose): an unknown template, a missing token or an invalid role
+// is a defect in the caller, not something a retry fixes. err's own text is never exposed (it may
+// come from the payload); the DeliveryError gets a fixed, safe description instead.
 func (h *handler) Handle(ctx context.Context, message outbox.Message) error {
 	email, err := h.render(message)
 	if err != nil {
-		return &outbox.PermanentError{Err: err}
+		return &outbox.DeliveryError{Cause: outbox.CauseBug, Phase: outbox.PhaseCompose, Detail: renderFailureDetail(err)}
 	}
 	return h.mailer.Send(ctx, email)
 }
+
+// renderFailureDetail maps a render error to one of the fixed texts ADR-024 §3 allows for CauseBug
+// (never the payload or the template's own parse error, which could contain user-entered text).
+func renderFailureDetail(err error) string {
+	switch {
+	case errors.Is(err, errUnknownKind):
+		return "unknown message kind"
+	case errors.Is(err, errMissingToken):
+		return "missing token"
+	case errors.Is(err, errUnknownTemplate):
+		return "unknown email template"
+	case errors.Is(err, errMissingCompanyName):
+		return "missing company name"
+	case errors.Is(err, errInvalidRole):
+		return "invalid role"
+	default:
+		return "invalid payload"
+	}
+}
 func (h *handler) render(message outbox.Message) (mailer.Email, error) {
 	if message.Kind != "email" {
-		return mailer.Email{}, errors.New("unknown message kind")
+		return mailer.Email{}, errUnknownKind
 	}
 	token := message.Payload["token"]
 	if token == "" {
-		return mailer.Email{}, errors.New("missing token")
+		return mailer.Email{}, errMissingToken
 	}
 	var path, subject string
 	switch message.Template {
@@ -74,13 +109,13 @@ func (h *handler) render(message outbox.Message) (mailer.Email, error) {
 	case "invitation":
 		path, subject = h.paths.Invitation, "Invitación a tu empresa"
 	default:
-		return mailer.Email{}, errors.New("unknown email template")
+		return mailer.Email{}, errUnknownTemplate
 	}
 	data := templateData{Link: h.base + path + "#token=" + url.QueryEscape(token),
 		CompanyName: message.Payload["company_name"]}
 	if message.Template == "invitation" {
 		if data.CompanyName == "" {
-			return mailer.Email{}, errors.New("missing company name")
+			return mailer.Email{}, errMissingCompanyName
 		}
 		switch message.Payload["role"] {
 		case "admin":
@@ -88,7 +123,7 @@ func (h *handler) render(message outbox.Message) (mailer.Email, error) {
 		case "operator":
 			data.Role = "Operador"
 		default:
-			return mailer.Email{}, errors.New("invalid role")
+			return mailer.Email{}, errInvalidRole
 		}
 	}
 	txt, err := texttemplate.New(message.Template+".txt").Option("missingkey=error").ParseFS(templates, "templates/"+message.Template+".txt")

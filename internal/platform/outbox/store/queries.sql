@@ -1,6 +1,9 @@
 -- name: InsertMessage :exec
-INSERT INTO app.outbox_messages (tenant_id, kind, template, recipient, payload)
-VALUES (@tenant_id, @kind, @template, @recipient, @payload);
+-- created_at and next_attempt_at are set explicitly by Enqueue (clock.Clock), not by the column
+-- defaults: deferDelay (ADR-024 §6) needs a created_at that matches the caller's clock in tests,
+-- and the two columns must agree with each other (M6).
+INSERT INTO app.outbox_messages (tenant_id, kind, template, recipient, payload, created_at, next_attempt_at)
+VALUES (@tenant_id, @kind, @template, @recipient, @payload, @created_at, @next_attempt_at);
 
 -- name: GetMessage :one
 SELECT id, tenant_id, kind, template, recipient, payload, attempts

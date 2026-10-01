@@ -50,18 +50,23 @@ func (q *Queries) GetMessage(ctx context.Context, arg GetMessageParams) (GetMess
 }
 
 const insertMessage = `-- name: InsertMessage :exec
-INSERT INTO app.outbox_messages (tenant_id, kind, template, recipient, payload)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO app.outbox_messages (tenant_id, kind, template, recipient, payload, created_at, next_attempt_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 `
 
 type InsertMessageParams struct {
-	TenantID  uuid.UUID
-	Kind      string
-	Template  string
-	Recipient string
-	Payload   []byte
+	TenantID      uuid.UUID
+	Kind          string
+	Template      string
+	Recipient     string
+	Payload       []byte
+	CreatedAt     time.Time
+	NextAttemptAt time.Time
 }
 
+// created_at and next_attempt_at are set explicitly by Enqueue (clock.Clock), not by the column
+// defaults: deferDelay (ADR-024 §6) needs a created_at that matches the caller's clock in tests,
+// and the two columns must agree with each other (M6).
 func (q *Queries) InsertMessage(ctx context.Context, arg InsertMessageParams) error {
 	_, err := q.db.Exec(ctx, insertMessage,
 		arg.TenantID,
@@ -69,6 +74,8 @@ func (q *Queries) InsertMessage(ctx context.Context, arg InsertMessageParams) er
 		arg.Template,
 		arg.Recipient,
 		arg.Payload,
+		arg.CreatedAt,
+		arg.NextAttemptAt,
 	)
 	return err
 }

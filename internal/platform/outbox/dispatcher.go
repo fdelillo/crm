@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/fdelillo/crm/internal/platform/clock"
 	"github.com/fdelillo/crm/internal/platform/db"
 	"github.com/fdelillo/crm/internal/platform/outbox/store"
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -19,24 +19,13 @@ const pollInterval = 2 * time.Second
 const batchSize = 10
 const maxAttempts = 8
 
-type failureKind uint8
+// errCycleStop tells RunOnce that the batch already ended on its own after a connection-phase
+// delivery failure (ADR-024 §4): the failure was already handled and logged at the right level,
+// so RunOnce must stop without treating it as a crash.
+var errCycleStop = errors.New("outbox: a connection-phase delivery failure ended the cycle")
 
-const (
-	failureCanceled failureKind = iota
-	failureRecoverable
-	failurePermanent
-)
-
-func classifyFailure(err error) failureKind {
-	if errors.Is(err, context.Canceled) || errors.Is(err, db.ErrCanceled) {
-		return failureCanceled
-	}
-	var permanent *PermanentError
-	if errors.As(err, &permanent) {
-		return failurePermanent
-	}
-	return failureRecoverable
-}
+// retryDelay is the fixed backoff of plan §9.4: 1, 5, 15, 60 minutes, then 6 hours for every
+// attempt after that (the 8th exhausts it and the message becomes failed).
 func retryDelay(attempt int) time.Duration {
 	switch attempt {
 	case 1:
@@ -52,15 +41,78 @@ func retryDelay(attempt int) time.Duration {
 	}
 }
 
-type Dispatcher struct {
-	runner   db.TxRunner
-	handler  Handler
-	clock    clock.Clock
-	logger   *slog.Logger
-	tasks    []PeriodicTask
-	onTenant func(context.Context, db.Tx) // test hook; invoked after AsTenant, before reading payload
+// deferDelay is the pure backoff of the Dispatcher's own failures (AsTenant, GetMessage or the
+// mark; ADR-024 §6): clamp(age, 10s, 15m), with age = now - created_at. It needs no state besides
+// the message's own created_at, so it doubles naturally on successive deferrals (10s, 20s, 40s…)
+// without a counter column. A negative age (a clock skew, or created_at in the future) is treated
+// as 0: the minimum of 10s still applies.
+func deferDelay(age time.Duration) time.Duration {
+	switch {
+	case age < 10*time.Second:
+		return 10 * time.Second
+	case age > 15*time.Minute:
+		return 15 * time.Minute
+	default:
+		return age
+	}
 }
 
+// classifyHandleResult turns the result of Handler.Handle into either a cancellation or a
+// *DeliveryError with a cause and a phase (ADR-024 §1). cycleAlive is whether the cycle's own
+// context (not the per-send one SendBudget wraps) was still alive when Handle returned: it tells
+// "the SendBudget ran out" (network, recoverable) from "the cycle itself was cancelled or timed
+// out" (no classification, the message is left untouched). unclassified marks a bare error the
+// Handler returned that is neither a *DeliveryError nor a budget timeout: ADR-024 treats it as our
+// own bug (config/unknown) and the caller must log its %T, never its text (it could hold an
+// address).
+func classifyHandleResult(err error, cycleAlive bool) (de *DeliveryError, canceled, unclassified bool) {
+	if errors.Is(err, context.DeadlineExceeded) && cycleAlive {
+		return &DeliveryError{Cause: CauseNetwork, Phase: PhaseUnknown, Detail: "timeout"}, false, false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, db.ErrCanceled) {
+		return nil, true, false
+	}
+	var existing *DeliveryError
+	if errors.As(err, &existing) {
+		return existing, false, false
+	}
+	return &DeliveryError{Cause: CauseConfig, Phase: PhaseUnknown, Detail: "unclassified handler error", Err: err}, false, true
+}
+
+// stepFailure tags an error from one of the per-message steps that run under the company's role
+// (AsTenant, GetMessage, or marking the outcome) once the transaction that attempted it has
+// already rolled back: processOne uses step to log and to pick the "mark" record it sends to
+// DeferMessage. A failure without this wrapper (LockDueMessage, DeferMessage itself) always ends
+// the cycle; one with it is isolated to its own message when it is not db.ErrUnavailable
+// (ADR-024 §6).
+type stepFailure struct {
+	step string // "as_tenant", "get_message" or "mark"
+	err  error
+}
+
+func (s *stepFailure) Error() string { return s.err.Error() }
+func (s *stepFailure) Unwrap() error { return s.err }
+
+// Dispatcher polls app.outbox_messages and delivers pending messages (ADR-010). Each message runs
+// in its own InSystemTx(crm_worker) -> AsTenant transaction, so SKIP LOCKED divides work across
+// dispatchers and a failure never holds another company's messages.
+type Dispatcher struct {
+	runner  db.TxRunner
+	handler Handler
+	clock   clock.Clock
+	logger  *slog.Logger
+	tasks   []PeriodicTask
+
+	// Test hooks (same package only). Each runs after the real call it shadows succeeded, and may
+	// turn that success into a failure, so a test can simulate db.ErrUnavailable or any other
+	// error without a broken connection or a missing role (ADR-024 §6).
+	onTenant       func(context.Context, db.Tx) // invoked after AsTenant, before reading the payload
+	failAsTenant   func() error
+	failGetMessage func() error
+	failMarkSent   func() error
+}
+
+// NewDispatcher returns a Dispatcher. c defaults to clock.Real{} and logger to slog.Default() when nil.
 func NewDispatcher(runner db.TxRunner, handler Handler, c clock.Clock, logger *slog.Logger, tasks ...PeriodicTask) *Dispatcher {
 	if c == nil {
 		c = clock.Real{}
@@ -71,7 +123,9 @@ func NewDispatcher(runner db.TxRunner, handler Handler, c clock.Clock, logger *s
 	return &Dispatcher{runner: runner, handler: handler, clock: c, logger: logger, tasks: tasks}
 }
 
-// Run polls immediately and then every two seconds until shutdown.
+// Run polls immediately and then every two seconds until ctx is done. A cycle's own failures are
+// already logged where they happen (processOne, RunOnce); Run only drives the loop and the
+// periodic tasks (T-B902).
 func (d *Dispatcher) Run(ctx context.Context) error {
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
@@ -80,9 +134,7 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return nil
 		}
-		if err := d.RunOnce(ctx); err != nil && !errors.Is(err, context.Canceled) {
-			d.logger.ErrorContext(ctx, "outbox cycle failed", "event", "outbox_cycle_failed")
-		}
+		_ = d.RunOnce(ctx)
 		now := d.clock.Now()
 		for _, task := range d.tasks {
 			if now.Sub(lastRun[task.Name()]) < task.Every() {
@@ -92,7 +144,7 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 				return nil
 			}
 			if err := task.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-				d.logger.ErrorContext(ctx, "periodic task failed", "task", task.Name())
+				d.logger.ErrorContext(ctx, "periodic task failed", "task", task.Name(), "err", err)
 			}
 			lastRun[task.Name()] = now
 		}
@@ -104,12 +156,21 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 	}
 }
 
-// RunOnce processes at most ten due messages. Each message has its own transaction so
-// AsTenant binds it to exactly one company and SKIP LOCKED divides work across dispatchers.
+// RunOnce processes at most ten due messages, checking ctx before taking each one (DD-35): an
+// already-cancelled ctx takes none. It stops early, without error, on cancellation and on a
+// connection-phase delivery failure (ADR-024 §4); any other failure is logged here, at the point
+// it ends the cycle, with the event every caller (including Run) relies on.
 func (d *Dispatcher) RunOnce(ctx context.Context) error {
 	for i := 0; i < batchSize; i++ {
+		if ctx.Err() != nil {
+			return nil
+		}
 		handled, err := d.processOne(ctx)
 		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, errCycleStop) {
+				return nil
+			}
+			d.logger.ErrorContext(ctx, "outbox cycle failed", "event", "outbox_cycle_failed", "err", err)
 			return err
 		}
 		if !handled {
@@ -119,72 +180,177 @@ func (d *Dispatcher) RunOnce(ctx context.Context) error {
 	return nil
 }
 
+// processOne claims at most one due message and resolves it. The transaction runs with
+// context.WithoutCancel(ctx) (DD-35): its statements are already bounded by statement_timeout and
+// idle_in_transaction_session_timeout, and letting the cycle's own cancellation reach it would
+// risk a half-finished mark. Only Handler.Handle receives ctx directly, wrapped with SendBudget,
+// so an apagado can still cut a send short.
 func (d *Dispatcher) processOne(ctx context.Context) (bool, error) {
+	var item store.LockDueMessageRow
 	handled := false
-	err := d.runner.InSystemTx(ctx, db.RoleWorker, func(ctx context.Context, tx db.Tx) error {
+	// stopCycle is set by resolveDelivery, inside fn, when the failure was in the connection phase
+	// (ADR-024 §4): it is read only after the transaction below has committed, so a stop never
+	// rolls back the mark that was just made.
+	stopCycle := false
+	err := d.runner.InSystemTx(context.WithoutCancel(ctx), db.RoleWorker, func(fnCtx context.Context, tx db.Tx) error {
 		q := store.New(tx)
-		item, err := q.LockDueMessage(ctx, d.clock.Now())
-		if errors.Is(err, pgx.ErrNoRows) {
+		row, lockErr := q.LockDueMessage(fnCtx, d.clock.Now())
+		if errors.Is(lockErr, pgx.ErrNoRows) {
 			return nil
 		}
-		if err != nil {
-			return db.MapError(err)
+		if lockErr != nil {
+			return fmt.Errorf("lock due message: %w", db.MapError(lockErr))
 		}
+		item = row
 		handled = true
-		if err := tx.AsTenant(ctx, item.TenantID); err != nil {
-			return err
+
+		asTenantErr := tx.AsTenant(fnCtx, item.TenantID)
+		if asTenantErr == nil && d.failAsTenant != nil {
+			asTenantErr = d.failAsTenant()
+		}
+		if asTenantErr != nil {
+			return &stepFailure{"as_tenant", db.MapError(asTenantErr)}
 		}
 		if d.onTenant != nil {
-			d.onTenant(ctx, tx)
+			d.onTenant(fnCtx, tx)
 		}
-		row, err := q.GetMessage(ctx, store.GetMessageParams{TenantID: item.TenantID, ID: item.ID})
-		if err != nil {
-			return db.MapError(err)
+
+		message, getErr := q.GetMessage(fnCtx, store.GetMessageParams{TenantID: item.TenantID, ID: item.ID})
+		if getErr == nil && d.failGetMessage != nil {
+			getErr = d.failGetMessage()
 		}
+		if getErr != nil {
+			return &stepFailure{"get_message", db.MapError(getErr)}
+		}
+
 		var payload map[string]string
-		if err := json.Unmarshal(row.Payload, &payload); err != nil {
-			return d.fail(ctx, q, item.TenantID, item.ID, "invalid_payload", row.Attempts, failurePermanent)
+		if jsonErr := json.Unmarshal(message.Payload, &payload); jsonErr != nil {
+			return d.resolveDelivery(fnCtx, q, item, message.Attempts,
+				&DeliveryError{Cause: CauseBug, Phase: PhaseCompose, Detail: "invalid payload"}, true, &stopCycle)
 		}
-		m := Message{TenantID: row.TenantID, Kind: row.Kind, Template: row.Template,
-			Recipient: row.Recipient, Payload: payload}
-		sendErr := d.handler.Handle(ctx, m)
-		if sendErr == nil {
-			now := d.clock.Now()
-			if err := q.MarkSent(ctx, store.MarkSentParams{TenantID: item.TenantID, ID: item.ID, SentAt: &now}); err != nil {
-				return db.MapError(err)
-			}
-			d.logger.InfoContext(ctx, "outbox delivered", "event", "outbox_delivery", "outcome", "sent", "tenant_id", item.TenantID)
-			return nil
-		}
-		kind := classifyFailure(sendErr)
-		if ctx.Err() != nil || kind == failureCanceled {
-			d.logger.InfoContext(ctx, "outbox delivery canceled", "event", "outbox_delivery", "outcome", "canceled", "tenant_id", item.TenantID)
-			return context.Canceled // rollback: leave every queue field unchanged
-		}
-		return d.fail(ctx, q, item.TenantID, item.ID, "delivery_failure", row.Attempts, kind)
+
+		m := Message{TenantID: message.TenantID, Kind: message.Kind, Template: message.Template,
+			Recipient: message.Recipient, Payload: payload}
+		sendCtx, cancel := context.WithTimeout(ctx, SendBudget)
+		handleErr := d.handler.Handle(sendCtx, m)
+		cycleAlive := ctx.Err() == nil
+		cancel()
+		return d.resolveDelivery(fnCtx, q, item, message.Attempts, handleErr, cycleAlive, &stopCycle)
 	})
+
+	switch {
+	case err == nil:
+		if stopCycle {
+			return handled, errCycleStop
+		}
+		return handled, nil
+	case errors.Is(err, context.Canceled), errors.Is(err, db.ErrCanceled):
+		return handled, context.Canceled
+	}
+
+	var sf *stepFailure
+	if errors.As(err, &sf) {
+		if errors.Is(sf.err, db.ErrUnavailable) {
+			return handled, fmt.Errorf("%s: %w", sf.step, sf.err)
+		}
+		if deferErr := d.deferMessage(ctx, item, sf.step, sf.err); deferErr != nil {
+			return handled, deferErr
+		}
+		return handled, nil
+	}
 	return handled, err
 }
 
-func (d *Dispatcher) fail(ctx context.Context, q *store.Queries, tenantID, id uuid.UUID, reason string, previous int32, kind failureKind) error {
-	now := d.clock.Now()
-	last := pgtype.Text{String: reason, Valid: true}
-	if kind == failurePermanent || previous+1 >= maxAttempts {
-		if err := q.MarkFailed(ctx, store.MarkFailedParams{TenantID: tenantID, ID: id, FailedAt: &now, LastError: last}); err != nil {
-			return db.MapError(err)
+// resolveDelivery marks the outcome of one delivery attempt and logs it (plan §9.4, ADR-024
+// §1-§3). handleErr is nil on success, or whatever Handler.Handle returned. A failure to mark is
+// returned as a *stepFailure so processOne can defer the message instead (ADR-024 §6): the
+// message is not lost, it is retried once the transient condition clears. A connection-phase
+// failure sets *stop to true instead of returning an error: the mark must still commit (ADR-024
+// §4 ends the cycle only *after* the failure is recorded), so processOne reads stop once this
+// transaction has succeeded.
+func (d *Dispatcher) resolveDelivery(ctx context.Context, q *store.Queries, item store.LockDueMessageRow, attempts int32, handleErr error, cycleAlive bool, stop *bool) error {
+	if handleErr == nil {
+		now := d.clock.Now()
+		markErr := q.MarkSent(ctx, store.MarkSentParams{TenantID: item.TenantID, ID: item.ID, SentAt: &now})
+		if markErr == nil && d.failMarkSent != nil {
+			markErr = d.failMarkSent()
 		}
-		level := slog.LevelWarn
-		if kind != failurePermanent {
-			level = slog.LevelError
+		if markErr != nil {
+			return &stepFailure{"mark", db.MapError(markErr)}
 		}
-		d.logger.Log(ctx, level, "outbox delivery failed", "event", "outbox_delivery", "outcome", "failed", "tenant_id", tenantID)
+		d.logger.InfoContext(ctx, "outbox delivery sent", "event", "outbox_delivery", "outcome", "sent",
+			"tenant_id", item.TenantID, "message_id", item.ID)
 		return nil
 	}
-	next := now.Add(retryDelay(int(previous) + 1))
-	if err := q.MarkRecoverable(ctx, store.MarkRecoverableParams{TenantID: tenantID, ID: id,
-		NextAttemptAt: next, LastError: last}); err != nil {
-		return db.MapError(err)
+
+	de, canceled, unclassified := classifyHandleResult(handleErr, cycleAlive)
+	if canceled {
+		d.logger.InfoContext(ctx, "outbox delivery canceled", "event", "outbox_delivery", "outcome", "canceled",
+			"tenant_id", item.TenantID, "message_id", item.ID)
+		return context.Canceled
 	}
-	d.logger.WarnContext(ctx, "outbox delivery will retry", "event", "outbox_delivery", "outcome", "retry", "tenant_id", tenantID)
+
+	last := de.LastError()
+	fields := []any{"event", "outbox_delivery", "tenant_id", item.TenantID, "message_id", item.ID,
+		"error_cause", string(de.Cause), "smtp_phase", string(de.Phase), "last_error", last}
+	if de.SMTPCode != 0 {
+		fields = append(fields, "smtp_code", de.SMTPCode)
+	}
+	if unclassified {
+		fields = append(fields, "err_type", fmt.Sprintf("%T", handleErr))
+	}
+
+	now := d.clock.Now()
+	if de.Cause.Permanent() || attempts+1 >= maxAttempts {
+		if err := q.MarkFailed(ctx, store.MarkFailedParams{TenantID: item.TenantID, ID: item.ID,
+			FailedAt: &now, LastError: pgtype.Text{String: last, Valid: true}}); err != nil {
+			return &stepFailure{"mark", db.MapError(err)}
+		}
+		level := de.Cause.LogLevel()
+		outcome := []any{"outcome", "failed"}
+		if !de.Cause.Permanent() {
+			outcome = append(outcome, "reason", "max_attempts")
+			level = slog.LevelError
+		}
+		d.logger.Log(ctx, level, "outbox delivery failed", append(fields, outcome...)...)
+	} else {
+		next := now.Add(retryDelay(int(attempts) + 1))
+		if err := q.MarkRecoverable(ctx, store.MarkRecoverableParams{TenantID: item.TenantID, ID: item.ID,
+			NextAttemptAt: next, LastError: pgtype.Text{String: last, Valid: true}}); err != nil {
+			return &stepFailure{"mark", db.MapError(err)}
+		}
+		d.logger.Log(ctx, de.Cause.LogLevel(), "outbox delivery will retry",
+			append(fields, "outcome", "retry", "next_attempt_at", next)...)
+	}
+
+	if de.Phase == PhaseConnection {
+		*stop = true
+	}
+	return nil
+}
+
+// deferMessage isolates a failure of AsTenant, GetMessage or the mark to its own message
+// (ADR-024 §6): the message's transaction has already rolled back, so this runs in a new one, as
+// crm_worker, moving only next_attempt_at. A failure here (unlike a deferral itself) always ends
+// the cycle: retrying it inside the same batch risks taking the same message again.
+func (d *Dispatcher) deferMessage(ctx context.Context, item store.LockDueMessageRow, step string, cause error) error {
+	now := d.clock.Now()
+	delay := deferDelay(now.Sub(item.CreatedAt))
+	next := now.Add(delay)
+	err := d.runner.InSystemTx(context.WithoutCancel(ctx), db.RoleWorker, func(fnCtx context.Context, tx db.Tx) error {
+		_, err := store.New(tx).DeferMessage(fnCtx, store.DeferMessageParams{
+			NextAttemptAt: next, ID: item.ID, ExpectedNextAttemptAt: item.NextAttemptAt,
+		})
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("defer message %s: %w", item.ID, db.MapError(err))
+	}
+	fields := []any{"event", "outbox_delivery", "outcome", "deferred", "step", step,
+		"message_id", item.ID, "tenant_id", item.TenantID, "defer_seconds", int(delay.Seconds()), "err", cause}
+	if errors.Is(cause, db.ErrPrivilege) {
+		fields = append(fields, "security_event", "rls_violation")
+	}
+	d.logger.ErrorContext(ctx, "outbox message deferred", fields...)
 	return nil
 }

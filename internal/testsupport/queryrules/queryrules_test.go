@@ -261,6 +261,7 @@ func TestDefaultExceptionsCheckUnlistedAndStaleQueries(t *testing.T) {
 	want := []string{
 		"internal/identity/store/auth_lookup.sql ListAllUsers",
 		"internal/identity/store/auth_lookup.sql UserByEmail",
+		"internal/platform/outbox/store/worker.sql DeferMessage",
 		"internal/platform/outbox/store/worker.sql LockDueMessage",
 	}
 	if got := summarize(vs); !slices.Equal(got, want) {
