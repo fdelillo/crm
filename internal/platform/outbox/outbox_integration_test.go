@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -264,6 +265,37 @@ func TestConnectionPhaseFailureEndsTheCycle(t *testing.T) {
 	fake.fn = func(ctx context.Context, m Message, call int) error {
 		if call == 0 {
 			return &DeliveryError{Cause: CauseConfig, Phase: PhaseConnection, SMTPCode: 554, Detail: "client host blocked"}
+		}
+		return nil
+	}
+	if err := dispatcher.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if fake.Count() != 1 {
+		t.Fatalf("calls=%d want 1", fake.Count())
+	}
+	statusSecond, _, _, _, _, _, _ := state(t, runner, tenant, "invitation")
+	if statusSecond != "pending" {
+		t.Fatalf("second message status=%s", statusSecond)
+	}
+	if err := dispatcher.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if fake.Count() != 2 {
+		t.Fatalf("second cycle calls=%d want 2", fake.Count())
+	}
+}
+
+// Variant of TestConnectionPhaseFailureEndsTheCycle for N1 of the second PR #8 review: the
+// connection-phase failure wraps context.DeadlineExceeded (a dial/TLS timeout from go-mail), as
+// opposed to a plain *DeliveryError. The cycle must still stop after the first message.
+func TestConnectionPhaseFailureFromWrappedDeadlineExceededEndsTheCycle(t *testing.T) {
+	runner, tenant, fake, dispatcher := newFixture(t)
+	enqueue(t, runner, dispatcher.clock, tenant, "password_reset")
+	enqueue(t, runner, dispatcher.clock, tenant, "invitation")
+	fake.fn = func(ctx context.Context, m Message, call int) error {
+		if call == 0 {
+			return &DeliveryError{Phase: PhaseConnection, Err: fmt.Errorf("dial failed: %w", context.DeadlineExceeded)}
 		}
 		return nil
 	}

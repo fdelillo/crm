@@ -166,3 +166,21 @@ func TestClassifyHandleResult(t *testing.T) {
 		})
 	}
 }
+
+// N1 of the second PR #8 review: a dial/TLS timeout from go-mail wraps context.DeadlineExceeded
+// inside a connection-phase *DeliveryError (classifyConnectionError in platform/mailer); errors.Is
+// traverses Unwrap, so checking the bare context.DeadlineExceeded branch before errors.As would
+// replace the connection phase with "unknown" and the cycle would not stop (ADR-024 §4, INV-31).
+func TestClassifyHandleResultPreservesConnectionPhaseOverWrappedDeadlineExceeded(t *testing.T) {
+	original := &DeliveryError{Phase: PhaseConnection, Err: fmt.Errorf("dial failed: %w", context.DeadlineExceeded)}
+	de, canceled, unclassified := classifyHandleResult(original, true)
+	if canceled || unclassified {
+		t.Fatalf("canceled=%v unclassified=%v", canceled, unclassified)
+	}
+	if de != original {
+		t.Fatalf("got %v want the original *DeliveryError", de)
+	}
+	if de.Phase != PhaseConnection {
+		t.Fatalf("phase=%v want %v", de.Phase, PhaseConnection)
+	}
+}

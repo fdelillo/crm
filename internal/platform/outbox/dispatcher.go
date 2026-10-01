@@ -66,15 +66,21 @@ func deferDelay(age time.Duration) time.Duration {
 // own bug (config/unknown) and the caller must log its %T, never its text (it could hold an
 // address).
 func classifyHandleResult(err error, cycleAlive bool) (de *DeliveryError, canceled, unclassified bool) {
+	// *DeliveryError is checked first (N1 of the second PR #8 review): a dial/TLS timeout wraps
+	// context.DeadlineExceeded inside a connection-phase *DeliveryError (classifyConnectionError in
+	// platform/mailer), and errors.Is traverses Unwrap. Checking the bare DeadlineExceeded branch
+	// first would replace that phase with "unknown" and the cycle would not stop (ADR-024 §4,
+	// INV-31). This is safe: once SendBudget itself runs out, the adapter returns ctx.Err()
+	// unwrapped (platform/mailer/smtp.go), never inside a *DeliveryError.
+	var existing *DeliveryError
+	if errors.As(err, &existing) {
+		return existing, false, false
+	}
 	if errors.Is(err, context.DeadlineExceeded) && cycleAlive {
 		return &DeliveryError{Cause: CauseNetwork, Phase: PhaseUnknown, Detail: "timeout"}, false, false
 	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, db.ErrCanceled) {
 		return nil, true, false
-	}
-	var existing *DeliveryError
-	if errors.As(err, &existing) {
-		return existing, false, false
 	}
 	return &DeliveryError{Cause: CauseConfig, Phase: PhaseUnknown, Detail: "unclassified handler error", Err: err}, false, true
 }
