@@ -85,6 +85,15 @@ func classifyHandleResult(err error, cycleAlive bool) (de *DeliveryError, cancel
 	return &DeliveryError{Cause: CauseConfig, Phase: PhaseUnknown, Detail: "unclassified handler error", Err: err}, false, true
 }
 
+// deliveryStep names one of the per-message steps processOne runs under the company's role.
+type deliveryStep string
+
+const (
+	stepAsTenant   deliveryStep = "as_tenant"
+	stepGetMessage deliveryStep = "get_message"
+	stepMark       deliveryStep = "mark"
+)
+
 // stepFailure tags an error from one of the per-message steps that run under the company's role
 // (AsTenant, GetMessage, or marking the outcome) once the transaction that attempted it has
 // already rolled back: processOne uses step to log and to pick the "mark" record it sends to
@@ -92,7 +101,7 @@ func classifyHandleResult(err error, cycleAlive bool) (de *DeliveryError, cancel
 // the cycle; one with it is isolated to its own message when it is not db.ErrUnavailable
 // (ADR-024 §6).
 type stepFailure struct {
-	step string // "as_tenant", "get_message" or "mark"
+	step deliveryStep
 	err  error
 }
 
@@ -215,7 +224,7 @@ func (d *Dispatcher) processOne(ctx context.Context) (bool, error) {
 			asTenantErr = d.failAsTenant()
 		}
 		if asTenantErr != nil {
-			return &stepFailure{"as_tenant", db.MapError(asTenantErr)}
+			return &stepFailure{step: stepAsTenant, err: db.MapError(asTenantErr)}
 		}
 		if d.onTenant != nil {
 			d.onTenant(fnCtx, tx)
@@ -226,13 +235,15 @@ func (d *Dispatcher) processOne(ctx context.Context) (bool, error) {
 			getErr = d.failGetMessage()
 		}
 		if getErr != nil {
-			return &stepFailure{"get_message", db.MapError(getErr)}
+			return &stepFailure{step: stepGetMessage, err: db.MapError(getErr)}
 		}
 
 		var payload map[string]string
 		if jsonErr := json.Unmarshal(message.Payload, &payload); jsonErr != nil {
-			return d.resolveDelivery(fnCtx, q, item, message.Attempts,
-				&DeliveryError{Cause: CauseBug, Phase: PhaseCompose, Detail: "invalid payload"}, true, &stopCycle)
+			var resolveErr error
+			stopCycle, resolveErr = d.resolveDelivery(fnCtx, q, item, message.Attempts,
+				&DeliveryError{Cause: CauseBug, Phase: PhaseCompose, Detail: "invalid payload"}, true)
+			return resolveErr
 		}
 
 		m := Message{TenantID: message.TenantID, Kind: message.Kind, Template: message.Template,
@@ -241,7 +252,9 @@ func (d *Dispatcher) processOne(ctx context.Context) (bool, error) {
 		handleErr := d.handler.Handle(sendCtx, m)
 		cycleAlive := ctx.Err() == nil
 		cancel()
-		return d.resolveDelivery(fnCtx, q, item, message.Attempts, handleErr, cycleAlive, &stopCycle)
+		var resolveErr error
+		stopCycle, resolveErr = d.resolveDelivery(fnCtx, q, item, message.Attempts, handleErr, cycleAlive)
+		return resolveErr
 	})
 
 	switch {
@@ -270,11 +283,11 @@ func (d *Dispatcher) processOne(ctx context.Context) (bool, error) {
 // resolveDelivery marks the outcome of one delivery attempt and logs it (plan §9.4, ADR-024
 // §1-§3). handleErr is nil on success, or whatever Handler.Handle returned. A failure to mark is
 // returned as a *stepFailure so processOne can defer the message instead (ADR-024 §6): the
-// message is not lost, it is retried once the transient condition clears. A connection-phase
-// failure sets *stop to true instead of returning an error: the mark must still commit (ADR-024
-// §4 ends the cycle only *after* the failure is recorded), so processOne reads stop once this
-// transaction has succeeded.
-func (d *Dispatcher) resolveDelivery(ctx context.Context, q *store.Queries, item store.LockDueMessageRow, attempts int32, handleErr error, cycleAlive bool, stop *bool) error {
+// message is not lost, it is retried once the transient condition clears. stop is true only for a
+// connection-phase failure, and only once err is nil: the mark must still commit (ADR-024 §4 ends
+// the cycle only *after* the failure is recorded), so processOne reads stop once this transaction
+// has succeeded.
+func (d *Dispatcher) resolveDelivery(ctx context.Context, q *store.Queries, item store.LockDueMessageRow, attempts int32, handleErr error, cycleAlive bool) (stop bool, err error) {
 	if handleErr == nil {
 		now := d.clock.Now()
 		markErr := q.MarkSent(ctx, store.MarkSentParams{TenantID: item.TenantID, ID: item.ID, SentAt: &now})
@@ -282,18 +295,18 @@ func (d *Dispatcher) resolveDelivery(ctx context.Context, q *store.Queries, item
 			markErr = d.failMarkSent()
 		}
 		if markErr != nil {
-			return &stepFailure{"mark", db.MapError(markErr)}
+			return false, &stepFailure{step: stepMark, err: db.MapError(markErr)}
 		}
 		d.logger.InfoContext(ctx, "outbox delivery sent", "event", "outbox_delivery", "outcome", "sent",
 			"tenant_id", item.TenantID, "message_id", item.ID)
-		return nil
+		return false, nil
 	}
 
 	de, canceled, unclassified := classifyHandleResult(handleErr, cycleAlive)
 	if canceled {
 		d.logger.InfoContext(ctx, "outbox delivery canceled", "event", "outbox_delivery", "outcome", "canceled",
 			"tenant_id", item.TenantID, "message_id", item.ID)
-		return context.Canceled
+		return false, context.Canceled
 	}
 
 	last := de.LastError()
@@ -310,7 +323,7 @@ func (d *Dispatcher) resolveDelivery(ctx context.Context, q *store.Queries, item
 	if de.Cause.Permanent() || attempts+1 >= maxAttempts {
 		if err := q.MarkFailed(ctx, store.MarkFailedParams{TenantID: item.TenantID, ID: item.ID,
 			FailedAt: &now, LastError: pgtype.Text{String: last, Valid: true}}); err != nil {
-			return &stepFailure{"mark", db.MapError(err)}
+			return false, &stepFailure{step: stepMark, err: db.MapError(err)}
 		}
 		level := de.Cause.LogLevel()
 		outcome := []any{"outcome", "failed"}
@@ -323,36 +336,42 @@ func (d *Dispatcher) resolveDelivery(ctx context.Context, q *store.Queries, item
 		next := now.Add(retryDelay(int(attempts) + 1))
 		if err := q.MarkRecoverable(ctx, store.MarkRecoverableParams{TenantID: item.TenantID, ID: item.ID,
 			NextAttemptAt: next, LastError: pgtype.Text{String: last, Valid: true}}); err != nil {
-			return &stepFailure{"mark", db.MapError(err)}
+			return false, &stepFailure{step: stepMark, err: db.MapError(err)}
 		}
 		d.logger.Log(ctx, de.Cause.LogLevel(), "outbox delivery will retry",
 			append(fields, "outcome", "retry", "next_attempt_at", next)...)
 	}
 
-	if de.Phase == PhaseConnection {
-		*stop = true
-	}
-	return nil
+	return de.Phase == PhaseConnection, nil
 }
 
 // deferMessage isolates a failure of AsTenant, GetMessage or the mark to its own message
 // (ADR-024 §6): the message's transaction has already rolled back, so this runs in a new one, as
 // crm_worker, moving only next_attempt_at. A failure here (unlike a deferral itself) always ends
-// the cycle: retrying it inside the same batch risks taking the same message again.
-func (d *Dispatcher) deferMessage(ctx context.Context, item store.LockDueMessageRow, step string, cause error) error {
+// the cycle: retrying it inside the same batch risks taking the same message again. cause is
+// included in that failure (nit of the second PR #8 review): otherwise the step that originally
+// failed, and a possible security_event=rls_violation, would never reach a log line.
+func (d *Dispatcher) deferMessage(ctx context.Context, item store.LockDueMessageRow, step deliveryStep, cause error) error {
 	now := d.clock.Now()
 	delay := deferDelay(now.Sub(item.CreatedAt))
 	next := now.Add(delay)
+	var affected int64
 	err := d.runner.InSystemTx(context.WithoutCancel(ctx), db.RoleWorker, func(fnCtx context.Context, tx db.Tx) error {
-		_, err := store.New(tx).DeferMessage(fnCtx, store.DeferMessageParams{
+		rows, err := store.New(tx).DeferMessage(fnCtx, store.DeferMessageParams{
 			NextAttemptAt: next, ID: item.ID, ExpectedNextAttemptAt: item.NextAttemptAt,
 		})
+		affected = rows
 		return err
 	})
 	if err != nil {
-		return fmt.Errorf("defer message %s: %w", item.ID, db.MapError(err))
+		return fmt.Errorf("defer message %s after %s failure (%w): %w", item.ID, step, cause, db.MapError(err))
 	}
-	fields := []any{"event", "outbox_delivery", "outcome", "deferred", "step", step,
+	// 0 rows affected means another worker already claimed and resolved this message (DeferMessage's
+	// own doc comment): nothing was deferred, so there is nothing to log.
+	if affected == 0 {
+		return nil
+	}
+	fields := []any{"event", "outbox_delivery", "outcome", "deferred", "step", string(step),
 		"message_id", item.ID, "tenant_id", item.TenantID, "defer_seconds", int(delay.Seconds()), "err", cause}
 	if errors.Is(cause, db.ErrPrivilege) {
 		fields = append(fields, "security_event", "rls_violation")

@@ -1,6 +1,7 @@
 package outbox
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -8,7 +9,24 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/fdelillo/crm/internal/platform/clock"
+	"github.com/fdelillo/crm/internal/platform/db"
+	"github.com/fdelillo/crm/internal/platform/outbox/store"
+	"github.com/google/uuid"
 )
+
+// fakeRunner is a db.TxRunner double for unit tests of Dispatcher.deferMessage that only need to
+// know whether the transaction it runs succeeds or fails: it never calls fn, so it needs no real
+// database or db.Tx (the integration tests exercise the real queries).
+type fakeRunner struct{ err error }
+
+func (f fakeRunner) InTenantTx(context.Context, uuid.UUID, func(context.Context, db.Tx) error) error {
+	return f.err
+}
+func (f fakeRunner) InSystemTx(context.Context, db.SystemRole, func(context.Context, db.Tx) error) error {
+	return f.err
+}
 
 func TestRetryDelay(t *testing.T) {
 	want := []time.Duration{time.Minute, 5 * time.Minute, 15 * time.Minute, time.Hour, 6 * time.Hour, 6 * time.Hour}
@@ -182,5 +200,36 @@ func TestClassifyHandleResultPreservesConnectionPhaseOverWrappedDeadlineExceeded
 	}
 	if de.Phase != PhaseConnection {
 		t.Fatalf("phase=%v want %v", de.Phase, PhaseConnection)
+	}
+}
+
+// Nit of the second PR #8 review (dispatcher.go:256-257, 347): if the deferral itself fails, the
+// original per-message failure (cause) must still be visible in the error RunOnce logs, not
+// replaced by the deferral's own error.
+func TestDeferMessageIncludesOriginalCauseWhenTheDeferralItselfFails(t *testing.T) {
+	dispatcher := NewDispatcher(fakeRunner{err: db.ErrUnavailable}, nil, clock.Real{}, slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)))
+	cause := errors.New("original as_tenant failure")
+	item := store.LockDueMessageRow{ID: uuid.New(), TenantID: uuid.New(), CreatedAt: time.Now()}
+	err := dispatcher.deferMessage(context.Background(), item, stepAsTenant, cause)
+	if !errors.Is(err, db.ErrUnavailable) {
+		t.Fatalf("lost the deferral failure: %v", err)
+	}
+	if !strings.Contains(err.Error(), cause.Error()) {
+		t.Fatalf("lost the original cause: %v", err)
+	}
+}
+
+// Nit of the second PR #8 review (dispatcher.go:341-354): DeferMessage affecting 0 rows means
+// another worker already resolved the message (its own doc comment), so logging "outcome":
+// "deferred" would describe something that never happened.
+func TestDeferMessageLogsNothingWhenAnotherWorkerAlreadyResolvedIt(t *testing.T) {
+	var logs bytes.Buffer
+	dispatcher := NewDispatcher(fakeRunner{}, nil, clock.Real{}, slog.New(slog.NewJSONHandler(&logs, nil)))
+	item := store.LockDueMessageRow{ID: uuid.New(), TenantID: uuid.New(), CreatedAt: time.Now()}
+	if err := dispatcher.deferMessage(context.Background(), item, stepAsTenant, errors.New("boom")); err != nil {
+		t.Fatal(err)
+	}
+	if logs.Len() != 0 {
+		t.Fatalf("logged a deferral that did not happen: %s", logs.String())
 	}
 }
