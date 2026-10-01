@@ -33,10 +33,9 @@ func TestHashVerifyPHC(t *testing.T) {
 	if _, _, err := h.Verify(context.Background(), "pass", "broken"); err == nil {
 		t.Fatal("corrupt PHC accepted")
 	}
-	weaker := strings.Replace(a, "m=19456", "m=8192", 1)
 	// A changed parameter invalidates the hash. Generate an actual weaker hash for this check.
 	weakHasher := newHasher(4, parameters{memory: 8192, iterations: 2, parallelism: 1}, nil)
-	weaker, err = weakHasher.Hash(context.Background(), "correct horse")
+	weaker, err := weakHasher.Hash(context.Background(), "correct horse")
 	if err != nil {
 		t.Fatal(err)
 	}

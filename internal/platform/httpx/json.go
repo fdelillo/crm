@@ -24,7 +24,7 @@ func DecodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
 		return decodeError(w, r, err)
 	}
 	var extra any
-	if err := dec.Decode(&extra); err != io.EOF {
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
 		if err == nil {
 			err = errors.New("multiple JSON values")
 		}
