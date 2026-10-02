@@ -349,13 +349,13 @@ func TestFakeSMTPRcptToMailboxFullIsTransient(t *testing.T) {
 func TestFakeSMTPDataContentRejectedIsConfig(t *testing.T) {
 	server := newFakeSMTPServer(t, readyScript(fakeSMTPScript{endOfData: "554 5.7.1 Message rejected"}))
 	err := send(t, server, context.Background())
-	assertDeliveryError(t, err, "config data 554 5.7.1: Message rejected")
+	assertDeliveryError(t, err, "config data 554 5.7.1: response text omitted")
 }
 
 func TestFakeSMTPDataRecipientRejectedAtEndOfData(t *testing.T) {
 	server := newFakeSMTPServer(t, readyScript(fakeSMTPScript{endOfData: "550 5.1.1 Recipient rejected"}))
 	err := send(t, server, context.Background())
-	de := assertDeliveryError(t, err, "recipient data 550 5.1.1: Recipient rejected")
+	de := assertDeliveryError(t, err, "recipient data 550 5.1.1: response text omitted")
 	if !de.Cause.Permanent() {
 		t.Fatal("expected a permanent failure")
 	}
@@ -448,5 +448,82 @@ func TestFakeSMTPContextCanceledDuringGreetingDelay(t *testing.T) {
 	var de *outbox.DeliveryError
 	if errors.As(err, &de) {
 		t.Fatalf("got a DeliveryError instead of context.Canceled: %+v", de)
+	}
+}
+
+// noEnhancedScript is a server that does not advertise ENHANCEDSTATUSCODES: go-mail then leaves
+// SendError.EnhancedStatusCode() empty and the adapter must read the code from the text (ADR-025 §3).
+func noEnhancedScript(rcptTo string) fakeSMTPScript {
+	return fakeSMTPScript{greeting: "220 fake.example", mailFrom: "250 Sender ok", rcptTo: rcptTo,
+		dataPrompt: "354 Start input", endOfData: "250 ok"}
+}
+
+// ADR-025 §3: a 5.7.1 in RCPT TO is a policy problem (config, recoverable) even when the server
+// does not announce ENHANCEDSTATUSCODES; before, the 550 made it a definitive "recipient".
+func TestFakeSMTPRcptToRelayDeniedWithoutEnhancedAnnouncementIsConfig(t *testing.T) {
+	server := newFakeSMTPServer(t, noEnhancedScript("550 5.7.1 Relay access denied"))
+	err := send(t, server, context.Background())
+	de := assertDeliveryError(t, err, "config rcpt_to 550 5.7.1: Relay access denied")
+	if de.Cause.Permanent() {
+		t.Fatal("relay denial must be recoverable")
+	}
+}
+
+func TestFakeSMTPExtendedCodeReadFromTextWithoutAnnouncement(t *testing.T) {
+	for _, tc := range []struct{ name, rcptTo, want string }{
+		{"user unknown", "550 5.1.1 user@example.com: User unknown", "recipient rcpt_to 550 5.1.1: [redacted] User unknown"},
+		{"554 with 5.1.1", "554 5.1.1 Unknown user", "recipient rcpt_to 554 5.1.1: Unknown user"},
+		{"class mismatch is ignored", "550 4.2.2 Mailbox full", "recipient rcpt_to 550: 4.2.2 Mailbox full"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := newFakeSMTPServer(t, noEnhancedScript(tc.rcptTo))
+			assertDeliveryError(t, send(t, server, context.Background()), tc.want)
+		})
+	}
+}
+
+func TestFakeSMTPGreetingWithMismatchedExtendedClassKeepsItInTheText(t *testing.T) {
+	server := newFakeSMTPServer(t, fakeSMTPScript{greeting: "554 4.7.1 blocked"})
+	assertDeliveryError(t, send(t, server, context.Background()), "config connection 554: 4.7.1 blocked")
+}
+
+// ADR-025 §1 (INV-30): the provider quotes the message's link, with its token, at the end of data;
+// neither the token nor "token=" may reach LastError.
+func TestFakeSMTPDataRejectionQuotingTheLinkNeverLeaksTheToken(t *testing.T) {
+	const token = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_AbCde"
+	link := "https://crm.example/reset-password#token=" + token
+	server := newFakeSMTPServer(t, readyScript(fakeSMTPScript{endOfData: "554 5.7.1 Message rejected, URL " + link + " listed"}))
+	m, err := newSMTPForTest(SMTPConfig{Host: server.Host(), Port: server.Port(), From: "no-reply@example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = m.Send(context.Background(), Email{To: "user@example.com", Subject: "Hola", TextBody: link, HTMLBody: "<a href=\"" + link + "\">x</a>"})
+	de := assertDeliveryError(t, err, "config data 554 5.7.1: response text omitted")
+	if strings.Contains(de.LastError(), token) || strings.Contains(de.LastError(), "token=") {
+		t.Fatalf("leaked the token: %q", de.LastError())
+	}
+}
+
+// ADR-025 §2: a URL in a phase where the text is kept is redacted.
+func TestFakeSMTPMailFromHelpURLIsRedacted(t *testing.T) {
+	server := newFakeSMTPServer(t, readyScript(fakeSMTPScript{
+		mailFrom: "550 5.7.1 Sender not verified, see https://provider.example/help?id=1"}))
+	assertDeliveryError(t, send(t, server, context.Background()),
+		"config mail_from 550 5.7.1: Sender not verified, see [redacted]")
+}
+
+// DD-35: when the context's own deadline expires while the server delays the greeting, Send returns
+// the context error as is (never a DeliveryError): the Dispatcher decides what it means.
+func TestFakeSMTPContextDeadlineDuringGreetingDelay(t *testing.T) {
+	server := newFakeSMTPServer(t, fakeSMTPScript{greetingHang: true})
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	err := send(t, server, ctx)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err=%v want context.DeadlineExceeded", err)
+	}
+	var de *outbox.DeliveryError
+	if errors.As(err, &de) {
+		t.Fatalf("got a DeliveryError instead of the context error: %+v", de)
 	}
 }

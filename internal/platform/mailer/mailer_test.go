@@ -154,3 +154,28 @@ func TestClassifyConnectionErrorUnclassifiedUsesGoMailText(t *testing.T) {
 		t.Fatalf("got %+v", de)
 	}
 }
+
+// ADR-025 §3: the extended code is read from the start of the text, as "d.d.d" followed by a space
+// or the end, and only when its class matches the basic code's.
+func TestSplitEnhancedCode(t *testing.T) {
+	for _, tc := range []struct {
+		code                   int
+		text                   string
+		wantEnhanced, wantRest string
+	}{
+		{550, "5.1.1 User unknown", "5.1.1", "User unknown"},
+		{452, "4.2.2 Mailbox full", "4.2.2", "Mailbox full"},
+		{550, "4.2.2 Mailbox full", "", "4.2.2 Mailbox full"},
+		{550, "User unknown 5.1.1", "", "User unknown 5.1.1"},
+		{550, "5.1.1", "5.1.1", ""},
+		{550, "5.1.1234 x", "", "5.1.1234 x"},
+		{550, "", "", ""},
+	} {
+		t.Run(tc.text, func(t *testing.T) {
+			enhanced, rest := splitEnhancedCode(tc.code, tc.text)
+			if enhanced != tc.wantEnhanced || rest != tc.wantRest {
+				t.Fatalf("splitEnhancedCode(%d, %q) = (%q, %q), want (%q, %q)", tc.code, tc.text, enhanced, rest, tc.wantEnhanced, tc.wantRest)
+			}
+		})
+	}
+}

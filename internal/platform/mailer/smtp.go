@@ -32,13 +32,10 @@ type Email struct {
 // Mailer sends one Email. The SMTP adapter is the only implementation; identity/emails depends on
 // this interface, not on go-mail, so a future provider needs no change above this package.
 type Mailer interface {
-	// Send returns nil, a *outbox.DeliveryError classified per ADR-024 §1-§2, or ctx.Err() verbatim
-	// (context.Canceled or context.DeadlineExceeded) if ctx ended before the attempt finished. ctx
-	// carries the SendBudget deadline the Dispatcher sets (DD-35); the budget-timeout case is turned
-	// into a *outbox.DeliveryError{Cause: network, Detail: "timeout"} one layer up, in
-	// outbox.classifyHandleResult, not here — unlike DD-35's text, which describes that
-	// classification as part of this adapter (nit of the second PR #8 review; reported, not
-	// changed, since the Dispatcher is where every other *outbox.DeliveryError is already built).
+	// Send returns nil, a *outbox.DeliveryError classified per ADR-024 §1-§2 and ADR-025 §3, or
+	// ctx.Err() verbatim (context.Canceled or context.DeadlineExceeded) if ctx ended before the
+	// attempt finished. ctx carries the SendBudget deadline the Dispatcher sets; what the context
+	// error means is decided one layer up, in outbox.classifyHandleResult (DD-35).
 	Send(ctx context.Context, e Email) error
 }
 
@@ -169,6 +166,9 @@ func classifySendError(err *gomail.SendError) *outbox.DeliveryError {
 	}
 	phase := phaseForSendErrReason(err.Reason)
 	code, enhanced := err.ErrorCode(), err.EnhancedStatusCode()
+	if enhanced == "" && code != 0 {
+		enhanced, detail = splitEnhancedCode(code, detail)
+	}
 	cause := classifyCodeInPhase(phase, code, enhanced)
 	if cause == outbox.CauseNetwork {
 		// SendError has no Unwrap (research R-29), so a write/close failure during MAIL, RCPT or
@@ -276,9 +276,24 @@ func sendErrorDetail(err *gomail.SendError) string {
 	return strings.TrimSpace(text)
 }
 
-// enhancedCodeRe matches a leading RFC 3463 extended code ("5.1.1 ...") at the start of an SMTP
-// response's text, once its basic code has already been removed by textproto.
-var enhancedCodeRe = regexp.MustCompile(`^([245]\.\d{1,3}\.\d{1,3})\s*`)
+// enhancedCodeRe matches an RFC 3463 extended code at the start of a response's text: a class of
+// 2, 4 or 5 and two subject/detail numbers of up to 3 digits, followed by a space or the end.
+var enhancedCodeRe = regexp.MustCompile(`^([245])\.\d{1,3}\.\d{1,3}(?: |$)`)
+
+// splitEnhancedCode is the only place that reads the extended code out of a response's text (ADR-025
+// §3). The server may not announce ENHANCEDSTATUSCODES (go-mail then reports none) and the dial
+// errors never carry it, so the phase does not matter: both the connection phase and
+// classifySendError call it. The code is used only when its class (first digit) matches the basic
+// code's, as RFC 3463 requires; otherwise it is left in the text and the basic code decides.
+// text is the response text without its basic code.
+func splitEnhancedCode(code int, text string) (enhanced, rest string) {
+	m := enhancedCodeRe.FindStringSubmatch(text)
+	if code < 100 || m == nil || m[1] != strconv.Itoa(code)[:1] {
+		return "", text
+	}
+	enhanced = strings.TrimSuffix(m[0], " ")
+	return enhanced, strings.TrimLeft(text[len(m[0]):], " ")
+}
 
 // classifyConnectionError handles everything that is not a *gomail.SendError: go-mail wraps the
 // whole dial (TCP, TLS, greeting, EHLO, STARTTLS, AUTH) as "dial failed: %w" (research R-29),
@@ -286,11 +301,7 @@ var enhancedCodeRe = regexp.MustCompile(`^([245]\.\d{1,3}\.\d{1,3})\s*`)
 func classifyConnectionError(err error) *outbox.DeliveryError {
 	var textErr *textproto.Error
 	if errors.As(err, &textErr) {
-		enhanced, detail := "", textErr.Msg
-		if m := enhancedCodeRe.FindStringSubmatch(detail); m != nil {
-			enhanced = m[1]
-			detail = detail[len(m[0]):]
-		}
+		enhanced, detail := splitEnhancedCode(textErr.Code, textErr.Msg)
 		return &outbox.DeliveryError{Cause: classifyCodeInPhase(outbox.PhaseConnection, textErr.Code, enhanced),
 			Phase: outbox.PhaseConnection, SMTPCode: textErr.Code, Enhanced: enhanced, Detail: detail, Err: err}
 	}
