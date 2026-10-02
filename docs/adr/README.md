@@ -39,7 +39,8 @@ Reglas:
 | [021](021-formularios-react-hook-form-zod.md) | Formularios con React Hook Form y Zod atado al contrato | Proposed | 001 (frontend) |
 | [022](022-estrategia-de-tests-frontend.md) | Estrategia de tests del frontend (Vitest, Testing Library, MSW, Playwright) | Proposed | 001 (frontend) |
 | [023](023-idioma-formato-fechas-dinero-frontend.md) | Idioma, formato de fechas y dinero en el frontend (es-AR, `Intl`, sin punto flotante) | Proposed | 001 (frontend) |
-| [024](024-clasificacion-fallos-outbox-y-presupuesto-smtp.md) | Clasificación de fallos de entrega del outbox, presupuesto de tiempo del envío SMTP y aislamiento de fallos por mensaje | Accepted | 001 (revisión del PR #8) |
+| [024](024-clasificacion-fallos-outbox-y-presupuesto-smtp.md) | Clasificación de fallos de entrega del outbox, presupuesto de tiempo del envío SMTP y aislamiento de fallos por mensaje | Accepted (ADR-025, *Accepted*, reemplaza el último párrafo de §2 y partes de §3; nota 2026-10-01 (b)) | 001 (revisión del PR #8) |
+| [025](025-saneamiento-last-error-y-codigo-extendido.md) | `last_error` sin texto del proveedor después del contenido, redacción de secuencias tipo secreto y código extendido leído del texto en todas las fases | Accepted | 001 (tercera revisión del PR #8) |
 
 Los ADR 001–014 quedaron `Accepted` el 2026-09-29, al aprobarse el plan de la spec 001.
 
@@ -49,3 +50,8 @@ pendientes de aprobación.
 
 ADR-024 (2026-10-01) reemplaza solo la clasificación de errores de la viñeta "Reintentos" de
 ADR-010; el resto de ADR-010 sigue vigente, por eso ADR-010 no pasa a `Superseded`.
+
+ADR-025 (2026-10-01, `Accepted`) reemplaza solo tres piezas de ADR-024 (de dónde sale el código
+extendido, el detalle de las respuestas de la fase `data` y la regla de redacción de `last_error`).
+ADR-024 sigue `Accepted` en todo lo demás, con la misma forma de nota que se usó en
+ADR-010; no pasa a `Superseded`.

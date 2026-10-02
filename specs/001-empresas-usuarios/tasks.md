@@ -30,6 +30,11 @@ revisión del PR fdelillo/crm#8 (plan §18, quinta tanda): clasificación de fal
 INV-28 a INV-31); imagen de MinIO (DD-36). Tareas afectadas: T-B112, T-B211, T-B212, T-B213,
 T-B214, T-B215, T-B216 (Fase 2, en el PR abierto) y T-B903, T-B908, T-B909 (Fase 9). La sección
 Frontend no cambia: el contrato no cambia.
+**Sexta revisión 2026-10-01** (*Accepted*): tercera revisión del PR fdelillo/crm#8 (plan §18, sexta
+tanda): credenciales en `audit_log.data` (DD-37, INV-32), `user_agent` acotado (DD-38, INV-33),
+`last_error` según ADR-025 (INV-30), `RequestID` antes de `ClientIP` (DD-22, DD-32), texto de DD-35.
+Tareas afectadas: T-B203, T-B204, T-B209, T-B210, T-B211, T-B212, T-B213, T-B214, T-B219 (Fase 2,
+en el PR abierto) y T-B303, T-B304 (Fase 3). La sección Frontend no cambia: el contrato no cambia.
 
 ---
 
@@ -66,6 +71,18 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
   | T-B215 / T-B216 | Imagen de MinIO de DD-36 y paquete `internal/testsupport/containers` con su test contra `compose.yaml` |
   | T-B201 (pendiente) / T-B004 | La validación de las respuestas contra `Problem`/`ValidationProblem` del contrato con `libopenapi-validator` (ya elegido, ADR-012:38, ADR-014:22) no se implementó: el hueco viene de T-B004 (Fase 0). Se difiere al inicio de la Fase 3, donde T-B305 ya la exige ("contrato validado en cada respuesta"). Mientras tanto, `TestProblemCodesMatchContract` (`internal/platform/httpx`) es un control provisorio y más barato: compara el conjunto de claves de `problems` contra el enum `ErrorCode` del contrato, como `authz_test.go` ya hace con `Permission` |
   | T-B903 / T-B908 / T-B909 (Fase 9) | Métricas `outbox_delivery_errors_total{cause}` y `outbox_deferred_total`; envío que termina bien durante el apagado queda `sent`; timeout de apagado ≥ 25 s |
+
+  **Sexta revisión (2026-10-01, *Accepted*)**, tercera revisión del PR (HEAD 31fb773). Se aplica en
+  la misma rama una vez aprobada; los casos marcados "Sexta revisión" se escriben primero y deben
+  fallar por la razón indicada en cada tarea:
+
+  | Tarea | Ajuste |
+  |---|---|
+  | T-B209 / T-B210 | Política de credenciales de DD-37 (centinelas `ErrSecretInData`, `ErrUnsupportedData`, `ErrTxRequired`); `user_agent` con `httpx.NormalizeUserAgent` (DD-38) |
+  | T-B203 / T-B204 / T-B219 | `RequestID` antes de `ClientIP`; el aviso `bad_forwarded_for` lleva `request_id` (DD-32) |
+  | T-B211 / T-B212 | `LastError()`: sin texto del proveedor en la fase `data`; redacción de `://` y de secuencias de 20 o más caracteres (ADR-025 §1–§2) |
+  | T-B213 / T-B214 | Código extendido leído del texto en todas las fases, con control de clase (ADR-025 §3); caso de *deadline* de DD-35; comentario de `Mailer.Send` |
+  | T-B303 / T-B304 (Fase 3) | `CreateSession` normaliza `user_agent` (DD-38): se hace al implementar la Fase 3, no en este PR |
 
 ### Convenciones de esta sección
 
@@ -544,8 +561,9 @@ Antes de T-B201: los ajustes de la tercera y la cuarta revisión sobre las Fases
 **T-B202 — Implementar `platform/httpx` (problem+json con `suggested_action` y `Retry-After` opcionales, DecodeJSON, mapeo por defecto de errores, incluido `db.ErrCanceled` de plan §9.2)**.
 
 **T-B219 [T] — IP del cliente (`httpx.ClientIP`)** · DD-32, INV-25, plan §10.3, research R-25
-(Numeración agregada en la tercera revisión; se hace **antes** de T-B203, porque la cadena común
-empieza con `ClientIP`.)
+(Numeración agregada en la tercera revisión; se hace **antes** de T-B203, porque todos los
+requests de la cadena común pasan por `ClientIP`. Sexta revisión: `ClientIP` va segundo, después
+de `RequestID`, DD-32.)
 - **Red** (unitario, `httptest`; `trusted` = `198.51.100.0/24` y `2001:db8:ffff::/48` salvo que la
   fila diga otra cosa; el handler interno registra `httpx.ClientIPFrom(r.Context())`):
 
@@ -559,7 +577,7 @@ empieza con `ClientIP`.)
   | `198.51.100.10:4711` | `192.0.2.66, 198.51.100.20` (dos proxies de confianza en cadena) | `192.0.2.66` |
   | `198.51.100.10:4711` | `198.51.100.30, 198.51.100.20` (todas de confianza) | `198.51.100.30` (la de más a la izquierda válida) |
   | `198.51.100.10:4711` | dos cabeceras: `192.0.2.99` y luego `192.0.2.66` | `192.0.2.66` (se concatenan en orden) |
-  | `198.51.100.10:4711` | `192.0.2.66, basura` | `198.51.100.10` + log `WARN` `event=bad_forwarded_for` (sin el valor de la cabecera) |
+  | `198.51.100.10:4711` | `192.0.2.66, basura` | `198.51.100.10` + log `WARN` `event=bad_forwarded_for` (sin el valor de la cabecera); (sexta revisión) con `httpx.RequestID` delante, como en la cadena común, el aviso lleva `request_id` igual a `httpx.RequestIDFrom` del contexto del handler |
   | `198.51.100.10:4711` | `basura, 192.0.2.66` | `192.0.2.66` (la entrada mala está a la izquierda del cliente: no se llega a leer) |
   | `198.51.100.10:4711` | `192.0.2.66:5555` | `192.0.2.66` (sin puerto) |
   | `198.51.100.10:4711` | `[2001:db8::7]:5555` | `2001:db8::7` |
@@ -593,12 +611,14 @@ del código que lee `X-Forwarded-For` y `RemoteAddr` (INV-25, T-B011).
   | Log de un request con body `{"password": "..."}` y cookie de sesión | el log no contiene la contraseña, el token ni el header `Cookie` |
   | Log de request | contiene `request_id`, `route` (patrón chi, `ops` o `spa`), `status`, `duration_ms` e `ip` |
   | Log de request con `TRUSTED_PROXIES` = rango del `RemoteAddr` y `X-Forwarded-For: 192.0.2.66` (tercera revisión) | `ip=192.0.2.66`; sin proxies de confianza, `ip` = la de `RemoteAddr` |
+  | (Sexta revisión, DD-32) Mux raíz con `NewCommonMiddleware` (`TRUSTED_PROXIES` = rango del `RemoteAddr`) y `X-Forwarded-For: 192.0.2.66, basura` | una línea `WARN` `event=bad_forwarded_for` cuyo `request_id` es igual a la cabecera `X-Request-Id` de la respuesta y al `request_id` de la línea de request; ninguna línea contiene `basura` |
   | Handler de la API que devuelve `db.ErrCanceled` después de que el cliente cortó (contexto del request cancelado) | no se escribe cuerpo; log de request `level=INFO`, `event=client_canceled`, `status=499`; `http_client_canceled_total` +1; **ningún** log `ERROR` (tampoco del recover) |
   | El mismo handler con el contexto del request vivo | `503 service_unavailable` |
 - **Green**: pasa la tabla.
 
-**T-B204 — Implementar middlewares** (comunes, en el mux raíz, en este orden: `httpx.ClientIP`
-(DD-32, T-B220) → request id → recover → logging (con `ip` y el `499` de las cancelaciones) →
+**T-B204 — Implementar middlewares** (comunes, en el mux raíz, en este orden: request id →
+`httpx.ClientIP` (DD-32, T-B220; sexta revisión: va después de request id y su aviso
+`bad_forwarded_for` lleva `request_id`) → recover → logging (con `ip` y el `499` de las cancelaciones) →
 security headers (HSTS según el modo, DD-24) → `CrossOriginProtection` con
 `SetDenyHandler(httpx.CSRFDenyHandler)`; de la API, dentro de chi: `no-store` → rate limit por
 ruta → autenticación por grupo). `CommonMiddleware` recibe el modo local y
@@ -638,7 +658,7 @@ ruta → autenticación por grupo). `CommonMiddleware` recibe el modo local y
 
 **T-B208 — Implementar `internal/authz`**.
 
-**T-B209 [T] — Auditoría** · FR-008, INV-15
+**T-B209 [T] — Auditoría** · FR-008, INV-15, INV-32, INV-33, DD-37, DD-38
 - **Red** (integración):
 
   | Caso | Esperado |
@@ -648,11 +668,55 @@ ruta → autenticación por grupo). `CommonMiddleware` recibe el modo local y
   | `Record` y luego `ROLLBACK` de la operación | no queda fila (la auditoría es parte de la operación) |
   | `UPDATE`/`DELETE` sobre `audit_log` como rol de empresa | `42501` |
   | `Data` con clave `password` o `token` | error de programación (el Recorder las rechaza) |
+
+  Sexta revisión (DD-37, INV-32). Todos los casos de credenciales corren **dentro de un
+  `InTenantTx(A)` válido** y con un `Entry` válido salvo `Data` (el test actual pasa `tx = nil` y
+  acepta cualquier error, así que no distingue el rechazo del secreto del de la transacción
+  faltante). La función de la transacción **ignora** el error de `Record` y deja que la
+  transacción haga `COMMIT`: así se demuestra que `Record` no insertó nada, no que la operación lo
+  revirtió. Los valores secretos de prueba son largos y únicos (p. ej.
+  `valor-secreto-de-prueba-<n>`) para poder buscarlos en el texto del error:
+
+  | Caso | Esperado |
+  |---|---|
+  | Una clave por fila, con valor string: `password`, `new_password`, `passwd`, `passphrase`, `token`, `reset_token`, `Authorization`, `proxy-authorization`, `Cookie`, `Set-Cookie`, `secret`, `client_secret`, `api_key`, `X-API-Key`, `apiKey`, `private_key`, `credentials`, `signature`, `csrf_token`, `X-CSRF-Token`, `xsrf`, `auth`, `session`, `session_id`, `SID`, `otp`, `pin` | `errors.Is(err, audit.ErrSecretInData)`; el texto del error nombra la clave y **no** contiene el valor; 0 filas nuevas en `audit_log` después del `COMMIT` |
+  | Anidadas: `{"headers": map[string]string{"Authorization": v}}`, `{"headers": map[string]any{"Set-Cookie": v}}`, `{"items": []any{map[string]any{"api_key": v}}}` | `ErrSecretInData`; el error incluye la ruta (`headers.Authorization`, `headers.Set-Cookie`, `items[0].api_key`) y no el valor |
+  | Valores con clave inocua (`note`): `"Bearer abc.def"`, `"basic dXNlcjpwYXNz"`, `"  Digest username=x"`, un JWT (`eyJ…` en tres segmentos base64url), el `raw` de `securetoken.New()` | `ErrSecretInData` |
+  | El `raw` de `securetoken.New()` como elemento de `{"fields": []string{"name", raw}}` | `ErrSecretInData` (las listas también se recorren) |
+  | Tipos no admitidos: `struct{ A string }{}`, `[]byte("a")`, `json.RawMessage("{}")`, un `*string`, `map[string]int{}`, `float64(1)` | `errors.Is(err, audit.ErrUnsupportedData)`; 0 filas |
+  | **Sin falsos positivos**: el `data` de cada acción del catálogo de `data-model.md` §2.6 con valores representativos (`{"industry_template_code": "generic"}`, `{"fields": []string{"name", "timezone"}}`, `{"content_type": "image/png"}`, `{"reason": "bad_password"}`, `{"sessions_revoked": int64(2)}`, `{"role": "operator", "trigger": "password_reset_request"}`, `{"from": "admin", "to": "operator", "status": "invited"}`, `{"to_status": "active"}`) y los tipos admitidos restantes (`bool`, `int`, `int32`, `uuid.UUID`, `time.Time`, `nil`) | una fila por caso |
+  | `Data` limpio con `tx = nil` | `errors.Is(err, audit.ErrTxRequired)` |
+
+  Sexta revisión (DD-38, INV-33). Integración, `Record` dentro de `InTenantTx(A)`; después del
+  `COMMIT` se lee `user_agent` de la fila:
+
+  | `Entry.UserAgent` | Esperado |
+  |---|---|
+  | 513 caracteres ASCII | `Record` sin error (hoy falla el `CHECK` y revierte la operación); se guardan los primeros 512 |
+  | 600 veces `ñ` (2 bytes cada una) | 512 runas (`char_length = 512`), UTF-8 válido |
+  | `"Mozilla/5.0 \xff\xfe x"` (bytes que no son UTF-8) | sin error; se guarda con `U+FFFD` en lugar de cada secuencia inválida |
+  | `"a\x00b"` | se guarda `"ab"` |
+  | `""` | `user_agent IS NULL` |
+
+  Unitario de `httpx.NormalizeUserAgent` (sexta revisión):
+
+  | Entrada | Salida |
+  |---|---|
+  | `""` / 512 ASCII / 513 ASCII | `""` / igual / los primeros 512 |
+  | 511 ASCII + `"ñ"` + `"x"` (513 runas) | 512 runas, terminando en `ñ` (nunca medio carácter) |
+  | `"\xff"` / `"a\x00b"` | `"�"` / `"ab"` |
+  | Propiedad, sobre 1000 entradas aleatorias de bytes | `utf8.ValidString(out)`, sin `\x00`, `utf8.RuneCountInString(out) <= httpx.MaxUserAgentRunes` |
 - **Green**: pasa la tabla.
 
-**T-B210 — Implementar `platform/audit`**.
+**T-B210 — Implementar `platform/audit`**. Sexta revisión: `containsSecret` se reemplaza por la
+validación de DD-37 (tipos admitidos, clave normalizada a minúsculas sin separadores contra las dos
+listas, valores `Bearer`/`Basic`/`Digest`, JWT y formato de `securetoken`), que corre **antes** de
+mirar `tx` y devuelve los centinelas de plan §11.1 envueltos con la ruta
+(`fmt.Errorf("audit: data.%s: %w", ruta, ErrSecretInData)`), nunca con el valor; `ErrTxRequired`
+reemplaza al `errors.New` actual; `Record` guarda `httpx.NormalizeUserAgent(e.UserAgent)` (DD-38),
+función nueva de `platform/httpx` junto con la constante `MaxUserAgentRunes`.
 
-**T-B211 [T] — Outbox y worker** · ADR-010, ADR-024, INV-09, INV-16, INV-28, INV-29, INV-30, INV-31, DD-35, plan §9.4
+**T-B211 [T] — Outbox y worker** · ADR-010, ADR-024, ADR-025, INV-09, INV-16, INV-28, INV-29, INV-30, INV-31, DD-35, plan §9.4
 - **Red** (integración, `Handler` falso configurable, `Clock` falso; los *hooks* de test no
   exportados del `Dispatcher` pueden forzar fallos en `GetMessage` y en el marcado):
 
@@ -696,6 +760,12 @@ ruta → autenticación por grupo). `CommonMiddleware` recibe el modo local y
   | `DeliveryError.LastError()` con y sin código, con y sin código extendido, y fase `unknown` | el formato exacto de ADR-024 §3 |
   | `Detail` con `\r\n`, tabulaciones y espacios repetidos | una sola línea, espacios simples, sin espacios en los extremos |
   | `Detail` con `<a@b.example>`, `a@b.example,` y `"a@b.example"` | cada token → `[redacted]`; el resultado no contiene `@` |
+  | (Sexta revisión, ADR-025 §2) `Detail` con `https://crm.example/reset-password#token=<43 caracteres base64url>` | ese campo → `[redacted]`; el resultado no contiene `token=`, `://` ni el valor |
+  | `Detail` con `#token=<43>` (sin esquema), con un token suelto de 43 caracteres seguido de `.`, y con un JWT | cada campo → `[redacted]` |
+  | `Detail` `"id 0123456789abcdefghi"` (19 seguidos) y `"id 0123456789abcdefghij"` (20) | sin cambios / `"id [redacted]"` |
+  | `Detail` `"Authentication credentials invalid"`, `"client host blocked"`, `"Mailbox full"` | sin cambios |
+  | (Sexta revisión, ADR-025 §1) `DeliveryError{config, data, 554, "5.7.1", Detail: "Message rejected, URL https://crm.example/x#token=abc listed"}` | `LastError() = "config data 554 5.7.1: response text omitted"` |
+  | `DeliveryError{recipient, data, 550, "5.1.1", Detail: "Recipient rejected"}` / `DeliveryError{network, data, 0, "", Detail: "timeout"}` | `"recipient data 550 5.1.1: response text omitted"` / `"network data: timeout"` (sin código SMTP, el detalle del vocabulario fijo se conserva) |
   | `Detail` de 2000 caracteres multibyte | exactamente 1000 runas, terminando en `…` |
   | `err.Error()` de un `*DeliveryError` | igual a `LastError()` |
   | `errors.As` sobre `fmt.Errorf("x: %w", deliveryErr)` | recupera el `*DeliveryError` |
@@ -704,9 +774,9 @@ ruta → autenticación por grupo). `CommonMiddleware` recibe el modo local y
   recuperable / definitivo / aplazar / terminar el ciclo" como funciones puras con su propio test
   (plan §9.4); un único lugar arma los campos de log del worker.
 
-**T-B212 — Implementar `platform/outbox` (`Enqueue`, `Dispatcher` con *polling* de 2 s y lote de 10, arranque y parada con `context`)**. Las queries del worker van en `internal/platform/outbox/store/worker.sql` (plan §4.4). Quinta revisión: `DeliveryError`, `Cause`, `Phase` y `SendBudget` según plan §9.3 (se borra `PermanentError`); `Enqueue` recibe el `clock.Clock` y fija `created_at` y `next_attempt_at` con `clock.Now()` (DD-18; resuelve M6); `LockDueMessage` devuelve también `next_attempt_at` y `created_at`; query `DeferMessage` (plan §9.4) y su nombre en `queryrules.DefaultExceptions`; `deferDelay`; transacción con `context.WithoutCancel` y `Handle` con `context.WithTimeout(…, SendBudget)` (DD-35).
+**T-B212 — Implementar `platform/outbox` (`Enqueue`, `Dispatcher` con *polling* de 2 s y lote de 10, arranque y parada con `context`)**. Las queries del worker van en `internal/platform/outbox/store/worker.sql` (plan §4.4). Quinta revisión: `DeliveryError`, `Cause`, `Phase` y `SendBudget` según plan §9.3 (se borra `PermanentError`); `Enqueue` recibe el `clock.Clock` y fija `created_at` y `next_attempt_at` con `clock.Now()` (DD-18; resuelve M6); `LockDueMessage` devuelve también `next_attempt_at` y `created_at`; query `DeferMessage` (plan §9.4) y su nombre en `queryrules.DefaultExceptions`; `deferDelay`; transacción con `context.WithoutCancel` y `Handle` con `context.WithTimeout(…, SendBudget)` (DD-35). Sexta revisión (ADR-025 §1–§2): `LastError()` usa el detalle fijo `response text omitted` cuando `Phase == PhaseData && SMTPCode != 0`, y `sanitizeDetail` redacta además los campos con `://` o con 20 o más caracteres seguidos de `[A-Za-z0-9+/=_-]`.
 
-**T-B213 [T] — Adaptador SMTP y plantillas** · ADR-010, ADR-024, DD-14, DD-24, DD-35, INV-28, INV-29, INV-30
+**T-B213 [T] — Adaptador SMTP y plantillas** · ADR-010, ADR-024, ADR-025, DD-14, DD-24, DD-35, INV-28, INV-29, INV-30
 - **Red** (integración contra Mailpit en contenedor; su API HTTP para leer lo recibido):
 
   | Caso | Esperado |
@@ -736,8 +806,8 @@ ruta → autenticación por grupo). `CommonMiddleware` recibe el modo local y
   | `RCPT TO` responde `550 User unknown`, sin `ENHANCEDSTATUSCODES` | `recipient rcpt_to 550: User unknown` |
   | `RCPT TO` responde `554 5.7.1 Relay access denied` | `config rcpt_to 554 5.7.1: Relay access denied` (recuperable) |
   | `RCPT TO` responde `452 4.2.2 Mailbox full` | `transient rcpt_to 452 4.2.2: Mailbox full` |
-  | Fin de datos responde `554 5.7.1 Message rejected` | `config data 554 5.7.1: Message rejected` |
-  | Fin de datos responde `550 5.1.1 Recipient rejected` | `recipient data 550 5.1.1: Recipient rejected` |
+  | Fin de datos responde `554 5.7.1 Message rejected` | `config data 554 5.7.1: response text omitted` (sexta revisión, ADR-025 §1: en la fase `data` no se usa el texto del proveedor) |
+  | Fin de datos responde `550 5.1.1 Recipient rejected` | `recipient data 550 5.1.1: response text omitted` |
   | Fin de datos `250` y después cierra la conexión sin responder el `QUIT` | `nil` (entregado: `IsDelivered()`) |
   | Fin de datos `250` | el comando siguiente registrado es `QUIT`, no `RSET` (`WithoutRset`) |
   | Respuesta `5xx` de 3 líneas, 2000 caracteres y una dirección con `@` en el medio | `LastError()` en una línea, ≤ 1000 caracteres, sin `@` |
@@ -745,6 +815,14 @@ ruta → autenticación por grupo). `CommonMiddleware` recibe el modo local y
   | Responde bien hasta `DATA` (`354`) y nunca responde al fin de datos | `network data: timeout`, en ≤ 6 s después de enviar el contenido |
   | Contexto cancelado antes de llamar | `context.Canceled` (`errors.Is`), sin conectar |
   | Contexto cancelado mientras el servidor demora el saludo | cuando `Send` vuelve, devuelve `context.Canceled`, no un `DeliveryError` |
+  | (Sexta revisión, DD-35) Contexto con *deadline* que vence mientras el servidor demora el saludo | `Send` devuelve `context.DeadlineExceeded` (`errors.Is`), no un `DeliveryError` (caracteriza el comportamiento actual: puede pasar sin cambios de código) |
+  | (Sexta revisión, ADR-025 §3) `RCPT TO` responde `550 5.7.1 Relay access denied`, **sin** `ENHANCEDSTATUSCODES` | `config rcpt_to 550 5.7.1: Relay access denied`; `Permanent() == false` (hoy sale `recipient`) |
+  | `RCPT TO` responde `550 5.1.1 <destinatario del mensaje>: User unknown`, sin `ENHANCEDSTATUSCODES` | `recipient rcpt_to 550 5.1.1: [redacted] User unknown` |
+  | `RCPT TO` responde `554 5.1.1 Unknown user`, sin `ENHANCEDSTATUSCODES` | `recipient rcpt_to 554 5.1.1: Unknown user` |
+  | `RCPT TO` responde `550 4.2.2 Mailbox full` (clase incoherente), sin `ENHANCEDSTATUSCODES` | `recipient rcpt_to 550: 4.2.2 Mailbox full` (el extendido se ignora; decide el `550`) |
+  | Saludo `554 4.7.1 blocked` (clase incoherente) | `config connection 554: 4.7.1 blocked` |
+  | (Sexta revisión, ADR-025 §1) Fin de datos responde `554 5.7.1 Message rejected, URL <el enlace del mensaje, con #token=…> listed` | `config data 554 5.7.1: response text omitted`; `LastError()` no contiene el token ni `token=` |
+  | (Sexta revisión, ADR-025 §2) `MAIL FROM` responde `550 5.7.1 Sender not verified, see https://provider.example/help?id=1` | `config mail_from 550 5.7.1: Sender not verified, see [redacted]` |
 
   Unitarios (quinta revisión):
 
@@ -754,9 +832,10 @@ ruta → autenticación por grupo). `CommonMiddleware` recibe el modo local y
   | Regla del destinatario (fase, código, extendido): `rcpt_to 550 ""`, `rcpt_to 551 ""`, `rcpt_to 553 ""`, `rcpt_to 554 ""`, `rcpt_to 550 5.1.1`, `rcpt_to 550 5.2.2`, `rcpt_to 550 5.7.1`, `data 550 5.1.1`, `data 550 ""`, `mail_from 550 5.1.1`, `connection 550 5.1.1` | `recipient` solo para `rcpt_to 550 ""`, `rcpt_to 551 ""`, `rcpt_to 553 ""`, `rcpt_to 550 5.1.1`, `rcpt_to 550 5.2.2` y `data 550 5.1.1`; todos los demás `config` |
   | Errores de la fase de conexión: `net.Error` con `Timeout()`, `*net.DNSError`, `ECONNREFUSED`, `io.EOF`, error de certificado x509 | `network` (`timeout`, `dns lookup failed`, `connection refused`, `connection closed`) y `config` (`tls handshake failed`) |
   | Handler de plantillas con plantilla desconocida, token faltante o rol inválido | `DeliveryError{bug, compose}` con texto fijo; el texto no contiene el token |
+  | (Sexta revisión, ADR-025 §3) Lectura del código extendido del texto, `(código, texto)` → `(extendido, resto)`: `(550, "5.1.1 User unknown")`, `(452, "4.2.2 Mailbox full")`, `(550, "4.2.2 Mailbox full")`, `(550, "User unknown 5.1.1")`, `(550, "5.1.1")`, `(550, "5.1.1234 x")`, `(550, "")` | `("5.1.1", "User unknown")`, `("4.2.2", "Mailbox full")`, `("", "4.2.2 Mailbox full")`, `("", "User unknown 5.1.1")`, `("5.1.1", "")`, `("", "5.1.1234 x")`, `("", "")` |
 - **Green**: pasa la tabla.
 
-**T-B214 — Implementar `platform/mailer` (go-mail) y las plantillas `identity/emails` (es-AR)**. Quinta revisión: clasificación de ADR-024 §1–§3 en el adaptador (`gomail.WithTimeout(5 * time.Second)`, `gomail.WithoutRset()`, `nil` si `Msg.IsDelivered()`); el detalle de un `SendError` se arma como dice ADR-024 §3 (sin `affected recipient(s)`); destinatario inválido → `recipient`, asunto inválido → `bug`, remitente inválido → `config`, todos en fase `compose`; el handler de plantillas devuelve `DeliveryError{Cause: CauseBug, Phase: PhaseCompose}` con textos fijos.
+**T-B214 — Implementar `platform/mailer` (go-mail) y las plantillas `identity/emails` (es-AR)**. Quinta revisión: clasificación de ADR-024 §1–§3 en el adaptador (`gomail.WithTimeout(5 * time.Second)`, `gomail.WithoutRset()`, `nil` si `Msg.IsDelivered()`); el detalle de un `SendError` se arma como dice ADR-024 §3 (sin `affected recipient(s)`); destinatario inválido → `recipient`, asunto inválido → `bug`, remitente inválido → `config`, todos en fase `compose`; el handler de plantillas devuelve `DeliveryError{Cause: CauseBug, Phase: PhaseCompose}` con textos fijos. Sexta revisión (ADR-025 §3, DD-35): una sola función lee el código extendido del comienzo del texto (forma `d.d.d` seguida de espacio o fin, y misma clase que el código básico) y la usan la fase `connection` y `classifySendError` cuando `EnhancedStatusCode()` está vacío; el comentario de `Mailer.Send` que señala la diferencia con DD-35 se reemplaza por una referencia a DD-35. La omisión del texto en la fase `data` y la redacción ampliada viven en `outbox.DeliveryError.LastError()` (T-B212), no en el adaptador.
 
 **T-B215 [T] — Adaptador S3** · ADR-011, DD-36
 - **Red** (integración contra MinIO en contenedor, con la imagen `containers.MinIO` de DD-36):
@@ -821,7 +900,7 @@ de verificación. Repetir el registro con el mismo email → `409 email_already_
 
 **T-B302 — Implementar `internal/industrytemplate` (catálogo + `Seeder` sin efecto) y el handler**.
 
-**T-B303 [T] — Servicio de registro** · US-1, FR-001, FR-002, INV-14, INV-16, INV-26, DD-2, DD-4, DD-13, DD-15, DD-27, DD-33, H-6
+**T-B303 [T] — Servicio de registro** · US-1, FR-001, FR-002, INV-14, INV-16, INV-26, INV-33, DD-2, DD-4, DD-13, DD-15, DD-27, DD-33, DD-38, H-6
 - **Red** (integración, `Mailer` real no interviene: se verifica el outbox):
 
   | Caso | Esperado |
@@ -840,12 +919,13 @@ de verificación. Repetir el registro con el mismo email → `409 email_already_
   | Una transacción de prueba (superusuario del contenedor) ejecuta `GRANT crm_tenant TO <rol de prueba>` y queda abierta 3 s; mientras, un `Register` | `Register` devuelve un error con `errors.Is(err, db.ErrUnavailable)` en ~2 s (entre 2 y 3 s; **nunca** los 5 s de `statement_timeout` ni un `ErrPrivilege`); no queda empresa, usuario, token, mensaje, sesión ni **rol** nuevos; después del `ROLLBACK` de la transacción de prueba, el mismo `Register` tiene éxito |
   | Dentro de la transacción de registro (observado con el `Seeder` falso como *hook*) | `current_setting('lock_timeout')` = `2s` |
   | Durante todo `Register` | los fakes de `Mailer` y `ObjectStorage` no registran **ninguna** llamada (el email sale por el outbox; R-b de DD-33) |
+  | (Sexta revisión, DD-38) `Register` con `RequestMeta.UserAgent` de 600 caracteres que incluye un byte `\xff` | éxito; `sessions.user_agent` y el `audit_log.user_agent` de `tenant.registered` tienen 512 runas y UTF-8 válido |
 - **Green**: pasa la tabla.
 - **Refactor**: el servicio de `tenant` no conoce SQL de `identity`; solo usa la interfaz
   `AdminOnboarding` (plan §11.1).
 
 **T-B304 — Implementar `tenant.Service.Register` y en `identity`: `CreateFirstAdmin`,
-`CreateSession`, `IssueEmailVerification`**. Tercera revisión (DD-33, INV-26): validación y hash
+`CreateSession`, `IssueEmailVerification`**. Sexta revisión (DD-38, INV-33): `CreateSession` guarda `httpx.NormalizeUserAgent(meta.UserAgent)` en `sessions.user_agent`. Tercera revisión (DD-33, INV-26): validación y hash
 argon2 **antes** de abrir la transacción; al abrirla, `lock_timeout` con `tenant.SignupLockTimeout`
 mediante `SELECT set_config('lock_timeout', @timeout, true)` (equivale a `SET LOCAL`), antes de
 `provision_tenant_role`; ambas queries en `internal/tenant/store/provisioning.sql` (plan §4.4);
@@ -1444,6 +1524,9 @@ de la fase y se agrega a plan §11.1 en el mismo cambio (matriz §16).
 | Rutas exactas de las queries de sistema (plan §4.4, INV-04, ADR-001) | T-B112, T-B212, T-B304, T-B902, T-B903, T-B907 |
 | FK `tenant_id → tenants(id)` de `sessions` y `user_tokens` (`data-model.md` §2.3/§2.4) | T-B108, T-B111 |
 | ADR-024 / INV-28 / INV-30 Clasificación de fallos de entrega y `last_error` saneado (research R-29) | T-B211, T-B212, T-B213, T-B214, T-B903 |
+| ADR-025 / INV-30 `last_error` sin texto del proveedor en `data`, redacción ampliada y código extendido leído del texto | T-B211, T-B212, T-B213, T-B214 |
+| DD-37 / INV-32 Credenciales en `audit_log.data` | T-B209, T-B210 |
+| DD-38 / INV-33 `user_agent` acotado en cada escritura | T-B209, T-B210, T-B303, T-B304 |
 | DD-35 / INV-29 Presupuesto del envío frente a `idle_in_transaction_session_timeout` | T-B211, T-B213, T-B214, T-B908, T-B909 |
 | INV-31 Aislamiento de fallos por mensaje del `Dispatcher` | T-B112, T-B211, T-B212 |
 | DD-36 Imagen de MinIO en desarrollo y tests (research R-30) | T-B215, T-B216 |

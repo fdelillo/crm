@@ -1,12 +1,21 @@
 # ADR-024: Clasificación de fallos de entrega del outbox, presupuesto de tiempo del envío SMTP y aislamiento de fallos por mensaje
 
-**Status**: Accepted (aprobado por el usuario 2026-10-01)
+**Status**: Accepted (aprobado por el usuario 2026-10-01). [ADR-025](025-saneamiento-last-error-y-codigo-extendido.md) (*Accepted*) reemplaza el último párrafo de §2 y partes de §3 (ver nota 2026-10-01 (b)).
 **Fecha**: 2026-10-01
 **Origen**: revisión del PR fdelillo/crm#8 (Fase 2 de la spec 001): hallazgos I1, I2, M1 y M7
 **Relación**: reemplaza **solo** la viñeta "Reintentos" de [ADR-010](010-email-outbox-transaccional.md)
 en lo que dice sobre qué error es definitivo. El resto de ADR-010 (outbox transaccional, worker en
 el binario, entrega al menos una vez, borrado del payload, puerto `Mailer` con go-mail) sigue
 vigente y no cambia.
+
+> **Nota 2026-10-01 (b) (reemplazo parcial, *Accepted*)**, por la tercera revisión del
+> PR fdelillo/crm#8: [ADR-025](025-saneamiento-last-error-y-codigo-extendido.md) reemplaza
+> (1) el último párrafo de §2 (el código extendido se lee también del comienzo del texto, en todas
+> las fases, con control de clase), (2) en §3, la viñeta **Detalle** para las respuestas de la fase
+> `data` (detalle fijo `response text omitted`) y (3) el punto (1) del **Saneamiento obligatorio**
+> (se redactan también los campos con `://` o con 20 o más caracteres seguidos de
+> `[A-Za-z0-9+/=_-]`). En esas tres piezas rige ADR-025. El resto (§1,
+> §4, §5, §6 y el formato de §3) no cambia.
 
 ## Contexto
 
