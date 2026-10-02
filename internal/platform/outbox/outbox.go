@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -167,12 +168,25 @@ func (e *DeliveryError) Error() string { return e.LastError() }
 // Unwrap exposes Err for tests (errors.Is/As); production code must never log or persist it.
 func (e *DeliveryError) Unwrap() error { return e.Err }
 
+// responseTextOmitted is the fixed detail of a data-phase failure that has an SMTP response
+// (ADR-025 §1).
+const responseTextOmitted = "response text omitted"
+
+// longSecretRun matches 20 or more consecutive characters of the base64, base64url and hex
+// alphabets: a securetoken (43), a JWT segment, a key or a long identifier (ADR-025 §2).
+var longSecretRun = regexp.MustCompile(`[A-Za-z0-9+/=_-]{20,}`)
+
 // LastError renders "<cause> <phase>[ <SMTP code>[ <extended code>]]: <detail>" (ADR-024 §3),
-// with Detail sanitized (every space-separated token containing '@' replaced by "[redacted]",
-// control characters turned to spaces, repeated spaces collapsed, trimmed) and the whole result
-// truncated to maxLastErrorRunes runes, ending in "…" if it was cut. It is the only place that
-// builds this text: outbox_messages.last_error and every delivery log use it, so neither can leak
-// a recipient, a sender or a message id by forgetting to sanitize (ADR-024 §3, INV-30).
+// with Detail sanitized (every space-separated field containing '@', "://" or a run of 20+
+// characters of [A-Za-z0-9+/=_-] replaced by "[redacted]", control characters turned to spaces,
+// repeated spaces collapsed, trimmed; ADR-025 §2) and the whole result truncated to
+// maxLastErrorRunes runes, ending in "…" if it was cut. In the data phase with an SMTP code the
+// detail is the fixed "response text omitted" (ADR-025 §1): that is the only phase in which the
+// server already holds the message content, hence the link and its token, so omitting the text
+// is a structural guarantee and not a guess about how a provider quotes a URL. It is the only
+// place that builds this text: outbox_messages.last_error and every delivery log use it, so
+// neither can leak a recipient, a sender, a message id or a token by forgetting to sanitize
+// (ADR-024 §3, ADR-025, INV-30).
 func (e *DeliveryError) LastError() string {
 	head := string(e.Cause) + " " + string(e.Phase)
 	if e.SMTPCode != 0 {
@@ -181,10 +195,16 @@ func (e *DeliveryError) LastError() string {
 			head += " " + e.Enhanced
 		}
 	}
-	return truncateRunes(head+": "+sanitizeDetail(e.Detail), maxLastErrorRunes)
+	detail := responseTextOmitted
+	if e.Phase != PhaseData || e.SMTPCode == 0 {
+		detail = sanitizeDetail(e.Detail)
+	}
+	return truncateRunes(head+": "+detail, maxLastErrorRunes)
 }
 
-// sanitizeDetail is the token-redaction and whitespace-normalization step of LastError.
+// sanitizeDetail is the redaction (ADR-024 §3 (1), widened by ADR-025 §2) and whitespace
+// normalization step of LastError. Redacting one field too many costs nothing; keeping a secret
+// in a column that outlives the payload does.
 func sanitizeDetail(raw string) string {
 	noControl := strings.Map(func(r rune) rune {
 		if unicode.IsControl(r) {
@@ -194,7 +214,7 @@ func sanitizeDetail(raw string) string {
 	}, raw)
 	fields := strings.Fields(noControl)
 	for i, f := range fields {
-		if strings.Contains(f, "@") {
+		if strings.Contains(f, "@") || strings.Contains(f, "://") || longSecretRun.MatchString(f) {
 			fields[i] = "[redacted]"
 		}
 	}

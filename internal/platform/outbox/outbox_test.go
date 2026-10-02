@@ -233,3 +233,63 @@ func TestDeferMessageLogsNothingWhenAnotherWorkerAlreadyResolvedIt(t *testing.T)
 		t.Fatalf("logged a deferral that did not happen: %s", logs.String())
 	}
 }
+
+// ADR-025 §2 (INV-30): besides '@', a field with "://" or with a run of 20 or more characters of
+// [A-Za-z0-9+/=_-] is redacted: URLs, 43-character tokens, JWTs and long identifiers.
+func TestDeliveryErrorRedactsURLsAndTokenLikeFields(t *testing.T) {
+	const token = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_AbCde" // 43 base64url characters
+	jwt := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.c2lnbmF0dXJlLXZhbHVlLXRlc3Q"
+	cases := []struct {
+		name, detail, want string
+		mustNotContain     []string
+	}{
+		{"url with token fragment", "see https://crm.example/reset-password#token=" + token, "see [redacted]",
+			[]string{"token=", "://", token}},
+		{"fragment without scheme", "x #token=" + token, "x [redacted]", []string{"token="}},
+		{"bare token followed by a dot", "x " + token + ".", "x [redacted]", []string{token}},
+		{"jwt", "x " + jwt, "x [redacted]", []string{"eyJ"}},
+		{"19 characters", "id 0123456789abcdefghi", "id 0123456789abcdefghi", nil},
+		{"20 characters", "id 0123456789abcdefghij", "id [redacted]", nil},
+		{"plain texts", "Authentication credentials invalid, client host blocked, Mailbox full",
+			"Authentication credentials invalid, client host blocked, Mailbox full", nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := sanitizeDetail(tc.detail)
+			if got != tc.want {
+				t.Fatalf("got %q want %q", got, tc.want)
+			}
+			for _, s := range tc.mustNotContain {
+				if strings.Contains(got, s) {
+					t.Fatalf("%q survived in %q", s, got)
+				}
+			}
+		})
+	}
+}
+
+// ADR-025 §1 (INV-30): in the data phase the server already holds the message content, so with an
+// SMTP code the provider's text is never kept, whatever Detail says.
+func TestDeliveryErrorOmitsProviderTextInDataPhase(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  *DeliveryError
+		want string
+	}{
+		{"quoted url", &DeliveryError{Cause: CauseConfig, Phase: PhaseData, SMTPCode: 554, Enhanced: "5.7.1",
+			Detail: "Message rejected, URL https://crm.example/x#token=abc listed"},
+			"config data 554 5.7.1: response text omitted"},
+		{"recipient", &DeliveryError{Cause: CauseRecipient, Phase: PhaseData, SMTPCode: 550, Enhanced: "5.1.1", Detail: "Recipient rejected"},
+			"recipient data 550 5.1.1: response text omitted"},
+		{"no SMTP code keeps the fixed vocabulary", &DeliveryError{Cause: CauseNetwork, Phase: PhaseData, Detail: "timeout"},
+			"network data: timeout"},
+		{"other phases keep the text", &DeliveryError{Cause: CauseConfig, Phase: PhaseMailFrom, SMTPCode: 550, Detail: "Sender not authorized"},
+			"config mail_from 550: Sender not authorized"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.err.LastError(); got != tc.want {
+				t.Fatalf("got %q want %q", got, tc.want)
+			}
+		})
+	}
+}
