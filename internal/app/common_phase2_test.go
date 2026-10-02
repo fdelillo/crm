@@ -178,3 +178,42 @@ func TestCanceledRequestLog(t *testing.T) {
 		t.Fatalf("live cancellation status=%d", live.Code)
 	}
 }
+
+// DD-32 (sixth review): RequestID runs before ClientIP in the common chain, so the
+// bad_forwarded_for warning, the request line and the X-Request-Id header share one request_id.
+func TestBadForwardedForWarningCarriesRequestID(t *testing.T) {
+	var logs bytes.Buffer
+	trusted := []netip.Prefix{netip.MustParsePrefix("198.51.100.0/24")}
+	root := phase2Root(t, true, trusted, &logs, new(int))
+	r := httptest.NewRequest("GET", "/api/v1/test", nil)
+	r.RemoteAddr = "198.51.100.10:4711"
+	r.Header.Set("X-Forwarded-For", "192.0.2.66, basura")
+	rec := httptest.NewRecorder()
+	root.ServeHTTP(rec, r)
+	id := rec.Header().Get("X-Request-Id")
+	if id == "" {
+		t.Fatal("no X-Request-Id header")
+	}
+	var warn, request map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(logs.String()), "\n") {
+		var m map[string]any
+		if err := json.Unmarshal([]byte(line), &m); err != nil {
+			t.Fatalf("log line is not JSON: %q", line)
+		}
+		switch {
+		case m["event"] == "bad_forwarded_for":
+			warn = m
+		case m["msg"] == "request":
+			request = m
+		}
+	}
+	if warn == nil || request == nil {
+		t.Fatalf("missing warning or request line: %s", logs.String())
+	}
+	if warn["level"] != "WARN" || warn["request_id"] != id || request["request_id"] != id {
+		t.Fatalf("request ids differ from header %q: warn=%v request=%v", id, warn, request)
+	}
+	if strings.Contains(logs.String(), "basura") {
+		t.Fatalf("log leaked the header value: %s", logs.String())
+	}
+}

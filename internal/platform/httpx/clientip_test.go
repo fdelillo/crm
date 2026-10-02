@@ -84,3 +84,26 @@ func TestClientIPIgnoresForwardedAndRealIP(t *testing.T) {
 		t.Fatalf("got %v want the peer address, unaffected by Forwarded/X-Real-IP", got)
 	}
 }
+
+// DD-32 (sixth review): ClientIP runs after RequestID, so the bad_forwarded_for warning carries the
+// same request_id the handler and the response header see.
+func TestClientIPWarningCarriesRequestID(t *testing.T) {
+	trusted := []netip.Prefix{netip.MustParsePrefix("198.51.100.0/24")}
+	var log bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&log, nil))
+	var handlerID string
+	h := RequestID(ClientIP(trusted, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handlerID = RequestIDFrom(r.Context())
+	})))
+	r := httptest.NewRequest("GET", "/", nil)
+	r.RemoteAddr = "198.51.100.10:4711"
+	r.Header.Set("X-Forwarded-For", "192.0.2.66, basura")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, r)
+	if handlerID == "" || rec.Header().Get("X-Request-Id") != handlerID {
+		t.Fatalf("handler id %q, header %q", handlerID, rec.Header().Get("X-Request-Id"))
+	}
+	if !strings.Contains(log.String(), `"request_id":"`+handlerID+`"`) || strings.Contains(log.String(), "basura") {
+		t.Fatalf("warning=%q", log.String())
+	}
+}
