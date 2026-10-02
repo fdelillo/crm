@@ -5,8 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/netip"
+	"slices"
 	"strings"
+	"time"
+	"unicode"
 
 	"github.com/fdelillo/crm/internal/platform/audit/store"
 	"github.com/fdelillo/crm/internal/platform/db"
@@ -33,17 +37,29 @@ type Entry struct {
 type Recorder interface {
 	Record(ctx context.Context, tx db.Tx, e Entry) error
 }
+
+// Sentinels of Record (DD-37, INV-32). Errors wrap them with the path of the offending key, never
+// with the value.
+var (
+	ErrSecretInData    = errors.New("audit: data contains a credential")
+	ErrUnsupportedData = errors.New("audit: data contains an unsupported type")
+	ErrTxRequired      = errors.New("audit: transaction is required")
+)
+
 type recorder struct{}
 
 // NewRecorder returns the Recorder. It has no state: every call is independent.
 func NewRecorder() Recorder { return recorder{} }
 
+// Record validates Data (DD-37), normalizes UserAgent (DD-38) and inserts the row in tx.
 func (recorder) Record(ctx context.Context, tx db.Tx, e Entry) error {
-	if containsSecret(e.Data) {
-		return errors.New("audit: data contains a secret key")
+	// Validation runs before looking at tx: a credential must be reported as such even when the
+	// caller also forgot the transaction (DD-37).
+	if err := validateData("", e.Data); err != nil {
+		return err
 	}
 	if tx == nil {
-		return errors.New("audit: transaction is required")
+		return ErrTxRequired
 	}
 	data := e.Data
 	if data == nil {
@@ -58,13 +74,14 @@ func (recorder) Record(ctx context.Context, tx db.Tx, e Entry) error {
 		value := e.IP.Unmap()
 		ip = &value
 	}
+	userAgent := httpx.NormalizeUserAgent(e.UserAgent) // DD-38, INV-33: never fail the audited operation
 	args := store.InsertAuditParams{
 		TenantID:   e.TenantID,
 		Action:     e.Action,
 		Data:       encoded,
 		Ip:         ip,
 		TargetType: pgtype.Text{String: e.TargetType, Valid: e.TargetType != ""},
-		UserAgent:  pgtype.Text{String: e.UserAgent, Valid: e.UserAgent != ""},
+		UserAgent:  pgtype.Text{String: userAgent, Valid: userAgent != ""},
 	}
 	if e.ActorUserID != nil {
 		args.ActorUserID = uuid.NullUUID{UUID: *e.ActorUserID, Valid: true}
@@ -81,33 +98,115 @@ func (recorder) Record(ctx context.Context, tx db.Tx, e Entry) error {
 	return nil
 }
 
-// containsSecret rejects an Entry.Data whose keys look like a credential, at any depth: a caller
-// that builds Data from, say, request headers could otherwise write a password or token to
-// audit_log (append-only, never scrubbed). map[string]string is checked explicitly and not only
-// through the map[string]any case: a type switch does not see through a concrete map type, so a
-// caller that passes one directly (headers, form values) would otherwise skip the check entirely.
-func containsSecret(value any) bool {
-	switch v := value.(type) {
-	case map[string]any:
-		for key, item := range v {
-			normalized := strings.ToLower(key)
-			if strings.Contains(normalized, "password") || strings.Contains(normalized, "token") || containsSecret(item) {
-				return true
-			}
-		}
-	case map[string]string:
-		for key := range v {
-			normalized := strings.ToLower(key)
-			if strings.Contains(normalized, "password") || strings.Contains(normalized, "token") {
-				return true
-			}
-		}
-	case []any:
-		for _, item := range v {
-			if containsSecret(item) {
-				return true
-			}
+// credentialKeyParts and credentialKeyExact are the key denylist of DD-37, compared against the
+// normalized key (lower case, letters and digits only: "Set-Cookie" -> "setcookie", "X-API-Key" ->
+// "xapikey"). "session" is exact because the catalog has "sessions_revoked".
+var (
+	credentialKeyParts = []string{"password", "passwd", "passphrase", "secret", "token", "authorization",
+		"cookie", "apikey", "privatekey", "credential", "signature", "csrf", "xsrf"}
+	credentialKeyExact = []string{"auth", "session", "sessionid", "sid", "otp", "pin"}
+)
+
+func isCredentialKey(key string) bool {
+	var b strings.Builder
+	for _, r := range key {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(unicode.ToLower(r))
 		}
 	}
-	return false
+	normalized := b.String()
+	for _, part := range credentialKeyParts {
+		if strings.Contains(normalized, part) {
+			return true
+		}
+	}
+	return slices.Contains(credentialKeyExact, normalized)
+}
+
+// isCredentialValue recognizes values that look like a credential whatever their key (DD-37 (3)):
+// an Authorization-style scheme, a JWT, or the 43-character base64url form of securetoken.New.
+func isCredentialValue(value string) bool {
+	value = strings.TrimSpace(value)
+	lower := strings.ToLower(value)
+	for _, scheme := range []string{"bearer ", "basic ", "digest "} {
+		if strings.HasPrefix(lower, scheme) {
+			return true
+		}
+	}
+	if strings.HasPrefix(value, "eyJ") {
+		segments := strings.Split(value, ".")
+		if len(segments) == 3 && slices.IndexFunc(segments, func(s string) bool { return !isBase64URL(s) }) < 0 {
+			return true
+		}
+	}
+	return len(value) == 43 && isBase64URL(value)
+}
+
+func isBase64URL(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_') {
+			return false
+		}
+	}
+	return true
+}
+
+// validateData walks data at every depth and rejects what DD-37 forbids. It closes the set of
+// admitted types on purpose: a struct, a pointer or a []byte would be serialized without being
+// inspected, which would make the credential check incomplete. Errors carry the path of the
+// offending key and never the value, so the error itself cannot leak a secret (INV-32).
+func validateData(path string, value any) error {
+	switch v := value.(type) {
+	case nil, bool, int, int32, int64, uuid.UUID, time.Time:
+		return nil
+	case string:
+		if isCredentialValue(v) {
+			return fmt.Errorf("audit: data.%s: %w", path, ErrSecretInData)
+		}
+		return nil
+	case map[string]any:
+		for _, key := range slices.Sorted(maps.Keys(v)) {
+			if err := validateEntry(path, key, v[key]); err != nil {
+				return err
+			}
+		}
+		return nil
+	case map[string]string:
+		for _, key := range slices.Sorted(maps.Keys(v)) {
+			if err := validateEntry(path, key, v[key]); err != nil {
+				return err
+			}
+		}
+		return nil
+	case []any:
+		for i, item := range v {
+			if err := validateData(fmt.Sprintf("%s[%d]", path, i), item); err != nil {
+				return err
+			}
+		}
+		return nil
+	case []string:
+		for i, item := range v {
+			if err := validateData(fmt.Sprintf("%s[%d]", path, i), item); err != nil {
+				return err
+			}
+		}
+		return nil
+	default:
+		return fmt.Errorf("audit: data.%s: %T: %w", path, value, ErrUnsupportedData)
+	}
+}
+
+func validateEntry(parent, key string, value any) error {
+	path := key
+	if parent != "" {
+		path = parent + "." + key
+	}
+	if isCredentialKey(key) {
+		return fmt.Errorf("audit: data.%s: %w", path, ErrSecretInData)
+	}
+	return validateData(path, value)
 }
