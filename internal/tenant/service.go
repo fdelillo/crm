@@ -82,10 +82,10 @@ func (s *Service) Register(ctx context.Context, in Signup, meta identity.Request
 	company := strings.TrimSpace(in.CompanyName)
 	email := strings.ToLower(strings.TrimSpace(in.Email))
 	fields := FieldErrors{}
-	if name == "" || utf8.RuneCountInString(name) > 120 {
+	if name == "" || utf8.RuneCountInString(name) > 120 || strings.ContainsRune(name, '\x00') {
 		fields["name"] = "invalid_value"
 	}
-	if company == "" || utf8.RuneCountInString(company) > 120 {
+	if company == "" || utf8.RuneCountInString(company) > 120 || strings.ContainsRune(company, '\x00') {
 		fields["company_name"] = "invalid_value"
 	}
 	if len(email) > 254 || email == "" || !validEmail(email) {

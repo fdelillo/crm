@@ -3,7 +3,9 @@ package identity
 import (
 	"errors"
 	"log/slog"
+	"math"
 	"net/http"
+	"time"
 
 	"github.com/fdelillo/crm/internal/authz"
 	"github.com/fdelillo/crm/internal/platform/httpx"
@@ -35,9 +37,15 @@ func Authenticate(service *Service, logger *slog.Logger) func(http.Handler) http
 	}
 }
 
-func SetSessionCookie(w http.ResponseWriter, raw string) {
-	http.SetCookie(w, &http.Cookie{Name: SessionCookieName, Value: raw, Path: "/", MaxAge: 7 * 24 * 60 * 60,
-		HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+// SetSessionCookie keeps the browser's lifetime aligned with the persisted session expiry.
+func SetSessionCookie(w http.ResponseWriter, session SessionResult) {
+	remaining := time.Until(session.ExpiresAt)
+	maxAge := -1
+	if remaining > 0 {
+		maxAge = int(math.Ceil(remaining.Seconds()))
+	}
+	http.SetCookie(w, &http.Cookie{Name: SessionCookieName, Value: session.RawToken, Path: "/",
+		MaxAge: maxAge, Expires: session.ExpiresAt, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 }
 
 func ClearSessionCookie(w http.ResponseWriter) {

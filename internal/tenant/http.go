@@ -55,7 +55,7 @@ func RegisterRoutes(r chi.Router, service *Service, limiter *ratelimit.Limiter, 
 			httpx.WriteDBError(w, req, err, logger)
 			return
 		}
-		identity.SetSessionCookie(w, result.Session.RawToken)
+		identity.SetSessionCookie(w, result.Session)
 		body, err := json.Marshal(struct {
 			User        identity.CurrentUser `json:"user"`
 			Tenant      Summary              `json:"tenant"`

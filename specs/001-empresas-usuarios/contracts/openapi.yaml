@@ -927,7 +927,7 @@ components:
 
   headers:
     SetSessionCookie:
-      description: '`__Host-crm_session=<token>; Path=/; Max-Age=604800; HttpOnly; Secure; SameSite=Lax` (7 días; además vence tras 24 h sin uso)'
+      description: '`__Host-crm_session=<token>; Path=/; Max-Age=<segundos hasta el vencimiento absoluto>; HttpOnly; Secure; SameSite=Lax` (604800 segundos por defecto; además vence tras el plazo de inactividad)'
       schema:
         type: string
     ClearSessionCookie:

@@ -32,11 +32,15 @@ import (
 )
 
 func phase3Server(t *testing.T) *apitest.Server {
+	return phase3ServerWithAbsolute(t, 7*24*time.Hour)
+}
+
+func phase3ServerWithAbsolute(t *testing.T, absolute time.Duration) *apitest.Server {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	runner := db.NewTxRunner(pgtest.AppPool(t))
 	c := clock.Real{}
-	users := identity.NewService(runner, outbox.NewEnqueuer(c), c, 24*time.Hour, 7*24*time.Hour)
+	users := identity.NewService(runner, outbox.NewEnqueuer(c), c, min(24*time.Hour, absolute), absolute)
 	companies := tenant.NewService(runner, users, industrytemplate.NoopSeeder{}, password.NewHasher(2), audit.NewRecorder(), logger)
 	r := app.NewAPIRouter()
 	industrytemplate.RegisterRoutes(r)
@@ -48,6 +52,62 @@ func phase3Server(t *testing.T) *apitest.Server {
 	server := apitest.NewServer(t, root)
 	contract.Default(t).Wrap(t, server.Client)
 	return server
+}
+
+func TestSignupCookieUsesStoredSessionExpiry(t *testing.T) {
+	for _, absolute := range []time.Duration{2 * time.Hour, 10 * 24 * time.Hour} {
+		t.Run(absolute.String(), func(t *testing.T) {
+			server := phase3ServerWithAbsolute(t, absolute)
+			email := uuid.NewString() + "@example.com"
+			body := `{"name":"Ana","email":"` + email + `","password":"example-password","company_name":"ACME","base_currency":"ARS","industry_template_code":"generic"}`
+			resp := postSignup(t, server, body, "application/json")
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusCreated {
+				t.Fatalf("signup status=%d", resp.StatusCode)
+			}
+			cookies := resp.Cookies()
+			if len(cookies) != 1 {
+				t.Fatalf("cookies=%v", cookies)
+			}
+			cookie := cookies[0]
+			wantSeconds := int(absolute / time.Second)
+			if cookie.MaxAge < wantSeconds-10 || cookie.MaxAge > wantSeconds {
+				t.Fatalf("absolute=%s cookie MaxAge=%d", absolute, cookie.MaxAge)
+			}
+			if cookie.Expires.IsZero() || time.Until(cookie.Expires) < absolute-10*time.Second ||
+				time.Until(cookie.Expires) > absolute {
+				t.Fatalf("absolute=%s cookie Expires=%s", absolute, cookie.Expires)
+			}
+		})
+	}
+}
+
+func TestSignupRejectsNULAsValidationError(t *testing.T) {
+	server := phase3Server(t)
+	for _, tc := range []struct {
+		field, body string
+	}{
+		{"company_name", `{"name":"Ana","email":"` + uuid.NewString() + `@example.com","password":"example-password","company_name":"ACME\u0000 SA","base_currency":"ARS","industry_template_code":"generic"}`},
+		{"name", `{"name":"Ana\u0000 María","email":"` + uuid.NewString() + `@example.com","password":"example-password","company_name":"ACME","base_currency":"ARS","industry_template_code":"generic"}`},
+	} {
+		resp := postSignup(t, server, tc.body, "application/json")
+		var problem struct {
+			Code   string `json:"code"`
+			Errors []struct {
+				Field string `json:"field"`
+				Code  string `json:"code"`
+			} `json:"errors"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&problem); err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusUnprocessableEntity || problem.Code != "validation_failed" ||
+			len(problem.Errors) != 1 || problem.Errors[0].Field != tc.field ||
+			problem.Errors[0].Code != "invalid_value" || len(resp.Cookies()) != 0 {
+			t.Fatalf("field=%s status=%d problem=%+v", tc.field, resp.StatusCode, problem)
+		}
+	}
 }
 
 func TestPhase3SignupAndMe(t *testing.T) {
@@ -77,7 +137,7 @@ func TestPhase3SignupAndMe(t *testing.T) {
 		t.Fatalf("cache=%q", got)
 	}
 	cookies := resp.Cookies()
-	if len(cookies) != 1 || cookies[0].Name != identity.SessionCookieName || !cookies[0].Secure || !cookies[0].HttpOnly || cookies[0].Path != "/" || cookies[0].Domain != "" || cookies[0].MaxAge != 604800 || cookies[0].SameSite != http.SameSiteLaxMode {
+	if len(cookies) != 1 || cookies[0].Name != identity.SessionCookieName || !cookies[0].Secure || !cookies[0].HttpOnly || cookies[0].Path != "/" || cookies[0].Domain != "" || cookies[0].MaxAge < 604790 || cookies[0].MaxAge > 604800 || cookies[0].SameSite != http.SameSiteLaxMode {
 		t.Fatalf("session cookie attributes: %+v", cookies)
 	}
 	var result struct {

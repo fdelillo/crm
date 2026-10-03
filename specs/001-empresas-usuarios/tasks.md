@@ -1105,7 +1105,9 @@ normalización es de `Record`). Un error de `Record` se propaga y revierte el re
 
   | Caso | Esperado |
   |---|---|
-  | Payload válido | `201` `SessionInfo`; `Set-Cookie: __Host-crm_session=…; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=604800`, **sin** `Domain` (aserción explícita de cada atributo, INV-23); `Cache-Control: no-store` |
+  | Payload válido | `201` `SessionInfo`; `Set-Cookie: __Host-crm_session=…; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=604800` con la configuración por defecto, **sin** `Domain` (aserción explícita de cada atributo, INV-23); `Cache-Control: no-store` |
+  | `SESSION_ABSOLUTE` menor o mayor que 7 días | La cookie usa el vencimiento real de `SessionResult.ExpiresAt`, sin fijar siete días |
+  | `name` o `company_name` con `\u0000` | `422 invalid_value` para ese campo; no se calcula el hash ni se abre la transacción |
   | Registro válido y luego `GET /me` con el mismo cliente | `200`: la cookie viajó sola por HTTPS (el `cookiejar` la reenvió) |
   | Email existente | `409`, `code: email_already_registered`, `suggested_action: password_reset`, `title` "Ya existe un usuario con ese email", `detail` "Ya existe un usuario con ese email. ¿Querés recuperar la contraseña?"; valida contra `EmailAlreadyRegisteredProblem` |
   | Email existente de un usuario `invited`, `active` y `disabled` (tres cuentas distintas) | los tres cuerpos son **idénticos byte a byte** salvo `instance` (INV-20) |
@@ -1206,7 +1208,7 @@ email visible en Mailpit.
 
   | Caso | Esperado |
   |---|---|
-  | Login correcto | `200` `SessionInfo` + cookie con `Max-Age=604800`, `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`, sin `Domain` (INV-23) |
+  | Login correcto | `200` `SessionInfo` + cookie con `Max-Age` calculado desde `SessionResult.ExpiresAt` (`604800` por defecto), `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`, sin `Domain` (INV-23) |
   | Incorrecto / inexistente | `401 invalid_credentials`, **cuerpos idénticos byte a byte** salvo `instance` |
   | Bloqueado | `429 login_locked` + `Retry-After` en segundos |
   | Desactivado con contraseña correcta | `403 account_disabled` |
