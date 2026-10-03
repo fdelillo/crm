@@ -43,7 +43,7 @@ func runServe(ctx context.Context, args []string, e env) error {
 		Readiness: app.ReadinessPlaceholder(),
 		// Until the web package embeds the built SPA (T-F008) the interface answers 503.
 		SPA: app.SPAUnavailableHandler(),
-	}, app.NewCommonMiddleware(logger, cfg.IsLocal()))
+	}, app.NewCommonMiddleware(logger, cfg.IsLocal(), cfg.TrustedProxies))
 
 	// A bad certificate pair fails here, before anything listens.
 	srv, err := app.NewServer(cfg, root)

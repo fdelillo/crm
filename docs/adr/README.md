@@ -25,8 +25,8 @@ Reglas:
 | [007](007-hashing-contrasenas-argon2id.md) | Hashing de contraseñas con argon2id | Accepted | 001 |
 | [008](008-identificadores-uuidv7.md) | Identificadores UUIDv7 | Accepted | 001 |
 | [009](009-formato-errores-rfc9457.md) | Errores HTTP RFC 9457 con código estable | Accepted | 001 |
-| [010](010-email-outbox-transaccional.md) | Emails con outbox transaccional, worker en el binario y puerto `Mailer` SMTP | Accepted | 001 |
-| [011](011-almacenamiento-archivos-s3.md) | Almacenamiento compatible con S3, subida vía backend | Accepted | 001 |
+| [010](010-email-outbox-transaccional.md) | Emails con outbox transaccional, worker en el binario y puerto `Mailer` SMTP | Accepted (la clasificación de errores de "Reintentos" la reemplaza ADR-024; nota 2026-10-01) | 001 |
+| [011](011-almacenamiento-archivos-s3.md) | Almacenamiento compatible con S3, subida vía backend | Accepted (nota 2026-10-01 sobre la imagen de MinIO: Accepted) | 001 |
 | [012](012-estrategia-de-tests.md) | Estrategia de tests (TDD, PostgreSQL real, contrato, aislamiento) | Accepted | 001 |
 | [013](013-autorizacion-matriz-permisos.md) | Autorización con matriz estática de permisos por rol | Accepted | 001 |
 | [014](014-contrato-openapi-canonico.md) | Contrato OpenAPI 3.1 canónico, handlers a mano, validación en tests | Accepted | 001 |
@@ -39,9 +39,19 @@ Reglas:
 | [021](021-formularios-react-hook-form-zod.md) | Formularios con React Hook Form y Zod atado al contrato | Proposed | 001 (frontend) |
 | [022](022-estrategia-de-tests-frontend.md) | Estrategia de tests del frontend (Vitest, Testing Library, MSW, Playwright) | Proposed | 001 (frontend) |
 | [023](023-idioma-formato-fechas-dinero-frontend.md) | Idioma, formato de fechas y dinero en el frontend (es-AR, `Intl`, sin punto flotante) | Proposed | 001 (frontend) |
+| [024](024-clasificacion-fallos-outbox-y-presupuesto-smtp.md) | Clasificación de fallos de entrega del outbox, presupuesto de tiempo del envío SMTP y aislamiento de fallos por mensaje | Accepted (ADR-025, *Accepted*, reemplaza el último párrafo de §2 y partes de §3; nota 2026-10-01 (b)) | 001 (revisión del PR #8) |
+| [025](025-saneamiento-last-error-y-codigo-extendido.md) | `last_error` sin texto del proveedor después del contenido, redacción de secuencias tipo secreto y código extendido leído del texto en todas las fases | Accepted | 001 (tercera revisión del PR #8) |
 
 Los ADR 001–014 quedaron `Accepted` el 2026-09-29, al aprobarse el plan de la spec 001.
 
 Los ADR 015–023 (frontend) se escribieron el 2026-09-29 junto con `specs/001-empresas-usuarios/ui.md`.
 Los marcados `Accepted` registran decisiones del usuario; sus detalles y los ADR `Proposed` quedan
 pendientes de aprobación.
+
+ADR-024 (2026-10-01) reemplaza solo la clasificación de errores de la viñeta "Reintentos" de
+ADR-010; el resto de ADR-010 sigue vigente, por eso ADR-010 no pasa a `Superseded`.
+
+ADR-025 (2026-10-01, `Accepted`) reemplaza solo tres piezas de ADR-024 (de dónde sale el código
+extendido, el detalle de las respuestas de la fase `data` y la regla de redacción de `last_error`).
+ADR-024 sigue `Accepted` en todo lo demás, con la misma forma de nota que se usó en
+ADR-010; no pasa a `Superseded`.

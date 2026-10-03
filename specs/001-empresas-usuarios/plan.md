@@ -18,6 +18,19 @@ INV-25 e INV-26. Estado de la implementación y detalle en §18.
 `SET ROLE` a una empresa recién aprovisionada desde otra conexión falla con `42501`) y decisión
 del usuario sobre cómo defenderse: DD-34, INV-27, S-16, R-17, runbook §12.3, nota (b) en ADR-005
 y research R-28. Detalle en §18.
+**Quinta revisión 2026-10-01 (Accepted por el usuario)**: decisiones de la
+revisión del PR fdelillo/crm#8 (Fase 2). Clasificación de fallos de entrega por causa y fase (solo
+el rechazo del destinatario y los bugs son definitivos; los `5xx` de la conexión son errores de
+configuración recuperables), formato saneado de `last_error`, presupuesto de tiempo del envío
+frente a `idle_in_transaction_session_timeout` y aislamiento de fallos por mensaje del `Dispatcher`
+(ADR-024 nuevo, nota en ADR-010, DD-35, INV-28 a INV-31); imagen de MinIO para desarrollo y tests
+(DD-36, nota en ADR-011). Detalle en §18.
+**Sexta revisión 2026-10-01 (Accepted)**: tercera revisión del PR fdelillo/crm#8 (HEAD 31fb773).
+Política de credenciales en `audit_log.data` (DD-37, INV-32); `user_agent` acotado en cada escritura
+(DD-38, INV-33); `last_error` sin texto del proveedor en la fase `data`, redacción de URLs y
+secuencias tipo secreto, y código extendido leído del texto en todas las fases (ADR-025 nuevo, nota
+en ADR-024, INV-30 reescrita); `RequestID` antes de `ClientIP` en la cadena común (DD-22, DD-32);
+texto de DD-35 alineado con el código. Detalle en §18.
 
 Artefactos de esta spec:
 
@@ -29,7 +42,7 @@ Artefactos de esta spec:
 | [`contracts/openapi.yaml`](contracts/openapi.yaml) | Contrato HTTP **canónico** (OpenAPI 3.1) |
 | [`tasks.md`](tasks.md) | Plan TDD (sección Backend) |
 | [`ui.md`](ui.md) | Diseño del frontend (`frontend-architect`) |
-| [`docs/adr/`](../../docs/adr/README.md) | ADR-001 a ADR-014: decisiones base del proyecto; ADR-019: SPA embebida |
+| [`docs/adr/`](../../docs/adr/README.md) | ADR-001 a ADR-014: decisiones base del proyecto; ADR-019: SPA embebida; ADR-024: fallos de entrega del outbox; ADR-025: saneamiento de `last_error` (Accepted) |
 
 ---
 
@@ -53,7 +66,7 @@ funcionalidad fija las decisiones base del proyecto (ADR-001 a ADR-014).
 | Contraseñas | argon2id (`golang.org/x/crypto/argon2`), formato PHC | ADR-007 |
 | Identificadores | UUIDv7 (`uuidv7()` de PG 18 y `github.com/google/uuid` en Go) | ADR-008 |
 | Errores HTTP | RFC 9457 `application/problem+json` con `code` estable | ADR-009 |
-| Email | Outbox transaccional + worker en el mismo binario; puerto `Mailer`, adaptador SMTP con `github.com/wneessen/go-mail` | ADR-010 |
+| Email | Outbox transaccional + worker en el mismo binario; puerto `Mailer`, adaptador SMTP con `github.com/wneessen/go-mail`; clasificación de fallos por causa, `last_error` saneado y presupuesto de envío de 20 s | ADR-010, ADR-024, ADR-025, DD-35 |
 | Archivos | S3 compatible (MinIO en desarrollo) con `github.com/minio/minio-go/v7` | ADR-011 |
 | Tests | `testing` nativo, table-driven; integración con PostgreSQL real vía `testcontainers-go`; contrato con `libopenapi-validator`; HTTP con `httptest.NewTLSServer` cuando hay cookie | ADR-012 |
 | Autorización | Matriz estática rol → permisos (FR-007) en `internal/authz` | ADR-013 |
@@ -63,7 +76,7 @@ funcionalidad fija las decisiones base del proyecto (ADR-001 a ADR-014).
 | Zonas horarias | Base IANA embebida con `time/tzdata` (librería estándar) | DD-27 |
 | Logs | `log/slog` (JSON) de la librería estándar | DD-12 |
 | Rate limit | `golang.org/x/time/rate`, en memoria; clave por IP (IPv6 por /64) | DD-9, DD-32 |
-| Desarrollo local | PostgreSQL 18 + Mailpit + MinIO (`compose.yaml`); **HTTPS local** con un certificado de `mkcert` (herramienta de desarrollo, no dependencia del binario); Vite con *proxy* de `/api` | ADR-010, ADR-011, ADR-019, DD-24 |
+| Desarrollo local | PostgreSQL 18 + Mailpit + MinIO (`compose.yaml`; MinIO desde `ghcr.io/coollabsio/minio`, fijada por versión y digest, la misma imagen que los tests); **HTTPS local** con un certificado de `mkcert` (herramienta de desarrollo, no dependencia del binario); Vite con *proxy* de `/api` | ADR-010, ADR-011, ADR-019, DD-24, DD-36 |
 
 **Validación del stack**: detecté un repo sin código, con la constitución fijando Go +
 PostgreSQL + OpenAPI + monolito modular y las librerías que eligió el usuario. Diseño sobre eso.
@@ -255,7 +268,7 @@ permite `AsSystem` → `AsTenant`, pero **nunca dos empresas distintas en una tr
 | Login | `crm_auth` | `users(id, tenant_id, email)`, `login_throttles` | Lee hash, estado y rol; crea sesión; audita | `crm_auth` no puede leer `password_hash`, `name`, `role` ni `status` (privilegios por columna) |
 | Pedir reset | `crm_auth` | `users(id, tenant_id, email)` | Según el estado: token de reset, reemisión de invitación (DD-20) o nada | Idem |
 | Confirmar reset, verificar email, ver/aceptar invitación | `crm_auth` | `user_tokens(id, tenant_id, token_hash, purpose)` | Valida vencimiento/uso, escribe | Vencimiento, uso y usuario se validan bajo RLS |
-| Worker de outbox | `crm_worker` | `outbox_messages(id, tenant_id, status, next_attempt_at)` pendientes | Lee destinatario y payload, envía, marca | Destinatario y contenido solo bajo RLS |
+| Worker de outbox | `crm_worker` | `outbox_messages(id, tenant_id, status, next_attempt_at, created_at)` pendientes; si la fase 2 falla, **aplaza** el mensaje moviendo solo `next_attempt_at`, en otra transacción (ADR-024 §6) | Lee destinatario y payload, envía, marca | Destinatario y contenido solo bajo RLS; el aplazamiento no lee ni escribe nada más |
 | Limpieza periódica | `crm_worker` | Filas **vencidas** de `sessions`, `user_tokens` (salvo la invitación abierta de un invitado, DD-25), `outbox_messages` terminales, `login_throttles` | — | La política de `DELETE` solo alcanza filas vencidas |
 | Reaprovisionar roles (ops) | `crm_worker` + `crm_signup` | `tenants(id)` | — | No toca datos de negocio |
 
@@ -270,7 +283,7 @@ del PR fdelillo/crm#7, 2026-09-30):
 |---|---|---|---|
 | `internal/identity/store/auth_lookup.sql` | `crm_auth` | Fase 1 de login, pedido de reset, resolución de sesión y tokens (por igualdad exacta sobre una columna única); lecturas y escrituras de `login_throttles` | T-B308, T-B403, T-B503, T-B505, T-B605 |
 | `internal/identity/store/cleanup.sql` | `crm_worker` | `DELETE` de filas vencidas de `sessions`, `user_tokens` y `login_throttles` (las políticas de `data-model.md` §3.4 acotan qué filas) | T-B902 |
-| `internal/platform/outbox/store/worker.sql` | `crm_worker` | Tomar mensajes pendientes (`FOR UPDATE SKIP LOCKED`) y limpiar mensajes terminales de `outbox_messages` | T-B212, T-B902 |
+| `internal/platform/outbox/store/worker.sql` | `crm_worker` | Tomar mensajes pendientes (`FOR UPDATE SKIP LOCKED`), aplazar un mensaje pendiente (`DeferMessage`, ADR-024 §6) y limpiar mensajes terminales de `outbox_messages` | T-B212, T-B902 |
 | `internal/tenant/store/provisioning.sql` | `crm_worker` y `crm_signup` | `SELECT id FROM app.tenants` (reaprovisionamiento y métrica `tenant_roles_total`) y la llamada a `provisioning.provision_tenant_role` (registro y reaprovisionamiento) | T-B304, T-B904, T-B907 |
 
 Regla: cada módulo guarda las queries de sistema **sobre sus propias tablas** (ADR-001). Agregar
@@ -678,14 +691,17 @@ informar cuándo venció (`User.invitation_expires_at`, DD-25). Reinvitar crea u
 stateDiagram-v2
     [*] --> pending : se encola en la transacción de la operación
     pending --> sent : SMTP acepta el mensaje
-    pending --> pending : error recuperable (reintento con backoff) o apagado a mitad del envío
-    pending --> failed : error definitivo o se agotan los intentos
+    pending --> pending : error recuperable (reintento con backoff), aplazado por un fallo del Dispatcher o apagado a mitad del envío
+    pending --> failed : rechazo del destinatario, bug de plantilla o payload, o se agotan los intentos
     sent --> [*]
     failed --> [*]
 ```
 
 Un apagado a mitad del envío (`context.Canceled`) deja el mensaje exactamente como estaba:
-`pending`, sin sumar `attempts` ni mover `next_attempt_at` (§9.4).
+`pending`, sin sumar `attempts` ni mover `next_attempt_at` (§9.4). Un **aplazamiento** (falla
+`AsTenant`, `GetMessage` o el marcado; ADR-024 §6) solo mueve `next_attempt_at`: no suma
+`attempts` ni escribe `last_error`, porque no hubo intento de entrega. Qué es "error recuperable",
+"rechazo del destinatario" o "bug" lo define ADR-024 §1 (aplicado en §9.4).
 
 ---
 
@@ -723,12 +739,18 @@ la vigila.
 | INV-25 | La IP del cliente sale **solo** de `httpx.ClientIP` (DD-32): ningún otro código lee `X-Forwarded-For`, `Forwarded` ni `X-Real-IP`, y `X-Forwarded-For` se ignora por completo si la conexión no viene de un proxy de `TRUSTED_PROXIES`. Logs, rate limit, `sessions.ip` y `audit_log.ip` usan ese valor. | `platform/httpx` | T-B011, T-B219 |
 | INV-26 | La transacción de registro corre con `lock_timeout = 2s` y no hace E/S de red entre `provision_tenant_role` y el `COMMIT` (DD-33): la espera por el lock de `crm_tenant` termina en un `503` reintentable, nunca en un `500` ni en un `statement_timeout`. | `tenant.Service` | T-B303, T-B905 |
 | INV-27 | Todo cambio de rol en `platform/db` manda, en el mismo viaje de red, la lectura de catálogo de DD-34 antes del `SET LOCAL ROLE`. Un `42501` en el cambio de rol se reintenta **solo** si es el `SET LOCAL ROLE` inicial de `InTenantTx`, **una** vez y **antes** de ejecutar `fn` (que por lo tanto corre como mucho una vez). En cualquier otro punto (`InSystemTx`, `AsTenant`, `AsSystem`, dentro de `fn`) se propaga como `db.ErrPrivilege` (INV-19). | `platform/db` | T-B103 |
+| INV-28 | Un fallo de entrega solo pasa un mensaje a `failed` antes de agotar los intentos si es atribuible **al mensaje**: rechazo del destinatario (`5xx` en RCPT TO o DATA con código extendido `5.1.x`/`5.2.x`, o `550`/`551`/`553` en RCPT TO sin código extendido; dirección inválida antes de conectar; el código extendido es el que informa el servidor o, si no lo informa, el del comienzo del texto con la misma clase que el básico, ADR-025 §3) o bug (plantilla, payload o asunto inválidos). Ningún fallo de la fase de conexión (TCP, TLS, saludo, EHLO, STARTTLS, AUTH) ni de MAIL FROM es definitivo (ADR-024 §1). | `platform/outbox`, `platform/mailer` | T-B211, T-B213 |
+| INV-29 | Un `Handle` dura como máximo `outbox.SendBudget` = 20 s, y `SendBudget` + 10 s ≤ `idle_in_transaction_session_timeout` de `crm_app` (30 s): PostgreSQL nunca corta la transacción del worker por un SMTP lento. El adaptador SMTP usa 5 s por etapa de go-mail y `WithoutRset()` (4 ventanas de *deadline* = 20 s) (DD-35). | `platform/outbox`, `platform/mailer`, bootstrap | T-B211, T-B213 |
+| INV-30 | `last_error` y los logs del worker nunca contienen el destinatario, el token ni el payload: el único texto de un fallo de entrega que se guarda o se loguea es `DeliveryError.LastError()`. Garantía estructural: en la fase `data` (la única en la que el servidor ya recibió el contenido con el enlace) no se usa el texto del proveedor y el detalle es `response text omitted`. Defensa adicional en todas las fases: todo campo que contenga `@`, `://` o una secuencia de 20 o más caracteres de `[A-Za-z0-9+/=_-]` → `[redacted]`; una línea; ≤ 1000 caracteres (ADR-024 §3, ADR-025 *Accepted*). El `error` original de una entrega nunca se loguea (el de go-mail incluye el destinatario). | `platform/outbox`, `platform/mailer` | T-B211, T-B213 |
+| INV-31 | Un fallo atribuible a un mensaje (`AsTenant`, `GetMessage` o el marcado) no frena a los demás: el `Dispatcher` aplaza **ese** mensaje (solo `next_attempt_at`, como `crm_worker`, en otra transacción) y sigue con el lote. Solo terminan el ciclo: la base no disponible, la cancelación, un fallo del aplazamiento y un fallo de entrega en la fase de conexión (ADR-024 §4, §6). | `platform/outbox` | T-B211 |
+| INV-32 | `audit_log.data` nunca contiene una credencial: `audit.Recorder.Record` valida `Data` **antes** de escribir (y antes de mirar `tx`) y rechaza con `audit.ErrSecretInData` toda clave o valor que la política de DD-37 reconoce como credencial, y con `audit.ErrUnsupportedData` todo valor de un tipo que la verificación no puede recorrer. El error nombra la ruta de la clave, nunca el valor. | `platform/audit` | T-B209 |
+| INV-33 | Escribir una columna `user_agent` (`sessions`, `audit_log`) nunca hace fallar la operación: todo valor pasa por `httpx.NormalizeUserAgent` (UTF-8 válido, sin `NUL`, ≤ 512 runas) en cada escritor, `audit.Recorder.Record` e `identity` al crear la sesión (DD-38). | `platform/httpx`, `platform/audit`, `identity` | T-B209, T-B303 |
 
 ---
 
 ## 6. Decisiones locales de esta feature (`DD-n`)
 
-Las decisiones estructurales están en `docs/adr/` (ADR-001 a ADR-014; la SPA en ADR-019). Estas
+Las decisiones estructurales están en `docs/adr/` (ADR-001 a ADR-014; la SPA en ADR-019; los fallos del outbox en ADR-024). Estas
 son locales a 001.
 
 | ID | Decisión | Por qué | Trade-off |
@@ -754,7 +776,7 @@ son locales a 001.
 | **DD-19** | **Enumeración aceptada solo en el registro** (P-4). El `409` de `POST /auth/signup` confirma que existe un usuario con ese email (sin ningún otro dato). **Login y pedido de reset se mantienen no enumerables** (INV-13, DD-7): mismas respuestas, hash ficticio, bloqueo por HMAC y `202` constante. Se registra `security_event=signup_email_exists` y la métrica `signup_email_exists_total` para detectar enumeración masiva. | Defensa en profundidad: el registro es el oráculo más lento (5/h por IP, formulario completo, argon2id por intento); simplificar login (20/min) o reset daría oráculos 240 veces más rápidos. Mantener la uniformidad no cuesta nada: ya está diseñada y probada. | Quien quiera saber si un email tiene cuenta puede averiguarlo por el registro, de a pocos por IP. Aceptado por el usuario. |
 | **DD-20** | Un pedido de reset para un usuario **`invited`** reemite su invitación (revoca el token anterior, token nuevo de 7 días, email de invitación) en lugar de enviar un enlace de reset; para un usuario **`disabled`** o un email inexistente no se envía nada. La respuesta es siempre `202`. Auditoría `user.invitation_reissued` con actor `NULL` y `data.trigger = "password_reset_request"`. | Coherencia con DD-19: el registro sugiere "recuperar la contraseña" también a quien todavía no aceptó su invitación; sin esto, ese usuario no recibiría nada. Reusa la plantilla y la lógica de reinvitación (DD-5). | Un invitado puede renovar su invitación por su cuenta (solo le llega a su propio email; rate limit 3/h por email). El usuario `disabled` no recibe explicación: debe hablar con su Administrador. |
 | **DD-21** | Mismo error de dominio (`identity.ErrEmailTaken`), **distinto `code` HTTP por endpoint**: registro → `409 email_already_registered` con `suggested_action: "password_reset"`; invitación → `409 email_taken` sin acción sugerida. | Semánticas distintas para la UI: el visitante probablemente ya tiene cuenta y puede recuperarla; el Administrador no puede recuperar la cuenta de otra persona. | Dos códigos para la misma condición de base; el mapeo vive en el `http.go` de cada módulo. |
-| **DD-22** | **Mux raíz** (H-1): `internal/app` arma un `http.ServeMux` con `/api/` → router chi, `GET /healthz` y `GET /readyz` → ops, `/` → `web.NewHandler(dist)`. Los middlewares comunes (IP del cliente, request id, recover, logging, cabeceras de seguridad, `CrossOriginProtection`) envuelven al mux raíz; `no-store`, rate limit, autenticación y autorización quedan dentro de chi. `/api` sin barra final lo redirige el propio `ServeMux` a `/api/`. El `MethodNotAllowed` de chi responde `405 method_not_allowed` con `Allow` (§9.2). | Registrar la SPA como `/*` en chi rompería T-B004, T-B801 y el test de rutas contra el contrato, y convertiría un `/api/…` inexistente en `index.html`. | Un nivel más de ruteo; dos formas de declarar rutas (stdlib para 3 destinos fijos, chi para la API). |
+| **DD-22** | **Mux raíz** (H-1): `internal/app` arma un `http.ServeMux` con `/api/` → router chi, `GET /healthz` y `GET /readyz` → ops, `/` → `web.NewHandler(dist)`. Los middlewares comunes (request id, IP del cliente, recover, logging, cabeceras de seguridad, `CrossOriginProtection`, en ese orden; DD-32) envuelven al mux raíz; `no-store`, rate limit, autenticación y autorización quedan dentro de chi. `/api` sin barra final lo redirige el propio `ServeMux` a `/api/`. El `MethodNotAllowed` de chi responde `405 method_not_allowed` con `Allow` (§9.2). | Registrar la SPA como `/*` en chi rompería T-B004, T-B801 y el test de rutas contra el contrato, y convertiría un `/api/…` inexistente en `index.html`. | Un nivel más de ruteo; dos formas de declarar rutas (stdlib para 3 destinos fijos, chi para la API). |
 | **DD-23** | **Caché del logo** (H-2): `GET /tenant/logo` responde `Cache-Control: private, no-cache` y `ETag: "<uuid del objeto>"` (el UUIDv7 de `logo_object_key`, distinto por subida y por empresa). Con `If-None-Match` igual responde `304` sin leer S3. Acepta un parámetro de query opcional `v` que el servidor **ignora** (lo usa la UI para cambiar la URL cuando cambia el logo: `?v={id}-{updated_at}`). | La URL es la misma para todas las empresas: con `max-age` un celular compartido mostraba el logo de la empresa anterior o el viejo tras reemplazarlo. `no-cache` obliga a revalidar siempre; el `ETag` hace que revalidar cueste un `304` sin bytes. | Un request de revalidación por carga del logo (liviano: solo lee la fila de la empresa). |
 | **DD-24** | **HTTPS en todos los entornos; TLS propio solo en modo local** (H-3, **revisada por H-10**; decisión del usuario). `APP_BASE_URL` debe ser `https://` (cualquier `http://` es error de configuración) y la cookie es siempre `__Host-crm_session` con `Secure` (INV-23): se **eliminan** la excepción `http://localhost` y la variable `COOKIE_SECURE`. **Modo local** = el host de `APP_BASE_URL` es `localhost` o `127.0.0.1`. Solo en modo local se aceptan `TLS_CERT_FILE` y `TLS_KEY_FILE` (las dos o ninguna): con ellas `crm serve` escucha **HTTPS** en `HTTP_ADDR` con ese certificado (de `mkcert`, §10.5.1); sin ellas escucha HTTP plano (producción detrás del proxy TLS del hosting; `curl` y tests en desarrollo). En modo local **no** se envía `Strict-Transport-Security`. *Versión anterior (reemplazada)*: aceptaba `http://localhost`/`127.0.0.1` con `COOKIE_SECURE=true` y afirmaba que se podía desarrollar con Chrome o Firefox. | Chrome/Chromium rechaza una cookie `__Host-` servida por `http://localhost` y Safari rechaza `Secure` allí (H-10, R-23): la regla anterior no daba sesión en esos navegadores ni en los E2E de Chromium. Con HTTPS local la cookie es la misma que en producción en todos los navegadores, y sin excepciones no hay combinación de variables que emita la cookie sin `Secure`. El TLS de producción es del hosting (P-1): aceptar un certificado solo en modo local evita desplegar uno de desarrollo por error. HSTS en `localhost` podría forzar HTTPS en otros proyectos del desarrollador (S-13). | Instalar mkcert y generar el certificado una vez por equipo (`make dev-certs`), y la CA también en el job de E2E. Sin `TLS_*`, el navegador no tiene sesión en desarrollo (a propósito). |
 | **DD-25** | **`User.invitation_expires_at`** (H-4): para un usuario `invited` es el vencimiento de su **última** invitación, **aunque ya haya pasado**; para los demás estados, `null`. La limpieza periódica no borra la invitación abierta de un usuario invitado (solo invitaciones usadas o revocadas, `data-model.md` §3.4). | La UI muestra "Invitación vencida" y ofrece reenviar; sin la fecha no puede distinguir vencida de vigente. | Una fila de `user_tokens` por invitado que nunca aceptó queda sin limpiar mientras siga invitado (volumen despreciable). |
@@ -764,9 +786,13 @@ son locales a 001.
 | **DD-29** | **Cabeceras y compresión de la SPA** (H-8): se adoptan las reglas de ADR-019 / `ui.md` §21.2 (tabla en §10.7). Se **aprueba** `github.com/klauspost/compress/gzhttp` para comprimir con gzip **solo** el handler de la SPA (HTML, JS, CSS, manifest), con el umbral por defecto (1 KB). La API **no** se comprime. Si el hosting pone un proxy que comprime, se quita. | La librería estándar no trae compresión HTTP; `gzhttp` es mantenida, maneja `ETag` y tipos ya comprimidos. Comprimir solo estáticos públicos evita tener que analizar ataques tipo BREACH sobre respuestas con datos personales, y las respuestas JSON de 001 son chicas. | Una dependencia más (aprobada por el usuario) y CPU por request de la SPA (bajo: pocos usuarios, archivos chicos). |
 | **DD-30** | **Rechazo de CSRF en problem+json** (H-9): `CrossOriginProtection.SetDenyHandler` responde `403 problem+json` con `code: forbidden` y loguea `security_event=csrf_rejected` (con `ip` y `route`, sin cuerpo). | El frontend trata cualquier `403` con el mismo mapa de errores; el texto plano por defecto caía como "respuesta inesperada". | La UI no distingue un rechazo de CSRF de un permiso faltante (no debería ocurrir con la SPA en el mismo origen). |
 | **DD-31** | **Límites exactos de la subida del logo** (H-11, decisión del usuario). Archivo ≤ `LogoMaxBytes` = **2 097 152 bytes** (2 MiB), medido sobre el contenido de la parte `file`. Cuerpo `multipart/form-data` completo ≤ `LogoMaxBodyBytes` = **2 162 688 bytes** (archivo + 64 KiB para *boundary*, encabezados de la parte y nombre de archivo), aplicado con `http.MaxBytesReader` antes de leer. El handler lee con `r.MultipartReader()` **exactamente una** parte `file`: otra parte o una segunda `file` → `400 malformed_request`; sin `file` o vacía → `422` (`file`, `required`). La parte se lee con un tope de `LogoMaxBytes + 1` bytes en memoria: si se llega al byte extra → `413 payload_too_large` sin leer el resto. `tenant.Service.SetLogo` recibe los bytes, vuelve a verificar el tamaño (defensa en profundidad), valida el tipo por firma (`415`) y las dimensiones con `image.DecodeConfig` (`422`, `file`, `invalid_value`). Las constantes viven en `internal/tenant` y **no son configurables**: son parte del contrato. | El cliente necesita un número exacto al que apuntar; medir el archivo y no el cuerpo hace que el límite no dependa del nombre de archivo ni del *boundary* que elige el navegador; `MultipartReader` evita archivos temporales en disco y partes inesperadas (R-24). | Hasta ~2 MiB en memoria por subida concurrente (irrelevante a la escala S-3); tres lugares que mantener alineados: constantes, contrato y la constante del cliente en `ui.md` (matriz §16). |
-| **DD-32** | **IP del cliente detrás de proxies** (decisión del usuario, 2026-09-30). Variable `TRUSTED_PROXIES`: lista de CIDR separada por comas, **vacía por defecto** (no se confía en ningún proxy). `0.0.0.0/0`, `::/0` y un CIDR inválido son error de arranque. Un único middleware, `httpx.ClientIP`, **primero** de la cadena común, calcula la IP y la deja en el contexto como `netip.Addr`; la usan el log (`ip`), el rate limit (DD-9), `sessions.ip` y `audit_log.ip` (INV-25). Algoritmo: (1) si `RemoteAddr` no está en `TRUSTED_PROXIES`, la IP es `RemoteAddr` y `X-Forwarded-For` se ignora; (2) si está, se recorre `X-Forwarded-For` de **derecha a izquierda** (varias cabeceras se concatenan en orden) salteando las IPs de confianza: la primera que no es de confianza es la del cliente; (3) si todas son de confianza o no hay cabecera, se usa la de más a la izquierda que sea válida o, si no hay, `RemoteAddr`; (4) si aparece una entrada mal formada antes de encontrar la del cliente, se usa `RemoteAddr` y se loguea `WARN` (`event=bad_forwarded_for`). Se normaliza con `netip.Addr.Unmap()` y sin puerto. Solo se lee `X-Forwarded-For` (no `Forwarded` ni `X-Real-IP`). Clave del rate limit: la IPv4 completa; en IPv6, el prefijo **/64**. | Detrás del proxy del hosting, `RemoteAddr` es el proxy: el rate limit por IP sería global (un atacante agota el cupo de todos) y logs y auditoría quedarían con una IP inútil. Tomar la IP de la izquierda deja que el cliente la invente. Configurable sin conocer todavía el hosting (P-1). Un cliente IPv6 controla al menos un /64 y podría rotar direcciones para esquivar el límite. | Una variable más que configurar al desplegar; si se olvida detrás de un proxy, el rate limit por IP vuelve a ser global (runbook §12.3). Clientes detrás del mismo NAT (p. ej. celulares de una operadora) comparten cupo, igual que antes. |
+| **DD-32** | **IP del cliente detrás de proxies** (decisión del usuario, 2026-09-30). Variable `TRUSTED_PROXIES`: lista de CIDR separada por comas, **vacía por defecto** (no se confía en ningún proxy). `0.0.0.0/0`, `::/0` y un CIDR inválido son error de arranque. Un único middleware, `httpx.ClientIP`, **segundo** de la cadena común, inmediatamente después de `httpx.RequestID` (sexta tanda, 2026-10-01, *Accepted*: antes era el primero y el aviso `bad_forwarded_for` salía sin `request_id`; `RequestID` no lee la IP), calcula la IP y la deja en el contexto como `netip.Addr`; la usan el log (`ip`), el rate limit (DD-9), `sessions.ip` y `audit_log.ip` (INV-25). Algoritmo: (1) si `RemoteAddr` no está en `TRUSTED_PROXIES`, la IP es `RemoteAddr` y `X-Forwarded-For` se ignora; (2) si está, se recorre `X-Forwarded-For` de **derecha a izquierda** (varias cabeceras se concatenan en orden) salteando las IPs de confianza: la primera que no es de confianza es la del cliente; (3) si todas son de confianza o no hay cabecera, se usa la de más a la izquierda que sea válida o, si no hay, `RemoteAddr`; (4) si aparece una entrada mal formada antes de encontrar la del cliente, se usa `RemoteAddr` y se loguea `WARN` (`event=bad_forwarded_for`, con `request_id`; nunca el valor de la cabecera). Se normaliza con `netip.Addr.Unmap()` y sin puerto. Solo se lee `X-Forwarded-For` (no `Forwarded` ni `X-Real-IP`). Clave del rate limit: la IPv4 completa; en IPv6, el prefijo **/64**. | Detrás del proxy del hosting, `RemoteAddr` es el proxy: el rate limit por IP sería global (un atacante agota el cupo de todos) y logs y auditoría quedarían con una IP inútil. Tomar la IP de la izquierda deja que el cliente la invente. Configurable sin conocer todavía el hosting (P-1). Un cliente IPv6 controla al menos un /64 y podría rotar direcciones para esquivar el límite. | Una variable más que configurar al desplegar; si se olvida detrás de un proxy, el rate limit por IP vuelve a ser global (runbook §12.3). Clientes detrás del mismo NAT (p. ej. celulares de una operadora) comparten cupo, igual que antes. |
 | **DD-33** | **Serialización de registros por el lock de `GRANT crm_tenant`** (decisión del usuario, 2026-09-30; nota en ADR-005). Desde PostgreSQL 16, el `GRANT crm_tenant TO crm_t_<hex>` de `provision_tenant_role` toma un lock sobre `crm_tenant` hasta el fin de la transacción: los registros concurrentes esperan uno detrás de otro. Se acepta con cuatro restricciones: **R-a** la transacción de registro hace `SET LOCAL lock_timeout = '2s'` antes de aprovisionar; `55P03 lock_not_available` → `db.ErrUnavailable` → `503 service_unavailable` con `Retry-After: 2`, sin crear nada (ni el rol); métrica `signup_lock_timeout_total`. **R-b** desde `provision_tenant_role` hasta el `COMMIT` no hay E/S de red (argon2 antes, email por outbox, nada de S3) y el objetivo es **p95 < 250 ms** (§13, medido en T-B905 con registros concurrentes). **R-c** (restricción heredada para el plan de 002): el `Seeder` corre dentro de esa transacción (INV-14) solo con SQL por conjuntos y dentro del presupuesto de R-b; si el sembrado de 002 no entra, el plan de 002 lo rediseña (p. ej. estado "configuración pendiente" y siembra idempotente después del `COMMIT`). **R-d** `crm tenants reprovision-roles` usa **una transacción por empresa** y no corre en paralelo consigo mismo (advisory lock de sesión; la segunda ejecución termina con un mensaje claro). | No se puede evitar sin romper INV-14 (el rol necesita la membresía antes de insertar sus filas). A la escala del MVP los registros son raros y la transacción dura milisegundos; lo que hay que evitar es que una espera termine en `500` o que una transacción larga (reprovisión en bloque, sembrado pesado) frene todos los registros. | Un pico de registros simultáneos puede dar algunos `503` reintentables; hay que vigilar la duración de la transacción de registro. Si T-B905 no cumple: *pool* de roles pre-creados o alternativa B de ADR-005 (research R-04c). |
 | **DD-34** | **Primer `SET ROLE` a una empresa recién aprovisionada desde otra conexión** (hallazgo de implementación y decisión del usuario, 2026-09-30; nota (b) en ADR-005; research R-28). **Evidencia**: en PostgreSQL 18.6, después del `COMMIT` que crea `crm_t_<hex>` y lo concede a `crm_app` con `SET TRUE`, el primer `SET LOCAL ROLE crm_t_<hex>` desde **otra** conexión del pool a veces falla con `42501 permission denied to set role`. Hipótesis del desarrollador (no verificada en el código de PostgreSQL, S-16): la lista de roles "SET-ables" que cada backend guarda en caché (`roles_is_member_of`, `acl.c`) todavía no procesó la invalidación de la membresía nueva. El test `TestTxRunner_NewCompanyIsUsableOnAnyConnectionRightAfterProvisioning` (registros concurrentes) daba **64 a 105 fallas en 600** primeros usos. En producción: "me registro, el siguiente request cae en otra conexión y recibo un `500`". **Dos defensas**: **(1) lectura previa de catálogo** (commit e3d990b): la función privada de `platform/db` que cambia de rol manda en **un solo viaje de red** `SELECT 1 FROM pg_catalog.pg_auth_members LIMIT 0; SET LOCAL ROLE …`. Leer el catálogo hace que el backend procese las invalidaciones pendientes antes del chequeo. Vale para todo cambio de rol (`InTenantTx`, `InSystemTx`, `AsTenant`, `AsSystem`) y para los fixtures de test. Medido: **0 fallas en 1800** en la reproducción y 0 en 8 corridas de la suite de integración. **(2) Un único reintento en `InTenantTx`**: si el `SET LOCAL ROLE` inicial a un rol de empresa falla con `42501` **antes** de ejecutar `fn`, hace `ROLLBACK` y repite la transacción completa (nuevo `BEGIN`, el mismo viaje de (1)) **una** vez. Registra log `WARN` `event=set_role_retry` con `tenant_id` y `outcome` (`recovered` o `failed`, sin datos personales) y suma a la métrica `set_role_retry_total`. **Nunca** reintenta: después de que `fn` empezó, en `InSystemTx`, en `tx.AsTenant`/`tx.AsSystem` a mitad de transacción, ni ante otro SQLSTATE (p. ej. `22023`, rol inexistente en PostgreSQL 18, que es el caso de §12.4). Si el reintento también falla, devuelve `db.ErrPrivilege` envuelto con el nombre del rol y el paso (`set role crm_t_…`), así el `ERROR` de INV-19 distingue un cambio de rol denegado de una violación de RLS dentro de una query (INV-27). | **(1) sola** depende de un comportamiento interno no documentado de PostgreSQL (R-17). **(2) sola** cubre solo `InTenantTx` y paga un viaje fallido en cada primer uso. Juntas, (1) resuelve el caso en todos los caminos y (2) es la red si (1) deja de alcanzar en otra versión. **El reintento es seguro solo en ese punto**: la transacción todavía no ejecutó nada (solo `BEGIN` y el cambio de rol que falló), así que el `ROLLBACK` no deshace trabajo, `fn` corre como mucho una vez y ningún efecto externo quedó hecho. Después de `fn`, un `42501` puede ser una violación real de RLS (INV-19) y reintentar repetiría efectos. En `InSystemTx` las membresías son fijas desde el bootstrap, así que un `42501` es un bug. En `AsTenant` la transacción ya ejecutó la fase 1 y reintentar exigiría repetir `fn`. | Una sentencia más por cambio de rol, en el mismo viaje de red (costo a confirmar en T-B905). Dependencia de un detalle interno de PostgreSQL, vigilada por el test de reproducción (corre en `make check`) y por la métrica. **Cobertura parcial del reintento**: el camino `InSystemTx(crm_auth) → AsTenant` (resolución de sesión, login, tokens) queda cubierto **solo** por (1), y es justamente el del `GET /me` que sigue al registro. Si (1) fallara ahí, el usuario vería un `500` hasta el siguiente request. Salida estructural si R-17 se materializa: *pool* de roles pre-creados (la membresía se concede mucho antes del primer uso) o alternativa B de ADR-005. |
+| **DD-35** | **Presupuesto y contextos del envío** (M7 de la revisión del PR #8; **Accepted**; ADR-024 §5; INV-29). En el `Dispatcher`, la transacción de cada mensaje corre con `context.WithoutCancel(ctxDelCiclo)` y `Handle` recibe `context.WithTimeout(ctxDelCiclo, outbox.SendBudget)`, con `SendBudget = 20 s`. El ciclo revisa `ctxDelCiclo` antes de tomar cada mensaje. En el adaptador SMTP: `gomail.WithTimeout(5 * time.Second)` y `gomail.WithoutRset()`; si `DialAndSendWithContext` devuelve error pero `Msg.IsDelivered()` es `true`, devuelve `nil`; si el contexto recibido ya terminó cuando `DialAndSendWithContext` vuelve, devuelve `ctx.Err()` tal cual (`context.Canceled` o `context.DeadlineExceeded`) y no lo clasifica. Quien convierte el presupuesto vencido en `DeliveryError{Cause: network, Phase: unknown, Detail: "timeout"}` es el `Dispatcher` (`classifyHandleResult`), y solo si el contexto del ciclo sigue vivo; si el ciclo terminó, es una cancelación (texto alineado con el código en la sexta tanda, 2026-10-01; el comportamiento no cambia). El timeout de apagado del proceso es ≥ 25 s (T-B909). | go-mail v0.8.1 respeta el `context` solo durante el *dial* (verificado en `client.go`); el resto de la conversación lo acotan *deadlines* que se renuevan por etapa. Con 10 s y `RSET` eran hasta 5 ventanas (50 s) contra los 30 s de `idle_in_transaction_session_timeout`: un corte de sesión deja el mensaje `pending` sin sumar intentos y se reenvía sin fin. `WithoutCancel` en la transacción hace que un envío que terminó bien durante el apagado se marque `sent` en vez de reenviarse. | Un proveedor que tarde más de 5 s en una etapa produce un reintento (y un duplicado si ya había aceptado); el apagado puede esperar hasta 20 s un envío en curso; tres valores acoplados (5 s, 20 s, 30 s) que vigilan dos tests (INV-29). |
+| **DD-36** | **Imagen de MinIO en desarrollo y tests** (M10 de la revisión del PR #8; **Accepted**; nota 2026-10-01 en ADR-011; research R-30). `compose.yaml` y los tests de integración usan **la misma** referencia: `ghcr.io/coollabsio/minio:RELEASE.2025-10-15T17-29-55Z@sha256:<digest del índice multiplataforma de ese tag>`. Las referencias de imagen de los contenedores de desarrollo y test (PostgreSQL, Mailpit, MinIO) viven como constantes en `internal/testsupport/containers`; un test unitario verifica que `compose.yaml` declara exactamente las mismas. | `quay.io/minio/minio` responde `401` a todo pull anónimo desde el 2026-09-24/25 (el fallo del entorno de Codex no era del entorno), `minio/minio` desapareció de Docker Hub y el proyecto MinIO dejó de publicar imágenes (repositorio archivado en abril de 2026). La recompilación de la última versión oficial es reproducible (tag de versión + digest), incluye el arreglo de CVE-2025-62506 y conserva el arranque de MinIO (`server /data`, `MINIO_ROOT_*`). Con una sola fuente de las referencias, desarrollo y tests no divergen. | Imagen de un tercero, congelada y sin parches futuros: aceptable porque en desarrollo solo escucha en `127.0.0.1` y en tests es efímera; producción usa otro servicio S3 (P-1). Si desaparece, respaldo `cgr.dev/chainguard/minio` por digest o copia propia en GHCR (R-18). |
+| **DD-37** | **Credenciales en `audit_log.data`** (tercera revisión del PR #8, P1; *Accepted*; INV-32). Política: **rechazar**, nunca redactar. `audit.Recorder.Record` valida `Entry.Data` antes que nada (también antes de mirar `tx`) y recorre todos los niveles. **(1) Tipos admitidos**: hojas `string`, `bool`, `int`, `int32`, `int64`, `uuid.UUID`, `time.Time` y `nil`; contenedores `map[string]any`, `map[string]string`, `[]any` y `[]string`. Cualquier otro (structs, punteros, `[]byte`, `json.RawMessage`, `float64`, otros tipos de mapa o de slice) → `audit.ErrUnsupportedData`. **(2) Claves**: se normalizan a minúsculas quitando todo lo que no sea letra o dígito (`Set-Cookie` → `setcookie`, `X-API-Key` → `xapikey`, `api_key` → `apikey`). Es credencial si **contiene** `password`, `passwd`, `passphrase`, `secret`, `token`, `authorization`, `cookie`, `apikey`, `privatekey`, `credential`, `signature`, `csrf` o `xsrf`, o si **es igual** a `auth`, `session`, `sessionid`, `sid`, `otp` o `pin` (`session` va por igualdad porque el catálogo usa `sessions_revoked`). **(3) Valores** (todo `string`, también dentro de listas y mapas): es credencial si, sin espacios en los extremos, empieza con `Bearer `, `Basic ` o `Digest ` (sin distinguir mayúsculas); si tiene forma de JWT (empieza con `eyJ` y son tres segmentos base64url separados por `.`); o si son exactamente 43 caracteres del alfabeto base64url (el `raw` de `securetoken.New`). **Error**: `audit.ErrSecretInData` envuelto con la ruta (`audit: data.headers.Authorization: …`), **nunca** con el valor; no se inserta nada y el llamador propaga el error (la operación falla con `500`: es un bug que los tests de la operación detectan). | El catálogo de `data` (`data-model.md` §2.6) es cerrado y chico: una credencial ahí siempre es un bug. Rechazar lo hace visible en el primer test de la operación; redactar lo esconde y deja la estructura (p. ej. un volcado de cabeceras) en una tabla append-only que nadie puede limpiar. Cerrar los tipos es lo que hace completa la verificación: un struct o un `[]byte` se serializarían sin ser inspeccionados. Comparar claves normalizadas cubre las variantes de las cabeceras HTTP (`Set-Cookie`, `X-Api-Key`). | Es una lista de denegación: una credencial con un nombre no previsto (p. ej. `pw`) pasa si su valor no tiene una de las formas de (3); una clave legítima que contenga una palabra de la lista (p. ej. `token_count`) se rechaza y hay que renombrarla. Un bug que los tests no cubran produce un `500` en producción en vez de una fila con un secreto. Alternativa descartada: lista blanca de claves por acción (exhaustiva, pero obliga a registrar en `platform/audit` el catálogo de cada módulo y cada spec futura tocaría la plataforma; se reevalúa si aparece un caso que la lista de denegación no cubre). |
+| **DD-38** | **`user_agent` acotado en cada escritura** (tercera revisión del PR #8, P3; *Accepted*; INV-33). `httpx.NormalizeUserAgent(raw string) string`: (1) cada secuencia UTF-8 inválida → `U+FFFD`; (2) se quitan los `U+0000`; (3) se conservan las primeras **512 runas** (`httpx.MaxUserAgentRunes`, igual al `CHECK (char_length(user_agent) <= 512)` de `sessions` y `audit_log`), sin agregar `…` y sin cortar un carácter. Vacío → `NULL`. La aplican **los dos escritores** de la columna: `audit.Recorder.Record` (sobre `Entry.UserAgent`, venga de donde venga) e `identity` al insertar en `sessions` (`CreateSession`). Los handlers pasan `r.UserAgent()` sin tocarlo. | El User-Agent lo elige el cliente: con 513 caracteres el `INSERT` fallaba y revertía la operación auditada (registro, login, invitación). Los bytes que no son UTF-8 también hacen fallar el `INSERT` (`22021`), y `net/http` los acepta en el valor de una cabecera (*obs-text*); PostgreSQL tampoco admite `NUL` en `text`. El dato es informativo: perder la cola de un User-Agent anómalo no cuesta nada. Normalizar en el escritor, y no en el handler, cubre a cualquier llamador (tests, CLI, otros módulos). | Un User-Agent de más de 512 caracteres se guarda incompleto. Dos escritores que tienen que llamar a la misma función (un test en cada uno: T-B209 y T-B303). Alternativas descartadas: ampliar o quitar el `CHECK` (un cliente escribiría kilobytes por request en una tabla append-only); responder `400` a un User-Agent largo (castiga a un cliente legítimo por un dato que no usa nadie); normalizar solo en el handler (un escritor nuevo que no pase por él volvería a fallar). |
 
 ---
 
@@ -959,8 +985,47 @@ var (
 // internal/authz
 var ErrForbidden = errors.New("authz: forbidden")
 
-// internal/platform/outbox
-type PermanentError struct{ Err error } // el Mailer lo devuelve para fallos definitivos
+// internal/platform/outbox (ADR-024; reemplaza a PermanentError)
+type Cause string
+
+const (
+    CauseNetwork   Cause = "network"   // recuperable, WARN
+    CauseTransient Cause = "transient" // recuperable, WARN (respuesta 4xx)
+    CauseConfig    Cause = "config"    // recuperable, ERROR (nuestra configuración o la cuenta del proveedor)
+    CauseRecipient Cause = "recipient" // definitivo, WARN
+    CauseBug       Cause = "bug"       // definitivo, ERROR
+)
+
+func (c Cause) Permanent() bool      // true solo para CauseRecipient y CauseBug
+func (c Cause) LogLevel() slog.Level // slog.LevelWarn o slog.LevelError según ADR-024 §1
+
+type Phase string
+
+const (
+    PhaseCompose    Phase = "compose"    // antes de conectar: plantilla, payload, direcciones, asunto
+    PhaseConnection Phase = "connection" // TCP, TLS, saludo, EHLO, STARTTLS, AUTH
+    PhaseMailFrom   Phase = "mail_from"
+    PhaseRcptTo     Phase = "rcpt_to"
+    PhaseData       Phase = "data"       // DATA, contenido y respuesta de fin de datos
+    PhaseUnknown    Phase = "unknown"
+)
+
+// DeliveryError describe un fallo de entrega; lo devuelven el Mailer y el Handler.
+type DeliveryError struct {
+    Cause    Cause
+    Phase    Phase
+    SMTPCode int    // 0 si no hubo respuesta SMTP
+    Enhanced string // código extendido "d.d.d" (RFC 3463) o ""
+    Detail   string // texto del proveedor o descripción local; LastError lo sanea y, en la fase data, no lo usa (ADR-025)
+    Err      error  // causa original: nunca se loguea ni se persiste (puede tener el destinatario)
+}
+
+func (e *DeliveryError) Error() string     // igual a LastError(): un log descuidado no filtra nada
+func (e *DeliveryError) Unwrap() error     // Err
+func (e *DeliveryError) LastError() string // "<causa> <fase>[ <código>[ <extendido>]]: <detalle>", saneado, ≤ 1000 caracteres
+
+// SendBudget acota cada Handle (DD-35, INV-29). SendBudget + 10 s ≤ idle_in_transaction_session_timeout de crm_app.
+const SendBudget = 20 * time.Second
 
 // internal/platform/httpx
 type SuggestedAction string
@@ -972,18 +1037,71 @@ func MethodNotAllowed(w http.ResponseWriter, r *http.Request) // 405 code method
 
 ### 9.4 Errores del worker (recuperable vs definitivo)
 
-| Situación | Clasificación | Efecto |
-|---|---|---|
-| Timeout o conexión SMTP rechazada, respuesta `4xx` | Recuperable | `attempts+1`, `next_attempt_at` con backoff (1, 5, 15, 60 min, 6 h); `status` sigue `pending` |
-| Respuesta SMTP `5xx` (destinatario inválido, rechazo permanente) | Definitivo | `status = failed`, payload borrado, log `WARN` |
-| 8 intentos recuperables fallidos | Definitivo | `status = failed`, payload borrado, log `ERROR` |
-| Plantilla inexistente o payload inválido | Definitivo (bug) | `status = failed`, log `ERROR` |
-| Apagado del proceso a mitad del envío (`context.Canceled`, `db.ErrCanceled`) | **Ninguno de los dos** | El mensaje queda exactamente como estaba: `pending`, sin sumar `attempts`, sin mover `next_attempt_at`, sin `last_error`; log `INFO` (`outcome=canceled`). Se reintenta en el próximo arranque |
-| SMTP aceptó pero el `COMMIT` falló | — | Reenvío en el próximo ciclo: **entrega al menos una vez** (aceptado; los enlaces son de un solo uso) |
+**Quinta revisión (2026-10-01, Accepted)**: la clasificación canónica está en ADR-024 §1–§3; esta
+sección la aplica al `Dispatcher`. El adaptador SMTP y el handler de plantillas devuelven un
+`*outbox.DeliveryError` (§9.3) con causa y fase.
 
-El worker lee y marca cada mensaje con `InSystemTx(crm_worker)` → `AsTenant`: un `42501` al
-cambiar al rol de una empresa recién creada **no** se reintenta dentro de la transacción
-(INV-27); el mensaje queda `pending` y el ciclo siguiente lo vuelve a tomar.
+**Sexta tanda (2026-10-01, *Accepted*)**: ADR-025 cambia tres piezas de ADR-024: en la fase `data`,
+`last_error` no lleva texto del proveedor (`response text omitted`); la redacción alcanza también a
+URLs y secuencias tipo secreto; y, si el servidor no informa el código extendido, se lee del
+comienzo del texto en todas las fases (con control de clase). La tabla de causas no cambia; sin
+`ENHANCEDSTATUSCODES`, un `550 5.7.1` en RCPT TO pasa de `recipient` a `config`.
+
+| Causa | Clase | Log por intento | Resumen (regla completa en ADR-024 §1–§2) |
+|---|---|---|---|
+| `network` | Recuperable | `WARN` | Timeout (de una etapa o del presupuesto), conexión rechazada o cortada, DNS |
+| `transient` | Recuperable | `WARN` | Toda respuesta `4xx`, en cualquier fase |
+| `config` | Recuperable | `ERROR` | Todo `5xx` de la fase de conexión (saludo, EHLO, STARTTLS, AUTH); todo `5xx` de MAIL FROM; `5xx` de RCPT TO o DATA que no identifica al destinatario; TLS, STARTTLS o AUTH no disponibles; error no clasificado |
+| `recipient` | **Definitivo** | `WARN` | `5xx` en RCPT TO o DATA con código extendido `5.1.x`/`5.2.x` (informado por el servidor o leído del comienzo del texto, ADR-025 §3); `550`/`551`/`553` en RCPT TO sin código extendido; dirección inválida antes de conectar |
+| `bug` | **Definitivo** | `ERROR` | Plantilla inexistente, payload ilegible o incompleto, asunto inválido |
+
+**Efecto de cada resultado de `Handle`**:
+
+| Resultado | Efecto en el mensaje | Log |
+|---|---|---|
+| `nil` | `MarkSent`: `status = sent`, payload borrado, `last_error = NULL` | `INFO` `outcome=sent` |
+| Recuperable y quedan intentos | `MarkRecoverable`: `attempts+1`, `next_attempt_at = now + backoff` (1, 5, 15, 60 min, 6 h, y 6 h en adelante), `last_error = LastError()` | Nivel de la causa, `outcome=retry` |
+| Recuperable en el 8.º intento | `MarkFailed`: `status = failed`, payload borrado, `last_error` | `ERROR` `outcome=failed`, `reason=max_attempts` |
+| Definitivo | `MarkFailed` al primer intento | Nivel de la causa, `outcome=failed` |
+| Cualquier fallo en la fase `connection` | Lo de arriba según la causa **y** el ciclo termina sin intentar el resto del lote (ADR-024 §4) | — |
+| Error que no es `DeliveryError` ni cancelación | Se trata como `DeliveryError{Cause: config, Phase: unknown, Detail: "unclassified handler error"}`; un `context.DeadlineExceeded` con el contexto del ciclo vivo, como `{network, unknown, "timeout"}` | `ERROR` con `err_type` (`%T`), nunca el texto del error |
+| `context.Canceled` / `db.ErrCanceled`, o el contexto del ciclo cancelado | **Ninguno**: el mensaje queda exactamente como estaba (`pending`, sin sumar `attempts`, sin mover `next_attempt_at`, sin `last_error`); se reintenta en el próximo arranque | `INFO` `outcome=canceled` |
+| SMTP aceptó pero el `COMMIT` falló | Reenvío posterior: **entrega al menos una vez** (aceptado; los enlaces son de un solo uso) | Ver la tabla siguiente |
+
+**Fallos del `Dispatcher` fuera de la entrega** (aislamiento por mensaje, INV-31, ADR-024 §6):
+
+| Paso que falla | Error | Efecto | Log |
+|---|---|---|---|
+| `LockDueMessage` | cualquiera salvo cancelación | Termina el ciclo | `ERROR` `event=outbox_cycle_failed`, `err` |
+| `AsTenant` o `GetMessage` | `db.ErrUnavailable` | Termina el ciclo, sin aplazar | `ERROR` `event=outbox_cycle_failed`, `err` |
+| `AsTenant` o `GetMessage` | cualquier otro (`db.ErrPrivilege`, `22023` rol inexistente, `db.ErrNotFound`, …) | `ROLLBACK`; aplaza en otra transacción; sigue con el lote | `ERROR` `outcome=deferred`, `step` ∈ {`as_tenant`, `get_message`}, `message_id`, `tenant_id`, `defer_seconds`, `err`; con `db.ErrPrivilege`, además `security_event=rls_violation` (INV-19) |
+| Payload ilegible (JSON) | — | `MarkFailed` con `last_error = "bug compose: invalid payload"` | `ERROR` `outcome=failed` |
+| `MarkSent`, `MarkRecoverable` o `MarkFailed` | `db.ErrUnavailable` | Termina el ciclo; el mensaje queda `pending` | `ERROR` `event=outbox_cycle_failed`, `err` |
+| `MarkSent`, `MarkRecoverable` o `MarkFailed` | cualquier otro | `ROLLBACK`; aplaza en otra transacción; sigue con el lote (evita reenviar cada 2 s un mensaje que no se puede marcar) | `ERROR` `outcome=deferred`, `step=mark`, `err` |
+| El aplazamiento (`DeferMessage`) | cualquiera | Termina el ciclo | `ERROR` `event=outbox_cycle_failed`, `err` |
+
+- **Aplazar** (`DeferMessage`, `:execrows`, en `worker.sql`, como `crm_worker`): actualiza **solo**
+  `next_attempt_at`, con tres condiciones: el `id`, `status = 'pending'` y que `next_attempt_at`
+  siga siendo el valor leído por `LockDueMessage`. 0 filas = otro worker ya lo procesó; no es
+  error. `LockDueMessage` devuelve además `next_attempt_at` y `created_at` (columnas que
+  `crm_worker` ya puede leer). Su nombre se agrega a `queryrules.DefaultExceptions` (T-B112).
+- **Demora**: `deferDelay(edad) = clamp(edad, 10 s, 15 min)`, con `edad = clock.Now() − created_at`
+  (función pura con test propio; una edad negativa da 10 s). Para que sea determinista, `Enqueue`
+  fija `created_at` y `next_attempt_at` con `clock.Now()` (DD-18; resuelve también el hallazgo M6 de
+  los dos relojes).
+- `err` va en el log **solo** para errores de base de datos y del `Dispatcher`; **nunca** el
+  `error` de una entrega (INV-30): para eso están `error_cause`, `smtp_phase`, `smtp_code` y
+  `last_error`. `Run` loguea `outbox_cycle_failed` con `err`.
+
+**Contextos y presupuesto** (DD-35, INV-29): la transacción de cada mensaje corre con
+`context.WithoutCancel(ctxDelCiclo)`; `Handle` recibe `context.WithTimeout(ctxDelCiclo,
+outbox.SendBudget)` (20 s). Un apagado durante `Handle` cancela el *dial*; si go-mail ya estaba en
+la conversación, `Handle` vuelve en ≤ 20 s: con éxito se marca `sent`; con `context.Canceled`, el
+mensaje queda como estaba.
+
+El cambio de rol de cada mensaje sigue siendo `InSystemTx(crm_worker)` → `AsTenant`, sin reintento
+dentro de la transacción (INV-27). Un `42501` transitorio de DD-34 ahora aplaza el mensaje 10 s
+(en vez de volver a tomarlo en el ciclo siguiente y frenar a los demás).
 
 ---
 
@@ -1050,6 +1168,7 @@ confianza.
 | A05 | SPA desactualizada o HTML cacheado como JS | `index.html` con `no-cache`; archivos inexistentes con extensión → `404` (nunca `index.html`); assets con hash `immutable` (§10.7) |
 | A08 Software & Data Integrity | Subida de archivo malicioso (SVG con script, bomba de descompresión, cuerpo gigante) | Solo PNG/JPEG por *magic bytes*; archivo ≤ 2 097 152 bytes y cuerpo ≤ 2 162 688 bytes con lectura acotada (DD-31); `image.DecodeConfig` ≤ 2000×2000 sin decodificar la imagen; se sirve con tipo fijo y `nosniff` (INV-24) |
 | A09 Logging Failures | Falta de trazas de seguridad | `audit_log` (FR-008) + logs con `security_event` (login fallido, bloqueo, violación RLS, email existente en registro, CSRF rechazado) y la IP real del cliente (DD-32) |
+| A09 (datos sensibles en trazas) | Una credencial o un token quedan en una traza que no se borra (`audit_log.data`, `outbox_messages.last_error`, logs del worker) | `audit.Recorder` rechaza credenciales por clave, valor y tipo (DD-37, INV-32); `last_error` sin texto del proveedor en la fase `data` y con redacción de `@`, URLs y secuencias tipo secreto (ADR-025, INV-30) |
 | A09 | `ERROR` falsos que tapan bugs reales (clientes que cortan la conexión; `SET ROLE` denegados por la caché de PostgreSQL) | `db.ErrCanceled` → log `INFO` `client_canceled`, nunca `ERROR` (§9.2); el `42501` del cambio de rol se envuelve con el paso y el rol, y el reintento exitoso es `WARN` `set_role_retry`, no `ERROR` (DD-34) |
 | A09 | Secretos en logs | Redacción de `password`, `token`, `Cookie`, `Set-Cookie`, payload del outbox |
 | DoS de aplicación | Ráfaga de hashes, bodies grandes | Semáforo de argon2id, `http.MaxBytesReader` (JSON 64 KB, logo DD-31), timeouts de servidor (`ReadHeaderTimeout` 5 s, `ReadTimeout` 15 s, `WriteTimeout` 30 s), `statement_timeout` 5 s en `crm_app` |
@@ -1201,8 +1320,8 @@ crm/
 │   │   ├── password/           # Hasher argon2id (PHC) con semáforo
 │   │   ├── ratelimit/          # token bucket por clave, en memoria; clave de IP (/64 en IPv6)
 │   │   ├── audit/              # Recorder → audit_log
-│   │   ├── outbox/             # Enqueue + Dispatcher (worker y tareas periódicas) + store/worker.sql
-│   │   ├── mailer/             # puerto Mailer + adaptador SMTP (go-mail) + render de plantillas
+│   │   ├── outbox/             # Enqueue + Dispatcher (worker y tareas periódicas) + DeliveryError (ADR-024) + store/worker.sql
+│   │   ├── mailer/             # puerto Mailer + adaptador SMTP (go-mail) con la clasificación de fallos de ADR-024; las plantillas viven en identity/emails
 │   │   └── objectstore/        # puerto ObjectStorage + adaptador S3 (minio-go)
 │   ├── authz/                  # Role, Permission, matriz FR-007, Principal, RequirePermission
 │   ├── industrytemplate/       # catálogo embebido de plantillas + puerto Seeder (002 lo completa)
@@ -1223,7 +1342,7 @@ crm/
 │   │   ├── reprovision.go      # reaprovisionamiento de roles, una transacción por empresa (DD-33 R-d)
 │   │   ├── http.go             # incluye la lectura acotada del multipart (DD-31)
 │   │   └── store/              # *.sql (incluido provisioning.sql) + código generado por sqlc
-│   └── testsupport/            # solo tests: pgtest, apitest (httptest.NewTLSServer + cookiejar), fixture, isolation, queryrules, reporules, contrato
+│   └── testsupport/            # solo tests: pgtest, apitest (httptest.NewTLSServer + cookiejar), fixture, isolation, queryrules, reporules, containers (referencias de imágenes, DD-36), contrato
 ├── web/                        # frontend (ADR-015, ADR-019); en Go, solo el paquete `web`:
 │   ├── embed.go                #   //go:embed all:dist + NewHandler (T-F007/T-F008)
 │   └── dist/                   #   build de Vite (ignorado por git salvo .gitkeep)
@@ -1233,7 +1352,7 @@ crm/
 ├── .certs/                     # solo desarrollo: certificado de mkcert (`make dev-certs`); ignorado por git
 ├── sqlc.yaml
 ├── Makefile                    # generate, lint, test, test-int, check, db-reset, dev-certs (+ web-build, build, check-all: T-F009)
-├── compose.yaml                # dev: postgres:18, mailpit, minio
+├── compose.yaml                # dev: postgres:18, mailpit, minio (las mismas imágenes que internal/testsupport/containers, DD-36)
 └── .github/workflows/ci.yml    # make check con Docker disponible (+ job de frontend y E2E: T-F009, T-F701)
 ```
 
@@ -1264,6 +1383,12 @@ Por qué así en Go (resumen de ADR-001):
 - **El reintento de DD-34 vive dentro de `platform/db`, no en los servicios**: el llamador de
   `InTenantTx` no sabe que existe (la firma no cambia). Es el único lugar que sabe si `fn` ya
   empezó, que es justo la condición que hace seguro reintentar.
+- **`*outbox.DeliveryError` es un tipo con datos, no un centinela** (ADR-024): un centinela
+  (`errors.Is`) solo dice *qué* pasó; el `Dispatcher` necesita además la causa, la fase y el código,
+  así que el adaptador devuelve un struct que implementa `error` y el `Dispatcher` lo recupera con
+  `errors.As` aunque venga envuelto con `%w`. `Error()` devuelve el texto ya saneado: si alguien lo
+  loguea por descuido, no sale el destinatario. La causa original queda en `Unwrap()` para los
+  tests, nunca para los logs.
 
 ### 11.1 Interfaces que definen las fronteras (firmas)
 
@@ -1284,9 +1409,16 @@ func Load(getenv func(string) string) (Config, error) // valida las reglas de §
 func (c Config) IsLocal() bool                        // host de APP_BASE_URL es localhost o 127.0.0.1
 
 // ---------- internal/platform/httpx ----------
-// ClientIP es el primer middleware de la cadena común (DD-32, INV-25).
-func ClientIP(trusted []netip.Prefix) func(http.Handler) http.Handler
+// ClientIP es el segundo middleware de la cadena común, después de RequestID (DD-32, INV-25):
+// así el aviso bad_forwarded_for lleva request_id. logger es explícito (nunca slog.Default()).
+func ClientIP(trusted []netip.Prefix, logger *slog.Logger) func(http.Handler) http.Handler
 func ClientIPFrom(ctx context.Context) netip.Addr // siempre válida dentro de un request
+
+// MaxUserAgentRunes es el CHECK (char_length(user_agent) <= 512) de sessions y audit_log (DD-38).
+const MaxUserAgentRunes = 512
+// NormalizeUserAgent: secuencias UTF-8 inválidas → U+FFFD, sin U+0000, primeras MaxUserAgentRunes
+// runas (sin "…"). La llaman los dos escritores de user_agent (DD-38, INV-33).
+func NormalizeUserAgent(raw string) string
 
 // ---------- internal/platform/ratelimit ----------
 // IPKey devuelve la clave de rate limit de una IP: la IPv4 completa (/32) o el /64 de una IPv6.
@@ -1380,13 +1512,20 @@ type Entry struct {
     Action      string // p. ej. "user.role_changed"
     TargetType  string
     TargetID    *uuid.UUID
-    Data        map[string]any // sin datos sensibles
+    Data        map[string]any // tipos y claves según DD-37; nunca credenciales (INV-32)
     IP          netip.Addr     // de httpx.ClientIPFrom (DD-32)
-    UserAgent   string
+    UserAgent   string         // Record guarda httpx.NormalizeUserAgent(UserAgent) (DD-38)
 }
+// Record valida Data antes que nada, incluso antes de mirar tx (DD-37). Errores, envueltos con la
+// ruta de la clave y nunca con el valor: ErrSecretInData, ErrUnsupportedData; sin tx, ErrTxRequired.
 type Recorder interface {
     Record(ctx context.Context, tx db.Tx, e Entry) error
 }
+var (
+    ErrSecretInData    = errors.New("audit: data contains a credential")
+    ErrUnsupportedData = errors.New("audit: data contains an unsupported type")
+    ErrTxRequired      = errors.New("audit: transaction is required")
+)
 
 // ---------- internal/platform/outbox ----------
 type Message struct {
@@ -1399,8 +1538,12 @@ type Message struct {
 type Enqueuer interface {
     Enqueue(ctx context.Context, tx db.Tx, m Message) error
 }
-type Handler interface { // lo implementa el adaptador de email
-    Handle(ctx context.Context, m Message) error // *PermanentError para fallos definitivos
+type Handler interface { // lo implementa identity/emails (plantillas + Mailer)
+    // Devuelve nil, un *DeliveryError (§9.3, ADR-024, ADR-025) o ctx.Err() tal cual
+    // (context.Canceled o context.DeadlineExceeded) si ctx terminó; el Dispatcher los clasifica
+    // (DD-35). ctx trae el deadline de SendBudget (DD-35). Los errores de plantilla o
+    // de payload son DeliveryError{Cause: CauseBug, Phase: PhaseCompose} con textos fijos.
+    Handle(ctx context.Context, m Message) error
 }
 // PeriodicTask es una tarea de sistema que el Dispatcher corre cada Every(). La declara outbox
 // (consumidor) y la satisfacen los módulos dueños de las tablas (p. ej. identity.Cleanup); las
@@ -1419,7 +1562,11 @@ type Email struct {
     HTMLBody string
 }
 type Mailer interface {
-    Send(ctx context.Context, e Email) error // *outbox.PermanentError si el SMTP responde 5xx
+    // nil, *outbox.DeliveryError clasificado según ADR-024 §1–§2 y ADR-025 §3, o ctx.Err() tal cual
+    // (context.Canceled o context.DeadlineExceeded) si ctx terminó: el adaptador no lo clasifica (DD-35).
+    // Adaptador SMTP: gomail.WithTimeout(5 s) y gomail.WithoutRset() (DD-35, INV-29); devuelve nil
+    // si Msg.IsDelivered() aunque falle el QUIT.
+    Send(ctx context.Context, e Email) error
 }
 
 // ---------- internal/platform/objectstore ----------
@@ -1546,10 +1693,10 @@ func NewServer(t testing.TB, root http.Handler) *Server
 |---|---|---|
 | Log por request | middleware común | `request_id`, `method`, `route` (patrón chi en la API, `ops` o `spa` fuera de ella; nunca la URL cruda), `status` (`499` si el cliente cortó la conexión: nunca se envía), `duration_ms`, `tenant_id`, `user_id`, `ip` (de `httpx.ClientIP`, DD-32) |
 | Evento de seguridad | `identity`, `tenant`, `db`, `httpx` | `security_event` ∈ {`login_failed`, `login_locked`, `login_disabled`, `signup_email_exists`, `csrf_rejected`, `rls_violation`, `privilege_error`, `rate_limited`}, `tenant_id` si se conoce, `email_hmac` (nunca el email), `ip` |
-| Evento operativo | `tenant`, `httpx`, `outbox`, `db` | `event` ∈ {`signup_timezone_defaulted` (DD-27), `signup_lock_timeout` (DD-33), `client_canceled` (`INFO`, §9.2), `bad_forwarded_for` (`WARN`, DD-32), `set_role_retry` (`WARN`, DD-34, con `tenant_id` y `outcome` ∈ {`recovered`, `failed`})}, sin datos personales |
-| Worker | `outbox` | `message_id`, `tenant_id`, `template`, `attempt`, `outcome` ∈ {`sent`,`retry`,`failed`,`canceled`}, `smtp_code`; tareas periódicas: `task`, `deleted_rows`, `duration_ms` |
+| Evento operativo | `tenant`, `httpx`, `outbox`, `db` | `event` ∈ {`signup_timezone_defaulted` (DD-27), `signup_lock_timeout` (DD-33), `client_canceled` (`INFO`, §9.2), `bad_forwarded_for` (`WARN`, DD-32, con `request_id`; nunca el valor de la cabecera), `set_role_retry` (`WARN`, DD-34, con `tenant_id` y `outcome` ∈ {`recovered`, `failed`})}, sin datos personales |
+| Worker | `outbox` | `message_id`, `tenant_id`, `template`, `attempt`, `outcome` ∈ {`sent`,`retry`,`failed`,`canceled`,`deferred`}; en fallos de entrega: `error_cause`, `smtp_phase`, `smtp_code` (si hubo respuesta), `last_error` (texto saneado de ADR-024 §3 y ADR-025; nunca el `error` original) y `next_attempt_at`; intentos agotados: `reason=max_attempts`; aplazamientos: `step` ∈ {`as_tenant`,`get_message`,`mark`}, `defer_seconds`, `err`; fallo de ciclo: `event=outbox_cycle_failed` con `err`. Nivel según ADR-024 §1 y §9.4. Tareas periódicas: `task`, `deleted_rows`, `duration_ms` |
 | Auditoría de negocio | `audit_log` | ver `data-model.md` §2.6 (acciones de FR-008 y más) |
-| Métricas | `expvar` (stdlib) en `/debug/vars`, **solo** en la interfaz interna (`METRICS_ADDR`, default `127.0.0.1:9090`) | `http_requests_total{status}`, `http_client_canceled_total`, `login_failed_total`, `login_locked_total`, `signup_email_exists_total`, `signup_lock_timeout_total`, `set_role_retry_total`, `csrf_rejected_total`, `outbox_pending`, `outbox_oldest_pending_seconds`, `outbox_failed_total`, `db_pool_acquire_wait_ms`, `tenant_roles_total` |
+| Métricas | `expvar` (stdlib) en `/debug/vars`, **solo** en la interfaz interna (`METRICS_ADDR`, default `127.0.0.1:9090`) | `http_requests_total{status}`, `http_client_canceled_total`, `login_failed_total`, `login_locked_total`, `signup_email_exists_total`, `signup_lock_timeout_total`, `set_role_retry_total`, `csrf_rejected_total`, `outbox_pending`, `outbox_oldest_pending_seconds`, `outbox_failed_total`, `outbox_delivery_errors_total{cause}` (ADR-024), `outbox_deferred_total`, `db_pool_acquire_wait_ms`, `tenant_roles_total` |
 
 ### 12.2 Health checks
 
@@ -1565,8 +1712,11 @@ func NewServer(t testing.TB, root http.Handler) *Server
 
 | Síntoma | Señal | Qué mirar primero |
 |---|---|---|
-| Nadie recibe emails | `outbox_oldest_pending_seconds` > 600 | Logs del worker (`outcome=retry`, `smtp_code`); credenciales SMTP; que el worker esté corriendo (log de arranque) |
-| Emails que nunca llegan a un usuario | `outbox_failed_total` sube | `last_error` del mensaje (consulta como DBA); rebote `5xx` del proveedor |
+| Nadie recibe emails | `outbox_oldest_pending_seconds` > 600 | Logs del worker: `error_cause` y `last_error` de los `outcome=retry`; que el worker esté corriendo (log de arranque). `error_cause=network`: alcance del host SMTP (DNS, firewall, puerto). `error_cause=config`: fila siguiente. Muchos `outcome=deferred`: dos filas más abajo |
+| Credenciales SMTP vencidas, IP bloqueada o remitente rechazado | Logs `ERROR` con `error_cause=config`; `outbox_delivery_errors_total{cause="config"}` sube | `last_error` (p. ej. `config connection 535 …` = credenciales; `config connection 554 …` en el saludo = IP del servidor en una lista de bloqueo; `config mail_from 5xx …` = remitente no verificado en el proveedor). Arreglar la configuración: los mensajes salen solos en su próximo intento (el backoff llega a 6 h); para no esperar, un DBA puede adelantar `next_attempt_at` de los pendientes. Si la caída duró más de ~19 h, los mensajes de ese período ya quedaron `failed`: los usuarios vuelven a pedir el enlace y el Administrador reinvita (ADR-024 §4) |
+| Emails que nunca llegan a un usuario | `outbox_failed_total` sube | `last_error` del mensaje (consulta como DBA): `recipient …` = dirección inexistente o inválida; `bug …` = plantilla o payload (bug: abrir incidente); si el log dice `reason=max_attempts`, se agotaron los 8 intentos (ver las dos filas anteriores) |
+| `last_error` termina en `response text omitted` | `last_error` o log del worker con `smtp_phase=data` | Es a propósito (ADR-025): en la fase `data` el texto del proveedor puede citar el enlace con el token y no se guarda. La causa la dicen los códigos (`5.7.1` política o reputación, `5.6.x` contenido, `5.3.4` tamaño, `5.1.x` dirección); el texto completo está en el panel o los logs del proveedor, buscando por la hora del log del intento |
+| Mensajes aplazados una y otra vez | Logs `ERROR` `outcome=deferred`; `outbox_deferred_total` sube; `outbox_oldest_pending_seconds` crece | `step` y `err` del log. `step=as_tenant` con un rol `crm_t_…` inexistente = restore sin roles: `crm tenants reprovision-roles` (§12.4). `security_event=rls_violation` con una empresa registrada hace segundos = DD-34 (ver las filas de `rls_violation` y `set_role_retry`). `step=mark` = el marcado falla (revisar el `err`: constraint o privilegio; es un bug) |
 | Todos los requests de una empresa dan 500 | log `role "crm_t_…" does not exist` | Restore sin roles: correr `crm tenants reprovision-roles` (§12.4) |
 | Algún 500 con `security_event=rls_violation` | alerta inmediata | Es un bug de aislamiento: request id → handler → query. Tratar como incidente crítico (principio III). **Antes**, mirar si el error dice `set role crm_t_…` (paso de cambio de rol) y si la empresa se registró hace segundos: en ese caso es el problema de DD-34 (fila siguiente), no una fuga |
 | `set_role_retry_total` > 0 **sostenido** (o eventos `set_role_retry` con `outcome=failed`, o `500` en el primer request después de registrarse) | `set_role_retry_total`; eventos `set_role_retry` | La lectura de catálogo de DD-34 dejó de alcanzar. ¿Cambió `server_version` (log de arranque)? Correr el test de reproducción de T-B103 contra esa versión exacta; ver R-17 y research R-28 (salidas: fijar el *minor* anterior, *pool* de roles pre-creados o alternativa B). Un valor aislado después de una ráfaga de registros se tolera: es la red funcionando |
@@ -1650,6 +1800,8 @@ research R-04c y R-28).
 | S-14 | El proxy del hosting que se elija **agrega** su entrada a `X-Forwarded-For` (no la reemplaza por una sola IP) y sale desde rangos de IP conocidos y publicados | Si la reemplaza, el algoritmo de DD-32 igual toma la IP correcta (la de más a la derecha no confiable); si los rangos no se conocen, el rate limit por IP queda global y hay que moverlo al proxy (research R-17) |
 | S-15 | pgx v5.11 devuelve `context.Canceled` (o un error que lo envuelve) al cancelarse el contexto de una query (observado en la Fase 1) | Si llegara solo como `57014`, la capa HTTP igual lo detecta por `r.Context().Err()`; `MapError` lo mapearía a `ErrUnavailable` y habría que agregar el caso |
 | S-16 | La causa del `42501` de DD-34 es la caché de membresías por backend (`roles_is_member_of`) y leer un catálogo antes del `SET ROLE` hace que el backend procese las invalidaciones pendientes. Es la hipótesis del desarrollador, **consistente con la medición** (de 64–105/600 a 0/1800) pero **no verificada en el código de PostgreSQL** ni documentada por el proyecto | Si la causa es otra, la lectura de catálogo podría estar funcionando por casualidad (p. ej. por el tiempo que agrega): el test de reproducción y `set_role_retry_total` lo mostrarían; el reintento sigue cubriendo `InTenantTx`. El reporte upstream sugerido (research R-28) lo confirmaría |
+| S-17 | El proveedor SMTP transaccional de producción responde cada etapa (conexión, saludo, AUTH, fin de datos) en menos de 5 s (DD-35) | Reintentos por timeout y posibles duplicados (el proveedor aceptó y la respuesta llegó tarde). Se mide al elegir el proveedor (P-1); si no alcanza, subir el timeout por etapa obliga a respetar INV-29 (menos ventanas o la alternativa del *lease* de ADR-024) |
+| S-18 | `ghcr.io/coollabsio/minio:RELEASE.2025-10-15T17-29-55Z` sigue publicada y descargable sin login, arranca con `server /data` y las variables `MINIO_ROOT_*`, y responde en `/minio/health/ready` (reportado por otros proyectos en septiembre de 2026; lo confirma el test de T-B215) (DD-36) | Si desaparece o no arranca igual: respaldo `cgr.dev/chainguard/minio` por digest o copia propia en GHCR (R-18, research R-30) |
 
 ### 14.2 Preguntas
 
@@ -1684,6 +1836,8 @@ research R-04c y R-28).
 | R-15 | Registros concurrentes serializados por el lock de `GRANT crm_tenant` (DD-33): una transacción de registro larga, un sembrado pesado de 002 o una reprovisión en bloque frenan todos los registros | Media | Medio | R-a..R-d de DD-33; métrica `signup_lock_timeout_total` y runbook; medición con concurrencia en T-B905; si no alcanza, *pool* de roles pre-creados o alternativa B (research R-04c) |
 | R-16 | `TRUSTED_PROXIES` mal configurada al desplegar: vacía detrás de un proxy (rate limit global) o con rangos de más (IPs falsificables) | Media | Medio | Default seguro; `0.0.0.0/0`/`::/0` rechazados; `trusted_proxies=` en el log de arranque; runbook §12.3; paso obligatorio en P-1 |
 | R-17 | **Comportamiento interno de PostgreSQL** (DD-34, S-16): el arreglo depende de que leer un catálogo procese las invalidaciones de membresía pendientes antes del chequeo de `SET ROLE`. No está documentado: un *minor* o *major* nuevo (o un proveedor con otra compilación) podría cambiarlo, y el `42501` volvería. Donde no hay reintento (`InSystemTx` → `AsTenant`: resolución de sesión, login, tokens, worker) se vería como un `500` en el primer request después de registrarse | Baja–Media | Alto (el primer uso de la app falla justo después de registrarse; falsa alerta de `rls_violation`) | El test de reproducción de T-B103 corre en `make check`: una regresión se detecta en CI al subir la imagen de PostgreSQL, antes de producción (§12.4, "Actualizar PostgreSQL"); métrica `set_role_retry_total` y runbook §12.3; el reintento de `InTenantTx` como red; reporte upstream sugerido (research R-28); salidas estructurales: *pool* de roles pre-creados (research R-04c) o alternativa B de ADR-005 (P-1) |
+| R-18 | La imagen de MinIO de desarrollo y tests es una recompilación de un tercero de un proyecto archivado: puede dejar de publicarse y no recibe parches (DD-36) | Media | Bajo (solo desarrollo y tests; producción usa otro S3) | Digest fijo (si falla, falla a la vista, no en silencio); una sola fuente de la referencia (`internal/testsupport/containers`, verificada contra `compose.yaml`); respaldo `cgr.dev/chainguard/minio` o copia propia en GHCR; a largo plazo, reevaluar el servidor S3 de desarrollo (research R-30) |
+| R-19 | La clasificación de fallos SMTP (ADR-024) se apoya en códigos estándar que cada proveedor usa a su manera: un rechazo definitivo real puede reintentarse 8 veces, o un rechazo de configuración caer en la regla del destinatario | Media | Bajo | Sesgo a recuperable (ADR-024 §1); `last_error` con código y texto del proveedor para ajustar la regla; casos de T-B213; revisar la regla con el proveedor elegido (P-1) |
 
 ---
 
@@ -1708,11 +1862,18 @@ La actualización de la documentación va **en el mismo cambio** que el código.
 | Las cabeceras de caché de la API o del logo | DD-23/DD-28 + INV-21 + §10.7 + contrato (`/tenant/logo`, descripción general) + T-B203/T-B705 + nota de ADR-011 si cambia la política para archivos |
 | El montaje del mux raíz, las cabeceras o la CSP de la SPA | DD-22/DD-29 + §10.7 + ADR-019 + `ui.md` §21 + T-B004/T-F007 |
 | Las reglas de `APP_BASE_URL`, el TLS local (`TLS_*`), el HSTS por modo o los `APP_LINK_*` | DD-14/DD-24 + INV-23 + §10.5/§10.5.1 + T-B002/T-B004/T-B014 + nota en ADR-006 + `ui.md` §6.2/§21.3 + README (desarrollo) + job de E2E |
-| La política de IP del cliente (`TRUSTED_PROXIES`, cabeceras leídas, clave de rate limit) | DD-32 + INV-25 + §10.3/§10.5/§12.1/§12.3 + research R-25 + T-B002/T-B011/T-B219/T-B217 + `data-model.md` (columnas `ip`) + paso de despliegue en P-1 |
+| La política de IP del cliente (`TRUSTED_PROXIES`, cabeceras leídas, clave de rate limit, posición de `ClientIP` en la cadena común) | DD-32 + DD-22 + INV-25 + §10.3/§10.5/§12.1/§12.3 + research R-25 + T-B002/T-B011/T-B219/T-B217 + `data-model.md` (columnas `ip`) + paso de despliegue en P-1 |
 | La transacción de registro (qué hace después de aprovisionar, `lock_timeout`) o la reprovisión | DD-33 + INV-26 + §4.5 + §13 + nota en ADR-005 si cambia una restricción + T-B303/T-B905/T-B906 + el plan de 002 (R-c) |
 | Los límites del logo (archivo, cuerpo, dimensiones, partes) | DD-11/DD-31 + INV-24 + contrato (`PUT /tenant/logo`, `PayloadTooLarge`) + `data-model.md` §2.1 + constantes de `internal/tenant` + T-B703/T-B705 + la constante del cliente en `ui.md` + nota en ADR-011 |
 | Estrategia de aislamiento, sesiones, email, archivos | ADR nuevo que reemplace al vigente (nunca editar uno aceptado; solo notas fechadas de detalle) |
 | El bootstrap de roles o la operación de backups | `db/bootstrap/` + §12.4 + ADR-004/005 + README (operación) |
+| La clasificación de fallos de entrega, el formato o el saneamiento de `last_error`, o los niveles de log del worker | ADR-024 y ADR-025 (ADR nuevo si cambia la decisión) + §9.3/§9.4 + INV-28/INV-30 + §10.3 + §12.1/§12.3 + `data-model.md` §2.5 + T-B211/T-B213 |
+| `SendBudget`, el timeout por etapa del adaptador SMTP, sus opciones de go-mail (`WithoutRset`), la versión de go-mail o `idle_in_transaction_session_timeout` de `crm_app` | DD-35 + INV-29 + ADR-024 §5 + `db/bootstrap/` + T-B211/T-B213 (los dos tests que fijan la relación) + timeout de apagado (T-B909). Al subir go-mail, volver a contar las ventanas de *deadline* en su código |
+| El aplazamiento de mensajes del `Dispatcher` (cuándo, demora, query) | ADR-024 §6 + INV-31 + §4.4 + §9.4 + `data-model.md` §2.5 y §3.4 + `queryrules.DefaultExceptions` (`DeferMessage`) + T-B112/T-B211 |
+| La imagen de un contenedor de desarrollo o de test (PostgreSQL, Mailpit, MinIO) | `internal/testsupport/containers` y `compose.yaml` en el mismo cambio (lo verifica un test) + DD-36 si es MinIO + nota en ADR-011 si cambia el servidor S3 de desarrollo |
+| Las claves, los valores o los tipos que `audit.Recorder` rechaza, o el catálogo de acciones de auditoría | DD-37 + INV-32 + `data-model.md` §2.6 (nota de `data` y catálogo; verificar que ninguna clave nueva del catálogo choque con la política) + T-B209 (casos de credenciales y de "sin falsos positivos") |
+| El límite o la normalización de `user_agent` | DD-38 + INV-33 + `httpx.MaxUserAgentRunes` + `CHECK` de `sessions` y `audit_log` (migración nueva) + `data-model.md` §2.3/§2.6 + T-B209/T-B303 |
+| El orden de la cadena común de middlewares | DD-22 + DD-32 + §11.1 + T-B203/T-B204 |
 | Un término nuevo | `docs/glosario.md` |
 
 ---
@@ -1734,7 +1895,7 @@ La actualización de la documentación va **en el mismo cambio** que el código.
 
 ---
 
-## 18. Cambios posteriores a la aprobación (2026-09-29 y 2026-09-30)
+## 18. Cambios posteriores a la aprobación (2026-09-29 a 2026-10-01)
 
 ### Estado de la implementación (2026-09-30)
 
@@ -1844,3 +2005,99 @@ su sección de `tasks.md`; este plan no lo toca):
 - El `503` del registro puede traer `Retry-After` (DD-33): el mensaje de "Reintentar" puede usarlo.
 
 La cuarta tanda no le pide nada al frontend: no cambia el contrato.
+
+### Quinta tanda (2026-10-01): decisiones de la revisión del PR #8 (Fase 2) — **Accepted**
+
+Estado: la Fase 2 está implementada en la rama `feat/001-backend-phase-2` (PR fdelillo/crm#8), en
+revisión (`make check` en verde). La revisión dejó dos decisiones de diseño pendientes, que se
+resuelven acá; rigen cuando el usuario las apruebe y se aplican en la misma rama.
+
+| Tema | Qué cambió | Dónde | ADR |
+|---|---|---|---|
+| Clasificación de fallos SMTP (I2) | Solo son definitivos el rechazo del destinatario y los bugs. Todo `5xx` de la conexión (saludo, EHLO, STARTTLS, AUTH) o de MAIL FROM, y los `5xx` de RCPT TO o DATA que no identifican al destinatario, son `config`: recuperables y en `ERROR`. `outbox.DeliveryError` (causa + fase + código) reemplaza a `PermanentError` | §4.6, §9.3, §9.4, §11, §11.1, INV-28, §12.1, §12.3, R-19; `data-model.md` §2.5; research R-29; T-B211, T-B213, T-B214 | **ADR-024 (nuevo)**; nota 2026-10-01 en ADR-010 |
+| `last_error` y logs (M1) | Formato `<causa> <fase>[ <código>[ <extendido>]]: <detalle>`, saneado en un solo lugar (tokens con `@` → `[redacted]`, una línea, ≤ 1000 caracteres); nivel de log por causa; el `error` original de una entrega nunca se loguea (el de go-mail incluye el destinatario) | §9.4, INV-30, §12.1; `data-model.md` §2.5; T-B211, T-B213 | ADR-024 §3 |
+| Error de configuración persistente (`535`) | Recuperable y consume intentos (falla a las ~19 h); `ERROR` en cada intento; corte del ciclo ante fallos de conexión; métrica `outbox_delivery_errors_total{cause}` (Fase 9) y fila de runbook. Sin *circuit breaker* ni canal de alerta propio | §9.4, §12.1, §12.3; T-B211, T-B903 | ADR-024 §4 |
+| Presupuesto del envío (M7) | `SendBudget` = 20 s alrededor de `Handle`; go-mail con 5 s por etapa y `WithoutRset` (4 ventanas); `SendBudget` + 10 s ≤ `idle_in_transaction_session_timeout` (30 s); transacción con `context.WithoutCancel`; `nil` si `IsDelivered()`; apagado ≥ 25 s | DD-35, INV-29, §9.4, §11.1, S-17; research R-29; T-B211, T-B213, T-B214, T-B908, T-B909 | ADR-024 §5 |
+| Aislamiento por mensaje (I1) | Un fallo de `AsTenant`, `GetMessage` o del marcado aplaza **ese** mensaje (solo `next_attempt_at`, como `crm_worker`, con el privilegio que ya existía) con demora `clamp(edad, 10 s, 15 min)`, y el ciclo sigue; `Run` loguea el `err`. `Enqueue` fija `created_at` y `next_attempt_at` con el reloj inyectable (también resuelve M6) | §4.4, §4.6, §9.4, INV-31, §12.1, §12.3; `data-model.md` §2.5 y §3.4; T-B112 (`DeferMessage`), T-B211, T-B212 | ADR-024 §6 |
+| Imagen de MinIO (M10) | `quay.io/minio/minio` ya no se descarga sin login (desde 2026-09-24/25) y MinIO no publica más imágenes. Compose y tests usan la misma: `ghcr.io/coollabsio/minio:RELEASE.2025-10-15T17-29-55Z@sha256:…`; las referencias de imágenes se centralizan en `internal/testsupport/containers`, con un test contra `compose.yaml` | DD-36, §1, §11, S-18, R-18; research R-30; T-B215, T-B216 | Nota 2026-10-01 en ADR-011 |
+
+**Por qué un ADR nuevo y no una nota en ADR-010**: la regla "`5xx` → definitivo" es parte del
+texto de la decisión aceptada (viñeta "Reintentos"), no un detalle que se precisa: el cambio invierte
+su resultado para una familia de errores y fija una estrategia de errores (causas, formato
+persistido, aislamiento) que sobrevive a esta fase. Por la regla de `docs/adr/README.md` va en un
+ADR nuevo. Como el resto de ADR-010 no cambia, ADR-010 sigue `Accepted` con una nota que señala el
+reemplazo parcial. La imagen de MinIO, en cambio, no cambia ninguna decisión de ADR-011 (S3
+compatible, MinIO en desarrollo): va como nota fechada y `DD-36`.
+
+**Invariantes**: se agregan INV-28 a INV-31. Se **altera**, de forma documentada, una propiedad que
+`data-model.md` §3.4 afirmaba ("el worker no actualiza nada como `crm_worker`"): ahora aplaza
+mensajes moviendo `next_attempt_at`, con el mismo privilegio y la misma política (T-B109 no cambia).
+Se preservan INV-09 (el payload se borra solo al llegar a `sent` o `failed`; un mensaje aplazado
+conserva el suyo mientras siga pendiente), INV-16, INV-19 (un `42501` en el worker se loguea como
+`rls_violation` y no se traduce) e INV-27 (sin reintento dentro de la transacción: el aplazamiento
+es otra transacción).
+
+**Hallazgos de documentación**: (1) research R-11 y ADR-010 decían que go-mail ofrece "timeouts con
+`context`"; en v0.8.1 el `context` solo acota el *dial* (corregido con notas en R-11 y en ADR-010).
+(2) El árbol de §11 decía que `platform/mailer` hace el "render de plantillas", pero las plantillas
+viven en `internal/identity/emails` (T-B214), que es lo correcto por ADR-001: corregido.
+
+Esta tanda no le pide nada al frontend: no cambia el contrato.
+
+### Sexta tanda (2026-10-01): tercera revisión del PR #8 (Fase 2) — **Accepted**
+
+Estado: la Fase 2 sigue en revisión en `feat/001-backend-phase-2` (PR fdelillo/crm#8, HEAD
+31fb773). Una revisión externa encontró cuatro puntos (P1–P4) y quedaban dos pendientes de la
+revisión anterior. Se verificaron contra el código antes de decidir:
+
+- **P1**, confirmado: `containsSecret` (`internal/platform/audit/audit.go`) solo reconoce claves que
+  contienen `password` o `token`; `{"headers": {"Authorization": …}}` llega a `InsertAudit`. El test
+  `TestRecordRejectsSecrets` pasa `tx = nil` y acepta cualquier error, así que el rechazo que
+  observa es el de la transacción faltante.
+- **P2**, confirmado: `sanitizeDetail` (`internal/platform/outbox/outbox.go`) solo redacta campos con
+  `@`; una respuesta al fin de datos que cite el enlace con `#token=…` pasa intacta a `last_error` y
+  a los logs.
+- **P3**, confirmado: `Record` inserta `user_agent` sin acotarlo y la columna tiene
+  `CHECK (char_length(user_agent) <= 512)` (migración 00007; igual en `sessions`, 00005). Además, un
+  User-Agent con bytes que no son UTF-8 también hace fallar el `INSERT`.
+- **P4**, confirmado: `NewCommonMiddleware` (`internal/app/root.go`) pone `ClientIP` antes que
+  `RequestID`, y el aviso de `ClientIP` no incluye `request_id` (la convención del código es pasarlo
+  explícito con `RequestIDFrom`). `RequestID` no lee la IP (genera un UUIDv7), así que se puede
+  adelantar sin romper nada.
+- **DD-35**: el adaptador devuelve `ctx.Err()` y quien construye el `DeliveryError` es el
+  `Dispatcher` (`classifyHandleResult`); comportamiento equivalente, texto desalineado.
+- **Código extendido**: confirmado en go-mail v0.8.1 (`senderror.go`) que `EnhancedStatusCode()`
+  solo se completa si el servidor anuncia `ENHANCEDSTATUSCODES`.
+
+| Tema | Qué cambió | Dónde | ADR |
+|---|---|---|---|
+| Credenciales en `audit_log.data` (P1) | Rechazo (nunca redacción) con la política de DD-37: tipos admitidos cerrados, clave normalizada contra una lista por contenido y otra por igualdad, valores `Bearer`/`Basic`/`Digest`, JWT o con el formato de `securetoken`; centinelas `ErrSecretInData`, `ErrUnsupportedData` y `ErrTxRequired`; la validación corre antes de mirar `tx` | DD-37, INV-32, §10.3, §11.1, §16; `data-model.md` §2.6; T-B209, T-B210 | — |
+| Token en `last_error` (P2) | En la fase `data`, sin texto del proveedor (`response text omitted`); en todas, redacción de campos con `@`, `://` o 20 o más caracteres seguidos de `[A-Za-z0-9+/=_-]` | INV-30, §9.3, §9.4, §10.3, §12.1, §12.3, §16; `data-model.md` §2.5; T-B211, T-B212, T-B213, T-B214 | **ADR-025 (nuevo, Accepted)**; nota 2026-10-01 (b) en ADR-024 |
+| User-Agent largo o inválido (P3) | `httpx.NormalizeUserAgent` (UTF-8 válido, sin `NUL`, ≤ 512 runas, sin `…`) en los dos escritores: `audit.Recorder.Record` e `identity` en `CreateSession` | DD-38, INV-33, §11.1, §16; `data-model.md` §2.3, §2.6; T-B209, T-B210, T-B303, T-B304 | — |
+| `bad_forwarded_for` sin `request_id` (P4) | `RequestID` pasa a ser el primer middleware de la cadena común y `ClientIP` el segundo; el aviso lleva `request_id` | DD-22, DD-32, §11.1, §12.1, §16; T-B203, T-B204, T-B219 | — |
+| Texto de DD-35 (pendiente de la revisión anterior) | El adaptador devuelve `ctx.Err()` tal cual; el `Dispatcher` convierte el presupuesto vencido en `{network, unknown, "timeout"}`. Sin cambio de comportamiento | DD-35, §11.1; T-B213 | — (ADR-024 §5 ya lo decía sin nombrar el componente) |
+| Código extendido sin `ENHANCEDSTATUSCODES` (observación de la revisión anterior) | Se lee del comienzo del texto en todas las fases, solo si su clase coincide con la del código básico | INV-28, §9.4; T-B213, T-B214 | ADR-025 §3 |
+
+**Por qué ADR-025 y no una nota en ADR-024**: la regla de saneamiento y la fuente del código
+extendido son texto de la decisión aceptada de ADR-024 (§2 y §3), y el cambio invierte el resultado
+de un caso (`550 5.7.1` sin `ENHANCEDSTATUSCODES` deja de ser definitivo). Por la regla de
+`docs/adr/README.md` y la matriz §16, va en un ADR nuevo. Como el resto de ADR-024 no cambia,
+ADR-024 sigue `Accepted` con una nota que señala el reemplazo parcial. **Por qué `DD` y no
+ADR para P1, P3 y P4**: P1 y P3 precisan reglas que ya estaban en `data-model.md` ("`data` sin
+secretos", "`user_agent` ≤ 512") sin cambiar ninguna decisión de un ADR; P4 cambia un detalle de
+DD-32 (la posición del middleware), no su decisión (una sola fuente de IP, `TRUSTED_PROXIES`).
+
+**Invariantes**: se agregan INV-32 (credenciales en `audit_log.data`) e INV-33 (`user_agent` nunca
+hace fallar una operación). Se **reescribe** INV-30: la garantía para el token pasa a ser
+estructural (fase `data`) y la redacción se amplía. Se preservan INV-25 (`ClientIP` sigue siendo la
+única fuente de IP; lo único que corre antes es `RequestID`, que no la lee), INV-28 (lo definitivo
+sigue siendo solo la regla del destinatario; cambia de dónde sale el código extendido) e INV-15.
+
+**Hallazgos de documentación**: (1) §11.1 mostraba `ClientIP(trusted)`; el código recibe además el
+`logger` (M4 de la primera revisión del PR #8): corregido junto con P4. (2) La nota de `data` en
+`data-model.md` §2.6 ("nunca contraseñas ni tokens") y el caso de T-B209 ("clave `password` o
+`token`") eran exactamente lo que el código implementaba: el hueco de P1 estaba en el diseño, no
+solo en el código. (3) El comentario de `Mailer.Send` en `internal/platform/mailer/smtp.go` señala
+la diferencia con DD-35; con DD-35 alineado, se reemplaza por una referencia (T-B214).
+
+Esta tanda tampoco le pide nada al frontend: no cambia el contrato.

@@ -1,0 +1,7 @@
+Hola:
+
+Te invitaron a {{.CompanyName}} con el rol de {{.Role}}.
+Aceptá la invitación desde este enlace:
+{{.Link}}
+
+Si no esperabas esta invitación, podés ignorar este email.

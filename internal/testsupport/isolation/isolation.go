@@ -57,6 +57,8 @@ func updatableColumn(t *testing.T, role, table string) string {
 	return *col
 }
 
+// HasPrivilege reports whether role has priv (e.g. "SELECT", "UPDATE") on table, using PostgreSQL's
+// own has_table_privilege so a test checks the real grant, not a copy of what the migration says.
 func HasPrivilege(t *testing.T, role, table, priv string) bool {
 	t.Helper()
 	var has bool

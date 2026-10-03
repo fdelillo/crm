@@ -215,6 +215,10 @@ func TestCleanupAndProvisioningNamesAreExemptOnlyAtTheirPath(t *testing.T) {
 		if e.Path == "internal/identity/store/cleanup.sql" {
 			exceptions[i].Queries = map[string]string{"DeleteExpired": "cleanup of expired sessions as crm_worker"}
 		}
+		if e.Path == "internal/platform/outbox/store/worker.sql" {
+			// This fixture predates LockDueMessage; keep this test about misplaced file names.
+			exceptions[i].Queries = nil
+		}
 	}
 	vs, err := queryrules.Check("testdata/misplaced2", companyTables(t), exceptions)
 	if err != nil {
@@ -247,9 +251,9 @@ func TestExemptionsAreByQueryNotByFile(t *testing.T) {
 	}
 }
 
-// The default exceptions list no query yet: every query written in an exempt file is checked until its
-// name is added to the exception with a reason, which is where the design review happens.
-func TestDefaultExceptionsExemptNoQueryUntilListed(t *testing.T) {
+// Every query not named by an exception is checked. A named query missing from a fixture is also
+// reported, so a later rename cannot silently retain the exemption.
+func TestDefaultExceptionsCheckUnlistedAndStaleQueries(t *testing.T) {
 	vs, err := queryrules.Check("testdata/exemptfile", companyTables(t), queryrules.DefaultExceptions)
 	if err != nil {
 		t.Fatal(err)
@@ -257,6 +261,8 @@ func TestDefaultExceptionsExemptNoQueryUntilListed(t *testing.T) {
 	want := []string{
 		"internal/identity/store/auth_lookup.sql ListAllUsers",
 		"internal/identity/store/auth_lookup.sql UserByEmail",
+		"internal/platform/outbox/store/worker.sql DeferMessage",
+		"internal/platform/outbox/store/worker.sql LockDueMessage",
 	}
 	if got := summarize(vs); !slices.Equal(got, want) {
 		t.Errorf("violations:\n got %v\nwant %v", got, want)

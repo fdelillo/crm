@@ -86,7 +86,7 @@ func healthRoot() http.Handler {
 		Liveness:  app.LivenessHandler(),
 		Readiness: app.ReadinessPlaceholder(),
 		SPA:       app.SPAUnavailableHandler(),
-	}, app.NewCommonMiddleware(slog.New(slog.NewJSONHandler(io.Discard, nil)), true))
+	}, app.NewCommonMiddleware(slog.New(slog.NewJSONHandler(io.Discard, nil)), true, nil))
 }
 
 // startServer serves srv on an ephemeral port and returns its address and the log buffer. The

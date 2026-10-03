@@ -115,7 +115,7 @@ func newHarnessWithAPI(t *testing.T, local bool, api http.Handler) *harness {
 		Liveness:  app.LivenessHandler(),
 		Readiness: app.ReadinessPlaceholder(),
 		SPA:       spa,
-	}, app.NewCommonMiddleware(logger, local))
+	}, app.NewCommonMiddleware(logger, local, nil))
 	return &harness{handler: root, spa: spa, logs: logs}
 }
 
@@ -582,7 +582,7 @@ func TestRoot_ExpectedPlaceholders503AreWarnings(t *testing.T) {
 		Liveness:  app.LivenessHandler(),
 		Readiness: app.ReadinessPlaceholder(),
 		SPA:       app.SPAUnavailableHandler(),
-	}, app.NewCommonMiddleware(logger, true))
+	}, app.NewCommonMiddleware(logger, true, nil))
 
 	for _, path := range []string{"/readyz", "/login"} {
 		rec := httptest.NewRecorder()

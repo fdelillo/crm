@@ -15,6 +15,15 @@ base.
 checklist de §6 (`sessions.tenant_id` y `user_tokens.tenant_id` tienen FK a `tenants(id)`, §2.3 y
 §2.4); lock de `GRANT crm_tenant` en el aprovisionamiento (§3.3, DD-33); origen de las columnas
 `ip` (DD-32); archivos de las queries de sistema (§3.4, plan §4.4). Sin cambios de esquema.
+**Cuarta revisión 2026-10-01** (Accepted; revisión del PR fdelillo/crm#8, ADR-024): formato y
+saneamiento de `outbox_messages.last_error`, efecto de los aplazamientos del `Dispatcher` sobre
+`attempts` y `next_attempt_at`, y `created_at` fijado por `Enqueue` con el reloj inyectable (§2.5);
+el worker escribe `next_attempt_at` como `crm_worker` para aplazar un mensaje, con el privilegio y
+la política que ya tenía (§3.4). Sin cambios de esquema, privilegios ni políticas.
+**Quinta revisión 2026-10-01** (*Accepted*; tercera revisión del PR fdelillo/crm#8): saneamiento
+de `outbox_messages.last_error` según ADR-025 (§2.5); política de credenciales de `audit_log.data`
+(DD-37, §2.6); `user_agent` normalizado en cada escritura (DD-38, §2.3 y §2.6). Sin cambios de
+esquema: los `CHECK` de `user_agent` y `last_error` se mantienen.
 
 DDL **conceptual**: define tablas, tipos, constraints, índices, políticas y privilegios. No es
 una migración ejecutable: las migraciones goose las escribe quien implementa, respetando esto.
@@ -233,7 +242,7 @@ con `users_tenant_created_idx`; no justifica un índice propio. Solo cuentan `st
 | `revoked_at` | `timestamptz` | sí | | |
 | `revoked_reason` | `text` | sí | `IN ('logout','password_reset','user_disabled')`; `(revoked_at IS NULL) = (revoked_reason IS NULL)` | |
 | `ip` | `inet` | sí | | 🔒 IP del cliente según `httpx.ClientIP` (DD-32): detrás de un proxy de confianza, la de `X-Forwarded-For`; nunca la del proxy |
-| `user_agent` | `text` | sí | `<= 512` | 🔒 |
+| `user_agent` | `text` | sí | `<= 512` | 🔒 Valor de `httpx.NormalizeUserAgent` (DD-38, INV-33): UTF-8 válido, sin `NUL`, primeras 512 runas; vacío → `NULL`. Un User-Agent más largo nunca hace fallar la operación |
 
 Una sesión es **válida** si `revoked_at IS NULL AND $now < expires_at AND $now < last_seen_at +
 idle_timeout` y el usuario está `active`. `idle_timeout` es configuración (`SESSION_IDLE`,
@@ -300,10 +309,10 @@ revoca la anterior antes de crear la nueva, y la limpieza periódica no borra la
 | `recipient` | `text` | no | `<= 254` | 🔒 |
 | `payload` | `jsonb` | sí | ver `outbox_scrub_chk` | 🔒 Parámetros de la plantilla, **incluido el token en claro** |
 | `status` | `text` | no | `IN ('pending','sent','failed')`, default `'pending'` | |
-| `attempts` | `integer` | no | default `0`, `>= 0` | No aumenta si el envío se interrumpe por el apagado del proceso (plan §9.4) |
-| `next_attempt_at` | `timestamptz` | no | default `now()` | |
-| `last_error` | `text` | sí | `<= 1000` | Sin datos personales (código SMTP y mensaje del proveedor truncado) |
-| `created_at` | `timestamptz` | no | default `now()` | |
+| `attempts` | `integer` | no | default `0`, `>= 0` | No aumenta si el envío se interrumpe por el apagado del proceso ni cuando el `Dispatcher` aplaza el mensaje (plan §9.4, ADR-024 §6) |
+| `next_attempt_at` | `timestamptz` | no | default `now()` | `Enqueue` lo fija con `clock.Now()` (DD-18). Lo mueven el reintento (rol de la empresa, con backoff) y el aplazamiento del `Dispatcher` (`crm_worker`, demora `clamp(edad, 10 s, 15 min)`; ADR-024 §6) |
+| `last_error` | `text` | sí | `<= 1000` | Último fallo de entrega en el formato de ADR-024 §3: `<causa> <fase>[ <código SMTP>[ <código extendido>]]: <detalle>` (p. ej. `config connection 535 5.7.8: …`, `recipient rcpt_to 550 5.1.1: [redacted] …`). Saneado (ADR-024 §3 y ADR-025, *Accepted*): en la fase `data` no se guarda el texto del proveedor (detalle fijo `response text omitted`: el servidor ya recibió el enlace con el token); en todas las fases, todo campo con `@`, con `://` o con 20 o más caracteres seguidos de `[A-Za-z0-9+/=_-]` → `[redacted]` (**nunca** el destinatario ni el token); una sola línea, truncado a 1000 caracteres. El código extendido es el que informa el servidor o, si no lo informa, el del comienzo del texto (ADR-025 §3). Se escribe al reprogramar y al pasar a `failed`; `NULL` al pasar a `sent`; no cambia al aplazar ni al cancelar |
+| `created_at` | `timestamptz` | no | default `now()` | `Enqueue` lo fija con `clock.Now()` (DD-18): es la base de la demora del aplazamiento (ADR-024 §6). La limpieza de terminales lo compara con `now()` de la base (§3.4) |
 | `sent_at` | `timestamptz` | sí | | |
 | `failed_at` | `timestamptz` | sí | | |
 
@@ -333,9 +342,9 @@ Constraints de tabla:
 | `action` | `text` | no | `action ~ '^[a-z_]+\.[a-z_]+$'` | Ver catálogo abajo |
 | `target_type` | `text` | sí | `<= 40` | `user`, `tenant`, `session` |
 | `target_id` | `uuid` | sí | | Sin FK (polimórfico) |
-| `data` | `jsonb` | no | default `'{}'` | Detalles **sin** secretos (nunca contraseñas ni tokens) |
+| `data` | `jsonb` | no | default `'{}'` | Detalles **sin** credenciales (INV-32): `audit.Recorder` rechaza con `ErrSecretInData` las claves y los valores de la política de DD-37 (contraseñas, tokens, cabeceras `Authorization`/`Cookie`/`Set-Cookie`, claves de API, sesión, CSRF, firmas; valores `Bearer …`/`Basic …`/`Digest …`, JWT o con el formato de `securetoken`) y con `ErrUnsupportedData` los tipos que no puede recorrer. Las claves del catálogo de abajo no chocan con la política (lo verifica T-B209) |
 | `ip` | `inet` | sí | | 🔒 IP del cliente según `httpx.ClientIP` (DD-32) |
-| `user_agent` | `text` | sí | `<= 512` | 🔒 |
+| `user_agent` | `text` | sí | `<= 512` | 🔒 Valor de `httpx.NormalizeUserAgent`, aplicado por `audit.Recorder.Record` (DD-38, INV-33) |
 | `request_id` | `text` | sí | `<= 64` | Correlación con logs |
 
 Append-only por privilegios: el rol de empresa tiene solo `SELECT, INSERT` (INV-15). Los usuarios
@@ -479,8 +488,11 @@ Notas sobre estas decisiones:
 
 - **Por qué `crm_worker` necesita `UPDATE (next_attempt_at)`**: `SELECT ... FOR UPDATE SKIP LOCKED`
   exige privilegio `UPDATE` sobre al menos una columna y aplica también las políticas de
-  `UPDATE`. El worker **no** actualiza nada como `crm_worker`: marca el mensaje como enviado ya con
-  el rol de la empresa.
+  `UPDATE`. El worker marca el mensaje (enviado, reintento, fallido) con el rol de la empresa. La
+  **única** escritura como `crm_worker` es el **aplazamiento** (`DeferMessage`, ADR-024 §6, desde la
+  revisión del 2026-10-01): cuando la fase con el rol de la empresa falla para un mensaje, mueve
+  solo su `next_attempt_at` (si sigue `pending` y con el mismo `next_attempt_at` leído). Usa este
+  mismo privilegio y la política `worker_lock`; no hace falta ningún privilegio nuevo.
 - **Por qué `worker_read USING (true)`**: una sentencia `DELETE` con `WHERE` aplica también las
   políticas de `SELECT`; si la de lectura filtrara por `pending`, la limpieza no vería las filas
   terminales. La lectura amplia es segura porque el privilegio es **por columna** (solo ruteo y

@@ -3,6 +3,7 @@ package app
 import (
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"slices"
 	"strings"
 
@@ -21,15 +22,20 @@ type RootDeps struct {
 // CommonMiddleware wraps the whole root mux, so it applies to the API, ops and the SPA alike.
 type CommonMiddleware func(http.Handler) http.Handler
 
-// NewCommonMiddleware builds the middlewares shared by every destination: request id, recover,
-// logging and security headers, outermost first (T-B204). local omits HSTS (DD-24).
-// CrossOriginProtection joins this chain in T-B204.
-func NewCommonMiddleware(logger *slog.Logger, local bool) CommonMiddleware {
+// NewCommonMiddleware builds the middlewares shared by every destination: request id, client IP,
+// recover, logging, security headers and cross-origin protection, outermost first (T-B204). local
+// omits HSTS (DD-24). trusted is explicit (not variadic, M5 of the PR #8 review): an omitted
+// argument used to silently ignore TRUSTED_PROXIES; every caller must now say "nil" on purpose.
+func NewCommonMiddleware(logger *slog.Logger, local bool, trusted []netip.Prefix) CommonMiddleware {
+	csrf := http.NewCrossOriginProtection()
+	csrf.SetDenyHandler(httpx.CSRFDenyHandler(logger))
 	chain := []func(http.Handler) http.Handler{
 		httpx.RequestID,
+		httpx.ClientIP(trusted, logger),
 		httpx.Recover(logger),
 		httpx.Logging(logger),
 		httpx.SecurityHeaders(!local),
+		csrf.Handler,
 	}
 	return func(next http.Handler) http.Handler {
 		for _, mw := range slices.Backward(chain) {
@@ -93,6 +99,7 @@ func spaUnlessAPI(api, spa http.Handler) http.Handler {
 // Modules register their routes on it; the SPA is never registered here.
 func NewAPIRouter() *chi.Mux {
 	r := chi.NewRouter()
+	r.Use(httpx.NoStore)
 	// First middleware: once the request has been routed (or not), report the chi pattern to the
 	// request log. It runs on 404 and 405 too, and lets chi build its own route context.
 	r.Use(func(next http.Handler) http.Handler {
