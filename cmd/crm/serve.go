@@ -8,6 +8,7 @@ import (
 	"net"
 
 	"github.com/fdelillo/crm/internal/app"
+	"github.com/fdelillo/crm/internal/industrytemplate"
 	"github.com/fdelillo/crm/internal/platform/config"
 )
 
@@ -37,8 +38,10 @@ func runServe(ctx context.Context, args []string, e env) error {
 	}
 	logger.Info("starting", "local_mode", cfg.IsLocal(), "trusted_proxies", trusted)
 
+	api := app.NewAPIRouter()
+	industrytemplate.RegisterRoutes(api)
 	root := app.NewRootHandler(app.RootDeps{
-		API:       app.NewAPIRouter(),
+		API:       api,
 		Liveness:  app.LivenessHandler(),
 		Readiness: app.ReadinessPlaceholder(),
 		// Until the web package embeds the built SPA (T-F008) the interface answers 503.

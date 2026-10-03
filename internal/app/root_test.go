@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/fdelillo/crm/internal/app"
+	"github.com/fdelillo/crm/internal/testsupport/contract"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
@@ -91,6 +92,10 @@ func testAPI() *chi.Mux {
 	api.Get("/api/v1/ping", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{"pong":true}`)
+	})
+	api.Get("/api/v1/industry-templates", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"items":[]}`)
 	})
 	api.Get("/api/v1/things/{id}", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, "thing")
@@ -218,10 +223,13 @@ func TestRoot_APINotFound(t *testing.T) {
 	} {
 		t.Run(target, func(t *testing.T) {
 			h := newHarness(t, false)
-			rec := h.do(http.MethodGet, target)
+			req := httptest.NewRequest(http.MethodGet, target, nil)
+			rec := httptest.NewRecorder()
+			h.handler.ServeHTTP(rec, req)
 			if rec.Code != http.StatusNotFound {
 				t.Fatalf("status = %d, want 404", rec.Code)
 			}
+			contract.Default(t).RequireRecorded(t, req, rec)
 			p := decodeProblem(t, rec)
 			if p.Code != "not_found" || p.Status != 404 || p.Type != "/problems/not_found" || p.Title == "" {
 				t.Errorf("problem = %+v", p)
@@ -238,10 +246,13 @@ func TestRoot_APINotFound(t *testing.T) {
 
 func TestRoot_APIMethodNotAllowed(t *testing.T) {
 	h := newHarness(t, false)
-	rec := h.do(http.MethodDelete, "/api/v1/ping")
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/industry-templates", nil)
+	rec := httptest.NewRecorder()
+	h.handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("status = %d, want 405", rec.Code)
 	}
+	contract.Default(t).RequireRecorded(t, req, rec)
 	p := decodeProblem(t, rec)
 	if p.Status != 405 || p.Code != "method_not_allowed" || p.Type != "/problems/method_not_allowed" || p.Instance == "" {
 		t.Errorf("problem = %+v, want status 405 and code method_not_allowed", p)
@@ -257,10 +268,13 @@ func TestRoot_APIMethodNotAllowed(t *testing.T) {
 // A method chi does not know still gets the same 405 with Allow.
 func TestRoot_APIUnknownMethodIsMethodNotAllowed(t *testing.T) {
 	h := newHarness(t, false)
-	rec := h.do("FOO", "/api/v1/ping")
+	req := httptest.NewRequest("FOO", "/api/v1/industry-templates", nil)
+	rec := httptest.NewRecorder()
+	h.handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("status = %d, want 405", rec.Code)
 	}
+	contract.Default(t).RequireRecorded(t, req, rec)
 	if p := decodeProblem(t, rec); p.Code != "method_not_allowed" {
 		t.Errorf("code = %q, want method_not_allowed", p.Code)
 	}
