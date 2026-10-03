@@ -212,6 +212,10 @@ func TestDefaultExceptionsAreTheFourFilesOfPlanSection44(t *testing.T) {
 func TestCleanupAndProvisioningNamesAreExemptOnlyAtTheirPath(t *testing.T) {
 	exceptions := slices.Clone(queryrules.DefaultExceptions)
 	for i, e := range exceptions {
+		if e.Path == "internal/identity/store/auth_lookup.sql" {
+			// This fixture predates the session lookup; keep this test about misplaced names.
+			exceptions[i].Queries = nil
+		}
 		if e.Path == "internal/identity/store/cleanup.sql" {
 			exceptions[i].Queries = map[string]string{"DeleteExpired": "cleanup of expired sessions as crm_worker"}
 		}
@@ -260,6 +264,7 @@ func TestDefaultExceptionsCheckUnlistedAndStaleQueries(t *testing.T) {
 	}
 	want := []string{
 		"internal/identity/store/auth_lookup.sql ListAllUsers",
+		"internal/identity/store/auth_lookup.sql LookupSessionByHash",
 		"internal/identity/store/auth_lookup.sql UserByEmail",
 		"internal/platform/outbox/store/worker.sql DeferMessage",
 		"internal/platform/outbox/store/worker.sql LockDueMessage",

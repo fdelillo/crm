@@ -6,10 +6,23 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"time"
 
 	"github.com/fdelillo/crm/internal/app"
+	"github.com/fdelillo/crm/internal/identity"
+	"github.com/fdelillo/crm/internal/identity/emails"
 	"github.com/fdelillo/crm/internal/industrytemplate"
+	"github.com/fdelillo/crm/internal/platform/audit"
+	"github.com/fdelillo/crm/internal/platform/clock"
 	"github.com/fdelillo/crm/internal/platform/config"
+	"github.com/fdelillo/crm/internal/platform/db"
+	"github.com/fdelillo/crm/internal/platform/mailer"
+	"github.com/fdelillo/crm/internal/platform/outbox"
+	"github.com/fdelillo/crm/internal/platform/password"
+	"github.com/fdelillo/crm/internal/platform/ratelimit"
+	"github.com/fdelillo/crm/internal/tenant"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/time/rate"
 )
 
 // runServe starts the HTTP server: HTTP by default, HTTPS with the local certificate when
@@ -37,9 +50,33 @@ func runServe(ctx context.Context, args []string, e env) error {
 		trusted = append(trusted, p.String())
 	}
 	logger.Info("starting", "local_mode", cfg.IsLocal(), "trusted_proxies", trusted)
+	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return fmt.Errorf("DATABASE_URL: %w", err)
+	}
+	defer pool.Close()
+	runner := db.NewTxRunner(pool, db.WithLogger(logger))
+	c := clock.Real{}
+	users := identity.NewService(runner, outbox.NewEnqueuer(c), c, cfg.SessionIdle, cfg.SessionAbsolute)
+	companies := tenant.NewService(runner, users, industrytemplate.NoopSeeder{}, password.NewHasher(4),
+		audit.NewRecorder(), logger)
+	limiter := ratelimit.NewLimiter(rate.Every(12*time.Minute), 5, c, time.Hour)
+	smtp, err := mailer.NewSMTP(mailer.SMTPConfig{Host: cfg.SMTPHost, Port: cfg.SMTPPort,
+		Username: cfg.SMTPUsername, Password: cfg.SMTPPassword, From: cfg.SMTPFrom})
+	if err != nil {
+		return err
+	}
+	emailHandler, err := emails.NewHandler(smtp, cfg.AppBaseURL.String(),
+		emails.LinkPaths{Reset: cfg.AppLinkReset, Verify: cfg.AppLinkVerify, Invitation: cfg.AppLinkInvitation})
+	if err != nil {
+		return err
+	}
+	dispatcher := outbox.NewDispatcher(runner, emailHandler, c, logger)
 
 	api := app.NewAPIRouter()
 	industrytemplate.RegisterRoutes(api)
+	tenant.RegisterRoutes(api, companies, limiter, logger)
+	app.RegisterMeRoute(api, users, companies, logger)
 	root := app.NewRootHandler(app.RootDeps{
 		API:       api,
 		Liveness:  app.LivenessHandler(),
@@ -58,5 +95,19 @@ func runServe(ctx context.Context, args []string, e env) error {
 	if err != nil {
 		return fmt.Errorf("listening on HTTP_ADDR %s: %w", cfg.HTTPAddr, err)
 	}
-	return app.Serve(ctx, srv, ln, logger)
+	workerCtx, stopWorker := context.WithCancel(ctx)
+	defer stopWorker()
+	workerDone := make(chan error, 1)
+	go func() { workerDone <- dispatcher.Run(workerCtx) }()
+	serveErr := app.Serve(ctx, srv, ln, logger)
+	stopWorker()
+	select {
+	case workerErr := <-workerDone:
+		if serveErr == nil && workerErr != nil {
+			return workerErr
+		}
+	case <-time.After(25 * time.Second):
+		return fmt.Errorf("outbox worker did not stop within 25 seconds")
+	}
+	return serveErr
 }

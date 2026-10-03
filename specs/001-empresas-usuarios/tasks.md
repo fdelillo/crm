@@ -53,7 +53,7 @@ a ningún enum (ver "Coordinación con la sección Frontend").
 
 Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invocación**.
 
-### Estado de la implementación (2026-10-02)
+### Estado de la implementación (2026-10-03)
 
 - **Fase 0**: implementada y mergeada (PR fdelillo/crm#6).
 - **Fase 1**: implementada y mergeada.
@@ -96,8 +96,8 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
   | T-B213 / T-B214 | Código extendido leído del texto en todas las fases, con control de clase (ADR-025 §3); caso de *deadline* de DD-35; comentario de `Mailer.Send` |
   | T-B303 / T-B304 (Fase 3) | `CreateSession` normaliza `user_agent` (DD-38): se hace al implementar la Fase 3, no en este PR |
 
-- **Fase 3** (2026-10-02): rama `feat/001-backend-phase-3`, creada desde `main` (2ff34be), todavía
-  sin código. **Séptima revisión (*Accepted*, aprobada por el usuario el 2026-10-02)**: antes de
+- **Fase 3** (2026-10-03): implementada en `feat/001-backend-phase-3`, creada desde `main`
+  (2ff34be). **Séptima revisión (*Accepted*, aprobada por el usuario el 2026-10-02)**: antes de
   T-B301, en este orden y con `make check` en verde después de cada paso, se aplican estos ajustes.
   **Los cuatro son obligatorios.** Los casos marcados "Séptima revisión" se escriben primero; cada
   tarea dice si deben fallar (Red) o si caracterizan el comportamiento actual. El contrato ya está
@@ -110,6 +110,12 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
   | 2 | T-B311 / T-B312 (nuevas, Fase 3) | Validador del contrato `internal/testsupport/contract` con `libopenapi-validator`: cierra el hueco diferido de T-B201/T-B004 (fila de la tabla de la Fase 2) |
   | 3 | T-B201 / T-B004 (Fases 2 y 0) | Sus casos de problem+json validan con `contract` (detalle en T-B312), incluido el `413` de un body JSON de más de 65 536 bytes. `TestProblemCodesMatchContract` se mantiene |
   | 4 | T-B215 / T-B216 (Fase 2; ajuste de la quinta revisión que no se aplicó; **obligatorio**, decisión del usuario del 2026-10-02) | Hoy en `main`: `compose.yaml` usa `quay.io/minio/minio:latest` (no se descarga sin login desde el 2026-09-24/25, DD-36), `internal/platform/objectstore/objectstore_integration_test.go` usa `bitnamilegacy/minio@sha256:…` (que T-B215 prohíbe) y no existe `internal/testsupport/containers`. Primero se escriben los casos de T-B215 marcados "Quinta revisión" (fallan hoy). Después: **(a) `compose.yaml`**: el servicio `minio` usa `ghcr.io/coollabsio/minio:RELEASE.2025-10-15T17-29-55Z@sha256:<digest>`, con el digest del **índice multiplataforma** de ese tag (`docker buildx imagetools inspect`); mantiene `command: server /data --console-address ":9001"` y pierde el comentario sobre `quay.io`. **(b) Test de S3** (T-B215): usa `containers.MinIO` en lugar de `bitnamilegacy/…`; ningún archivo del repo fuera de la documentación nombra `quay.io/minio`, `minio/minio:` ni `bitnamilegacy/`. **(c) `internal/testsupport/containers`**: constantes `Postgres` (`postgres:18`), `Mailpit` (`axllent/mailpit:v1.27`) y `MinIO` (la referencia de (a)); las usan `pgtest`, los dos tests que levantan Mailpit (`internal/identity/emails/emails_integration_test.go` e `internal/app/phase2_independent_integration_test.go`) y el de S3; su test unitario verifica que los `image:` de `postgres`, `mailpit` y `minio` en `compose.yaml` son exactamente esas constantes. Si el tag no se descarga sin login, no se elige otra imagen por cuenta propia: respaldo de DD-36 (`cgr.dev/chainguard/minio` por digest) y aviso al arquitecto. **Verificación**: `docker compose up -d` con **todos** los servicios, sin login a ningún registro, y `make check` en verde |
+
+  La implementación de T-B301 a T-B312 pasó `make check`. El checkpoint independiente usó el
+  binario real con PostgreSQL, Mailpit y MinIO levantados: `curl` devolvió `201`, el correo de
+  verificación apareció en Mailpit y el registro repetido devolvió `409`. PostgreSQL se publicó
+  temporalmente en `127.0.0.1:15432` porque el puerto 5432 del host ya estaba ocupado; no se
+  modificó `compose.yaml` por este conflicto local.
 
 ### Convenciones de esta sección
 

@@ -71,3 +71,25 @@ sql:
         out: internal/platform/outbox/store
         sql_package: pgx/v5
         overrides: *overrides
+
+  - name: identity
+    engine: postgresql
+    schema: db/migrations
+    queries: internal/identity/store
+    gen:
+      go:
+        package: store
+        out: internal/identity/store
+        sql_package: pgx/v5
+        overrides: *overrides
+
+  - name: tenant
+    engine: postgresql
+    schema: db/migrations
+    queries: internal/tenant/store
+    gen:
+      go:
+        package: store
+        out: internal/tenant/store
+        sql_package: pgx/v5
+        overrides: *overrides

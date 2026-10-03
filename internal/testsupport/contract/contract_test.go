@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -89,6 +90,31 @@ func TestGlobalResponsesAndSchemas(t *testing.T) {
 	}
 	if err := v.CheckSchema("NoExiste", []byte(`{}`)); err == nil {
 		t.Fatal("missing schema accepted")
+	}
+}
+
+func TestConcurrentValidationAndEmptyLogout(t *testing.T) {
+	v := Default(t)
+	logout := httptest.NewRequest(http.MethodPost, "https://crm.example/api/v1/auth/logout", nil)
+	if err := v.CheckResponse(logout, response(204, "", "")); err != nil {
+		t.Fatalf("empty logout: %v", err)
+	}
+	var wg sync.WaitGroup
+	errs := make(chan error, 20)
+	for range 20 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			req := httptest.NewRequest(http.MethodGet, "https://crm.example/api/v1/industry-templates", nil)
+			errs <- v.CheckResponse(req, response(200, "application/json", `{"items":[{"code":"generic","name":"Genérico"}]}`))
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent validation: %v", err)
+		}
 	}
 }
 

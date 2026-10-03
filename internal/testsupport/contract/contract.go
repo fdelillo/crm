@@ -111,7 +111,10 @@ func (v *Validator) CheckResponse(req *http.Request, resp *http.Response) error 
 			if resp.StatusCode == http.StatusMethodNotAllowed && resp.Header.Get("Allow") == "" {
 				return fmt.Errorf("contract: %s %s 405: missing Allow header", req.Method, req.URL.Path)
 			}
-			return v.CheckSchema("Problem", body)
+			if err := v.CheckSchema("Problem", body); err != nil {
+				return fmt.Errorf("contract: %s %s %d: %w", req.Method, req.URL.Path, resp.StatusCode, err)
+			}
+			return nil
 		}
 	}
 	return fmt.Errorf("contract: %s %s %d: %w", req.Method, req.URL.Path, resp.StatusCode, joinValidationErrors(validationErrors))

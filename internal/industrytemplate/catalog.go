@@ -25,8 +25,10 @@ type Template struct {
 //go:embed catalog.json
 var catalogJSON []byte
 
-var loadCatalog = sync.OnceValues(func() ([]Template, error) {
-	dec := json.NewDecoder(bytes.NewReader(catalogJSON))
+var loadCatalog = sync.OnceValues(func() ([]Template, error) { return parseCatalog(catalogJSON) })
+
+func parseCatalog(data []byte) ([]Template, error) {
+	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	var templates []Template
 	if err := dec.Decode(&templates); err != nil {
@@ -46,7 +48,7 @@ var loadCatalog = sync.OnceValues(func() ([]Template, error) {
 		seen[item.Code] = true
 	}
 	return templates, nil
-})
+}
 
 // All returns a copy of the embedded catalog. Invalid build-time data panics on first use.
 func All() []Template {

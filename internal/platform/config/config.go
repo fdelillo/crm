@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/netip"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -33,6 +34,11 @@ type Config struct {
 	AppLinkInvitation    string
 	SessionIdle          time.Duration
 	SessionAbsolute      time.Duration
+	SMTPHost             string
+	SMTPPort             int
+	SMTPUsername         string
+	SMTPPassword         string
+	SMTPFrom             string
 	HTTPAddr             string
 	MetricsAddr          string
 	TLS                  *TLSFiles // nil except in local mode with TLS_* set
@@ -84,6 +90,21 @@ func Load(getenv func(string) string) (Config, error) {
 	if c.SessionIdle > c.SessionAbsolute {
 		return Config{}, errors.New("config: SESSION_IDLE must not be greater than SESSION_ABSOLUTE")
 	}
+	c.SMTPHost = getenv("SMTP_HOST")
+	c.SMTPFrom = getenv("SMTP_FROM")
+	if c.IsLocal() {
+		c.SMTPHost = orDefault(c.SMTPHost, "localhost")
+		c.SMTPFrom = orDefault(c.SMTPFrom, "no-reply@crm.local")
+	}
+	if rawPort := getenv("SMTP_PORT"); rawPort != "" {
+		c.SMTPPort, err = strconv.Atoi(rawPort)
+		if err != nil || c.SMTPPort < 1 || c.SMTPPort > 65535 {
+			return Config{}, errors.New("config: SMTP_PORT must be between 1 and 65535")
+		}
+	} else if c.IsLocal() {
+		c.SMTPPort = 1025
+	}
+	c.SMTPUsername, c.SMTPPassword = getenv("SMTP_USERNAME"), getenv("SMTP_PASSWORD")
 	if c.TrustedProxies, err = trustedProxies(getenv("TRUSTED_PROXIES")); err != nil {
 		return Config{}, err
 	}
