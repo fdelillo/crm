@@ -994,6 +994,7 @@ helper. Cierra el hueco diferido de T-B201/T-B004.)
   | `CheckSchema("ValidationProblem", body)` con `errors` de `{field, code}` válidos / con un `code` fuera de `FieldErrorCode` | `nil` / error |
   | `CheckSchema("NoExiste", body)` | error que nombra el esquema |
   | Después de `CheckResponse` y de `CheckRequest` | el test puede leer los cuerpos completos (el helper los restituye) |
+  | `CheckResponse`, `CheckRequest` y `Transport` reemplazan un body original | cierran el `ReadCloser` original después de copiarlo, también si la lectura falla; la copia sigue disponible para el caller |
   | `Transport` sobre un servidor de prueba: `POST /api/v1/auth/signup` con un cuerpo válido → `201` con `SessionInfo` y `Set-Cookie` | la función de reporte no se llamó |
   | `Transport`: el servidor de prueba acepta con `201` un request con un campo de más | se reporta un error **del request** (un `2xx` exige un request válido) |
   | `Transport`: el mismo request con campo de más → `400 malformed_request` | sin error del request (un no-`2xx` no valida el request); la respuesta sí se valida |
@@ -1016,11 +1017,12 @@ helper. Cierra el hueco diferido de T-B201/T-B004.)
   `WithoutSecurityValidation`. El documento se carga una vez por proceso (`sync.OnceValues`) y las
   validaciones se serializan con un `sync.Mutex`: no se asume que el validador sea seguro para uso
   concurrente.
-- `CheckResponse`: lee y restituye `resp.Body`; si la librería informa que la ruta o el método no
+- `CheckResponse`: lee, cierra el body original y restituye `resp.Body` (incluso cuando falla la
+  lectura); si la librería informa que la ruta o el método no
   están en el contrato y el status es `404` o `405` con `application/problem+json`, valida el
   cuerpo con `CheckSchema("Problem", …)` y, en el `405`, exige `Allow`; en cualquier otro caso
   devuelve los errores de la librería unidos.
-- `Transport`: copia el cuerpo del request antes de enviarlo; con la respuesta, `CheckResponse`
+- `Transport`: copia y cierra el cuerpo original del request antes de enviarlo; con la respuesta, `CheckResponse`
   siempre y `CheckRequest` (sobre un clon con la copia del cuerpo) solo si el status es `2xx`.
   `Wrap(t, client)` reemplaza `client.Transport` por `Transport(client.Transport, t.Errorf…)`.
 - `CheckSchema`: valida contra `components/schemas/<nombre>` con el validador de esquemas de la

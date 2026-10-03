@@ -92,11 +92,11 @@ func (v *Validator) CheckResponse(req *http.Request, resp *http.Response) error 
 	if resp.Body == nil {
 		resp.Body = http.NoBody
 	}
-	body, err := io.ReadAll(resp.Body)
+	body, err := readAndClose(resp.Body)
+	resp.Body = io.NopCloser(bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("contract: read response body: %w", err)
 	}
-	resp.Body = io.NopCloser(bytes.NewReader(body))
 	v.mu.Lock()
 	valid, validationErrors := v.api.ValidateHttpResponse(req, resp)
 	v.mu.Unlock()
@@ -132,11 +132,11 @@ func (v *Validator) CheckRequest(req *http.Request) error {
 	if req.Body == nil {
 		req.Body = http.NoBody
 	}
-	body, err := io.ReadAll(req.Body)
+	body, err := readAndClose(req.Body)
+	req.Body = io.NopCloser(bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("contract: read request body: %w", err)
 	}
-	req.Body = io.NopCloser(bytes.NewReader(body))
 	v.mu.Lock()
 	valid, validationErrors := v.api.ValidateHttpRequest(req)
 	v.mu.Unlock()
@@ -176,6 +176,13 @@ func joinValidationErrors(validationErrors []*liberrors.ValidationError) error {
 	return errors.Join(errList...)
 }
 
+// readAndClose copies a streamed body before replacing it with an in-memory reader. The original
+// must be closed even when reading fails; otherwise the HTTP transport retains its resources.
+func readAndClose(body io.ReadCloser) ([]byte, error) {
+	data, readErr := io.ReadAll(body)
+	return data, errors.Join(readErr, body.Close())
+}
+
 type validatingTransport struct {
 	validator *Validator
 	next      http.RoundTripper
@@ -194,7 +201,7 @@ func (t validatingTransport) RoundTrip(req *http.Request) (*http.Response, error
 	var requestBody []byte
 	if req.Body != nil {
 		var err error
-		requestBody, err = io.ReadAll(req.Body)
+		requestBody, err = readAndClose(req.Body)
 		if err != nil {
 			return nil, fmt.Errorf("contract: copy request body: %w", err)
 		}

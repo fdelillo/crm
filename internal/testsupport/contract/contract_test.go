@@ -1,6 +1,7 @@
 package contract
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,127 @@ import (
 	"sync"
 	"testing"
 )
+
+type observedBody struct {
+	reader io.Reader
+	closed bool
+}
+
+func (b *observedBody) Read(p []byte) (int, error) { return b.reader.Read(p) }
+func (b *observedBody) Close() error               { b.closed = true; return nil }
+
+type failedReader struct{ err error }
+
+func (r failedReader) Read([]byte) (int, error) { return 0, r.err }
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
+
+func TestCheckResponseClosesOriginalBody(t *testing.T) {
+	v := Default(t)
+	req := httptest.NewRequest(http.MethodGet, "https://crm.example/api/v1/industry-templates", nil)
+	good := `{"items":[{"code":"generic","name":"Genérico"}]}`
+	original := &observedBody{reader: strings.NewReader(good)}
+	resp := response(200, "application/json", "")
+	resp.Body = original
+	if err := v.CheckResponse(req, resp); err != nil {
+		t.Fatal(err)
+	}
+	if !original.closed {
+		t.Fatal("original response body was not closed")
+	}
+	if restored, err := io.ReadAll(resp.Body); err != nil || string(restored) != good {
+		t.Fatalf("restored response body=%q err=%v", restored, err)
+	}
+	_ = resp.Body.Close()
+
+	readErr := errors.New("read failed")
+	broken := &observedBody{reader: io.MultiReader(strings.NewReader("partial"), failedReader{readErr})}
+	resp = response(200, "application/json", "")
+	resp.Body = broken
+	if err := v.CheckResponse(req, resp); !errors.Is(err, readErr) {
+		t.Fatalf("read error=%v", err)
+	}
+	if !broken.closed {
+		t.Fatal("original response body was not closed after read failure")
+	}
+	if restored, err := io.ReadAll(resp.Body); err != nil || string(restored) != "partial" {
+		t.Fatalf("partial response body=%q err=%v", restored, err)
+	}
+	_ = resp.Body.Close()
+}
+
+func TestCheckRequestClosesOriginalBody(t *testing.T) {
+	v := Default(t)
+	good := `{"name":"Ana","email":"ana@example.com","password":"example-password","company_name":"ACME","base_currency":"ARS","industry_template_code":"generic"}`
+	original := &observedBody{reader: strings.NewReader(good)}
+	req := httptest.NewRequest(http.MethodPost, "https://crm.example/api/v1/auth/signup", nil)
+	req.Header.Set("Content-Type", "application/json")
+	req.Body = original
+	if err := v.CheckRequest(req); err != nil {
+		t.Fatal(err)
+	}
+	if !original.closed {
+		t.Fatal("original request body was not closed")
+	}
+	if restored, err := io.ReadAll(req.Body); err != nil || string(restored) != good {
+		t.Fatalf("restored request body=%q err=%v", restored, err)
+	}
+	_ = req.Body.Close()
+	readErr := errors.New("request read failed")
+	broken := &observedBody{reader: io.MultiReader(strings.NewReader("partial"), failedReader{readErr})}
+	req.Body = broken
+	if err := v.CheckRequest(req); !errors.Is(err, readErr) {
+		t.Fatalf("request read error=%v", err)
+	}
+	if !broken.closed {
+		t.Fatal("original request body was not closed after read failure")
+	}
+	if restored, err := io.ReadAll(req.Body); err != nil || string(restored) != "partial" {
+		t.Fatalf("partial request body=%q err=%v", restored, err)
+	}
+	_ = req.Body.Close()
+}
+
+func TestTransportClosesOriginalRequestBodyOnCopyFailure(t *testing.T) {
+	v := Default(t)
+	readErr := errors.New("request read failed")
+	original := &observedBody{reader: failedReader{readErr}}
+	req := httptest.NewRequest(http.MethodPost, "https://crm.example/api/v1/auth/signup", nil)
+	req.Body = original
+	transport := v.Transport(roundTripFunc(func(*http.Request) (*http.Response, error) {
+		t.Fatal("transport was called after request body read failed")
+		return nil, nil
+	}), nil)
+	if _, err := transport.RoundTrip(req); !errors.Is(err, readErr) {
+		t.Fatalf("copy error=%v", err)
+	}
+	if !original.closed {
+		t.Fatal("original request body was not closed after copy failure")
+	}
+	good := `{"name":"Ana","email":"ana@example.com","password":"example-password","company_name":"ACME","base_currency":"ARS","industry_template_code":"generic"}`
+	original = &observedBody{reader: strings.NewReader(good)}
+	req = httptest.NewRequest(http.MethodPost, "https://crm.example/api/v1/auth/signup", nil)
+	req.Header.Set("Content-Type", "application/json")
+	req.Body = original
+	transport = v.Transport(roundTripFunc(func(sent *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(sent.Body)
+		_ = sent.Body.Close()
+		if err != nil || string(body) != good {
+			t.Fatalf("sent request body=%q err=%v", body, err)
+		}
+		return response(400, "application/problem+json", problem(400, "malformed_request")), nil
+	}), func(err error) { t.Errorf("contract validation: %v", err) })
+	resp, err := transport.RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if !original.closed {
+		t.Fatal("original request body was not closed after successful copy")
+	}
+}
 
 func response(status int, contentType, body string) *http.Response {
 	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{contentType}}, Body: io.NopCloser(strings.NewReader(body))}
