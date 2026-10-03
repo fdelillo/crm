@@ -31,6 +31,11 @@ Política de credenciales en `audit_log.data` (DD-37, INV-32); `user_agent` acot
 secuencias tipo secreto, y código extendido leído del texto en todas las fases (ADR-025 nuevo, nota
 en ADR-024, INV-30 reescrita); `RequestID` antes de `ClientIP` en la cadena común (DD-22, DD-32);
 texto de DD-35 alineado con el código. Detalle en §18.
+**Séptima revisión 2026-10-02 (*Accepted*, aprobada por el usuario)**: pendientes antes de la Fase 3. Credencial incrustada
+en un texto de `audit_log.data` y `data` exacto del catálogo (DD-37 (4) y (5), INV-32 ampliada);
+texto de DD-38 sobre `U+FFFD` alineado con el código; validación de request y response contra el
+contrato con un helper de tests (`internal/testsupport/contract`, nota en ADR-014); el ajuste de
+DD-36 que quedó sin aplicar en la Fase 2. Detalle en §18.
 
 Artefactos de esta spec:
 
@@ -48,9 +53,9 @@ Artefactos de esta spec:
 
 ## 1. Contexto técnico
 
-Proyecto que empezó **greenfield**: la Fase 0 del backend ya está mergeada y la Fase 1
-implementada en su rama (§18). Esta es la primera spec, así que además de diseñar la
-funcionalidad fija las decisiones base del proyecto (ADR-001 a ADR-014).
+Proyecto que empezó **greenfield**: las Fases 0, 1 y 2 del backend ya están mergeadas y la Fase 3
+está por empezar (§18). Esta es la primera spec, así que además de diseñar la funcionalidad fija
+las decisiones base del proyecto (ADR-001 a ADR-014).
 
 | Aspecto | Decisión | Fuente |
 |---|---|---|
@@ -68,7 +73,7 @@ funcionalidad fija las decisiones base del proyecto (ADR-001 a ADR-014).
 | Errores HTTP | RFC 9457 `application/problem+json` con `code` estable | ADR-009 |
 | Email | Outbox transaccional + worker en el mismo binario; puerto `Mailer`, adaptador SMTP con `github.com/wneessen/go-mail`; clasificación de fallos por causa, `last_error` saneado y presupuesto de envío de 20 s | ADR-010, ADR-024, ADR-025, DD-35 |
 | Archivos | S3 compatible (MinIO en desarrollo) con `github.com/minio/minio-go/v7` | ADR-011 |
-| Tests | `testing` nativo, table-driven; integración con PostgreSQL real vía `testcontainers-go`; contrato con `libopenapi-validator`; HTTP con `httptest.NewTLSServer` cuando hay cookie | ADR-012 |
+| Tests | `testing` nativo, table-driven; integración con PostgreSQL real vía `testcontainers-go`; contrato con `libopenapi-validator` en un único helper (`internal/testsupport/contract`, séptima tanda); HTTP con `httptest.NewTLSServer` cuando hay cookie | ADR-012, ADR-014 |
 | Autorización | Matriz estática rol → permisos (FR-007) en `internal/authz` | ADR-013 |
 | Contrato | OpenAPI 3.1 canónico; handlers y DTOs escritos a mano; validación en tests | ADR-014 |
 | Frontend servido | SPA embebida en el binario (paquete `web`, `go:embed`), mismo origen | ADR-019 (decisión del usuario) |
@@ -743,7 +748,7 @@ la vigila.
 | INV-29 | Un `Handle` dura como máximo `outbox.SendBudget` = 20 s, y `SendBudget` + 10 s ≤ `idle_in_transaction_session_timeout` de `crm_app` (30 s): PostgreSQL nunca corta la transacción del worker por un SMTP lento. El adaptador SMTP usa 5 s por etapa de go-mail y `WithoutRset()` (4 ventanas de *deadline* = 20 s) (DD-35). | `platform/outbox`, `platform/mailer`, bootstrap | T-B211, T-B213 |
 | INV-30 | `last_error` y los logs del worker nunca contienen el destinatario, el token ni el payload: el único texto de un fallo de entrega que se guarda o se loguea es `DeliveryError.LastError()`. Garantía estructural: en la fase `data` (la única en la que el servidor ya recibió el contenido con el enlace) no se usa el texto del proveedor y el detalle es `response text omitted`. Defensa adicional en todas las fases: todo campo que contenga `@`, `://` o una secuencia de 20 o más caracteres de `[A-Za-z0-9+/=_-]` → `[redacted]`; una línea; ≤ 1000 caracteres (ADR-024 §3, ADR-025 *Accepted*). El `error` original de una entrega nunca se loguea (el de go-mail incluye el destinatario). | `platform/outbox`, `platform/mailer` | T-B211, T-B213 |
 | INV-31 | Un fallo atribuible a un mensaje (`AsTenant`, `GetMessage` o el marcado) no frena a los demás: el `Dispatcher` aplaza **ese** mensaje (solo `next_attempt_at`, como `crm_worker`, en otra transacción) y sigue con el lote. Solo terminan el ciclo: la base no disponible, la cancelación, un fallo del aplazamiento y un fallo de entrega en la fase de conexión (ADR-024 §4, §6). | `platform/outbox` | T-B211 |
-| INV-32 | `audit_log.data` nunca contiene una credencial: `audit.Recorder.Record` valida `Data` **antes** de escribir (y antes de mirar `tx`) y rechaza con `audit.ErrSecretInData` toda clave o valor que la política de DD-37 reconoce como credencial, y con `audit.ErrUnsupportedData` todo valor de un tipo que la verificación no puede recorrer. El error nombra la ruta de la clave, nunca el valor. | `platform/audit` | T-B209 |
+| INV-32 | `audit_log.data` nunca contiene una credencial: `audit.Recorder.Record` valida `Data` **antes** de escribir (y antes de mirar `tx`) y rechaza con `audit.ErrSecretInData` toda clave o valor que la política de DD-37 reconoce como credencial, también **incrustada en un texto** (DD-37 (4), séptima tanda, *Accepted*), y con `audit.ErrUnsupportedData` todo valor de un tipo que la verificación no puede recorrer. El error nombra la ruta de la clave, nunca el valor. Además (DD-37 (5)), el `data` de cada operación auditada tiene **exactamente** las claves de su acción en el catálogo de `data-model.md` §2.6. | `platform/audit`, cada servicio que audita | T-B209 (política); T-B303 (catálogo del registro) y, en las Fases 4 a 7, el test de cada operación auditada |
 | INV-33 | Escribir una columna `user_agent` (`sessions`, `audit_log`) nunca hace fallar la operación: todo valor pasa por `httpx.NormalizeUserAgent` (UTF-8 válido, sin `NUL`, ≤ 512 runas) en cada escritor, `audit.Recorder.Record` e `identity` al crear la sesión (DD-38). | `platform/httpx`, `platform/audit`, `identity` | T-B209, T-B303 |
 
 ---
@@ -791,8 +796,8 @@ son locales a 001.
 | **DD-34** | **Primer `SET ROLE` a una empresa recién aprovisionada desde otra conexión** (hallazgo de implementación y decisión del usuario, 2026-09-30; nota (b) en ADR-005; research R-28). **Evidencia**: en PostgreSQL 18.6, después del `COMMIT` que crea `crm_t_<hex>` y lo concede a `crm_app` con `SET TRUE`, el primer `SET LOCAL ROLE crm_t_<hex>` desde **otra** conexión del pool a veces falla con `42501 permission denied to set role`. Hipótesis del desarrollador (no verificada en el código de PostgreSQL, S-16): la lista de roles "SET-ables" que cada backend guarda en caché (`roles_is_member_of`, `acl.c`) todavía no procesó la invalidación de la membresía nueva. El test `TestTxRunner_NewCompanyIsUsableOnAnyConnectionRightAfterProvisioning` (registros concurrentes) daba **64 a 105 fallas en 600** primeros usos. En producción: "me registro, el siguiente request cae en otra conexión y recibo un `500`". **Dos defensas**: **(1) lectura previa de catálogo** (commit e3d990b): la función privada de `platform/db` que cambia de rol manda en **un solo viaje de red** `SELECT 1 FROM pg_catalog.pg_auth_members LIMIT 0; SET LOCAL ROLE …`. Leer el catálogo hace que el backend procese las invalidaciones pendientes antes del chequeo. Vale para todo cambio de rol (`InTenantTx`, `InSystemTx`, `AsTenant`, `AsSystem`) y para los fixtures de test. Medido: **0 fallas en 1800** en la reproducción y 0 en 8 corridas de la suite de integración. **(2) Un único reintento en `InTenantTx`**: si el `SET LOCAL ROLE` inicial a un rol de empresa falla con `42501` **antes** de ejecutar `fn`, hace `ROLLBACK` y repite la transacción completa (nuevo `BEGIN`, el mismo viaje de (1)) **una** vez. Registra log `WARN` `event=set_role_retry` con `tenant_id` y `outcome` (`recovered` o `failed`, sin datos personales) y suma a la métrica `set_role_retry_total`. **Nunca** reintenta: después de que `fn` empezó, en `InSystemTx`, en `tx.AsTenant`/`tx.AsSystem` a mitad de transacción, ni ante otro SQLSTATE (p. ej. `22023`, rol inexistente en PostgreSQL 18, que es el caso de §12.4). Si el reintento también falla, devuelve `db.ErrPrivilege` envuelto con el nombre del rol y el paso (`set role crm_t_…`), así el `ERROR` de INV-19 distingue un cambio de rol denegado de una violación de RLS dentro de una query (INV-27). | **(1) sola** depende de un comportamiento interno no documentado de PostgreSQL (R-17). **(2) sola** cubre solo `InTenantTx` y paga un viaje fallido en cada primer uso. Juntas, (1) resuelve el caso en todos los caminos y (2) es la red si (1) deja de alcanzar en otra versión. **El reintento es seguro solo en ese punto**: la transacción todavía no ejecutó nada (solo `BEGIN` y el cambio de rol que falló), así que el `ROLLBACK` no deshace trabajo, `fn` corre como mucho una vez y ningún efecto externo quedó hecho. Después de `fn`, un `42501` puede ser una violación real de RLS (INV-19) y reintentar repetiría efectos. En `InSystemTx` las membresías son fijas desde el bootstrap, así que un `42501` es un bug. En `AsTenant` la transacción ya ejecutó la fase 1 y reintentar exigiría repetir `fn`. | Una sentencia más por cambio de rol, en el mismo viaje de red (costo a confirmar en T-B905). Dependencia de un detalle interno de PostgreSQL, vigilada por el test de reproducción (corre en `make check`) y por la métrica. **Cobertura parcial del reintento**: el camino `InSystemTx(crm_auth) → AsTenant` (resolución de sesión, login, tokens) queda cubierto **solo** por (1), y es justamente el del `GET /me` que sigue al registro. Si (1) fallara ahí, el usuario vería un `500` hasta el siguiente request. Salida estructural si R-17 se materializa: *pool* de roles pre-creados (la membresía se concede mucho antes del primer uso) o alternativa B de ADR-005. |
 | **DD-35** | **Presupuesto y contextos del envío** (M7 de la revisión del PR #8; **Accepted**; ADR-024 §5; INV-29). En el `Dispatcher`, la transacción de cada mensaje corre con `context.WithoutCancel(ctxDelCiclo)` y `Handle` recibe `context.WithTimeout(ctxDelCiclo, outbox.SendBudget)`, con `SendBudget = 20 s`. El ciclo revisa `ctxDelCiclo` antes de tomar cada mensaje. En el adaptador SMTP: `gomail.WithTimeout(5 * time.Second)` y `gomail.WithoutRset()`; si `DialAndSendWithContext` devuelve error pero `Msg.IsDelivered()` es `true`, devuelve `nil`; si el contexto recibido ya terminó cuando `DialAndSendWithContext` vuelve, devuelve `ctx.Err()` tal cual (`context.Canceled` o `context.DeadlineExceeded`) y no lo clasifica. Quien convierte el presupuesto vencido en `DeliveryError{Cause: network, Phase: unknown, Detail: "timeout"}` es el `Dispatcher` (`classifyHandleResult`), y solo si el contexto del ciclo sigue vivo; si el ciclo terminó, es una cancelación (texto alineado con el código en la sexta tanda, 2026-10-01; el comportamiento no cambia). El timeout de apagado del proceso es ≥ 25 s (T-B909). | go-mail v0.8.1 respeta el `context` solo durante el *dial* (verificado en `client.go`); el resto de la conversación lo acotan *deadlines* que se renuevan por etapa. Con 10 s y `RSET` eran hasta 5 ventanas (50 s) contra los 30 s de `idle_in_transaction_session_timeout`: un corte de sesión deja el mensaje `pending` sin sumar intentos y se reenvía sin fin. `WithoutCancel` en la transacción hace que un envío que terminó bien durante el apagado se marque `sent` en vez de reenviarse. | Un proveedor que tarde más de 5 s en una etapa produce un reintento (y un duplicado si ya había aceptado); el apagado puede esperar hasta 20 s un envío en curso; tres valores acoplados (5 s, 20 s, 30 s) que vigilan dos tests (INV-29). |
 | **DD-36** | **Imagen de MinIO en desarrollo y tests** (M10 de la revisión del PR #8; **Accepted**; nota 2026-10-01 en ADR-011; research R-30). `compose.yaml` y los tests de integración usan **la misma** referencia: `ghcr.io/coollabsio/minio:RELEASE.2025-10-15T17-29-55Z@sha256:<digest del índice multiplataforma de ese tag>`. Las referencias de imagen de los contenedores de desarrollo y test (PostgreSQL, Mailpit, MinIO) viven como constantes en `internal/testsupport/containers`; un test unitario verifica que `compose.yaml` declara exactamente las mismas. | `quay.io/minio/minio` responde `401` a todo pull anónimo desde el 2026-09-24/25 (el fallo del entorno de Codex no era del entorno), `minio/minio` desapareció de Docker Hub y el proyecto MinIO dejó de publicar imágenes (repositorio archivado en abril de 2026). La recompilación de la última versión oficial es reproducible (tag de versión + digest), incluye el arreglo de CVE-2025-62506 y conserva el arranque de MinIO (`server /data`, `MINIO_ROOT_*`). Con una sola fuente de las referencias, desarrollo y tests no divergen. | Imagen de un tercero, congelada y sin parches futuros: aceptable porque en desarrollo solo escucha en `127.0.0.1` y en tests es efímera; producción usa otro servicio S3 (P-1). Si desaparece, respaldo `cgr.dev/chainguard/minio` por digest o copia propia en GHCR (R-18). |
-| **DD-37** | **Credenciales en `audit_log.data`** (tercera revisión del PR #8, P1; *Accepted*; INV-32). Política: **rechazar**, nunca redactar. `audit.Recorder.Record` valida `Entry.Data` antes que nada (también antes de mirar `tx`) y recorre todos los niveles. **(1) Tipos admitidos**: hojas `string`, `bool`, `int`, `int32`, `int64`, `uuid.UUID`, `time.Time` y `nil`; contenedores `map[string]any`, `map[string]string`, `[]any` y `[]string`. Cualquier otro (structs, punteros, `[]byte`, `json.RawMessage`, `float64`, otros tipos de mapa o de slice) → `audit.ErrUnsupportedData`. **(2) Claves**: se normalizan a minúsculas quitando todo lo que no sea letra o dígito (`Set-Cookie` → `setcookie`, `X-API-Key` → `xapikey`, `api_key` → `apikey`). Es credencial si **contiene** `password`, `passwd`, `passphrase`, `secret`, `token`, `authorization`, `cookie`, `apikey`, `privatekey`, `credential`, `signature`, `csrf` o `xsrf`, o si **es igual** a `auth`, `session`, `sessionid`, `sid`, `otp` o `pin` (`session` va por igualdad porque el catálogo usa `sessions_revoked`). **(3) Valores** (todo `string`, también dentro de listas y mapas): es credencial si, sin espacios en los extremos, empieza con `Bearer `, `Basic ` o `Digest ` (sin distinguir mayúsculas); si tiene forma de JWT (empieza con `eyJ` y son tres segmentos base64url separados por `.`); o si son exactamente 43 caracteres del alfabeto base64url (el `raw` de `securetoken.New`). **Error**: `audit.ErrSecretInData` envuelto con la ruta (`audit: data.headers.Authorization: …`), **nunca** con el valor; no se inserta nada y el llamador propaga el error (la operación falla con `500`: es un bug que los tests de la operación detectan). | El catálogo de `data` (`data-model.md` §2.6) es cerrado y chico: una credencial ahí siempre es un bug. Rechazar lo hace visible en el primer test de la operación; redactar lo esconde y deja la estructura (p. ej. un volcado de cabeceras) en una tabla append-only que nadie puede limpiar. Cerrar los tipos es lo que hace completa la verificación: un struct o un `[]byte` se serializarían sin ser inspeccionados. Comparar claves normalizadas cubre las variantes de las cabeceras HTTP (`Set-Cookie`, `X-Api-Key`). | Es una lista de denegación: una credencial con un nombre no previsto (p. ej. `pw`) pasa si su valor no tiene una de las formas de (3); una clave legítima que contenga una palabra de la lista (p. ej. `token_count`) se rechaza y hay que renombrarla. Un bug que los tests no cubran produce un `500` en producción en vez de una fila con un secreto. Alternativa descartada: lista blanca de claves por acción (exhaustiva, pero obliga a registrar en `platform/audit` el catálogo de cada módulo y cada spec futura tocaría la plataforma; se reevalúa si aparece un caso que la lista de denegación no cubre). |
-| **DD-38** | **`user_agent` acotado en cada escritura** (tercera revisión del PR #8, P3; *Accepted*; INV-33). `httpx.NormalizeUserAgent(raw string) string`: (1) cada secuencia UTF-8 inválida → `U+FFFD`; (2) se quitan los `U+0000`; (3) se conservan las primeras **512 runas** (`httpx.MaxUserAgentRunes`, igual al `CHECK (char_length(user_agent) <= 512)` de `sessions` y `audit_log`), sin agregar `…` y sin cortar un carácter. Vacío → `NULL`. La aplican **los dos escritores** de la columna: `audit.Recorder.Record` (sobre `Entry.UserAgent`, venga de donde venga) e `identity` al insertar en `sessions` (`CreateSession`). Los handlers pasan `r.UserAgent()` sin tocarlo. | El User-Agent lo elige el cliente: con 513 caracteres el `INSERT` fallaba y revertía la operación auditada (registro, login, invitación). Los bytes que no son UTF-8 también hacen fallar el `INSERT` (`22021`), y `net/http` los acepta en el valor de una cabecera (*obs-text*); PostgreSQL tampoco admite `NUL` en `text`. El dato es informativo: perder la cola de un User-Agent anómalo no cuesta nada. Normalizar en el escritor, y no en el handler, cubre a cualquier llamador (tests, CLI, otros módulos). | Un User-Agent de más de 512 caracteres se guarda incompleto. Dos escritores que tienen que llamar a la misma función (un test en cada uno: T-B209 y T-B303). Alternativas descartadas: ampliar o quitar el `CHECK` (un cliente escribiría kilobytes por request en una tabla append-only); responder `400` a un User-Agent largo (castiga a un cliente legítimo por un dato que no usa nadie); normalizar solo en el handler (un escritor nuevo que no pase por él volvería a fallar). |
+| **DD-37** | **Credenciales en `audit_log.data`** (tercera revisión del PR #8, P1; *Accepted*; INV-32). Política: **rechazar**, nunca redactar. `audit.Recorder.Record` valida `Entry.Data` antes que nada (también antes de mirar `tx`) y recorre todos los niveles. **(1) Tipos admitidos**: hojas `string`, `bool`, `int`, `int32`, `int64`, `uuid.UUID`, `time.Time` y `nil`; contenedores `map[string]any`, `map[string]string`, `[]any` y `[]string`. Cualquier otro (structs, punteros, `[]byte`, `json.RawMessage`, `float64`, otros tipos de mapa o de slice) → `audit.ErrUnsupportedData`. **(2) Claves**: se normalizan a minúsculas quitando todo lo que no sea letra o dígito (`Set-Cookie` → `setcookie`, `X-API-Key` → `xapikey`, `api_key` → `apikey`). Es credencial si **contiene** `password`, `passwd`, `passphrase`, `secret`, `token`, `authorization`, `cookie`, `apikey`, `privatekey`, `credential`, `signature`, `csrf` o `xsrf`, o si **es igual** a `auth`, `session`, `sessionid`, `sid`, `otp` o `pin` (`session` va por igualdad porque el catálogo usa `sessions_revoked`). **(3) Valores** (todo `string`, también dentro de listas y mapas): es credencial si, sin espacios en los extremos, empieza con `Bearer `, `Basic ` o `Digest ` (sin distinguir mayúsculas); si tiene forma de JWT (empieza con `eyJ` y son tres segmentos base64url separados por `.`); o si son exactamente 43 caracteres del alfabeto base64url (el `raw` de `securetoken.New`). **Error**: `audit.ErrSecretInData` envuelto con la ruta (`audit: data.headers.Authorization: …`), **nunca** con el valor; no se inserta nada y el llamador propaga el error (la operación falla con `500`: es un bug que los tests de la operación detectan). **(4) Valores, dentro del texto** (séptima tanda, 2026-10-02, ***Accepted***; cierra el hueco que señaló la última revisión del PR #8: un enlace `…/reset-password#token=<43 caracteres>` bajo una clave inocua pasaba): además de (3), en todo `string` es credencial **(a)** una secuencia maximal de letras, dígitos, `_` o `-` seguida (con espacios opcionales) de `=` o `:` que, evaluada con la regla de claves de (2), es una clave de credencial (`#token=…`, `?access_token=…`, `Authorization: …`, `Cookie: …`, `pin: …`); y **(b)** una secuencia maximal de **exactamente 43** caracteres base64url en cualquier posición (el `raw` de `securetoken` incrustado; la regla de 43 de (3) queda como caso particular). Mismo error que (3), sin el valor ni la clave incrustada. **(5) Convención del catálogo** (séptima tanda, ***Accepted***): `data` lleva solo valores que arma el servidor según el catálogo de `data-model.md` §2.6 (enumerados, nombres de campos, contadores, ids); nunca enlaces, cabeceras, mensajes de error ni texto libre escrito por un usuario. Un texto del usuario que haya que conservar (p. ej. el motivo de una anulación, principio IV) vive en la tabla de dominio de la operación y la auditoría lo referencia con `target_type`/`target_id`. El test de cada operación auditada verifica que `data` tenga **exactamente** las claves de su acción (T-B303 en la Fase 3). | El catálogo de `data` (`data-model.md` §2.6) es cerrado y chico: una credencial ahí siempre es un bug. Rechazar lo hace visible en el primer test de la operación; redactar lo esconde y deja la estructura (p. ej. un volcado de cabeceras) en una tabla append-only que nadie puede limpiar. Cerrar los tipos es lo que hace completa la verificación: un struct o un `[]byte` se serializarían sin ser inspeccionados. Comparar claves normalizadas cubre las variantes de las cabeceras HTTP (`Set-Cookie`, `X-Api-Key`). Séptima tanda: el riesgo realista no es un usuario que tipea un token, sino un bug del servidor que mete en `data` algo que tiene a mano: el enlace del email (el payload del outbox lo arma la misma operación que audita en el registro, el reset y la invitación), una cabecera o un mensaje de error. Esas formas traen la clave pegada al valor (`#token=`, `Authorization:`) o el `raw` de 43 caracteres, y (4) las reconoce **reusando** las reglas de (2) y (3), sin vocabulario nuevo. La regla de 20 o más caracteres de ADR-025 §2 no se traslada porque acá la acción es rechazar, no redactar: en `last_error` un falso positivo tapa una palabra; acá produce un `500` en una operación legítima, y esa regla rechazaría valores del propio catálogo (`password_reset_request`, 22 caracteres, es el `trigger` de `user.invitation_reissued`) y valores comunes del dominio (un UUID como texto, un CBU de 22 dígitos, una clave de S3). (5) es el control principal: si `data` tiene exactamente las claves del catálogo, una credencial no tiene por dónde entrar; la validación de `Record` es la red para lo que los tests no cubren. | Es una lista de denegación: una credencial con un nombre no previsto (p. ej. `pw`) pasa si su valor no tiene una de las formas de (3); una clave legítima que contenga una palabra de la lista (p. ej. `token_count`) se rechaza y hay que renombrarla. Un bug que los tests no cubran produce un `500` en producción en vez de una fila con un secreto. Alternativa descartada: lista blanca de claves por acción (exhaustiva, pero obliga a registrar en `platform/audit` el catálogo de cada módulo y cada spec futura tocaría la plataforma; se reevalúa si aparece un caso que la lista de denegación no cubre). Séptima tanda: (4) sigue siendo una heurística. Pasan una credencial incrustada sin palabra clave delante y de un largo distinto de 43 (p. ej. un token de terceros de 40 caracteres en prosa), una contraseña en prosa, un JWT incrustado sin clave delante, la contraseña de una URL `usuario:clave@host` y las formas codificadas (`token%3D…`). Rechaza, en cambio, un texto legítimo con `password:` o `pin:` delante de algo (p. ej. un motivo escrito por un usuario): por eso (5) deja el texto libre fuera de `data`. Alternativas descartadas en la séptima tanda: **aceptarlo como limitación documentada sin cambiar la regla** (ninguna ruta de 001 escribe texto libre hoy, pero el enlace con el token está en el mismo código que audita, y la regla cuesta pocas líneas y ningún falso positivo en el catálogo); **la regla de 20 o más caracteres de ADR-025 §2** (falsos positivos dentro del catálogo, arriba); **restringir `Data` al catálogo en `platform/audit`** (es la lista blanca ya descartada; se reemplaza por la verificación del catálogo en el test de cada operación, que no acopla la plataforma con los módulos). |
+| **DD-38** | **`user_agent` acotado en cada escritura** (tercera revisión del PR #8, P3; *Accepted*; INV-33). `httpx.NormalizeUserAgent(raw string) string`: (1) cada **byte** que no forma parte de una secuencia UTF-8 válida → un `U+FFFD` (es lo que produce `range` sobre un `string` en Go, que avanza un byte por error: `"\xff\xfe"` → dos `U+FFFD`; un carácter de 3 bytes truncado a 2 → dos; no es la semántica de `strings.ToValidUTF8`, que reemplaza cada tramo inválido por uno solo; cada `U+FFFD` cuenta como una runa para (3); texto precisado en la séptima tanda, 2026-10-02, sin cambio de comportamiento); (2) se quitan los `U+0000`; (3) se conservan las primeras **512 runas** (`httpx.MaxUserAgentRunes`, igual al `CHECK (char_length(user_agent) <= 512)` de `sessions` y `audit_log`), sin agregar `…` y sin cortar un carácter. Vacío → `NULL`. La aplican **los dos escritores** de la columna: `audit.Recorder.Record` (sobre `Entry.UserAgent`, venga de donde venga) e `identity` al insertar en `sessions` (`CreateSession`). Los handlers pasan `r.UserAgent()` sin tocarlo. | El User-Agent lo elige el cliente: con 513 caracteres el `INSERT` fallaba y revertía la operación auditada (registro, login, invitación). Los bytes que no son UTF-8 también hacen fallar el `INSERT` (`22021`), y `net/http` los acepta en el valor de una cabecera (*obs-text*); PostgreSQL tampoco admite `NUL` en `text`. El dato es informativo: perder la cola de un User-Agent anómalo no cuesta nada. Normalizar en el escritor, y no en el handler, cubre a cualquier llamador (tests, CLI, otros módulos). | Un User-Agent de más de 512 caracteres se guarda incompleto. Dos escritores que tienen que llamar a la misma función (un test en cada uno: T-B209 y T-B303). Alternativas descartadas: ampliar o quitar el `CHECK` (un cliente escribiría kilobytes por request en una tabla append-only); responder `400` a un User-Agent largo (castiga a un cliente legítimo por un dato que no usa nadie); normalizar solo en el handler (un escritor nuevo que no pase por él volvería a fallar). |
 
 ---
 
@@ -816,9 +821,11 @@ Detalle completo en [`data-model.md`](data-model.md).
 
 **Canónico**: [`contracts/openapi.yaml`](contracts/openapi.yaml) (OpenAPI 3.1, versión 0.4.0). Los
 tipos del cliente se derivan de él; los handlers Go se escriben a mano y los tests validan cada
-request y response contra el contrato (ADR-014). Si este plan y el YAML se contradicen, **manda
-el YAML** y este plan está desactualizado. DD-34 no cambia el contrato: si el reintento no alcanza,
-la respuesta sigue siendo el `500 internal` que ya describe.
+request y response contra el contrato (ADR-014; cómo se aplica, en su nota 2026-10-02: la response
+siempre, el request cuando la respuesta es `2xx`, y los `404`/`405` globales contra `Problem`). Si
+este plan y el YAML se contradicen, **manda el YAML** y este plan está desactualizado. DD-34 no
+cambia el contrato: si el reintento no alcanza, la respuesta sigue siendo el `500 internal` que ya
+describe.
 
 Base: `/api/v1`. Cookie de sesión: `__Host-crm_session`, siempre `Secure`. Todas las respuestas de
 la API llevan `Cache-Control: no-store`, salvo el logo (DD-28, DD-23).
@@ -1168,7 +1175,7 @@ confianza.
 | A05 | SPA desactualizada o HTML cacheado como JS | `index.html` con `no-cache`; archivos inexistentes con extensión → `404` (nunca `index.html`); assets con hash `immutable` (§10.7) |
 | A08 Software & Data Integrity | Subida de archivo malicioso (SVG con script, bomba de descompresión, cuerpo gigante) | Solo PNG/JPEG por *magic bytes*; archivo ≤ 2 097 152 bytes y cuerpo ≤ 2 162 688 bytes con lectura acotada (DD-31); `image.DecodeConfig` ≤ 2000×2000 sin decodificar la imagen; se sirve con tipo fijo y `nosniff` (INV-24) |
 | A09 Logging Failures | Falta de trazas de seguridad | `audit_log` (FR-008) + logs con `security_event` (login fallido, bloqueo, violación RLS, email existente en registro, CSRF rechazado) y la IP real del cliente (DD-32) |
-| A09 (datos sensibles en trazas) | Una credencial o un token quedan en una traza que no se borra (`audit_log.data`, `outbox_messages.last_error`, logs del worker) | `audit.Recorder` rechaza credenciales por clave, valor y tipo (DD-37, INV-32); `last_error` sin texto del proveedor en la fase `data` y con redacción de `@`, URLs y secuencias tipo secreto (ADR-025, INV-30) |
+| A09 (datos sensibles en trazas) | Una credencial o un token quedan en una traza que no se borra (`audit_log.data`, `outbox_messages.last_error`, logs del worker) | `audit.Recorder` rechaza credenciales por clave, valor y tipo, también incrustadas en un texto (p. ej. un enlace con `#token=…`; DD-37 (4), INV-32), y `data` lleva solo las claves del catálogo (DD-37 (5)); `last_error` sin texto del proveedor en la fase `data` y con redacción de `@`, URLs y secuencias tipo secreto (ADR-025, INV-30) |
 | A09 | `ERROR` falsos que tapan bugs reales (clientes que cortan la conexión; `SET ROLE` denegados por la caché de PostgreSQL) | `db.ErrCanceled` → log `INFO` `client_canceled`, nunca `ERROR` (§9.2); el `42501` del cambio de rol se envuelve con el paso y el rol, y el reintento exitoso es `WARN` `set_role_retry`, no `ERROR` (DD-34) |
 | A09 | Secretos en logs | Redacción de `password`, `token`, `Cookie`, `Set-Cookie`, payload del outbox |
 | DoS de aplicación | Ráfaga de hashes, bodies grandes | Semáforo de argon2id, `http.MaxBytesReader` (JSON 64 KB, logo DD-31), timeouts de servidor (`ReadHeaderTimeout` 5 s, `ReadTimeout` 15 s, `WriteTimeout` 30 s), `statement_timeout` 5 s en `crm_app` |
@@ -1324,7 +1331,7 @@ crm/
 │   │   ├── mailer/             # puerto Mailer + adaptador SMTP (go-mail) con la clasificación de fallos de ADR-024; las plantillas viven en identity/emails
 │   │   └── objectstore/        # puerto ObjectStorage + adaptador S3 (minio-go)
 │   ├── authz/                  # Role, Permission, matriz FR-007, Principal, RequirePermission
-│   ├── industrytemplate/       # catálogo embebido de plantillas + puerto Seeder (002 lo completa)
+│   ├── industrytemplate/       # catálogo embebido de plantillas (catalog.json) + puerto Seeder (002 lo completa)
 │   ├── identity/               # módulo: usuarios, credenciales, sesiones, tokens, invitaciones
 │   │   ├── user.go             # tipos User, Status, tabla de transiciones
 │   │   ├── session.go          # tipos Session, políticas de vencimiento
@@ -1342,7 +1349,7 @@ crm/
 │   │   ├── reprovision.go      # reaprovisionamiento de roles, una transacción por empresa (DD-33 R-d)
 │   │   ├── http.go             # incluye la lectura acotada del multipart (DD-31)
 │   │   └── store/              # *.sql (incluido provisioning.sql) + código generado por sqlc
-│   └── testsupport/            # solo tests: pgtest, apitest (httptest.NewTLSServer + cookiejar), fixture, isolation, queryrules, reporules, containers (referencias de imágenes, DD-36), contrato
+│   └── testsupport/            # solo tests: pgtest, apitest (httptest.NewTLSServer + cookiejar), fixture, isolation, queryrules, reporules, containers (referencias de imágenes, DD-36), contract (validador del contrato con libopenapi-validator, T-B311; único paquete que importa esa librería)
 ├── web/                        # frontend (ADR-015, ADR-019); en Go, solo el paquete `web`:
 │   ├── embed.go                #   //go:embed all:dist + NewHandler (T-F007/T-F008)
 │   └── dist/                   #   build de Vite (ignorado por git salvo .gitkeep)
@@ -1389,6 +1396,11 @@ Por qué así en Go (resumen de ADR-001):
   `errors.As` aunque venga envuelto con `%w`. `Error()` devuelve el texto ya saneado: si alguien lo
   loguea por descuido, no sale el destinatario. La causa original queda en `Unwrap()` para los
   tests, nunca para los logs.
+- **El validador del contrato es un helper de tests con errores como valores** (séptima tanda):
+  `CheckResponse`, `CheckRequest` y `CheckSchema` devuelven `error` y no reciben `testing.TB`, así
+  se pueden probar a sí mismos sin un `TB` falso; `Wrap` y `RequireRecorded` son los envoltorios
+  finos que llaman a `t.Errorf`. Una dependencia de tests en un solo paquete (`depguard`) no llega
+  al binario: `cmd/crm` nunca importa `testsupport`.
 
 ### 11.1 Interfaces que definen las fronteras (firmas)
 
@@ -1416,8 +1428,9 @@ func ClientIPFrom(ctx context.Context) netip.Addr // siempre válida dentro de u
 
 // MaxUserAgentRunes es el CHECK (char_length(user_agent) <= 512) de sessions y audit_log (DD-38).
 const MaxUserAgentRunes = 512
-// NormalizeUserAgent: secuencias UTF-8 inválidas → U+FFFD, sin U+0000, primeras MaxUserAgentRunes
-// runas (sin "…"). La llaman los dos escritores de user_agent (DD-38, INV-33).
+// NormalizeUserAgent: cada byte que no forma parte de una secuencia UTF-8 válida → un U+FFFD (lo
+// que da range sobre un string), sin U+0000, primeras MaxUserAgentRunes runas (sin "…"). La
+// llaman los dos escritores de user_agent (DD-38, INV-33).
 func NormalizeUserAgent(raw string) string
 
 // ---------- internal/platform/ratelimit ----------
@@ -1512,12 +1525,13 @@ type Entry struct {
     Action      string // p. ej. "user.role_changed"
     TargetType  string
     TargetID    *uuid.UUID
-    Data        map[string]any // tipos y claves según DD-37; nunca credenciales (INV-32)
+    Data        map[string]any // tipos y claves según DD-37; solo claves del catálogo (DD-37 (5)); nunca credenciales (INV-32)
     IP          netip.Addr     // de httpx.ClientIPFrom (DD-32)
     UserAgent   string         // Record guarda httpx.NormalizeUserAgent(UserAgent) (DD-38)
 }
-// Record valida Data antes que nada, incluso antes de mirar tx (DD-37). Errores, envueltos con la
-// ruta de la clave y nunca con el valor: ErrSecretInData, ErrUnsupportedData; sin tx, ErrTxRequired.
+// Record valida Data antes que nada, incluso antes de mirar tx (DD-37, también dentro del texto:
+// DD-37 (4)). Errores, envueltos con la ruta de la clave y nunca con el valor: ErrSecretInData,
+// ErrUnsupportedData; sin tx, ErrTxRequired.
 type Recorder interface {
     Record(ctx context.Context, tx db.Tx, e Entry) error
 }
@@ -1681,6 +1695,22 @@ type Server struct {
     Client *http.Client
 }
 func NewServer(t testing.TB, root http.Handler) *Server
+
+// ---------- internal/testsupport/contract (solo tests; séptima tanda, T-B311/T-B312) ----------
+// Valida requests y responses contra el contrato canónico con libopenapi-validator (ADR-014 y su
+// nota 2026-10-02). Seguro para uso concurrente: serializa las validaciones internamente.
+type Validator struct{ /* documento y validador cargados; campos no exportados */ }
+func Load() (*Validator, error)       // sube hasta el go.mod y carga specs/001-empresas-usuarios/contracts/openapi.yaml
+func Default(t testing.TB) *Validator // Load una vez por proceso; t.Fatal si falla
+// CheckResponse: status, cabeceras declaradas y cuerpo contra la operación del request; un 404 o
+// 405 fuera del contrato se valida contra Problem (el 405 exige Allow). Restituye resp.Body.
+func (v *Validator) CheckResponse(req *http.Request, resp *http.Response) error
+func (v *Validator) CheckRequest(req *http.Request) error         // restituye req.Body
+func (v *Validator) CheckSchema(schema string, body []byte) error // contra components/schemas/<schema>
+// Transport valida cada respuesta y, si es 2xx, también el request; report recibe cada error.
+func (v *Validator) Transport(next http.RoundTripper, report func(error)) http.RoundTripper
+func (v *Validator) Wrap(t testing.TB, c *http.Client) // reemplaza c.Transport; reporta con t.Errorf
+func (v *Validator) RequireRecorded(t testing.TB, req *http.Request, rec *httptest.ResponseRecorder)
 ```
 
 ---
@@ -1871,9 +1901,10 @@ La actualización de la documentación va **en el mismo cambio** que el código.
 | `SendBudget`, el timeout por etapa del adaptador SMTP, sus opciones de go-mail (`WithoutRset`), la versión de go-mail o `idle_in_transaction_session_timeout` de `crm_app` | DD-35 + INV-29 + ADR-024 §5 + `db/bootstrap/` + T-B211/T-B213 (los dos tests que fijan la relación) + timeout de apagado (T-B909). Al subir go-mail, volver a contar las ventanas de *deadline* en su código |
 | El aplazamiento de mensajes del `Dispatcher` (cuándo, demora, query) | ADR-024 §6 + INV-31 + §4.4 + §9.4 + `data-model.md` §2.5 y §3.4 + `queryrules.DefaultExceptions` (`DeferMessage`) + T-B112/T-B211 |
 | La imagen de un contenedor de desarrollo o de test (PostgreSQL, Mailpit, MinIO) | `internal/testsupport/containers` y `compose.yaml` en el mismo cambio (lo verifica un test) + DD-36 si es MinIO + nota en ADR-011 si cambia el servidor S3 de desarrollo |
-| Las claves, los valores o los tipos que `audit.Recorder` rechaza, o el catálogo de acciones de auditoría | DD-37 + INV-32 + `data-model.md` §2.6 (nota de `data` y catálogo; verificar que ninguna clave nueva del catálogo choque con la política) + T-B209 (casos de credenciales y de "sin falsos positivos") |
+| Las claves, los valores o los tipos que `audit.Recorder` rechaza (incluida la búsqueda dentro del texto de DD-37 (4)), o el catálogo de acciones de auditoría | DD-37 + INV-32 + `data-model.md` §2.6 (nota de `data`, catálogo y "Qué va en `data`"; verificar que ninguna clave ni valor nuevo del catálogo choque con la política) + T-B209 (casos de credenciales y de "sin falsos positivos") + el test de la operación que audita la acción (claves exactas: T-B303 y los de las Fases 4 a 7) |
 | El límite o la normalización de `user_agent` | DD-38 + INV-33 + `httpx.MaxUserAgentRunes` + `CHECK` de `sessions` y `audit_log` (migración nueva) + `data-model.md` §2.3/§2.6 + T-B209/T-B303 |
 | El orden de la cadena común de middlewares | DD-22 + DD-32 + §11.1 + T-B203/T-B204 |
+| La forma de validar contra el contrato en los tests (respuestas globales, request solo en `2xx`, opciones del validador), la versión de `libopenapi-validator` o la cantidad de contratos (spec 002) | `internal/testsupport/contract` + T-B311 + nota de ADR-014 (ADR nuevo si cambia la decisión) + §8 + §11.1 + la regla `depguard` de la librería |
 | Un término nuevo | `docs/glosario.md` |
 
 ---
@@ -1895,10 +1926,13 @@ La actualización de la documentación va **en el mismo cambio** que el código.
 
 ---
 
-## 18. Cambios posteriores a la aprobación (2026-09-29 a 2026-10-01)
+## 18. Cambios posteriores a la aprobación (2026-09-29 a 2026-10-02)
 
-### Estado de la implementación (2026-09-30)
+### Estado de la implementación (2026-10-02)
 
+- **2026-10-02**: las Fases 0, 1 y 2 del backend están mergeadas en `main` (la 2 con el PR
+  fdelillo/crm#8, 2ff34be). La Fase 3 empieza en `feat/001-backend-phase-3`, después de los ajustes
+  de la séptima tanda (abajo). Los puntos siguientes son el estado al 2026-09-30.
 - **Fase 0 del backend**: implementada y **mergeada** (PR fdelillo/crm#6).
 - **Fase 1 del backend**: implementada en la rama, **en revisión**, con arreglos en curso. Incluye
   la primera defensa de DD-34 (commit e3d990b); la segunda (reintento en `InTenantTx`) la está
@@ -2101,3 +2135,62 @@ solo en el código. (3) El comentario de `Mailer.Send` en `internal/platform/mai
 la diferencia con DD-35; con DD-35 alineado, se reemplaza por una referencia (T-B214).
 
 Esta tanda tampoco le pide nada al frontend: no cambia el contrato.
+
+### Séptima tanda (2026-10-02): pendientes antes de la Fase 3 — *Accepted*
+
+Estado: las Fases 0 a 2 del backend están mergeadas en `main` (la 2 con el PR fdelillo/crm#8,
+2ff34be). La rama `feat/001-backend-phase-3` existe y no tiene código. Antes de que
+`backend-developer` implemente la Fase 3 quedaban tres pendientes; se verificaron contra el código
+de `main`:
+
+- **Token incrustado en texto libre** (última revisión del PR #8, hecha con Codex sobre 1a06946),
+  confirmado: `isCredentialValue` (`internal/platform/audit/audit.go`) mira solo el valor entero
+  (`Bearer`/`Basic`/`Digest` al comienzo, un JWT entero, exactamente 43 caracteres base64url), así
+  que `{"note": "see https://…/reset-password#token=<43>"}` llega a `InsertAudit`. Hoy ninguna ruta
+  escribe ese caso.
+- **Texto de DD-38**: `httpx.NormalizeUserAgent` (`internal/platform/httpx/useragent.go`) recorre el
+  `string` con `range`, que da un `U+FFFD` por **cada byte** inválido (`useragent_test.go` ya lo
+  fija: `"a\xff\xfeb"` → `"a��b"`). DD-38, T-B209 y el comentario de §11.1 decían "cada secuencia
+  inválida", que se puede leer como la semántica de `strings.ToValidUTF8` (un reemplazo por tramo).
+- **Validación de contrato**: `go.mod` no tiene `libopenapi-validator` ni hay un helper en
+  `internal/testsupport` (el árbol de §11 nombraba un paquete "contrato" que no existe). El único
+  control es el provisorio `TestProblemCodesMatchContract`.
+
+| Tema | Qué cambió | Dónde | ADR |
+|---|---|---|---|
+| Credencial incrustada en un texto de `audit_log.data` | DD-37 (4): una clave de credencial seguida de `=` o `:`, o una secuencia de exactamente 43 caracteres base64url, **en cualquier posición** de un `string`, se rechaza con `ErrSecretInData` (reusa las reglas de claves y de 43 caracteres). DD-37 (5): `data` solo con valores del catálogo armados por el servidor; el texto libre del usuario vive en su tabla de dominio; el test de cada operación verifica las claves exactas. Alternativas descartadas: aceptarlo como limitación sin cambiar la regla, la regla de 20 caracteres de ADR-025 §2 (falsos positivos en el propio catálogo) y la lista blanca en `platform/audit` | DD-37, INV-32, §10.3, §11.1, §16; `data-model.md` §2.6; T-B209, T-B210 (ajustes al comienzo de la Fase 3), T-B303, T-B304 | — |
+| `U+FFFD` por byte (DD-38) | Texto alineado con el código, sin cambio de comportamiento; casos que lo caracterizan en T-B209 | DD-38, §11.1; T-B209 | — |
+| Validación de las respuestas contra el contrato (hueco diferido de T-B201/T-B004) | Helper `internal/testsupport/contract` con `libopenapi-validator` (T-B311/T-B312 nuevas, antes de T-B301): toda respuesta contra su operación; el request solo si la respuesta es `2xx`; `404`/`405` globales contra `Problem`; aserciones de `format`; `depguard` limita la librería a ese paquete. T-B201 y T-B004 pasan a validar con él | §1, §8, §11, §11.1, §16; T-B004, T-B201, T-B301, T-B305, T-B309, T-B311, T-B312 | **Nota 2026-10-02 en ADR-014** (*Accepted*) |
+| DD-36 sin aplicar (hallazgo) | En `main`, `compose.yaml` usa `quay.io/minio/minio:latest`, el test de S3 usa `bitnamilegacy/minio@sha256:…` y no existe `internal/testsupport/containers`: el ajuste de T-B215/T-B216 de la quinta tanda no se aplicó. Decisión del usuario: aplicarlo obligatoriamente al comienzo de la Fase 3 | `tasks.md` (Estado de la implementación, T-B216, checkpoint de la Fase 3) | — (DD-36 no cambia) |
+
+**Por qué `DD` y no ADR**: ampliar la regla de DD-37 y agregar la convención (5) no cambia ningún
+ADR. ADR-025 §2 no se toca: su regla de 20 caracteres sigue valiendo para `last_error`, y se decide
+explícitamente no trasladarla a `audit_log.data` (allá se redacta; acá se rechaza, y un falso
+positivo es un `500`). La validación de contrato aplica ADR-012 y ADR-014 tal como están; la nota
+en ADR-014 precisa cómo (request solo en `2xx`, respuestas globales) sin cambiar la decisión.
+
+**Invariantes**: se **amplía** INV-32 (credencial incrustada en un texto y `data` exacto del
+catálogo). Se preservan INV-15 (append-only), INV-30 (`last_error` no se toca) e INV-33 (sin cambio
+de comportamiento). Ninguna invariante se altera: ningún llamador de `Record` en `main` (solo
+tests) escribe valores que la regla nueva rechace, y la tabla "sin falsos positivos" de T-B209 lo
+fija, incluido `password_reset_request`.
+
+**Hallazgos de documentación**: (1) §1 decía que la Fase 1 estaba "implementada en su rama": las
+Fases 0 a 2 están mergeadas (corregido). (2) El árbol de §11 nombraba un paquete "contrato" en
+`testsupport` que no existía: ahora es `contract`, con firmas en §11.1. (3) El checkpoint de la
+Fase 2 ("`docker compose up -d` levanta MinIO con la imagen de DD-36") no se cumple en `main` (fila
+de DD-36 arriba).
+
+**Otros puntos resueltos al revisar la Fase 3**:
+
+- El contrato no declara `413 payload_too_large` en `POST /auth/signup` ni en los demás endpoints
+  que reciben JSON, aunque `DecodeJSON` responde `413` con un body de más de 64 KB (T-B201, §9.1); §8
+  tampoco lo lista en la regla general ("las que reciben JSON, además `400` y `415`"). Con la
+  validación de T-B311 activa, un test que mande más de 64 KB a esos endpoints fallaría por status no
+  declarado. El usuario aprobó el contrato 0.4.1, que declara `413`
+  (`PayloadTooLarge`) en cada operación con body JSON y lo sume a la regla general de §8 (cambio
+  *patch*: no agrega valores a ningún enum).
+- El formato del catálogo de plantillas no estaba fijado: T-B302 lo fija en JSON embebido leído con
+  `encoding/json` (sin YAML en código de producción).
+
+Esta tanda no agrega valores a los enums del frontend; al generar los tipos desde el contrato v0.4.1 se incorpora la respuesta `413`.

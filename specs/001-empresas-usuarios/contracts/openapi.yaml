@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CRM - API 001 Empresas, usuarios y roles
-  version: 0.4.0
+  version: 0.4.1
   summary: Registro de empresas, autenticación, sesiones, invitaciones, usuarios y datos de la empresa.
   description: |
     Contrato **canónico** de la spec 001 (`specs/001-empresas-usuarios/spec.md`).
@@ -16,6 +16,8 @@ info:
       `Secure` en todos los entornos: la API solo se usa por HTTPS, también en desarrollo y en
       los E2E (HTTPS local con un certificado de mkcert, DD-24).
     - Todo endpoint con body JSON exige `Content-Type: application/json` (si no, 415).
+    - Todo body JSON puede tener hasta 65 536 bytes (64 KiB); uno más grande responde
+      `413 payload_too_large` (declarado en cada operación con body JSON).
     - Errores: RFC 9457 `application/problem+json` con el campo `code` estable (ADR-009) y,
       cuando corresponde, `suggested_action`. El frontend decide el texto a mostrar a partir de
       `code`.
@@ -51,6 +53,10 @@ info:
       global); `Retry-After` opcional en `ServerError` (registro con muchos pedidos simultáneos,
       DD-33). Es *minor* y no *patch*: un valor nuevo en un enum obliga a los clientes con
       manejo exhaustivo de `ErrorCode` (el mapa de mensajes del frontend) a agregar su texto.
+    - 0.4.1: `413 payload_too_large` declarado en todas las operaciones con body JSON (límite de
+      65 536 bytes, que el servidor ya aplicaba sin declararlo; plan §18, séptima tanda). Es
+      *patch*: no agrega valores a ningún enum ni cambia esquemas; declara una respuesta que ya
+      existía y cuyo `code` ya estaba en `ErrorCode`.
 servers:
   - url: /api/v1
 tags:
@@ -147,6 +153,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/EmailAlreadyRegisteredProblem'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
@@ -199,6 +207,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
@@ -260,6 +270,8 @@ paths:
           $ref: '#/components/responses/MalformedRequest'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
@@ -291,6 +303,8 @@ paths:
           $ref: '#/components/responses/TokenInvalidOrMalformed'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
@@ -320,6 +334,8 @@ paths:
           $ref: '#/components/responses/TokenInvalidOrMalformed'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '429':
@@ -371,6 +387,8 @@ paths:
           $ref: '#/components/responses/TokenInvalidOrMalformed'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '429':
@@ -405,6 +423,8 @@ paths:
           $ref: '#/components/responses/TokenInvalidOrMalformed'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
@@ -486,6 +506,8 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
@@ -721,6 +743,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
@@ -767,6 +791,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
@@ -969,8 +995,9 @@ components:
             $ref: '#/components/schemas/Problem'
     PayloadTooLarge:
       description: |
-        Body demasiado grande (`code` = `payload_too_large`). En `PUT /tenant/logo`: archivo de más
-        de 2 097 152 bytes o cuerpo multipart de más de 2 162 688 bytes (DD-31).
+        Body demasiado grande (`code` = `payload_too_large`). Con body JSON: más de 65 536 bytes
+        (64 KiB). En `PUT /tenant/logo`: archivo de más de 2 097 152 bytes o cuerpo multipart de
+        más de 2 162 688 bytes (DD-31).
       content:
         application/problem+json:
           schema:

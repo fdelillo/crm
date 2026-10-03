@@ -35,6 +35,17 @@ tanda): credenciales en `audit_log.data` (DD-37, INV-32), `user_agent` acotado (
 `last_error` según ADR-025 (INV-30), `RequestID` antes de `ClientIP` (DD-22, DD-32), texto de DD-35.
 Tareas afectadas: T-B203, T-B204, T-B209, T-B210, T-B211, T-B212, T-B213, T-B214, T-B219 (Fase 2,
 en el PR abierto) y T-B303, T-B304 (Fase 3). La sección Frontend no cambia: el contrato no cambia.
+**Séptima revisión 2026-10-02** (*Accepted*, aprobada por el usuario el 2026-10-02): pendientes
+antes de la Fase 3 (plan §18, séptima tanda): credencial incrustada en un texto de
+`audit_log.data` y `data` exacto del catálogo (DD-37 (4) y (5), INV-32), texto de DD-38 sobre
+`U+FFFD` alineado con el código (sin cambio de comportamiento), validador del contrato para los
+tests HTTP (T-B311 y T-B312 nuevas; cierra el hueco diferido de T-B201/T-B004; nota 2026-10-02 en
+ADR-014), el ajuste de DD-36 que quedó sin aplicar en la Fase 2 (obligatorio al comienzo de la
+Fase 3, decisión del usuario) y el contrato **v0.4.1** (`413 payload_too_large` declarado en toda
+operación con body JSON, decisión del usuario). Tareas afectadas: T-B004, T-B201, T-B209, T-B210,
+T-B215, T-B216 (ajustes al comienzo de la Fase 3) y T-B301, T-B302, T-B303, T-B304, T-B305,
+T-B309, T-B311, T-B312 (Fase 3). La sección Frontend no cambia: el contrato 0.4.1 no agrega valores
+a ningún enum (ver "Coordinación con la sección Frontend").
 
 ---
 
@@ -42,10 +53,10 @@ en el PR abierto) y T-B303, T-B304 (Fase 3). La sección Frontend no cambia: el 
 
 Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invocación**.
 
-### Estado de la implementación (2026-09-30)
+### Estado de la implementación (2026-10-02)
 
 - **Fase 0**: implementada y mergeada (PR fdelillo/crm#6).
-- **Fase 1**: implementada en la rama, **en revisión**.
+- **Fase 1**: implementada y mergeada.
 - La tercera y la cuarta revisión tocan tareas ya implementadas. Se aplican como ajustes en la rama
   de la Fase 1 (si sigue abierta) o como primer cambio de la Fase 2, **antes** de T-B201, con
   `make check` en verde:
@@ -59,9 +70,10 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
   | T-B105 / T-B106 | 1 | `db.ErrCanceled` y `55P03` → `db.ErrUnavailable`, con el orden de clasificación de plan §9.2 |
   | T-B112 | 1 | Lista exacta de las cuatro rutas de plan §4.4: `queryrules.DefaultExceptions` suma `internal/identity/store/cleanup.sql` y `internal/tenant/store/provisioning.sql` a las dos que ya tiene |
 
-- **Fase 2** (2026-10-01): implementada en `feat/001-backend-phase-2` (PR fdelillo/crm#8), en
-  revisión. La quinta revisión se aplica en esa misma rama, una vez aprobada, junto con los demás
-  hallazgos de la revisión del PR:
+- **Fase 2**: implementada en `feat/001-backend-phase-2` (PR fdelillo/crm#8) y **mergeada** en
+  `main` (2ff34be, 2026-10-02). La quinta y la sexta revisión se aplicaron en esa rama, **salvo** el
+  ajuste de T-B215/T-B216 (DD-36): ver la tabla de la Fase 3. Las dos tablas siguientes quedan como
+  historia de lo que se pidió en esa rama:
 
   | Tarea | Ajuste |
   |---|---|
@@ -83,6 +95,21 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
   | T-B211 / T-B212 | `LastError()`: sin texto del proveedor en la fase `data`; redacción de `://` y de secuencias de 20 o más caracteres (ADR-025 §1–§2) |
   | T-B213 / T-B214 | Código extendido leído del texto en todas las fases, con control de clase (ADR-025 §3); caso de *deadline* de DD-35; comentario de `Mailer.Send` |
   | T-B303 / T-B304 (Fase 3) | `CreateSession` normaliza `user_agent` (DD-38): se hace al implementar la Fase 3, no en este PR |
+
+- **Fase 3** (2026-10-02): rama `feat/001-backend-phase-3`, creada desde `main` (2ff34be), todavía
+  sin código. **Séptima revisión (*Accepted*, aprobada por el usuario el 2026-10-02)**: antes de
+  T-B301, en este orden y con `make check` en verde después de cada paso, se aplican estos ajustes.
+  **Los cuatro son obligatorios.** Los casos marcados "Séptima revisión" se escriben primero; cada
+  tarea dice si deben fallar (Red) o si caracterizan el comportamiento actual. El contrato ya está
+  en **v0.4.1** (lo cambió esta revisión; no hay paso de código para eso): sus casos de `413` están
+  en T-B201, T-B305 y T-B311.
+
+  | Orden | Tarea | Ajuste |
+  |---|---|---|
+  | 1 | T-B209 / T-B210 (Fase 2) | DD-37 (4): una clave de credencial seguida de `=` o `:`, o una secuencia de 43 caracteres base64url, **dentro** de un texto (casos "Séptima revisión", fallan hoy); texto de DD-38 sobre `U+FFFD` alineado con el código (los casos nuevos de `NormalizeUserAgent` pasan sin cambios) |
+  | 2 | T-B311 / T-B312 (nuevas, Fase 3) | Validador del contrato `internal/testsupport/contract` con `libopenapi-validator`: cierra el hueco diferido de T-B201/T-B004 (fila de la tabla de la Fase 2) |
+  | 3 | T-B201 / T-B004 (Fases 2 y 0) | Sus casos de problem+json validan con `contract` (detalle en T-B312), incluido el `413` de un body JSON de más de 65 536 bytes. `TestProblemCodesMatchContract` se mantiene |
+  | 4 | T-B215 / T-B216 (Fase 2; ajuste de la quinta revisión que no se aplicó; **obligatorio**, decisión del usuario del 2026-10-02) | Hoy en `main`: `compose.yaml` usa `quay.io/minio/minio:latest` (no se descarga sin login desde el 2026-09-24/25, DD-36), `internal/platform/objectstore/objectstore_integration_test.go` usa `bitnamilegacy/minio@sha256:…` (que T-B215 prohíbe) y no existe `internal/testsupport/containers`. Primero se escriben los casos de T-B215 marcados "Quinta revisión" (fallan hoy). Después: **(a) `compose.yaml`**: el servicio `minio` usa `ghcr.io/coollabsio/minio:RELEASE.2025-10-15T17-29-55Z@sha256:<digest>`, con el digest del **índice multiplataforma** de ese tag (`docker buildx imagetools inspect`); mantiene `command: server /data --console-address ":9001"` y pierde el comentario sobre `quay.io`. **(b) Test de S3** (T-B215): usa `containers.MinIO` en lugar de `bitnamilegacy/…`; ningún archivo del repo fuera de la documentación nombra `quay.io/minio`, `minio/minio:` ni `bitnamilegacy/`. **(c) `internal/testsupport/containers`**: constantes `Postgres` (`postgres:18`), `Mailpit` (`axllent/mailpit:v1.27`) y `MinIO` (la referencia de (a)); las usan `pgtest`, los dos tests que levantan Mailpit (`internal/identity/emails/emails_integration_test.go` e `internal/app/phase2_independent_integration_test.go`) y el de S3; su test unitario verifica que los `image:` de `postgres`, `mailpit` y `minio` en `compose.yaml` son exactamente esas constantes. Si el tag no se descarga sin login, no se elige otra imagen por cuenta propia: respaldo de DD-36 (`cgr.dev/chainguard/minio` por digest) y aviso al arquitecto. **Verificación**: `docker compose up -d` con **todos** los servicios, sin login a ningún registro, y `make check` en verde |
 
 ### Convenciones de esta sección
 
@@ -112,6 +139,11 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
   test necesita mkcert**. Los tests de un solo request siguen con `httptest.NewRecorder`. Como el
   `cookiejar` de Go no verifica el prefijo `__Host-`, los atributos de la cookie se afirman
   explícitamente sobre `Set-Cookie` (INV-23).
+- **Contrato en los tests HTTP** (séptima revisión, ADR-014 y su nota 2026-10-02): todo test HTTP
+  de la API valida contra el contrato con `internal/testsupport/contract` (T-B311/T-B312). Con
+  `apitest`, `contract.Default(t).Wrap(t, srv.Client)` valida cada respuesta contra su operación y,
+  si es `2xx`, también el request; con `httptest.NewRecorder`, `RequireRecorded`. Las tablas de las
+  tareas no repiten "valida contra el contrato" en cada fila: vale para todas.
 - **IP del cliente en los tests** (DD-32): `httptest` fija `RemoteAddr` en `192.0.2.1:1234`. Los
   tests que necesitan otra IP la fijan en `req.RemoteAddr` o configuran `TRUSTED_PROXIES` con ese
   rango y mandan `X-Forwarded-For`; siempre con direcciones de documentación (`192.0.2.0/24`,
@@ -154,6 +186,7 @@ duplican acá**. Dependen de:
 | T-F701 (Playwright) | T-B014 y la receta de CI de plan §10.5.1 | El E2E corre contra `https://localhost:8443` con la CA de mkcert instalada en el runner (supuesto S-12) |
 | T-F604/T-F605 (preparación del logo) | T-B706 (límites de DD-31) | `LOGO_TARGET_MAX_BYTES` puede ser el límite exacto del archivo, 2 097 152 bytes (H-11) |
 | T-F004 (tipos del contrato) y T-F101 (mensajes por `code`) | Contrato **v0.4.0** (tercera revisión) | `ErrorCode` suma `method_not_allowed`: el mapa exhaustivo de T-F101 deja de compilar hasta que tenga su mensaje (a propósito). Lo actualiza el `frontend-architect` en su sección y en `ui.md` |
+| T-F004 (tipos del contrato) y T-F101 (mensajes por `code`) | Contrato **v0.4.1** (séptima revisión) | Declara `413 payload_too_large` en las operaciones con body JSON. No agrega valores a `ErrorCode` ni cambia esquemas: el mapa de T-F101 compila igual y `ui.md` §12.2 ya cubre `payload_too_large` fuera del logo ("como `malformed_request`"). Cuando exista `web/`, `gen:api` regenera los tipos (incluyen la respuesta `413` nueva). Sin decisión de UI pendiente |
 | T-F202 (pantalla de registro) | T-B305 (tercera revisión) | El `503` del registro puede traer `Retry-After: 2` (DD-33); el mensaje de "Reintentar" puede usarlo. Decisión del `frontend-architect` |
 
 Orden sugerido: Fase 0 del backend completa → T-F007/T-F008 (en la misma rama o la siguiente) →
@@ -240,7 +273,9 @@ PostgreSQL 18 real con los roles del proyecto. CI corre todo.
   (`/api/` → chi, `GET /healthz`, `GET /readyz`, `/` → SPA) envuelto por los middlewares
   comunes (HSTS según el modo); `app.NewServer(cfg, root)` con los timeouts de §10.3 del plan y
   TLS local cuando `cfg.TLS != nil`; `internal/testsupport/apitest.NewServer`; apagado ordenado
-  con `context` al recibir SIGTERM.
+  con `context` al recibir SIGTERM. (Séptima revisión: la validación contra el contrato de los
+  `404` y `405` de la API se hace con `contract.CheckResponse`, T-B311/T-B312, como ajuste al
+  comienzo de la Fase 3.)
 
 **T-B005 — Implementar el mux raíz, el router chi de la API (con `NotFound`/`MethodNotAllowed`
 problem+json; el `405` con `code: method_not_allowed` y `Allow` calculado con `Match`, plan §9.2),
@@ -552,11 +587,12 @@ Antes de T-B201: los ajustes de la tercera y la cuarta revisión sobre las Fases
   | `DecodeJSON` con JSON válido | struct poblado |
   | Campo desconocido | `400 malformed_request` (`DisallowUnknownFields`) |
   | Dos objetos JSON concatenados | `400` |
-  | Body > 64 KB | `413 payload_too_large` |
+  | Body > 64 KiB (65 537 bytes) | `413 payload_too_large`; con 65 536 bytes se decodifica normalmente (el límite es inclusivo; contrato v0.4.1, séptima revisión) |
   | Sin `Content-Type: application/json` | `415` |
   | `Content-Type: application/json; charset=utf-8` | aceptado |
 - **Green**: pasa la tabla; las respuestas validan contra `Problem`/`ValidationProblem` del
-  contrato.
+  contrato (séptima revisión: con `contract.CheckSchema`, T-B311/T-B312, como ajuste al comienzo
+  de la Fase 3).
 
 **T-B202 — Implementar `platform/httpx` (problem+json con `suggested_action` y `Retry-After` opcionales, DecodeJSON, mapeo por defecto de errores, incluido `db.ErrCanceled` de plan §9.2)**.
 
@@ -687,6 +723,34 @@ ruta → autenticación por grupo). `CommonMiddleware` recibe el modo local y
   | **Sin falsos positivos**: el `data` de cada acción del catálogo de `data-model.md` §2.6 con valores representativos (`{"industry_template_code": "generic"}`, `{"fields": []string{"name", "timezone"}}`, `{"content_type": "image/png"}`, `{"reason": "bad_password"}`, `{"sessions_revoked": int64(2)}`, `{"role": "operator", "trigger": "password_reset_request"}`, `{"from": "admin", "to": "operator", "status": "invited"}`, `{"to_status": "active"}`) y los tipos admitidos restantes (`bool`, `int`, `int32`, `uuid.UUID`, `time.Time`, `nil`) | una fila por caso |
   | `Data` limpio con `tx = nil` | `errors.Is(err, audit.ErrTxRequired)` |
 
+  Séptima revisión (DD-37 (4), INV-32; *Accepted*): credencial **incrustada** en un texto bajo una
+  clave inocua (el hueco que señaló la última revisión del PR #8). Se escriben primero y **fallan
+  hoy** (la validación solo mira el valor entero), salvo la tabla "sin falsos positivos", que ya
+  pasa y fija el comportamiento. `raw` es el de `securetoken.New()`.
+
+  Integración, con el mismo esquema que los casos de la sexta revisión (`InTenantTx(A)` válido,
+  `COMMIT` ignorando el error de `Record`):
+
+  | `Data` | Esperado |
+  |---|---|
+  | `{"note": "see https://crm.example/reset-password#token=" + raw}` (el caso de la revisión) | `ErrSecretInData`; el error nombra `note` y no contiene `raw`, `token=` ni `://`; 0 filas después del `COMMIT` |
+  | `{"items": []any{map[string]any{"note": "/accept-invitation#token=" + raw}}}` | `ErrSecretInData` con la ruta `items[0].note` |
+
+  Unitarios (sin Docker; `package audit`, sobre la función no exportada que valida `Data`; un
+  `map[string]any{"note": valor}` por fila salvo que diga otra cosa):
+
+  | Valor | Esperado |
+  |---|---|
+  | `"token=valor-secreto-de-prueba-1"` | `ErrSecretInData` (clave incrustada; el valor no tiene forma de token) |
+  | `"x reset_token = valor-secreto-de-prueba-2"` | `ErrSecretInData` (espacios antes del `=`) |
+  | `"Authorization: Bearer valor-secreto-de-prueba-3"` | `ErrSecretInData` |
+  | `"Cookie: __Host-crm_session=valor-secreto-de-prueba-4"` | `ErrSecretInData` |
+  | `"X-API-Key:valor-secreto-de-prueba-5"` / `"pin: 1234"` | `ErrSecretInData` / `ErrSecretInData` (`pin` va por igualdad) |
+  | `"reintentar con " + raw + " más tarde"` / `"(" + raw + ")"` | `ErrSecretInData` (secuencia de 43 incrustada) |
+  | `{"fields": []string{"name", "ver " + raw}}` | `ErrSecretInData` con la ruta `fields[1]` |
+  | En todas las filas anteriores | el texto del error no contiene `valor-secreto-de-prueba-<n>` ni `raw` |
+  | **Sin falsos positivos**: `"password_reset_request"` (sin `=` ni `:`), `"Motivo: el cliente pidió anular el cobro de las 10:30"`, `"contraseña: cambiada"`, `"https://crm.example/settings?tab=users"`, `"sessions_revoked=2"`, `uuid.New().String()`, 22 dígitos seguidos (forma de un CBU), 64 caracteres hexadecimales (forma de un SHA-256), 42 y 44 caracteres base64url seguidos | sin error |
+
   Sexta revisión (DD-38, INV-33). Integración, `Record` dentro de `InTenantTx(A)`; después del
   `COMMIT` se lee `user_agent` de la fila:
 
@@ -694,7 +758,7 @@ ruta → autenticación por grupo). `CommonMiddleware` recibe el modo local y
   |---|---|
   | 513 caracteres ASCII | `Record` sin error (hoy falla el `CHECK` y revierte la operación); se guardan los primeros 512 |
   | 600 veces `ñ` (2 bytes cada una) | 512 runas (`char_length = 512`), UTF-8 válido |
-  | `"Mozilla/5.0 \xff\xfe x"` (bytes que no son UTF-8) | sin error; se guarda con `U+FFFD` en lugar de cada secuencia inválida |
+  | `"Mozilla/5.0 \xff\xfe x"` (bytes que no son UTF-8) | sin error; se guarda `"Mozilla/5.0 �� x"`: un `U+FFFD` por **cada byte** inválido (DD-38; texto precisado en la séptima revisión, sin cambio de comportamiento) |
   | `"a\x00b"` | se guarda `"ab"` |
   | `""` | `user_agent IS NULL` |
 
@@ -705,6 +769,7 @@ ruta → autenticación por grupo). `CommonMiddleware` recibe el modo local y
   | `""` / 512 ASCII / 513 ASCII | `""` / igual / los primeros 512 |
   | 511 ASCII + `"ñ"` + `"x"` (513 runas) | 512 runas, terminando en `ñ` (nunca medio carácter) |
   | `"\xff"` / `"a\x00b"` | `"�"` / `"ab"` |
+  | (Séptima revisión) `"a\xff\xfeb"` / `"\xe2\x82x"` (carácter de 3 bytes truncado a 2) | `"a��b"` / `"��x"`: un `U+FFFD` por byte, no por tramo (no es `strings.ToValidUTF8`). Caracteriza el comportamiento actual: pasa sin cambios de código |
   | Propiedad, sobre 1000 entradas aleatorias de bytes | `utf8.ValidString(out)`, sin `\x00`, `utf8.RuneCountInString(out) <= httpx.MaxUserAgentRunes` |
 - **Green**: pasa la tabla.
 
@@ -714,7 +779,16 @@ listas, valores `Bearer`/`Basic`/`Digest`, JWT y formato de `securetoken`), que 
 mirar `tx` y devuelve los centinelas de plan §11.1 envueltos con la ruta
 (`fmt.Errorf("audit: data.%s: %w", ruta, ErrSecretInData)`), nunca con el valor; `ErrTxRequired`
 reemplaza al `errors.New` actual; `Record` guarda `httpx.NormalizeUserAgent(e.UserAgent)` (DD-38),
-función nueva de `platform/httpx` junto con la constante `MaxUserAgentRunes`.
+función nueva de `platform/httpx` junto con la constante `MaxUserAgentRunes`. Séptima revisión
+(DD-37 (4), *Accepted*): además de las reglas de valor de (3), cada `string` se recorre buscando
+**(a)** toda secuencia maximal de letras, dígitos, `_` o `-` seguida de `=` o `:` (con espacios
+opcionales en el medio), que se evalúa con la misma regla de claves de (2) (`isCredentialKey`); y
+**(b)** toda secuencia maximal de **exactamente 43** caracteres de `[A-Za-z0-9_-]` (maximal: el
+carácter anterior y el siguiente, si existen, no son de ese conjunto). La regla de (3) "son
+exactamente 43 caracteres" queda como caso particular de (b) y se puede reemplazar por ella sin
+cambiar ningún caso existente. El error es el mismo de (3) (`audit: data.<ruta>: ErrSecretInData`),
+sin el valor ni la clave incrustada. Un recorrido por runas alcanza; si se usa `regexp`, se compila
+una vez a nivel de paquete.
 
 **T-B211 [T] — Outbox y worker** · ADR-010, ADR-024, ADR-025, INV-09, INV-16, INV-28, INV-29, INV-30, INV-31, DD-35, plan §9.4
 - **Red** (integración, `Handler` falso configurable, `Clock` falso; los *hooks* de test no
@@ -850,7 +924,7 @@ función nueva de `platform/httpx` junto con la constante `MaxUserAgentRunes`.
   | (Quinta revisión) `containers.MinIO` | contiene `ghcr.io/coollabsio/minio:RELEASE.2025-10-15T17-29-55Z@sha256:`; ningún archivo del repo fuera de la documentación nombra `quay.io/minio`, `minio/minio:` ni `bitnamilegacy/` |
 - **Green**: pasa la tabla.
 
-**T-B216 — Implementar `platform/objectstore` (minio-go)**. Quinta revisión (DD-36): paquete `internal/testsupport/containers` con las constantes `Postgres` (`postgres:18`), `Mailpit` (`axllent/mailpit:v1.27`) y `MinIO` (`ghcr.io/coollabsio/minio:RELEASE.2025-10-15T17-29-55Z@sha256:<digest>`); `pgtest`, los dos tests que levantan Mailpit y el de MinIO usan esas constantes; `compose.yaml` usa las mismas referencias, mantiene `command: server /data --console-address ":9001"` y pierde el comentario sobre `quay.io`. El digest es el del **índice multiplataforma** de ese tag (lo obtiene el desarrollador con `docker buildx imagetools inspect`). Si ese tag no se puede descargar sin login, no se elige otra imagen por cuenta propia: se usa el respaldo de DD-36 (`cgr.dev/chainguard/minio` por digest) y se avisa al arquitecto para actualizar DD-36 y la nota de ADR-011.
+**T-B216 — Implementar `platform/objectstore` (minio-go)**. Quinta revisión (DD-36): paquete `internal/testsupport/containers` con las constantes `Postgres` (`postgres:18`), `Mailpit` (`axllent/mailpit:v1.27`) y `MinIO` (`ghcr.io/coollabsio/minio:RELEASE.2025-10-15T17-29-55Z@sha256:<digest>`); `pgtest`, los dos tests que levantan Mailpit y el de MinIO usan esas constantes; `compose.yaml` usa las mismas referencias, mantiene `command: server /data --console-address ":9001"` y pierde el comentario sobre `quay.io`. El digest es el del **índice multiplataforma** de ese tag (lo obtiene el desarrollador con `docker buildx imagetools inspect`). Si ese tag no se puede descargar sin login, no se elige otra imagen por cuenta propia: se usa el respaldo de DD-36 (`cgr.dev/chainguard/minio` por digest) y se avisa al arquitecto para actualizar DD-36 y la nota de ADR-011. (Séptima revisión: este ajuste **no** se aplicó en la rama de la Fase 2; por decisión del usuario del 2026-10-02 se aplica, obligatorio, al comienzo de la Fase 3: paso 4 de la tabla de "Estado de la implementación".)
 
 **T-B217 [T] — Rate limiter** · DD-9, DD-32, INV-25
 - **Red** (unitario, reloj falso): 5 pedidos permitidos y el 6.º rechazado con `RetryAfter > 0`;
@@ -887,6 +961,76 @@ cookie → `200` con rol `admin`, los 15 permisos y `email_verified: false`; en 
 de verificación. Repetir el registro con el mismo email → `409 email_already_registered` con
 `suggested_action: password_reset`.
 
+Antes de T-B301: los cuatro ajustes de la séptima revisión (tabla "Fase 3" de "Estado de la
+implementación"), en el orden de esa tabla.
+
+**T-B311 [T] — Validador del contrato para los tests HTTP** · ADR-012, ADR-014 (nota 2026-10-02), principio VI, DD-17
+(Numeración agregada en la séptima revisión, *Accepted* (aprobada por el usuario el 2026-10-02); se
+hace **antes** de T-B301, porque T-B301, T-B305 y T-B309 validan contra el contrato con este
+helper. Cierra el hueco diferido de T-B201/T-B004.)
+- **Red** (unitario, sin Docker, en `internal/testsupport/contract`; servidores y respuestas de
+  prueba armados a mano con `httptest`, sin el mux real; los casos usan los métodos que devuelven
+  `error`, así no hace falta un `testing.TB` falso):
+
+  | Caso | Esperado |
+  |---|---|
+  | `contract.Load()` desde el directorio del paquete | encuentra la raíz del módulo subiendo hasta el `go.mod`, carga `specs/001-empresas-usuarios/contracts/openapi.yaml` y `ValidateDocument()` no reporta errores (el contrato v0.4.1 es OpenAPI 3.1 válido) |
+  | `GET /api/v1/industry-templates` → `200` `application/json` con un `items` válido | `CheckResponse` devuelve `nil` (el prefijo `/api/v1` de `servers` se quita para encontrar la operación) |
+  | La misma respuesta con una propiedad de más en un item | error que nombra la propiedad (el esquema tiene `additionalProperties: false`) |
+  | `POST /api/v1/auth/signup` → `409` `application/problem+json` con un cuerpo válido de `EmailAlreadyRegisteredProblem` | `nil`; el mismo cuerpo sin `suggested_action` → error |
+  | `POST /api/v1/auth/signup` → `503` problem+json `service_unavailable` con `Retry-After: 2` | `nil` (la operación declara `5XX`); con `Retry-After: 0` → error (`minimum: 1`) |
+  | `POST /api/v1/auth/signup` → `413` problem+json `payload_too_large` | `nil` (declarado desde el contrato v0.4.1); el mismo `413` en `GET /api/v1/industry-templates` → error (no declarado: esa operación no tiene body) |
+  | `POST /api/v1/auth/signup` → `418` | error: status no declarado para la operación |
+  | `POST /api/v1/auth/signup` → `409` con `Content-Type: application/json` | error: tipo de contenido no declarado para ese status |
+  | `POST /api/v1/auth/logout` → `204` sin cuerpo | `nil` |
+  | `DELETE /api/v1/industry-templates` → `405` problem+json `method_not_allowed` con `Allow: GET` | `nil` (respuesta global, contra `Problem`); sin `Allow` → error; con status `200` → error (método fuera del contrato) |
+  | `GET /api/v1/no-existe` → `404` problem+json `not_found` | `nil` (respuesta global, contra `Problem`); un cuerpo sin `code` → error; con status `200` → error (ruta fuera del contrato) |
+  | `CheckSchema("ValidationProblem", body)` con `errors` de `{field, code}` válidos / con un `code` fuera de `FieldErrorCode` | `nil` / error |
+  | `CheckSchema("NoExiste", body)` | error que nombra el esquema |
+  | Después de `CheckResponse` y de `CheckRequest` | el test puede leer los cuerpos completos (el helper los restituye) |
+  | `Transport` sobre un servidor de prueba: `POST /api/v1/auth/signup` con un cuerpo válido → `201` con `SessionInfo` y `Set-Cookie` | la función de reporte no se llamó |
+  | `Transport`: el servidor de prueba acepta con `201` un request con un campo de más | se reporta un error **del request** (un `2xx` exige un request válido) |
+  | `Transport`: el mismo request con campo de más → `400 malformed_request` | sin error del request (un no-`2xx` no valida el request); la respuesta sí se valida |
+  | 20 validaciones concurrentes sobre el mismo `Validator` (`t.Parallel`) | sin carreras con `-race` |
+- **Green**: pasa la tabla.
+- **Refactor**: una sola función decide "operación del contrato o respuesta global (`404`/`405`)";
+  los mensajes de error incluyen método, ruta y status.
+
+**T-B312 — Implementar `internal/testsupport/contract`** (firmas en plan §11.1; séptima revisión,
+*Accepted*).
+- Dependencias: `github.com/pb33f/libopenapi` y `github.com/pb33f/libopenapi-validator`, ya
+  elegidas en ADR-012 y ADR-014; la última versión estable al implementar (la de
+  `libopenapi-validator` era v0.15.0, publicada el 2026-09-29) fijada en `go.mod` y reportada en
+  el PR. Solo las importa este paquete: regla `depguard` nueva en `.golangci.yml` que prohíbe
+  `github.com/pb33f/libopenapi` (y sus subpaquetes) en todo el repo salvo
+  `**/internal/testsupport/contract/**`.
+- Construcción: `libopenapi.NewDocument` + `validator.NewValidator(doc,
+  config.WithFormatAssertions())`. Sin `WithStrictServerMatching` (el `servers` relativo `/api/v1`
+  se resuelve quitando el prefijo), sin `WithoutResponseStatusValidation` y sin
+  `WithoutSecurityValidation`. El documento se carga una vez por proceso (`sync.OnceValues`) y las
+  validaciones se serializan con un `sync.Mutex`: no se asume que el validador sea seguro para uso
+  concurrente.
+- `CheckResponse`: lee y restituye `resp.Body`; si la librería informa que la ruta o el método no
+  están en el contrato y el status es `404` o `405` con `application/problem+json`, valida el
+  cuerpo con `CheckSchema("Problem", …)` y, en el `405`, exige `Allow`; en cualquier otro caso
+  devuelve los errores de la librería unidos.
+- `Transport`: copia el cuerpo del request antes de enviarlo; con la respuesta, `CheckResponse`
+  siempre y `CheckRequest` (sobre un clon con la copia del cuerpo) solo si el status es `2xx`.
+  `Wrap(t, client)` reemplaza `client.Transport` por `Transport(client.Transport, t.Errorf…)`.
+- `CheckSchema`: valida contra `components/schemas/<nombre>` con el validador de esquemas de la
+  misma librería (paquete `schema_validation`).
+- Si una respuesta que cumple el contrato falla por una limitación de la librería (p. ej. un
+  `format`), **no** se apaga la opción ni se agrega una excepción: se frena y se avisa al
+  arquitecto con el caso.
+- **Ajuste de T-B201 y T-B004** (hueco diferido; tercer paso de la tabla de la Fase 3): en
+  `internal/platform/httpx`, cada `WriteProblem` de T-B201 (incluido el `413` de un body JSON de
+  más de 65 536 bytes) se valida con `CheckSchema("Problem")`, el `422` con
+  `CheckSchema("ValidationProblem")` y el `409` de registro con
+  `CheckSchema("EmailAlreadyRegisteredProblem")`; en `internal/app`, los `404` y `405` de T-B004
+  con `CheckResponse`. `TestProblemCodesMatchContract` (`httpx`) y el test de `Permission` de
+  `authz` se mantienen: controlan los enums sin armar respuestas (`payload_too_large` sigue en el
+  enum `ErrorCode` y en `httpx.CodePayloadTooLarge`; el contrato v0.4.1 no cambia el enum).
+
 **T-B301 [T] — Catálogo de plantillas y `GET /industry-templates`** · FR-002, DD-3
 - **Red**:
 
@@ -894,13 +1038,18 @@ de verificación. Repetir el registro con el mismo email → `409 email_already_
   |---|---|
   | `industrytemplate.All()` | contiene al menos `aluminum_carpentry` ("Carpintería de aluminio") y `generic` ("Genérico"), cada uno con versión ≥ 1 |
   | `Lookup("inexistente")` | `false` |
-  | `GET /api/v1/industry-templates` | `200`, valida contra el contrato, sin cookie |
+  | `GET /api/v1/industry-templates` | `200`, valida contra el contrato (`contract`, T-B311), sin cookie |
 - **Green**: pasa la tabla. El catálogo se lee de un archivo de datos embebido, no de constantes
   por rubro en el código (principio II).
 
 **T-B302 — Implementar `internal/industrytemplate` (catálogo + `Seeder` sin efecto) y el handler**.
+Séptima revisión: el catálogo es `internal/industrytemplate/catalog.json`, embebido con
+`//go:embed` y leído con `encoding/json` (`DisallowUnknownFields`) una sola vez; no se usa YAML en
+código de producción. Un catálogo inválido (código vacío o repetido, nombre vacío, versión < 1)
+hace fallar un test unitario del paquete, y en el binario produce un *panic* al primer uso (es un
+error de compilación del catálogo, no de runtime).
 
-**T-B303 [T] — Servicio de registro** · US-1, FR-001, FR-002, INV-14, INV-16, INV-26, INV-33, DD-2, DD-4, DD-13, DD-15, DD-27, DD-33, DD-38, H-6
+**T-B303 [T] — Servicio de registro** · US-1, FR-001, FR-002, FR-008, INV-14, INV-16, INV-26, INV-32, INV-33, DD-2, DD-4, DD-13, DD-15, DD-27, DD-33, DD-37, DD-38, H-6
 - **Red** (integración, `Mailer` real no interviene: se verifica el outbox):
 
   | Caso | Esperado |
@@ -919,10 +1068,16 @@ de verificación. Repetir el registro con el mismo email → `409 email_already_
   | Una transacción de prueba (superusuario del contenedor) ejecuta `GRANT crm_tenant TO <rol de prueba>` y queda abierta 3 s; mientras, un `Register` | `Register` devuelve un error con `errors.Is(err, db.ErrUnavailable)` en ~2 s (entre 2 y 3 s; **nunca** los 5 s de `statement_timeout` ni un `ErrPrivilege`); no queda empresa, usuario, token, mensaje, sesión ni **rol** nuevos; después del `ROLLBACK` de la transacción de prueba, el mismo `Register` tiene éxito |
   | Dentro de la transacción de registro (observado con el `Seeder` falso como *hook*) | `current_setting('lock_timeout')` = `2s` |
   | Durante todo `Register` | los fakes de `Mailer` y `ObjectStorage` no registran **ninguna** llamada (el email sale por el outbox; R-b de DD-33) |
-  | (Sexta revisión, DD-38) `Register` con `RequestMeta.UserAgent` de 600 caracteres que incluye un byte `\xff` | éxito; `sessions.user_agent` y el `audit_log.user_agent` de `tenant.registered` tienen 512 runas y UTF-8 válido |
+  | (Sexta revisión, DD-38; precisado en la séptima) `Register` con `RequestMeta.UserAgent` de 600 caracteres que incluye un byte `\xff` y un `\x00` | éxito; `sessions.user_agent` y el `audit_log.user_agent` de `tenant.registered` son **iguales** a `httpx.NormalizeUserAgent(entrada)`: 512 runas, UTF-8 válido, sin `NUL` |
+  | (Séptima revisión, DD-38) `RequestMeta.UserAgent = ""` | `sessions.user_agent IS NULL` y `audit_log.user_agent IS NULL` |
+  | (Séptima revisión, INV-32, catálogo de `data-model.md` §2.6) Datos válidos; se leen las filas de `audit_log` de la empresa nueva en `InTenantTx` | exactamente **una** fila: `action = tenant.registered`, `actor_user_id` = el admin creado, `target_type = tenant`, `target_id` = la empresa, `ip` = `RequestMeta.IP`, `request_id` = el del contexto (el test lo obtiene pasando por `httpx.RequestID`, como T-B209); `data` decodificado como `map[string]any` es **igual** a `{"industry_template_code": <código del request>}`: mismas claves y ninguna de más (se compara el mapa, no el texto JSON). `CreateSession` no audita (`auth.login_succeeded` es de `Login`, Fase 4) |
+  | (Séptima revisión, INV-32) La misma fila | ni `data::text` ni `user_agent` contienen el `RawToken` de la sesión, el token de verificación en claro (leído del `payload` del mensaje pendiente), la contraseña ni el email |
+  | (Séptima revisión, DD-37) `Register` con cada plantilla de `industrytemplate.All()` | éxito en todas; `data.industry_template_code` = su código (ningún código del catálogo choca con la política de DD-37) |
 - **Green**: pasa la tabla.
 - **Refactor**: el servicio de `tenant` no conoce SQL de `identity`; solo usa la interfaz
-  `AdminOnboarding` (plan §11.1).
+  `AdminOnboarding` (plan §11.1). Séptima revisión: la lectura de las filas de `audit_log` de una
+  empresa queda como función del test; cuando la Fase 4 también la necesite, se mueve a
+  `internal/testsupport/audittest` (no antes).
 
 **T-B304 — Implementar `tenant.Service.Register` y en `identity`: `CreateFirstAdmin`,
 `CreateSession`, `IssueEmailVerification`**. Sexta revisión (DD-38, INV-33): `CreateSession` guarda `httpx.NormalizeUserAgent(meta.UserAgent)` en `sessions.user_agent`. Tercera revisión (DD-33, INV-26): validación y hash
@@ -930,10 +1085,17 @@ argon2 **antes** de abrir la transacción; al abrirla, `lock_timeout` con `tenan
 mediante `SELECT set_config('lock_timeout', @timeout, true)` (equivale a `SET LOCAL`), antes de
 `provision_tenant_role`; ambas queries en `internal/tenant/store/provisioning.sql` (plan §4.4);
 desde el aprovisionamiento hasta el `COMMIT`, solo SQL (nada de SMTP, S3 ni otra E/S de red).
+Séptima revisión (INV-32, DD-37 (5)): `Register` audita `tenant.registered` con actor = el admin
+creado, target `tenant` = la empresa, `Data` = un mapa con la única clave `industry_template_code`
+(el código de la plantilla aplicada), e `IP` y `UserAgent` tomados de `meta` sin modificar (la
+normalización es de `Record`). Un error de `Record` se propaga y revierte el registro (es un bug:
+`500`). `CreateSession` no escribe auditoría.
 
-**T-B305 [T] — `POST /auth/signup`** · US-1, SC-001, P-4, P-5, DD-9, DD-19, DD-21, DD-24, DD-27, DD-28, DD-33, INV-20, INV-23, INV-26
-- **Red** (integración HTTP con `apitest` (HTTPS + `cookiejar`), contrato validado en cada
-  respuesta):
+**T-B305 [T] — `POST /auth/signup`** · US-1, SC-001, P-4, P-5, DD-9, DD-19, DD-21, DD-24, DD-27, DD-28, DD-33, DD-38, INV-20, INV-23, INV-26, ADR-014
+- **Red** (integración HTTP con `apitest` (HTTPS + `cookiejar`), contrato **v0.4.1** validado en
+  cada respuesta: séptima revisión, con `contract.Default(t).Wrap(t, srv.Client)` (T-B311), que
+  valida cada respuesta contra su operación y, si es `2xx`, también el request; los casos de la
+  tabla no repiten la aserción):
 
   | Caso | Esperado |
   |---|---|
@@ -946,9 +1108,11 @@ desde el aprovisionamiento hasta el `COMMIT`, solo SQL (nada de SMTP, S3 ni otra
   | `timezone: "Marte/Olympus"` | `201` (no `422`); `GET /tenant` muestra `America/Argentina/Buenos_Aires` |
   | Campo faltante / campo extra | `422` con `errors[].field` / `400 malformed_request` |
   | Sin `Content-Type` JSON | `415` |
+  | (Séptima revisión, contrato v0.4.1) Body de **65 537 bytes**: un `SignupRequest` válido con espacios agregados al final | `413 payload_too_large` con `Cache-Control: no-store`; valida contra la operación (el `413` está declarado desde v0.4.1); no queda empresa, usuario ni rol nuevos. El mismo cuerpo con un espacio menos (**65 536 bytes**) → `201` (el límite es inclusivo) |
   | 6.º registro en una hora desde la misma IP | `429 rate_limited` con `Retry-After` |
   | 5 registros rechazados con `409` desde la misma IP y un 6.º con email nuevo | el 6.º recibe `429` (los rechazos consumen cupo, DD-9) |
   | (Tercera revisión) Con el lock de `crm_tenant` retenido como en T-B303 | `503` `code: service_unavailable` con `Retry-After: 2` y `Cache-Control: no-store`; valida contra `ServerError` del contrato v0.4.0; sin cookie; log `event=signup_lock_timeout` (sin email); `signup_lock_timeout_total` +1 |
+  | (Séptima revisión, DD-38) `User-Agent` de 600 caracteres con un byte `\xff` | `201`; el handler pasa `r.UserAgent()` sin tocarlo (normalizan los escritores). Si el cliente o el servidor de Go rechazan esa cabecera, el caso se arma con `httptest.NewRequest` sobre el handler raíz, sin `apitest` |
 - **Green**: pasa la tabla.
 
 **T-B306 — Implementar el handler de signup** (mapeo `identity.ErrEmailTaken` →
@@ -979,13 +1143,15 @@ de un `55P03` → `503` con `RetryAfter(tenant.SignupLockTimeout)`, DD-33).
 
 **T-B309 [T] — `GET /me`** · US-1, FR-007, P-2
 - **Red**: admin → `200` con 15 permisos; operador → 6 permisos; `user.email_verified` refleja
-  `email_verified_at`; sin cookie → `401`. Validado contra el contrato.
+  `email_verified_at`; sin cookie → `401`. Validado contra el contrato (`contract`, T-B311).
 
 **T-B310 — Implementar `/me` y el cableado en `internal/app`** (grupos de rutas públicas y
 autenticadas dentro de chi, worker arrancado por `serve`).
 
 **Checkpoint Fase 3**: `make check` en verde + la prueba independiente ejecutada contra
-`docker compose` (registro por `curl`, email visible en Mailpit).
+`docker compose up -d` **completo** (todos los servicios, MinIO incluido con la imagen de DD-36
+aplicada en el paso 4 de la séptima revisión, sin login a ningún registro): registro por `curl`,
+email visible en Mailpit.
 
 ---
 
@@ -1492,7 +1658,7 @@ de la fase y se agrega a plan §11.1 en el mismo cambio (matriz §16).
 | FR-005 Invitar, desactivar, cambiar rol (+ reactivar, P-3) | T-B601..T-B606 |
 | FR-006 Aislamiento | T-B101, T-B103, T-B107..T-B112, T-B801..T-B804 |
 | FR-007 Matriz de permisos | T-B207, T-B309, T-B606, T-B705, T-B802 |
-| FR-008 Auditoría (y reactivación, P-3) | T-B209, T-B402, T-B501, T-B601, T-B603, T-B604 |
+| FR-008 Auditoría (y reactivación, P-3) | T-B209, T-B303, T-B402, T-B501, T-B601, T-B603, T-B604 |
 | US-1 (1, 2, 3) | T-B303 (1, 2), T-B305 (2), T-B303/T-B504 (3) |
 | US-2 (1, 2, 3) | T-B402 (1, 2), T-B501/T-B502 (3) |
 | US-3 (1, 2, 3, 4) | T-B601 (1), T-B602 (2), T-B604 (3), T-B603/T-B604 (4) |
@@ -1526,10 +1692,13 @@ de la fase y se agrega a plan §11.1 en el mismo cambio (matriz §16).
 | ADR-024 / INV-28 / INV-30 Clasificación de fallos de entrega y `last_error` saneado (research R-29) | T-B211, T-B212, T-B213, T-B214, T-B903 |
 | ADR-025 / INV-30 `last_error` sin texto del proveedor en `data`, redacción ampliada y código extendido leído del texto | T-B211, T-B212, T-B213, T-B214 |
 | DD-37 / INV-32 Credenciales en `audit_log.data` | T-B209, T-B210 |
-| DD-38 / INV-33 `user_agent` acotado en cada escritura | T-B209, T-B210, T-B303, T-B304 |
+| DD-37 (4) y (5) / INV-32 Credencial incrustada en un texto y `data` exacto del catálogo (séptima revisión) | T-B209, T-B210, T-B303, T-B304 |
+| DD-38 / INV-33 `user_agent` acotado en cada escritura | T-B209, T-B210, T-B303, T-B304, T-B305 |
 | DD-35 / INV-29 Presupuesto del envío frente a `idle_in_transaction_session_timeout` | T-B211, T-B213, T-B214, T-B908, T-B909 |
 | INV-31 Aislamiento de fallos por mensaje del `Dispatcher` | T-B112, T-B211, T-B212 |
-| DD-36 Imagen de MinIO en desarrollo y tests (research R-30) | T-B215, T-B216 |
+| DD-36 Imagen de MinIO en desarrollo y tests (research R-30) | T-B215, T-B216 (paso 4 obligatorio al comienzo de la Fase 3, séptima revisión) |
+| ADR-014 (nota 2026-10-02) / principio VI Validación de request y response contra el contrato (séptima revisión) | T-B311, T-B312, T-B004, T-B201, T-B301, T-B305, T-B309 (y todo test HTTP de las Fases 4 a 8) |
+| Contrato v0.4.1: `413 payload_too_large` en las operaciones con body JSON (séptima revisión) | T-B201, T-B305, T-B311; T-F004 (tipos regenerados, frontend) |
 
 ---
 
