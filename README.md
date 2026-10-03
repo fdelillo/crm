@@ -95,6 +95,22 @@ curl https://localhost:8443/healthz   # sin -k: {"status":"ok"}
 Hasta que exista el frontend embebido, `https://localhost:8443/` responde `503` ("La interfaz no
 está compilada"): es esperado.
 
+### Probar el registro (Fase 3)
+
+Con los servicios y el backend levantados como arriba:
+
+```sh
+curl -c /tmp/crm-cookies.txt -H 'Content-Type: application/json' \
+  --data '{"name":"Ana","email":"ana@example.com","password":"una-clave-segura-123","company_name":"Mi Empresa","base_currency":"ARS","industry_template_code":"generic"}' \
+  https://localhost:8443/api/v1/auth/signup
+curl -b /tmp/crm-cookies.txt https://localhost:8443/api/v1/me
+```
+
+El registro responde `201`, `/me` devuelve el usuario `admin` con sus 15 permisos y el correo de
+verificación aparece en [Mailpit](http://localhost:8025). El adaptador SMTP usa por defecto
+`localhost:1025` y `no-reply@crm.local` en modo local; `SMTP_HOST`, `SMTP_PORT` y `SMTP_FROM`
+permiten cambiarlos.
+
 ### Modos de desarrollo (plan 001, §10.5.1)
 
 La sesión es una cookie `__Host-` `Secure`, así que el navegador solo la guarda por HTTPS. En

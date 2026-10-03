@@ -16,6 +16,7 @@ import (
 
 	"github.com/fdelillo/crm/internal/platform/mailer"
 	"github.com/fdelillo/crm/internal/platform/outbox"
+	"github.com/fdelillo/crm/internal/testsupport/containers"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
@@ -24,7 +25,7 @@ func TestTemplatesReachMailpit(t *testing.T) {
 	ctx := context.Background()
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
-			Image:        "axllent/mailpit:v1.27",
+			Image:        containers.Mailpit,
 			ExposedPorts: []string{"1025/tcp", "8025/tcp"},
 			WaitingFor:   wait.ForListeningPort("8025/tcp"),
 		},

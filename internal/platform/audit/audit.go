@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/fdelillo/crm/internal/platform/audit/store"
 	"github.com/fdelillo/crm/internal/platform/db"
@@ -124,22 +125,59 @@ func isCredentialKey(key string) bool {
 }
 
 // isCredentialValue recognizes values that look like a credential whatever their key (DD-37 (3)):
-// an Authorization-style scheme, a JWT, or the 43-character base64url form of securetoken.New.
+// an Authorization-style scheme, a JWT, or an embedded credential assignment or securetoken raw.
 func isCredentialValue(value string) bool {
-	value = strings.TrimSpace(value)
-	lower := strings.ToLower(value)
+	trimmed := strings.TrimSpace(value)
+	lower := strings.ToLower(trimmed)
 	for _, scheme := range []string{"bearer ", "basic ", "digest "} {
 		if strings.HasPrefix(lower, scheme) {
 			return true
 		}
 	}
-	if strings.HasPrefix(value, "eyJ") {
-		segments := strings.Split(value, ".")
+	if strings.HasPrefix(trimmed, "eyJ") {
+		segments := strings.Split(trimmed, ".")
 		if len(segments) == 3 && slices.IndexFunc(segments, func(s string) bool { return !isBase64URL(s) }) < 0 {
 			return true
 		}
 	}
-	return len(value) == 43 && isBase64URL(value)
+	return containsEmbeddedCredential(value)
+}
+
+// containsEmbeddedCredential scans maximal ASCII base64url runs. A run of exactly 43 bytes is
+// securetoken.New's raw form; a run followed by optional whitespace and '=' or ':' is checked
+// against the same credential-key policy used for JSON keys (DD-37 (4)). No part of the input is
+// returned in an error, since it may itself be the secret.
+func containsEmbeddedCredential(value string) bool {
+	for i := 0; i < len(value); {
+		if !isBase64URLByte(value[i]) {
+			_, width := utf8.DecodeRuneInString(value[i:])
+			i += width
+			continue
+		}
+		start := i
+		for i < len(value) && isBase64URLByte(value[i]) {
+			i++
+		}
+		if i-start == 43 {
+			return true
+		}
+		j := i
+		for j < len(value) {
+			r, width := utf8.DecodeRuneInString(value[j:])
+			if !unicode.IsSpace(r) {
+				break
+			}
+			j += width
+		}
+		if j < len(value) && (value[j] == '=' || value[j] == ':') && isCredentialKey(value[start:i]) {
+			return true
+		}
+	}
+	return false
+}
+
+func isBase64URLByte(b byte) bool {
+	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || b == '-' || b == '_'
 }
 
 func isBase64URL(s string) bool {
@@ -147,7 +185,7 @@ func isBase64URL(s string) bool {
 		return false
 	}
 	for _, r := range s {
-		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '-' && r != '_' {
+		if r > 127 || !isBase64URLByte(byte(r)) {
 			return false
 		}
 	}

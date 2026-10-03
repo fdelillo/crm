@@ -24,6 +24,15 @@ linters:
         - fmt.Fprintln
     depguard:
       rules:
+        openapi-validator-only-in-contract-tests:
+          files:
+            - $all
+            - "!**/internal/testsupport/contract/**"
+          deny:
+            - pkg: github.com/pb33f/libopenapi
+              desc: OpenAPI libraries belong only in internal/testsupport/contract
+            - pkg: github.com/pb33f/libopenapi-validator
+              desc: OpenAPI libraries belong only in internal/testsupport/contract
         # platform/* is technical: it imports no domain module and not authz (plan §4.1).
         platform-has-no-domain:
           files:

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/fdelillo/crm/internal/platform/db"
+	"github.com/fdelillo/crm/internal/testsupport/contract"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -42,6 +43,9 @@ func TestProblemCodes(t *testing.T) {
 			if w.Code != tc.status || w.Header().Get("Content-Type") != "application/problem+json" {
 				t.Fatalf("status=%d content-type=%q", w.Code, w.Header().Get("Content-Type"))
 			}
+			if err := contract.Default(t).CheckSchema("Problem", w.Body.Bytes()); err != nil {
+				t.Fatalf("response violates Problem: %v", err)
+			}
 			var raw map[string]any
 			if err := json.Unmarshal(w.Body.Bytes(), &raw); err != nil {
 				t.Fatal(err)
@@ -67,10 +71,7 @@ func TestProblemCodes(t *testing.T) {
 	}
 }
 
-// Provisional control for the T-B201/T-B004 gap (deferred to the start of Phase 3, tasks.md): a
-// full libopenapi-validator check of every response against Problem/ValidationProblem is not wired
-// up yet, so this at least catches a Code added, renamed or removed on one side without the other
-// (as internal/authz/authz_test.go:56 does for Permission).
+// This independent enum check catches codes added, renamed or removed without building a response.
 func TestProblemCodesMatchContract(t *testing.T) {
 	data, err := os.ReadFile("../../../specs/001-empresas-usuarios/contracts/openapi.yaml")
 	if err != nil {
@@ -104,6 +105,9 @@ func TestProblemOptions(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()
 	WriteProblem(w, r, CodeEmailAlreadyRegistered, WithSuggestedAction(SuggestedPasswordReset))
+	if err := contract.Default(t).CheckSchema("EmailAlreadyRegisteredProblem", w.Body.Bytes()); err != nil {
+		t.Fatalf("conflict violates contract: %v", err)
+	}
 	var p map[string]any
 	if err := json.Unmarshal(w.Body.Bytes(), &p); err != nil {
 		t.Fatal(err)
@@ -126,6 +130,9 @@ func TestProblemOptions(t *testing.T) {
 func TestValidationErrorSorted(t *testing.T) {
 	w := httptest.NewRecorder()
 	ValidationError(w, httptest.NewRequest(http.MethodPost, "/", nil), map[string]string{"z": "required", "a": "invalid_value"})
+	if err := contract.Default(t).CheckSchema("ValidationProblem", w.Body.Bytes()); err != nil {
+		t.Fatalf("validation problem violates contract: %v", err)
+	}
 	var p struct {
 		Code   Code
 		Errors []struct{ Field, Code string }
@@ -223,6 +230,11 @@ func TestDecodeJSON(t *testing.T) {
 			}
 			if tc.status != 0 && (err == nil || w.Code != tc.status) {
 				t.Fatalf("err=%v status=%d", err, w.Code)
+			}
+			if tc.status == 413 {
+				if err := contract.Default(t).CheckSchema("Problem", w.Body.Bytes()); err != nil {
+					t.Fatalf("oversize response violates contract: %v", err)
+				}
 			}
 		})
 	}

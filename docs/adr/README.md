@@ -29,7 +29,7 @@ Reglas:
 | [011](011-almacenamiento-archivos-s3.md) | Almacenamiento compatible con S3, subida vía backend | Accepted (nota 2026-10-01 sobre la imagen de MinIO: Accepted) | 001 |
 | [012](012-estrategia-de-tests.md) | Estrategia de tests (TDD, PostgreSQL real, contrato, aislamiento) | Accepted | 001 |
 | [013](013-autorizacion-matriz-permisos.md) | Autorización con matriz estática de permisos por rol | Accepted | 001 |
-| [014](014-contrato-openapi-canonico.md) | Contrato OpenAPI 3.1 canónico, handlers a mano, validación en tests | Accepted | 001 |
+| [014](014-contrato-openapi-canonico.md) | Contrato OpenAPI 3.1 canónico, handlers a mano, validación en tests | Accepted (nota 2026-10-02 sobre cómo se aplica la validación: Accepted, aprobada por el usuario el 2026-10-02) | 001 |
 | [015](015-frontend-stack-y-estructura.md) | Frontend: Vite + React + TypeScript en `web/`, carpetas por feature | Proposed | 001 (frontend) |
 | [016](016-componentes-shadcn-tailwind.md) | Componentes con shadcn/ui (Radix) y estilos con Tailwind CSS v4 | Accepted (decisión del usuario; detalles Proposed) | 001 (frontend) |
 | [017](017-router-react-router-spa.md) | Router con React Router v7 en modo SPA, variante *data* | Accepted (decisión del usuario; detalles Proposed) | 001 (frontend) |
@@ -55,3 +55,7 @@ ADR-025 (2026-10-01, `Accepted`) reemplaza solo tres piezas de ADR-024 (de dónd
 extendido, el detalle de las respuestas de la fase `data` y la regla de redacción de `last_error`).
 ADR-024 sigue `Accepted` en todo lo demás, con la misma forma de nota que se usó en
 ADR-010; no pasa a `Superseded`.
+
+La nota 2026-10-02 de ADR-014 (`Accepted`, aprobada por el usuario el 2026-10-02) precisa cómo se
+aplica la verificación de contrato (request validado solo en respuestas `2xx`; `404`/`405` globales
+contra `Problem`) sin cambiar la decisión.

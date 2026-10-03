@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fdelillo/crm/internal/testsupport/containers"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/testcontainers/testcontainers-go"
@@ -20,14 +21,13 @@ import (
 
 func TestS3AdapterAgainstMinIO(t *testing.T) {
 	const accessKey, secretKey, bucket = "minio_dev", "minio_dev_secret", "crm-test"
-	// The original quay.io/minio/minio image currently returns 401. This digest contains
-	// the open-source MinIO server (2025-05-24), repackaged by Bitnami for test use.
 	container, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
-			Image:        "bitnamilegacy/minio@sha256:451fe6858cb770cc9d0e77ba811ce287420f781c7c1b806a386f6896471a349c",
+			Image:        containers.MinIO,
 			Env:          map[string]string{"MINIO_ROOT_USER": accessKey, "MINIO_ROOT_PASSWORD": secretKey},
 			ExposedPorts: []string{"9000/tcp"},
 			WaitingFor:   wait.ForHTTP("/minio/health/ready").WithPort("9000/tcp"),
+			Cmd:          []string{"server", "/data", "--console-address", ":9001"},
 		},
 		Started: true,
 	})
