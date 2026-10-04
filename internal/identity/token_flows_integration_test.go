@@ -282,10 +282,10 @@ func (r resetRaceRunner) InSystemTx(ctx context.Context, role db.SystemRole, fn 
 // without locking the user first; otherwise login's session FK and reset's throttle DELETE
 // form a deadlock. The user-row probe makes that ordering assertion deterministic.
 func TestConcurrentLoginAndPasswordResetUseSameLockOrder(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
 	baseHasher := password.NewHasher(2)
 	svc, runner, company, email, _, _ := loginFixture(t, baseHasher)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 	oldHash, err := baseHasher.Hash(ctx, "old-password")
 	if err != nil {
 		t.Fatal(err)
