@@ -107,7 +107,10 @@ func (s *Service) issueToken(ctx context.Context, tx db.Tx, tenantID, userID uui
 }
 
 // withToken locates only routing columns as crm_auth, then locks the user and token under RLS.
-func (s *Service) withToken(ctx context.Context, raw, purpose string, fn func(context.Context, db.Tx, store.LookupTokenByHashRow, store.GetTokenFlowUserRow, time.Time) error) error {
+// Password reset first locks the email's login throttle, preserving Login's lock order:
+// throttle -> user -> token. Verification has no reason to touch the throttle.
+func (s *Service) withToken(ctx context.Context, raw, purpose string, lockLoginThrottle bool,
+	fn func(context.Context, db.Tx, store.LookupTokenByHashRow, store.GetTokenFlowUserRow, time.Time) error) error {
 	if raw == "" {
 		return ErrTokenInvalid
 	}
@@ -132,6 +135,28 @@ func (s *Service) withToken(ctx context.Context, raw, purpose string, fn func(co
 		}
 		if err != nil {
 			return fmt.Errorf("identity: read token user: %w", db.MapError(err))
+		}
+		if lockLoginThrottle {
+			email, err := q.GetUserEmail(ctx, store.GetUserEmailParams{TenantID: route.TenantID, UserID: userID})
+			if errors.Is(db.MapError(err), db.ErrNotFound) {
+				return ErrTokenInvalid
+			}
+			if err != nil {
+				return fmt.Errorf("identity: read reset email: %w", db.MapError(err))
+			}
+			if err := tx.AsSystem(ctx, db.RoleAuth); err != nil {
+				return err
+			}
+			key := s.emailHMAC(email)
+			if err := q.EnsureLoginThrottle(ctx, store.EnsureLoginThrottleParams{EmailHmac: key, Now: s.clock.Now()}); err != nil {
+				return fmt.Errorf("identity: ensure reset throttle: %w", db.MapError(err))
+			}
+			if _, err := q.LockLoginThrottle(ctx, key); err != nil {
+				return fmt.Errorf("identity: lock reset throttle: %w", db.MapError(err))
+			}
+			if err := tx.AsTenant(ctx, route.TenantID); err != nil {
+				return err
+			}
 		}
 		user, err := q.GetTokenFlowUser(ctx, store.GetTokenFlowUserParams{TenantID: route.TenantID, UserID: userID})
 		if errors.Is(db.MapError(err), db.ErrNotFound) {
@@ -159,7 +184,7 @@ func (s *Service) ConfirmPasswordReset(ctx context.Context, raw, plain string, m
 	if s.hasher == nil {
 		return errors.New("identity: authentication not configured")
 	}
-	return s.withToken(ctx, raw, "password_reset", func(ctx context.Context, tx db.Tx, route store.LookupTokenByHashRow, user store.GetTokenFlowUserRow, now time.Time) error {
+	return s.withToken(ctx, raw, "password_reset", true, func(ctx context.Context, tx db.Tx, route store.LookupTokenByHashRow, user store.GetTokenFlowUserRow, now time.Time) error {
 		if code := password.Validate(plain, user.Email); code != "" {
 			return &PasswordValidationError{Code: code}
 		}
@@ -204,7 +229,7 @@ func (s *Service) ConfirmEmailVerification(ctx context.Context, raw string, meta
 	if s.audit == nil {
 		return errors.New("identity: authentication not configured")
 	}
-	return s.withToken(ctx, raw, "email_verification", func(ctx context.Context, tx db.Tx, route store.LookupTokenByHashRow, user store.GetTokenFlowUserRow, now time.Time) error {
+	return s.withToken(ctx, raw, "email_verification", false, func(ctx context.Context, tx db.Tx, route store.LookupTokenByHashRow, user store.GetTokenFlowUserRow, now time.Time) error {
 		if user.EmailVerifiedAt != nil {
 			return ErrTokenInvalid
 		}

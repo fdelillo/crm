@@ -14,6 +14,7 @@ import (
 	"github.com/fdelillo/crm/internal/platform/db"
 	"github.com/fdelillo/crm/internal/platform/password"
 	"github.com/fdelillo/crm/internal/platform/securetoken"
+	"github.com/fdelillo/crm/internal/testsupport/pgtest"
 	"github.com/google/uuid"
 )
 
@@ -236,5 +237,142 @@ func TestEmailVerificationExpires(t *testing.T) {
 	clock.now = clock.now.Add(48*time.Hour + time.Second)
 	if err := svc.ConfirmEmailVerification(context.Background(), token, RequestMeta{}); !errors.Is(err, ErrTokenInvalid) {
 		t.Fatalf("expired verification: %v", err)
+	}
+}
+
+type gatedLoginHasher struct {
+	password.Hasher
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (h *gatedLoginHasher) Verify(ctx context.Context, plain, encoded string) (bool, bool, error) {
+	h.once.Do(func() {
+		close(h.entered)
+		select {
+		case <-h.release:
+		case <-ctx.Done():
+		}
+	})
+	return h.Hasher.Verify(ctx, plain, encoded)
+}
+
+type resetRaceContextKey struct{}
+
+type resetRaceRunner struct {
+	db.TxRunner
+	pid chan int32
+}
+
+func (r resetRaceRunner) InSystemTx(ctx context.Context, role db.SystemRole, fn func(context.Context, db.Tx) error) error {
+	return r.TxRunner.InSystemTx(ctx, role, func(ctx context.Context, tx db.Tx) error {
+		if ctx.Value(resetRaceContextKey{}) != nil {
+			var pid int32
+			if err := tx.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&pid); err != nil {
+				return err
+			}
+			r.pid <- pid
+		}
+		return fn(ctx, tx)
+	})
+}
+
+// Login holds the throttle lock while verifying its password. The reset must wait there,
+// without locking the user first; otherwise login's session FK and reset's throttle DELETE
+// form a deadlock. The user-row probe makes that ordering assertion deterministic.
+func TestConcurrentLoginAndPasswordResetUseSameLockOrder(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	baseHasher := password.NewHasher(2)
+	svc, runner, company, email, _, _ := loginFixture(t, baseHasher)
+	oldHash, err := baseHasher.Hash(ctx, "old-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	setLoginPassword(t, runner, company, oldHash, "active")
+	if err := svc.RequestPasswordReset(ctx, email, RequestMeta{}); err != nil {
+		t.Fatal(err)
+	}
+	token := deliveredToken(t, runner, company.ID, email, "password_reset")
+	gate := &gatedLoginHasher{Hasher: baseHasher, entered: make(chan struct{}), release: make(chan struct{})}
+	svc.hasher = gate
+	pids := make(chan int32, 1)
+	svc.runner = resetRaceRunner{TxRunner: runner, pid: pids}
+	loginDone := make(chan struct {
+		session SessionResult
+		err     error
+	}, 1)
+	go func() {
+		session, err := svc.Login(ctx, email, "old-password", RequestMeta{})
+		loginDone <- struct {
+			session SessionResult
+			err     error
+		}{session, err}
+	}()
+	select {
+	case <-gate.entered:
+	case <-ctx.Done():
+		t.Fatal("login did not reach password verification")
+	}
+	var release sync.Once
+	defer release.Do(func() { close(gate.release) })
+	resetDone := make(chan error, 1)
+	go func() {
+		resetCtx := context.WithValue(ctx, resetRaceContextKey{}, true)
+		resetDone <- svc.ConfirmPasswordReset(resetCtx, token, "new-password", RequestMeta{})
+	}()
+	var resetPID int32
+	select {
+	case resetPID = <-pids:
+	case <-ctx.Done():
+		t.Fatal("reset did not start")
+	}
+	// Wait until PostgreSQL confirms the reset is blocked by login's throttle lock.
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		var wait string
+		if err := pgtest.AppPool(t).QueryRow(ctx, `SELECT coalesce(wait_event_type, '') FROM pg_stat_activity WHERE pid=$1`, resetPID).Scan(&wait); err != nil {
+			t.Fatal(err)
+		}
+		if wait == "Lock" {
+			break
+		}
+		select {
+		case <-ticker.C:
+		case <-ctx.Done():
+			t.Fatal("reset did not wait on login's lock")
+		}
+	}
+	probeCtx, probeCancel := context.WithTimeout(ctx, time.Second)
+	defer probeCancel()
+	err = runner.InTenantTx(probeCtx, company.ID, func(ctx context.Context, tx db.Tx) error {
+		var id uuid.UUID
+		return tx.QueryRow(ctx, `SELECT id FROM app.users WHERE tenant_id=$1 AND id=$2 FOR KEY SHARE`, company.ID, company.UserID).Scan(&id)
+	})
+	if err != nil {
+		t.Fatalf("reset held the user lock while waiting for login throttle: %v", err)
+	}
+	release.Do(func() { close(gate.release) })
+	login := <-loginDone
+	if login.err != nil {
+		t.Fatalf("concurrent login: %v", login.err)
+	}
+	if err := <-resetDone; err != nil {
+		t.Fatalf("concurrent reset: %v", err)
+	}
+	if _, err := svc.ResolveSession(ctx, login.session.RawToken); !errors.Is(err, ErrUnauthenticated) {
+		t.Fatalf("login session survived reset: %v", err)
+	}
+	var newHash string
+	if err := runner.InTenantTx(ctx, company.ID, func(ctx context.Context, tx db.Tx) error {
+		return tx.QueryRow(ctx, `SELECT password_hash FROM app.users WHERE tenant_id=$1 AND id=$2`, company.ID, company.UserID).Scan(&newHash)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ok, _, err := baseHasher.Verify(ctx, "new-password", newHash)
+	if err != nil || !ok {
+		t.Fatalf("new password was not saved: ok=%t err=%v", ok, err)
 	}
 }
