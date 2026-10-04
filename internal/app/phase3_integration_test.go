@@ -54,6 +54,8 @@ func phase3ServerWithLoginClock(t *testing.T, absolute time.Duration, loginClock
 	tenant.RegisterRoutes(r, companies, ratelimit.NewLimiter(rate.Every(12*time.Minute), 5, c, time.Hour), logger)
 	app.RegisterAuthRoutes(r, users, companies, ratelimit.NewLimiter(rate.Every(3*time.Second), 20, loginClock, time.Minute), logger)
 	app.RegisterMeRoute(r, users, companies, logger)
+	app.RegisterRecoveryRoutes(r, users, ratelimit.NewLimiter(rate.Every(12*time.Minute), 5, c, time.Hour),
+		ratelimit.NewLimiter(rate.Every(3*time.Minute), 20, c, time.Hour), logger)
 	root := app.NewRootHandler(app.RootDeps{API: r, Liveness: app.LivenessHandler(),
 		Readiness: app.ReadinessPlaceholder(), SPA: app.SPAUnavailableHandler()},
 		app.NewCommonMiddleware(logger, true, nil))

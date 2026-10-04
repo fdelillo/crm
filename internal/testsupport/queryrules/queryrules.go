@@ -43,6 +43,7 @@ var DefaultExceptions = []Exception{
 		Queries: map[string]string{
 			"LookupSessionByHash": "crm_auth sees only session routing columns to find the tenant of a token",
 			"LookupUserByEmail":   "crm_auth sees only user routing columns to find the tenant of an email",
+			"LookupTokenByHash":   "crm_auth sees only token routing columns to find its tenant",
 		}},
 	{Path: "internal/identity/store/cleanup.sql", Reason: "periodic cleanup as crm_worker: DELETE of expired rows of sessions, user_tokens and login_throttles; the policies of data-model §3.4 bound which rows"},
 	{Path: "internal/platform/outbox/store/worker.sql", Reason: "queue and cleanup queries as crm_worker: they see queue columns of every company",

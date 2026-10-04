@@ -17,6 +17,7 @@ import (
 	"github.com/fdelillo/crm/internal/platform/httpx"
 	"github.com/fdelillo/crm/internal/platform/outbox"
 	"github.com/fdelillo/crm/internal/platform/password"
+	"github.com/fdelillo/crm/internal/platform/ratelimit"
 	"github.com/fdelillo/crm/internal/platform/securetoken"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -56,15 +57,16 @@ type CurrentUser struct {
 }
 
 type Service struct {
-	runner   db.TxRunner
-	outbox   outbox.Enqueuer
-	clock    clock.Clock
-	idle     time.Duration
-	absolute time.Duration
-	hasher   password.Hasher
-	audit    audit.Recorder
-	hmacKey  []byte
-	logger   *slog.Logger
+	runner            db.TxRunner
+	outbox            outbox.Enqueuer
+	clock             clock.Clock
+	idle              time.Duration
+	absolute          time.Duration
+	hasher            password.Hasher
+	audit             audit.Recorder
+	hmacKey           []byte
+	logger            *slog.Logger
+	resetEmailLimiter *ratelimit.Limiter
 }
 
 type ServiceOption func(*Service)

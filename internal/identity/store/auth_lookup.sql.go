@@ -78,6 +78,23 @@ func (q *Queries) LookupSessionByHash(ctx context.Context, tokenHash []byte) (Lo
 	return i, err
 }
 
+const lookupTokenByHash = `-- name: LookupTokenByHash :one
+SELECT id, tenant_id, purpose FROM app.user_tokens WHERE token_hash = $1
+`
+
+type LookupTokenByHashRow struct {
+	ID       uuid.UUID
+	TenantID uuid.UUID
+	Purpose  string
+}
+
+func (q *Queries) LookupTokenByHash(ctx context.Context, tokenHash []byte) (LookupTokenByHashRow, error) {
+	row := q.db.QueryRow(ctx, lookupTokenByHash, tokenHash)
+	var i LookupTokenByHashRow
+	err := row.Scan(&i.ID, &i.TenantID, &i.Purpose)
+	return i, err
+}
+
 const lookupUserByEmail = `-- name: LookupUserByEmail :one
 SELECT id, tenant_id FROM app.users WHERE email = $1
 `
