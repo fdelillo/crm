@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fdelillo/crm/internal/identity"
 	"github.com/fdelillo/crm/internal/testsupport/apitest"
@@ -116,8 +117,12 @@ func TestPhase4LoginLockAndLogout(t *testing.T) {
 	}
 }
 
+type frozenClock struct{ now time.Time }
+
+func (c frozenClock) Now() time.Time { return c.now }
+
 func TestPhase4LoginIPRateLimit(t *testing.T) {
-	server := phase3Server(t)
+	server := phase3ServerWithLoginClock(t, 7*24*time.Hour, frozenClock{now: time.Now()})
 	for i := 0; i < 21; i++ {
 		email := uuid.NewString() + "@example.com"
 		resp := postAuth(t, server, "login", `{"email":"`+email+`","password":"wrong"}`, nil)
