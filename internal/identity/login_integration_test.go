@@ -199,8 +199,11 @@ func TestLoginSecuritySignalsIncludeUnknownEmailsWithoutLeakingThem(t *testing.T
 		if entry["ip"] != "192.0.2.42" || entry["request_id"] != "request-42" {
 			t.Fatalf("missing IP or request ID: %v", entry)
 		}
-		if key == knownKey && entry["tenant_id"] != company.ID.String() {
-			t.Fatalf("known account lacks tenant_id: %v", entry)
+		// An already-locked attempt stops before the user lookup, so its tenant is unknown
+		// even if the HMAC corresponds to an existing account.
+		blockedBeforeLookup := entry["security_event"] == "login_locked" && entry["lock_started"] != true
+		if key == knownKey && !blockedBeforeLookup && entry["tenant_id"] != company.ID.String() {
+			t.Fatalf("resolved account lacks tenant_id: %v", entry)
 		}
 		if key == unknownKey {
 			if _, hasTenant := entry["tenant_id"]; hasTenant {
