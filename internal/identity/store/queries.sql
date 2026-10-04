@@ -38,3 +38,43 @@ WHERE tenant_id = @tenant_id AND id = @user_id;
 UPDATE app.sessions SET revoked_at = @now, revoked_reason = 'logout'
 WHERE tenant_id = @tenant_id AND id = @session_id AND revoked_at IS NULL AND expires_at > @now AND last_seen_at > @idle_cutoff
 RETURNING user_id;
+
+-- name: GetTokenFlowUser :one
+SELECT email, status, role, email_verified_at FROM app.users
+WHERE tenant_id = @tenant_id AND id = @user_id FOR UPDATE;
+
+-- name: GetTokenForUpdate :one
+SELECT id, user_id, purpose, expires_at, used_at, revoked_at FROM app.user_tokens
+WHERE tenant_id = @tenant_id AND id = @token_id FOR UPDATE;
+
+-- name: GetTokenUser :one
+SELECT user_id FROM app.user_tokens WHERE tenant_id = @tenant_id AND id = @token_id;
+
+-- name: RevokeOpenUserTokens :exec
+UPDATE app.user_tokens SET revoked_at = @now
+WHERE tenant_id = @tenant_id AND user_id = @user_id AND purpose = @purpose
+  AND used_at IS NULL AND revoked_at IS NULL;
+
+-- name: InsertUserToken :exec
+INSERT INTO app.user_tokens (tenant_id, user_id, purpose, token_hash, created_at, expires_at)
+VALUES (@tenant_id, @user_id, @purpose, @token_hash, @created_at, @expires_at);
+
+-- name: UseUserToken :execrows
+UPDATE app.user_tokens SET used_at = @now
+WHERE tenant_id = @tenant_id AND id = @token_id AND purpose = @purpose
+  AND used_at IS NULL AND revoked_at IS NULL AND expires_at > @now;
+
+-- name: SetResetPassword :exec
+UPDATE app.users SET password_hash = @password_hash, updated_at = @now
+WHERE tenant_id = @tenant_id AND id = @user_id;
+
+-- name: RevokeUserSessions :execrows
+UPDATE app.sessions SET revoked_at = @now, revoked_reason = 'password_reset'
+WHERE tenant_id = @tenant_id AND user_id = @user_id AND revoked_at IS NULL;
+
+-- name: MarkEmailVerified :execrows
+UPDATE app.users SET email_verified_at = @now, updated_at = @now
+WHERE tenant_id = @tenant_id AND id = @user_id AND email_verified_at IS NULL;
+
+-- name: GetTokenFlowTenantName :one
+SELECT name FROM app.tenants WHERE id = @tenant_id;

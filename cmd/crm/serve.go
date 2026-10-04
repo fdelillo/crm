@@ -80,6 +80,8 @@ func runServe(ctx context.Context, args []string, e env) error {
 	tenant.RegisterRoutes(api, companies, limiter, logger)
 	app.RegisterAuthRoutes(api, users, companies, ratelimit.NewLimiter(rate.Every(3*time.Second), 20, c, time.Minute), logger)
 	app.RegisterMeRoute(api, users, companies, logger)
+	app.RegisterRecoveryRoutes(api, users, ratelimit.NewLimiter(rate.Every(12*time.Minute), 5, c, time.Hour),
+		ratelimit.NewLimiter(rate.Every(3*time.Minute), 20, c, time.Hour), logger)
 	root := app.NewRootHandler(app.RootDeps{
 		API:       api,
 		Liveness:  app.LivenessHandler(),

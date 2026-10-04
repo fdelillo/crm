@@ -17,9 +17,11 @@ import (
 	"github.com/fdelillo/crm/internal/platform/audit"
 	"github.com/fdelillo/crm/internal/platform/db"
 	"github.com/fdelillo/crm/internal/platform/password"
+	"github.com/fdelillo/crm/internal/platform/ratelimit"
 	"github.com/fdelillo/crm/internal/platform/securetoken"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"golang.org/x/time/rate"
 )
 
 var (
@@ -76,7 +78,10 @@ func WithAuthentication(hasher password.Hasher, recorder audit.Recorder, hmacKey
 		panic("identity: invalid authentication dependencies")
 	}
 	key := append([]byte(nil), hmacKey...)
-	return func(s *Service) { s.hasher, s.audit, s.hmacKey, s.logger = hasher, recorder, key, logger }
+	return func(s *Service) {
+		s.hasher, s.audit, s.hmacKey, s.logger = hasher, recorder, key, logger
+		s.resetEmailLimiter = ratelimit.NewLimiter(rate.Every(time.Hour/3), 3, s.clock, time.Hour)
+	}
 }
 
 func (s *Service) emailHMAC(email string) []byte {

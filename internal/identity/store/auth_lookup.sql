@@ -21,3 +21,6 @@ DELETE FROM app.login_throttles WHERE email_hmac = @email_hmac;
 
 -- name: LookupUserByEmail :one
 SELECT id, tenant_id FROM app.users WHERE email = @email;
+
+-- name: LookupTokenByHash :one
+SELECT id, tenant_id, purpose FROM app.user_tokens WHERE token_hash = @token_hash;

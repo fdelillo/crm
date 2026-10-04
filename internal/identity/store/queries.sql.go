@@ -83,6 +83,95 @@ func (q *Queries) GetSessionUser(ctx context.Context, arg GetSessionUserParams) 
 	return i, err
 }
 
+const getTokenFlowTenantName = `-- name: GetTokenFlowTenantName :one
+SELECT name FROM app.tenants WHERE id = $1
+`
+
+func (q *Queries) GetTokenFlowTenantName(ctx context.Context, tenantID uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, getTokenFlowTenantName, tenantID)
+	var name string
+	err := row.Scan(&name)
+	return name, err
+}
+
+const getTokenFlowUser = `-- name: GetTokenFlowUser :one
+SELECT email, status, role, email_verified_at FROM app.users
+WHERE tenant_id = $1 AND id = $2 FOR UPDATE
+`
+
+type GetTokenFlowUserParams struct {
+	TenantID uuid.UUID
+	UserID   uuid.UUID
+}
+
+type GetTokenFlowUserRow struct {
+	Email           string
+	Status          string
+	Role            string
+	EmailVerifiedAt *time.Time
+}
+
+func (q *Queries) GetTokenFlowUser(ctx context.Context, arg GetTokenFlowUserParams) (GetTokenFlowUserRow, error) {
+	row := q.db.QueryRow(ctx, getTokenFlowUser, arg.TenantID, arg.UserID)
+	var i GetTokenFlowUserRow
+	err := row.Scan(
+		&i.Email,
+		&i.Status,
+		&i.Role,
+		&i.EmailVerifiedAt,
+	)
+	return i, err
+}
+
+const getTokenForUpdate = `-- name: GetTokenForUpdate :one
+SELECT id, user_id, purpose, expires_at, used_at, revoked_at FROM app.user_tokens
+WHERE tenant_id = $1 AND id = $2 FOR UPDATE
+`
+
+type GetTokenForUpdateParams struct {
+	TenantID uuid.UUID
+	TokenID  uuid.UUID
+}
+
+type GetTokenForUpdateRow struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	Purpose   string
+	ExpiresAt time.Time
+	UsedAt    *time.Time
+	RevokedAt *time.Time
+}
+
+func (q *Queries) GetTokenForUpdate(ctx context.Context, arg GetTokenForUpdateParams) (GetTokenForUpdateRow, error) {
+	row := q.db.QueryRow(ctx, getTokenForUpdate, arg.TenantID, arg.TokenID)
+	var i GetTokenForUpdateRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Purpose,
+		&i.ExpiresAt,
+		&i.UsedAt,
+		&i.RevokedAt,
+	)
+	return i, err
+}
+
+const getTokenUser = `-- name: GetTokenUser :one
+SELECT user_id FROM app.user_tokens WHERE tenant_id = $1 AND id = $2
+`
+
+type GetTokenUserParams struct {
+	TenantID uuid.UUID
+	TokenID  uuid.UUID
+}
+
+func (q *Queries) GetTokenUser(ctx context.Context, arg GetTokenUserParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getTokenUser, arg.TenantID, arg.TokenID)
+	var user_id uuid.UUID
+	err := row.Scan(&user_id)
+	return user_id, err
+}
+
 const getUserEmail = `-- name: GetUserEmail :one
 SELECT email FROM app.users WHERE tenant_id = $1 AND id = $2
 `
@@ -157,6 +246,32 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) (u
 	return id, err
 }
 
+const insertUserToken = `-- name: InsertUserToken :exec
+INSERT INTO app.user_tokens (tenant_id, user_id, purpose, token_hash, created_at, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6)
+`
+
+type InsertUserTokenParams struct {
+	TenantID  uuid.UUID
+	UserID    uuid.UUID
+	Purpose   string
+	TokenHash []byte
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
+func (q *Queries) InsertUserToken(ctx context.Context, arg InsertUserTokenParams) error {
+	_, err := q.db.Exec(ctx, insertUserToken,
+		arg.TenantID,
+		arg.UserID,
+		arg.Purpose,
+		arg.TokenHash,
+		arg.CreatedAt,
+		arg.ExpiresAt,
+	)
+	return err
+}
+
 const insertVerificationToken = `-- name: InsertVerificationToken :exec
 INSERT INTO app.user_tokens (tenant_id, user_id, purpose, token_hash, created_at, expires_at)
 VALUES ($1, $2, 'email_verification', $3, $4, $5)
@@ -177,6 +292,48 @@ func (q *Queries) InsertVerificationToken(ctx context.Context, arg InsertVerific
 		arg.TokenHash,
 		arg.CreatedAt,
 		arg.ExpiresAt,
+	)
+	return err
+}
+
+const markEmailVerified = `-- name: MarkEmailVerified :execrows
+UPDATE app.users SET email_verified_at = $1, updated_at = $1
+WHERE tenant_id = $2 AND id = $3 AND email_verified_at IS NULL
+`
+
+type MarkEmailVerifiedParams struct {
+	Now      *time.Time
+	TenantID uuid.UUID
+	UserID   uuid.UUID
+}
+
+func (q *Queries) MarkEmailVerified(ctx context.Context, arg MarkEmailVerifiedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markEmailVerified, arg.Now, arg.TenantID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const revokeOpenUserTokens = `-- name: RevokeOpenUserTokens :exec
+UPDATE app.user_tokens SET revoked_at = $1
+WHERE tenant_id = $2 AND user_id = $3 AND purpose = $4
+  AND used_at IS NULL AND revoked_at IS NULL
+`
+
+type RevokeOpenUserTokensParams struct {
+	Now      *time.Time
+	TenantID uuid.UUID
+	UserID   uuid.UUID
+	Purpose  string
+}
+
+func (q *Queries) RevokeOpenUserTokens(ctx context.Context, arg RevokeOpenUserTokensParams) error {
+	_, err := q.db.Exec(ctx, revokeOpenUserTokens,
+		arg.Now,
+		arg.TenantID,
+		arg.UserID,
+		arg.Purpose,
 	)
 	return err
 }
@@ -204,6 +361,47 @@ func (q *Queries) RevokeSession(ctx context.Context, arg RevokeSessionParams) (u
 	var user_id uuid.UUID
 	err := row.Scan(&user_id)
 	return user_id, err
+}
+
+const revokeUserSessions = `-- name: RevokeUserSessions :execrows
+UPDATE app.sessions SET revoked_at = $1, revoked_reason = 'password_reset'
+WHERE tenant_id = $2 AND user_id = $3 AND revoked_at IS NULL
+`
+
+type RevokeUserSessionsParams struct {
+	Now      *time.Time
+	TenantID uuid.UUID
+	UserID   uuid.UUID
+}
+
+func (q *Queries) RevokeUserSessions(ctx context.Context, arg RevokeUserSessionsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeUserSessions, arg.Now, arg.TenantID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setResetPassword = `-- name: SetResetPassword :exec
+UPDATE app.users SET password_hash = $1, updated_at = $2
+WHERE tenant_id = $3 AND id = $4
+`
+
+type SetResetPasswordParams struct {
+	PasswordHash pgtype.Text
+	Now          time.Time
+	TenantID     uuid.UUID
+	UserID       uuid.UUID
+}
+
+func (q *Queries) SetResetPassword(ctx context.Context, arg SetResetPasswordParams) error {
+	_, err := q.db.Exec(ctx, setResetPassword,
+		arg.PasswordHash,
+		arg.Now,
+		arg.TenantID,
+		arg.UserID,
+	)
+	return err
 }
 
 const touchSession = `-- name: TouchSession :exec
@@ -242,4 +440,30 @@ func (q *Queries) UpdatePasswordHash(ctx context.Context, arg UpdatePasswordHash
 		arg.UserID,
 	)
 	return err
+}
+
+const useUserToken = `-- name: UseUserToken :execrows
+UPDATE app.user_tokens SET used_at = $1
+WHERE tenant_id = $2 AND id = $3 AND purpose = $4
+  AND used_at IS NULL AND revoked_at IS NULL AND expires_at > $1
+`
+
+type UseUserTokenParams struct {
+	Now      *time.Time
+	TenantID uuid.UUID
+	TokenID  uuid.UUID
+	Purpose  string
+}
+
+func (q *Queries) UseUserToken(ctx context.Context, arg UseUserTokenParams) (int64, error) {
+	result, err := q.db.Exec(ctx, useUserToken,
+		arg.Now,
+		arg.TenantID,
+		arg.TokenID,
+		arg.Purpose,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
