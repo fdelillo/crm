@@ -193,7 +193,7 @@ func TestConcurrentLoginVerifiesOnlyFivePasswords(t *testing.T) {
 func TestLoginRehashesOldPasswordParameters(t *testing.T) {
 	hasher := password.NewHasher(2)
 	svc, runner, company, email, _ := loginFixture(t, hasher)
-	salt := []byte("old-hash-salt!!!")
+	salt := []byte("old-hash-salt!!")
 	plain := "correct-password"
 	derived := argon2.IDKey([]byte(plain), salt, 2, 8192, 1, 32)
 	old := fmt.Sprintf("$argon2id$v=19$m=8192,t=2,p=1$%s$%s", base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(derived))
