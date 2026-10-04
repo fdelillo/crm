@@ -229,6 +229,35 @@ func TestRecordRejectsCredentialValues(t *testing.T) {
 	}
 }
 
+func TestRecordRejectsEmbeddedCredentialsWithoutInserting(t *testing.T) {
+	company := fixture.NewCompany(t, pgtest.AppPool(t))
+	raw, _, err := securetoken.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		name, path string
+		data       map[string]any
+	}{
+		{"reset link", "note", map[string]any{"note": "see https://crm.example/reset-password#token=" + raw}},
+		{"nested invitation link", "items[0].note", map[string]any{"items": []any{map[string]any{"note": "/accept-invitation#token=" + raw}}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := recordAndCommit(t, company.ID, company.UserID, tc.data)
+			if !errors.Is(err, audit.ErrSecretInData) {
+				t.Fatalf("error = %v", err)
+			}
+			if !strings.Contains(err.Error(), tc.path) || strings.Contains(err.Error(), raw) || strings.Contains(err.Error(), "token=") || strings.Contains(err.Error(), "://") {
+				t.Fatalf("error leaked value or omitted path: %v", err)
+			}
+		})
+	}
+	if count := countAudit(t, company.ID); count != 0 {
+		t.Fatalf("rows after committed transactions = %d", count)
+	}
+}
+
 func TestRecordRejectsUnsupportedTypes(t *testing.T) {
 	company := fixture.NewCompany(t, pgtest.AppPool(t))
 	text := "a"

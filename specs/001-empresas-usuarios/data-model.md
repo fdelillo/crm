@@ -24,6 +24,10 @@ la política que ya tenía (§3.4). Sin cambios de esquema, privilegios ni polí
 de `outbox_messages.last_error` según ADR-025 (§2.5); política de credenciales de `audit_log.data`
 (DD-37, §2.6); `user_agent` normalizado en cada escritura (DD-38, §2.3 y §2.6). Sin cambios de
 esquema: los `CHECK` de `user_agent` y `last_error` se mantienen.
+**Sexta revisión 2026-10-02** (*Accepted*, aprobada por el usuario el 2026-10-02; séptima tanda
+del plan, §18): `audit_log.data` también rechaza una credencial incrustada en un texto
+(DD-37 (4)) y solo lleva valores que arma el servidor según el catálogo; el texto libre que
+escribe un usuario no va en `data` (§2.6). Sin cambios de esquema.
 
 DDL **conceptual**: define tablas, tipos, constraints, índices, políticas y privilegios. No es
 una migración ejecutable: las migraciones goose las escribe quien implementa, respetando esto.
@@ -342,7 +346,7 @@ Constraints de tabla:
 | `action` | `text` | no | `action ~ '^[a-z_]+\.[a-z_]+$'` | Ver catálogo abajo |
 | `target_type` | `text` | sí | `<= 40` | `user`, `tenant`, `session` |
 | `target_id` | `uuid` | sí | | Sin FK (polimórfico) |
-| `data` | `jsonb` | no | default `'{}'` | Detalles **sin** credenciales (INV-32): `audit.Recorder` rechaza con `ErrSecretInData` las claves y los valores de la política de DD-37 (contraseñas, tokens, cabeceras `Authorization`/`Cookie`/`Set-Cookie`, claves de API, sesión, CSRF, firmas; valores `Bearer …`/`Basic …`/`Digest …`, JWT o con el formato de `securetoken`) y con `ErrUnsupportedData` los tipos que no puede recorrer. Las claves del catálogo de abajo no chocan con la política (lo verifica T-B209) |
+| `data` | `jsonb` | no | default `'{}'` | Detalles **sin** credenciales (INV-32): `audit.Recorder` rechaza con `ErrSecretInData` las claves y los valores de la política de DD-37 (contraseñas, tokens, cabeceras `Authorization`/`Cookie`/`Set-Cookie`, claves de API, sesión, CSRF, firmas; valores `Bearer …`/`Basic …`/`Digest …`, JWT o con el formato de `securetoken`; y, desde la séptima tanda del plan (*Accepted*, aprobada por el usuario el 2026-10-02), una de esas claves seguida de `=` o `:` o una secuencia de 43 caracteres base64url **dentro** de un texto, p. ej. un enlace con `#token=…`) y con `ErrUnsupportedData` los tipos que no puede recorrer. Las claves del catálogo de abajo no chocan con la política (lo verifica T-B209). Lleva **exactamente** las claves de su acción en el catálogo (lo verifica el test de cada operación; ver "Qué va en `data`") |
 | `ip` | `inet` | sí | | 🔒 IP del cliente según `httpx.ClientIP` (DD-32) |
 | `user_agent` | `text` | sí | `<= 512` | 🔒 Valor de `httpx.NormalizeUserAgent`, aplicado por `audit.Recorder.Record` (DD-38, INV-33) |
 | `request_id` | `text` | sí | `<= 64` | Correlación con logs |
@@ -383,6 +387,16 @@ status: "invited"}`.
 El registro con email existente (`409 email_already_registered`) **no** se audita: no hay empresa
 a la cual asociarlo sin revelar cuál es. Queda en logs como `security_event=signup_email_exists`
 (DD-19).
+
+**Qué va en `data`** (séptima tanda del plan, 2026-10-02, *Accepted*, aprobada por el usuario;
+DD-37 (5)): solo valores que arma el servidor según el catálogo de arriba (enumerados, nombres de
+campos, contadores, ids). Nunca un enlace, una cabecera, un mensaje de error ni el texto libre que
+escribe un usuario. Si una spec futura necesita conservar un texto del usuario (p. ej. el motivo de
+una anulación, principio IV), ese texto vive en la tabla de dominio de la operación y la fila de
+auditoría lo referencia con `target_type`/`target_id`; si aun así quiere ponerlo en `data`, lo
+decide su plan sabiendo que DD-37 (4) puede rechazarlo (p. ej. un motivo que contenga `pin: …`). El
+test de cada operación auditada verifica que `data` tenga exactamente las claves de su acción
+(T-B303 en la Fase 3; los de las Fases 4 a 7 para el resto del catálogo).
 
 ### 2.7 `app.login_throttles` — Contador de intentos (sin empresa)
 

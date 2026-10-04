@@ -53,3 +53,23 @@ mano y se verifica, y dónde vive el contrato cuando hay varias specs.
 - Ganás: contrato legible y canónico; conformidad verificada en cada test HTTP.
 - Aceptás: la conformidad se verifica en tests, no en compilación (una respuesta no cubierta por
   ningún test podría divergir; la cobertura de rutas lo acota); mantener DTOs a mano.
+
+## Nota 2026-10-02 (*Accepted*, aprobada por el usuario el 2026-10-02): cómo se aplica la verificación (séptima tanda del plan de 001)
+
+Precisa la viñeta **Verificación** sin cambiar la decisión. La validación vive en un único helper
+de tests, `internal/testsupport/contract` (plan §11.1, T-B311/T-B312 de la spec 001), y se aplica
+así:
+
+- **Toda respuesta** se valida contra la operación del request: status (los no declarados son
+  error), cabeceras declaradas y cuerpo (con aserciones de `format`).
+- **El request se valida solo cuando la respuesta es `2xx`**. Los tests negativos mandan a
+  propósito requests que el contrato no admite (campo extra, campo faltante, sin `Content-Type`,
+  sin cookie); validarlos haría fallar todos esos tests. Que un `2xx` exija un request válido
+  detecta lo que importa: un servidor que acepta algo que el contrato no permite.
+- **Respuestas globales**: el `405 method_not_allowed` de cualquier ruta (regla general del
+  contrato, que no se repite en cada operación) y el `404 not_found` de una ruta que no está en
+  `paths` se validan contra el esquema `Problem`; el `405` además exige la cabecera `Allow`. Todo
+  otro status tiene que estar declarado en la operación: por eso el contrato 0.4.1 declara el
+  `413 payload_too_large` en cada operación con body JSON, en vez de tratarlo como global.
+- Mientras haya un solo contrato (001), el helper valida contra ese archivo. Cuando exista el de
+  002, se decide si se valida contra cada uno o contra el *bundle* de DD-17.
