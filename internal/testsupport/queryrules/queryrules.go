@@ -40,7 +40,10 @@ type Exception struct {
 // its reason, in the change that writes it, so that the exemption is reviewed with the query.
 var DefaultExceptions = []Exception{
 	{Path: "internal/identity/store/auth_lookup.sql", Reason: "phase-one lookups as crm_auth: find the company of an email, a session or a token",
-		Queries: map[string]string{"LookupSessionByHash": "crm_auth sees only session routing columns to find the tenant of a token"}},
+		Queries: map[string]string{
+			"LookupSessionByHash": "crm_auth sees only session routing columns to find the tenant of a token",
+			"LookupUserByEmail":   "crm_auth sees only user routing columns to find the tenant of an email",
+		}},
 	{Path: "internal/identity/store/cleanup.sql", Reason: "periodic cleanup as crm_worker: DELETE of expired rows of sessions, user_tokens and login_throttles; the policies of data-model §3.4 bound which rows"},
 	{Path: "internal/platform/outbox/store/worker.sql", Reason: "queue and cleanup queries as crm_worker: they see queue columns of every company",
 		Queries: map[string]string{

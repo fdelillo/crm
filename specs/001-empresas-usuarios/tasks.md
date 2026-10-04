@@ -96,6 +96,8 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
   | T-B213 / T-B214 | Código extendido leído del texto en todas las fases, con control de clase (ADR-025 §3); caso de *deadline* de DD-35; comentario de `Mailer.Send` |
   | T-B303 / T-B304 (Fase 3) | `CreateSession` normaliza `user_agent` (DD-38): se hace al implementar la Fase 3, no en este PR |
 
+- **Fase 4** (2026-10-03): implementación de T-B401 a T-B405 en `feat/001-backend-phase-4`, desde el merge del PR #9. Login con bloqueo por HMAC del email, auditoría, rehash y sesión; logout idempotente; pruebas unitarias, de integración y HTTP con contrato. `make lint` y `make test` locales en verde; el checkpoint `make check` se valida en CI porque Docker no está disponible en el equipo local.
+
 - **Fase 3** (2026-10-03): implementada en `feat/001-backend-phase-3`, creada desde `main`
   (2ff34be). **Séptima revisión (*Accepted*, aprobada por el usuario el 2026-10-02)**: antes de
   T-B301, en este orden y con `make check` en verde después de cada paso, se aplican estos ajustes.

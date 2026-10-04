@@ -40,11 +40,15 @@ func phase3ServerWithAbsolute(t *testing.T, absolute time.Duration) *apitest.Ser
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	runner := db.NewTxRunner(pgtest.AppPool(t))
 	c := clock.Real{}
-	users := identity.NewService(runner, outbox.NewEnqueuer(c), c, min(24*time.Hour, absolute), absolute)
-	companies := tenant.NewService(runner, users, industrytemplate.NoopSeeder{}, password.NewHasher(2), audit.NewRecorder(), logger)
+	hasher := password.NewHasher(2)
+	recorder := audit.NewRecorder()
+	users := identity.NewService(runner, outbox.NewEnqueuer(c), c, min(24*time.Hour, absolute), absolute,
+		identity.WithAuthentication(hasher, recorder, []byte("0123456789abcdef0123456789abcdef")))
+	companies := tenant.NewService(runner, users, industrytemplate.NoopSeeder{}, hasher, recorder, logger)
 	r := app.NewAPIRouter()
 	industrytemplate.RegisterRoutes(r)
 	tenant.RegisterRoutes(r, companies, ratelimit.NewLimiter(rate.Every(12*time.Minute), 5, c, time.Hour), logger)
+	app.RegisterAuthRoutes(r, users, companies, ratelimit.NewLimiter(rate.Every(3*time.Second), 20, c, time.Minute), logger)
 	app.RegisterMeRoute(r, users, companies, logger)
 	root := app.NewRootHandler(app.RootDeps{API: r, Liveness: app.LivenessHandler(),
 		Readiness: app.ReadinessPlaceholder(), SPA: app.SPAUnavailableHandler()},

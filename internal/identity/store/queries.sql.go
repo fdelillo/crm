@@ -14,6 +14,29 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getLoginUser = `-- name: GetLoginUser :one
+SELECT password_hash, status, role FROM app.users
+WHERE tenant_id = $1 AND id = $2
+`
+
+type GetLoginUserParams struct {
+	TenantID uuid.UUID
+	UserID   uuid.UUID
+}
+
+type GetLoginUserRow struct {
+	PasswordHash pgtype.Text
+	Status       string
+	Role         string
+}
+
+func (q *Queries) GetLoginUser(ctx context.Context, arg GetLoginUserParams) (GetLoginUserRow, error) {
+	row := q.db.QueryRow(ctx, getLoginUser, arg.TenantID, arg.UserID)
+	var i GetLoginUserRow
+	err := row.Scan(&i.PasswordHash, &i.Status, &i.Role)
+	return i, err
+}
+
 const getSessionUser = `-- name: GetSessionUser :one
 SELECT s.id AS session_id, s.user_id, s.revoked_at, s.created_at, s.last_seen_at, s.expires_at,
        u.email, u.name, u.role, u.status, u.email_verified_at
@@ -158,6 +181,31 @@ func (q *Queries) InsertVerificationToken(ctx context.Context, arg InsertVerific
 	return err
 }
 
+const revokeSession = `-- name: RevokeSession :one
+UPDATE app.sessions SET revoked_at = $1, revoked_reason = 'logout'
+WHERE tenant_id = $2 AND id = $3 AND revoked_at IS NULL AND expires_at > $1 AND last_seen_at > $4
+RETURNING user_id
+`
+
+type RevokeSessionParams struct {
+	Now        *time.Time
+	TenantID   uuid.UUID
+	SessionID  uuid.UUID
+	IdleCutoff time.Time
+}
+
+func (q *Queries) RevokeSession(ctx context.Context, arg RevokeSessionParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, revokeSession,
+		arg.Now,
+		arg.TenantID,
+		arg.SessionID,
+		arg.IdleCutoff,
+	)
+	var user_id uuid.UUID
+	err := row.Scan(&user_id)
+	return user_id, err
+}
+
 const touchSession = `-- name: TouchSession :exec
 UPDATE app.sessions SET last_seen_at = $1
 WHERE tenant_id = $2 AND id = $3
@@ -171,5 +219,27 @@ type TouchSessionParams struct {
 
 func (q *Queries) TouchSession(ctx context.Context, arg TouchSessionParams) error {
 	_, err := q.db.Exec(ctx, touchSession, arg.LastSeenAt, arg.TenantID, arg.SessionID)
+	return err
+}
+
+const updatePasswordHash = `-- name: UpdatePasswordHash :exec
+UPDATE app.users SET password_hash = $1, updated_at = $2
+WHERE tenant_id = $3 AND id = $4
+`
+
+type UpdatePasswordHashParams struct {
+	PasswordHash pgtype.Text
+	Now          time.Time
+	TenantID     uuid.UUID
+	UserID       uuid.UUID
+}
+
+func (q *Queries) UpdatePasswordHash(ctx context.Context, arg UpdatePasswordHashParams) error {
+	_, err := q.db.Exec(ctx, updatePasswordHash,
+		arg.PasswordHash,
+		arg.Now,
+		arg.TenantID,
+		arg.UserID,
+	)
 	return err
 }

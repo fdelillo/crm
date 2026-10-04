@@ -10,10 +10,12 @@ import (
 
 	"github.com/fdelillo/crm/internal/authz"
 	"github.com/fdelillo/crm/internal/identity/store"
+	"github.com/fdelillo/crm/internal/platform/audit"
 	"github.com/fdelillo/crm/internal/platform/clock"
 	"github.com/fdelillo/crm/internal/platform/db"
 	"github.com/fdelillo/crm/internal/platform/httpx"
 	"github.com/fdelillo/crm/internal/platform/outbox"
+	"github.com/fdelillo/crm/internal/platform/password"
 	"github.com/fdelillo/crm/internal/platform/securetoken"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -58,13 +60,22 @@ type Service struct {
 	clock    clock.Clock
 	idle     time.Duration
 	absolute time.Duration
+	hasher   password.Hasher
+	audit    audit.Recorder
+	hmacKey  []byte
 }
 
-func NewService(runner db.TxRunner, enqueuer outbox.Enqueuer, c clock.Clock, idle, absolute time.Duration) *Service {
+type ServiceOption func(*Service)
+
+func NewService(runner db.TxRunner, enqueuer outbox.Enqueuer, c clock.Clock, idle, absolute time.Duration, options ...ServiceOption) *Service {
 	if runner == nil || enqueuer == nil || c == nil || idle <= 0 || absolute <= 0 || idle > absolute {
 		panic("identity: invalid service dependencies")
 	}
-	return &Service{runner: runner, outbox: enqueuer, clock: c, idle: idle, absolute: absolute}
+	s := &Service{runner: runner, outbox: enqueuer, clock: c, idle: idle, absolute: absolute}
+	for _, option := range options {
+		option(s)
+	}
+	return s
 }
 
 // CreateFirstAdmin is part of the caller's registration transaction.

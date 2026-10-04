@@ -57,9 +57,11 @@ func runServe(ctx context.Context, args []string, e env) error {
 	defer pool.Close()
 	runner := db.NewTxRunner(pool, db.WithLogger(logger))
 	c := clock.Real{}
-	users := identity.NewService(runner, outbox.NewEnqueuer(c), c, cfg.SessionIdle, cfg.SessionAbsolute)
-	companies := tenant.NewService(runner, users, industrytemplate.NoopSeeder{}, password.NewHasher(4),
-		audit.NewRecorder(), logger)
+	hasher := password.NewHasher(4)
+	recorder := audit.NewRecorder()
+	users := identity.NewService(runner, outbox.NewEnqueuer(c), c, cfg.SessionIdle, cfg.SessionAbsolute,
+		identity.WithAuthentication(hasher, recorder, cfg.AuthHMACKey))
+	companies := tenant.NewService(runner, users, industrytemplate.NoopSeeder{}, hasher, recorder, logger)
 	limiter := ratelimit.NewLimiter(rate.Every(12*time.Minute), 5, c, time.Hour)
 	smtp, err := mailer.NewSMTP(mailer.SMTPConfig{Host: cfg.SMTPHost, Port: cfg.SMTPPort,
 		Username: cfg.SMTPUsername, Password: cfg.SMTPPassword, From: cfg.SMTPFrom})
@@ -76,6 +78,7 @@ func runServe(ctx context.Context, args []string, e env) error {
 	api := app.NewAPIRouter()
 	industrytemplate.RegisterRoutes(api)
 	tenant.RegisterRoutes(api, companies, limiter, logger)
+	app.RegisterAuthRoutes(api, users, companies, ratelimit.NewLimiter(rate.Every(3*time.Second), 20, c, time.Minute), logger)
 	app.RegisterMeRoute(api, users, companies, logger)
 	root := app.NewRootHandler(app.RootDeps{
 		API:       api,

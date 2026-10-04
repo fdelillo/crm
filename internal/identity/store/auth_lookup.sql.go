@@ -7,9 +7,59 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
+
+const deleteLoginThrottle = `-- name: DeleteLoginThrottle :exec
+DELETE FROM app.login_throttles WHERE email_hmac = $1
+`
+
+func (q *Queries) DeleteLoginThrottle(ctx context.Context, emailHmac []byte) error {
+	_, err := q.db.Exec(ctx, deleteLoginThrottle, emailHmac)
+	return err
+}
+
+const ensureLoginThrottle = `-- name: EnsureLoginThrottle :exec
+INSERT INTO app.login_throttles (email_hmac, failed_count, first_failed_at, last_failed_at)
+VALUES ($1, 0, $2, $2)
+ON CONFLICT (email_hmac) DO NOTHING
+`
+
+type EnsureLoginThrottleParams struct {
+	EmailHmac []byte
+	Now       time.Time
+}
+
+func (q *Queries) EnsureLoginThrottle(ctx context.Context, arg EnsureLoginThrottleParams) error {
+	_, err := q.db.Exec(ctx, ensureLoginThrottle, arg.EmailHmac, arg.Now)
+	return err
+}
+
+const lockLoginThrottle = `-- name: LockLoginThrottle :one
+SELECT failed_count, first_failed_at, last_failed_at, locked_until
+FROM app.login_throttles WHERE email_hmac = $1 FOR UPDATE
+`
+
+type LockLoginThrottleRow struct {
+	FailedCount   int32
+	FirstFailedAt time.Time
+	LastFailedAt  time.Time
+	LockedUntil   *time.Time
+}
+
+func (q *Queries) LockLoginThrottle(ctx context.Context, emailHmac []byte) (LockLoginThrottleRow, error) {
+	row := q.db.QueryRow(ctx, lockLoginThrottle, emailHmac)
+	var i LockLoginThrottleRow
+	err := row.Scan(
+		&i.FailedCount,
+		&i.FirstFailedAt,
+		&i.LastFailedAt,
+		&i.LockedUntil,
+	)
+	return i, err
+}
 
 const lookupSessionByHash = `-- name: LookupSessionByHash :one
 SELECT id, tenant_id, token_hash FROM app.sessions WHERE token_hash = $1
@@ -26,4 +76,46 @@ func (q *Queries) LookupSessionByHash(ctx context.Context, tokenHash []byte) (Lo
 	var i LookupSessionByHashRow
 	err := row.Scan(&i.ID, &i.TenantID, &i.TokenHash)
 	return i, err
+}
+
+const lookupUserByEmail = `-- name: LookupUserByEmail :one
+SELECT id, tenant_id FROM app.users WHERE email = $1
+`
+
+type LookupUserByEmailRow struct {
+	ID       uuid.UUID
+	TenantID uuid.UUID
+}
+
+func (q *Queries) LookupUserByEmail(ctx context.Context, email string) (LookupUserByEmailRow, error) {
+	row := q.db.QueryRow(ctx, lookupUserByEmail, email)
+	var i LookupUserByEmailRow
+	err := row.Scan(&i.ID, &i.TenantID)
+	return i, err
+}
+
+const saveLoginThrottle = `-- name: SaveLoginThrottle :exec
+UPDATE app.login_throttles
+SET failed_count = $1, first_failed_at = $2,
+    last_failed_at = $3, locked_until = $4
+WHERE email_hmac = $5
+`
+
+type SaveLoginThrottleParams struct {
+	FailedCount   int32
+	FirstFailedAt time.Time
+	LastFailedAt  time.Time
+	LockedUntil   *time.Time
+	EmailHmac     []byte
+}
+
+func (q *Queries) SaveLoginThrottle(ctx context.Context, arg SaveLoginThrottleParams) error {
+	_, err := q.db.Exec(ctx, saveLoginThrottle,
+		arg.FailedCount,
+		arg.FirstFailedAt,
+		arg.LastFailedAt,
+		arg.LockedUntil,
+		arg.EmailHmac,
+	)
+	return err
 }
