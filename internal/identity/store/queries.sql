@@ -25,3 +25,16 @@ WHERE tenant_id = @tenant_id AND id = @session_id;
 
 -- name: GetUserEmail :one
 SELECT email FROM app.users WHERE tenant_id = @tenant_id AND id = @user_id;
+
+-- name: GetLoginUser :one
+SELECT password_hash, status, role FROM app.users
+WHERE tenant_id = @tenant_id AND id = @user_id;
+
+-- name: UpdatePasswordHash :exec
+UPDATE app.users SET password_hash = @password_hash, updated_at = @now
+WHERE tenant_id = @tenant_id AND id = @user_id;
+
+-- name: RevokeSession :one
+UPDATE app.sessions SET revoked_at = @now, revoked_reason = 'logout'
+WHERE tenant_id = @tenant_id AND id = @session_id AND revoked_at IS NULL AND expires_at > @now AND last_seen_at > @idle_cutoff
+RETURNING user_id;
