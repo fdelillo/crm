@@ -3,10 +3,15 @@
 package identity
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
+	"net/netip"
 	"os"
 	"strings"
 	"sync"
@@ -30,13 +35,15 @@ type loginClock struct{ now time.Time }
 
 func (c *loginClock) Now() time.Time { return c.now }
 
-func loginFixture(t *testing.T, h password.Hasher) (*Service, db.TxRunner, fixture.Company, string, *loginClock) {
+func loginFixture(t *testing.T, h password.Hasher) (*Service, db.TxRunner, fixture.Company, string, *loginClock, *bytes.Buffer) {
 	t.Helper()
 	company := fixture.NewCompany(t, pgtest.AppPool(t))
 	runner := db.NewTxRunner(pgtest.AppPool(t))
 	clock := &loginClock{now: time.Date(2026, 10, 3, 12, 0, 0, 0, time.UTC)}
+	logs := &bytes.Buffer{}
+	logger := slog.New(slog.NewJSONHandler(logs, nil))
 	svc := NewService(runner, outbox.NewEnqueuer(clock), clock, 24*time.Hour, 7*24*time.Hour,
-		WithAuthentication(h, audit.NewRecorder(), []byte("0123456789abcdef0123456789abcdef")))
+		WithAuthentication(h, audit.NewRecorder(), []byte("0123456789abcdef0123456789abcdef"), logger))
 	var email string
 	err := runner.InTenantTx(context.Background(), company.ID, func(ctx context.Context, tx db.Tx) error {
 		return tx.QueryRow(ctx, `SELECT email FROM app.users WHERE tenant_id=$1 AND id=$2`, company.ID, company.UserID).Scan(&email)
@@ -44,7 +51,7 @@ func loginFixture(t *testing.T, h password.Hasher) (*Service, db.TxRunner, fixtu
 	if err != nil {
 		t.Fatal(err)
 	}
-	return svc, runner, company, email, clock
+	return svc, runner, company, email, clock, logs
 }
 
 func setLoginPassword(t *testing.T, runner db.TxRunner, company fixture.Company, hash, status string) {
@@ -60,7 +67,7 @@ func setLoginPassword(t *testing.T, runner db.TxRunner, company fixture.Company,
 
 func TestLoginServiceSuccessFailureLockAndLogout(t *testing.T) {
 	hasher := password.NewHasher(2)
-	svc, runner, company, email, clock := loginFixture(t, hasher)
+	svc, runner, company, email, clock, _ := loginFixture(t, hasher)
 	hash, err := hasher.Hash(context.Background(), "correct-password")
 	if err != nil {
 		t.Fatal(err)
@@ -117,7 +124,7 @@ func TestLoginServiceSuccessFailureLockAndLogout(t *testing.T) {
 
 func TestLoginServiceNonexistentAndDisabled(t *testing.T) {
 	hasher := password.NewHasher(2)
-	svc, runner, company, email, _ := loginFixture(t, hasher)
+	svc, runner, company, email, _, logs := loginFixture(t, hasher)
 	hash, err := hasher.Hash(context.Background(), "correct-password")
 	if err != nil {
 		t.Fatal(err)
@@ -128,6 +135,9 @@ func TestLoginServiceNonexistentAndDisabled(t *testing.T) {
 	}
 	if _, err := svc.Login(context.Background(), email, "correct-password", RequestMeta{}); !errors.Is(err, ErrAccountDisabled) {
 		t.Fatalf("correct disabled: %v", err)
+	}
+	if !strings.Contains(logs.String(), `"security_event":"login_disabled"`) {
+		t.Fatal("correct password for disabled user lacks security event")
 	}
 	missing := uuid.NewString() + "@example.com"
 	for i := 0; i < 5; i++ {
@@ -149,6 +159,86 @@ func TestLoginServiceNonexistentAndDisabled(t *testing.T) {
 	}
 }
 
+func TestLoginSecuritySignalsIncludeUnknownEmailsWithoutLeakingThem(t *testing.T) {
+	svc, _, company, email, _, logs := loginFixture(t, &countingHasher{})
+	missing := uuid.NewString() + "@example.com"
+	meta := RequestMeta{IP: netip.MustParseAddr("192.0.2.42"), RequestID: "request-42"}
+	failedBefore, lockedBefore := loginFailedTotal.Value(), loginLockedTotal.Value()
+	for _, candidate := range []string{email, missing} {
+		for i := 0; i < 5; i++ {
+			if _, err := svc.Login(context.Background(), candidate, "wrong", meta); !errors.Is(err, ErrInvalidCredentials) {
+				t.Fatalf("%s failure %d: %v", candidate, i+1, err)
+			}
+		}
+		var locked *LockedError
+		if _, err := svc.Login(context.Background(), candidate, "wrong", meta); !errors.As(err, &locked) {
+			t.Fatalf("%s locked attempt: %v", candidate, err)
+		}
+	}
+	if got := loginFailedTotal.Value() - failedBefore; got != 10 {
+		t.Fatalf("login_failed_total delta=%d want 10", got)
+	}
+	if got := loginLockedTotal.Value() - lockedBefore; got != 2 {
+		t.Fatalf("login_locked_total delta=%d want 2", got)
+	}
+	if strings.Contains(logs.String(), email) || strings.Contains(logs.String(), missing) {
+		t.Fatal("security log contains a plaintext email")
+	}
+	knownKey := hex.EncodeToString(svc.emailHMAC(email))
+	unknownKey := hex.EncodeToString(svc.emailHMAC(missing))
+	counts := map[string]map[string]int{}
+	for _, line := range bytes.Split(bytes.TrimSpace(logs.Bytes()), []byte("\n")) {
+		var entry map[string]any
+		if err := json.Unmarshal(line, &entry); err != nil {
+			t.Fatal(err)
+		}
+		key, _ := entry["email_hmac"].(string)
+		if key != knownKey && key != unknownKey {
+			t.Fatalf("unexpected email_hmac %q", key)
+		}
+		if entry["ip"] != "192.0.2.42" || entry["request_id"] != "request-42" {
+			t.Fatalf("missing IP or request ID: %v", entry)
+		}
+		if key == knownKey && entry["tenant_id"] != company.ID.String() {
+			t.Fatalf("known account lacks tenant_id: %v", entry)
+		}
+		if key == unknownKey {
+			if _, hasTenant := entry["tenant_id"]; hasTenant {
+				t.Fatalf("unknown account was assigned a tenant: %v", entry)
+			}
+		}
+		event, _ := entry["security_event"].(string)
+		if counts[key] == nil {
+			counts[key] = map[string]int{}
+		}
+		counts[key][event]++
+	}
+	for _, key := range []string{knownKey, unknownKey} {
+		if counts[key]["login_failed"] != 5 || counts[key]["login_locked"] != 2 {
+			t.Fatalf("events for %s: %v", key, counts[key])
+		}
+	}
+}
+
+type rejectedAudit struct{}
+
+func (rejectedAudit) Record(context.Context, db.Tx, audit.Entry) error {
+	return errors.New("forced audit failure")
+}
+
+func TestRolledBackLoginDoesNotEmitSecuritySignal(t *testing.T) {
+	svc, _, _, email, _, logs := loginFixture(t, &countingHasher{})
+	svc.audit = rejectedAudit{}
+	failedBefore, lockedBefore := loginFailedTotal.Value(), loginLockedTotal.Value()
+	if _, err := svc.Login(context.Background(), email, "wrong", RequestMeta{}); err == nil || errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("login should fail with audit error: %v", err)
+	}
+	if logs.Len() != 0 || loginFailedTotal.Value() != failedBefore || loginLockedTotal.Value() != lockedBefore {
+		t.Fatalf("rolled-back attempt emitted a signal: logs=%q failed=%d locked=%d",
+			logs.String(), loginFailedTotal.Value()-failedBefore, loginLockedTotal.Value()-lockedBefore)
+	}
+}
+
 type countingHasher struct{ verifies atomic.Int32 }
 
 func (h *countingHasher) Hash(context.Context, string) (string, error) { return "unused", nil }
@@ -160,7 +250,7 @@ func (h *countingHasher) VerifyDummy(context.Context, string) {}
 
 func TestConcurrentLoginVerifiesOnlyFivePasswords(t *testing.T) {
 	h := &countingHasher{}
-	svc, _, _, email, _ := loginFixture(t, h)
+	svc, _, _, email, _, _ := loginFixture(t, h)
 	var wg sync.WaitGroup
 	results := make(chan error, 10)
 	for i := 0; i < 10; i++ {
@@ -192,7 +282,7 @@ func TestConcurrentLoginVerifiesOnlyFivePasswords(t *testing.T) {
 
 func TestLoginRehashesOldPasswordParameters(t *testing.T) {
 	hasher := password.NewHasher(2)
-	svc, runner, company, email, _ := loginFixture(t, hasher)
+	svc, runner, company, email, _, _ := loginFixture(t, hasher)
 	salt := []byte("old-hash-salt!!!")
 	plain := "correct-password"
 	derived := argon2.IDKey([]byte(plain), salt, 2, 8192, 1, 32)

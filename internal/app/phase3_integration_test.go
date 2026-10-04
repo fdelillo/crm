@@ -47,7 +47,7 @@ func phase3ServerWithLoginClock(t *testing.T, absolute time.Duration, loginClock
 	hasher := password.NewHasher(2)
 	recorder := audit.NewRecorder()
 	users := identity.NewService(runner, outbox.NewEnqueuer(c), c, min(24*time.Hour, absolute), absolute,
-		identity.WithAuthentication(hasher, recorder, []byte("0123456789abcdef0123456789abcdef")))
+		identity.WithAuthentication(hasher, recorder, []byte("0123456789abcdef0123456789abcdef"), logger))
 	companies := tenant.NewService(runner, users, industrytemplate.NoopSeeder{}, hasher, recorder, logger)
 	r := app.NewAPIRouter()
 	industrytemplate.RegisterRoutes(r)

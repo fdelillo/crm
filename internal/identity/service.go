@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/netip"
 	"strings"
 	"time"
@@ -63,6 +64,7 @@ type Service struct {
 	hasher   password.Hasher
 	audit    audit.Recorder
 	hmacKey  []byte
+	logger   *slog.Logger
 }
 
 type ServiceOption func(*Service)

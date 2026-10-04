@@ -1730,6 +1730,8 @@ func (v *Validator) RequireRecorded(t testing.TB, req *http.Request, rec *httpte
 | Auditoría de negocio | `audit_log` | ver `data-model.md` §2.6 (acciones de FR-008 y más) |
 | Métricas | `expvar` (stdlib) en `/debug/vars`, **solo** en la interfaz interna (`METRICS_ADDR`, default `127.0.0.1:9090`) | `http_requests_total{status}`, `http_client_canceled_total`, `login_failed_total`, `login_locked_total`, `signup_email_exists_total`, `signup_lock_timeout_total`, `set_role_retry_total`, `csrf_rejected_total`, `outbox_pending`, `outbox_oldest_pending_seconds`, `outbox_failed_total`, `outbox_delivery_errors_total{cause}` (ADR-024), `outbox_deferred_total`, `db_pool_acquire_wait_ms`, `tenant_roles_total` |
 
+En el login, `login_failed_total` cuenta cada contraseña evaluada que termina en `invalid_credentials`, incluso para emails inexistentes y el quinto fallo. `login_locked_total` cuenta cada intento rechazado con `429 login_locked` mientras dura el bloqueo. Al quinto fallo se emite además un evento `login_locked` con `lock_started=true`, aunque esa respuesta todavía es `401`. Los eventos y contadores se emiten después del commit; incluyen el HMAC del email y la IP, nunca el email en claro. La publicación de `/debug/vars` en la interfaz interna corresponde a T-B904.
+
 ### 12.2 Health checks
 
 - `GET /healthz`: 200 si el proceso atiende (no toca la base).

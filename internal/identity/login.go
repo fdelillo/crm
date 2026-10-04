@@ -4,8 +4,11 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"expvar"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -22,7 +25,15 @@ import (
 var (
 	ErrInvalidCredentials = errors.New("identity: invalid credentials")
 	ErrAccountDisabled    = errors.New("identity: account disabled")
+	loginFailedTotal      = expvar.NewInt("login_failed_total")
+	loginLockedTotal      = expvar.NewInt("login_locked_total")
 )
+
+type loginSignal struct {
+	event       string
+	tenantID    uuid.UUID
+	lockStarted bool
+}
 
 type LockedError struct{ RetryAfter time.Duration }
 
@@ -60,12 +71,12 @@ func nextThrottle(state throttle, success bool, now time.Time) (throttle, bool, 
 }
 
 // WithAuthentication supplies the login dependencies; the key is copied and never logged.
-func WithAuthentication(hasher password.Hasher, recorder audit.Recorder, hmacKey []byte) ServiceOption {
-	if hasher == nil || recorder == nil || len(hmacKey) < 32 {
+func WithAuthentication(hasher password.Hasher, recorder audit.Recorder, hmacKey []byte, logger *slog.Logger) ServiceOption {
+	if hasher == nil || recorder == nil || len(hmacKey) < 32 || logger == nil {
 		panic("identity: invalid authentication dependencies")
 	}
 	key := append([]byte(nil), hmacKey...)
-	return func(s *Service) { s.hasher, s.audit, s.hmacKey = hasher, recorder, key }
+	return func(s *Service) { s.hasher, s.audit, s.hmacKey, s.logger = hasher, recorder, key, logger }
 }
 
 func (s *Service) emailHMAC(email string) []byte {
@@ -84,6 +95,7 @@ func (s *Service) Login(ctx context.Context, email, plain string, meta RequestMe
 	key := s.emailHMAC(email)
 	var result SessionResult
 	var outcome error
+	var signal loginSignal
 	err := s.runner.InSystemTx(ctx, db.RoleAuth, func(ctx context.Context, tx db.Tx) error {
 		q := store.New(tx)
 		now := s.clock.Now()
@@ -98,12 +110,13 @@ func (s *Service) Login(ctx context.Context, email, plain string, meta RequestMe
 			LastFailedAt: row.LastFailedAt, LockedUntil: row.LockedUntil}
 		if _, locked, retry := nextThrottle(state, false, now); locked {
 			outcome = &LockedError{RetryAfter: retry}
+			signal.event = "login_locked"
 			return nil
 		}
 		route, err := q.LookupUserByEmail(ctx, email)
 		if errors.Is(db.MapError(err), db.ErrNotFound) {
 			s.hasher.VerifyDummy(ctx, plain)
-			return s.failedLogin(ctx, tx, key, state, now, uuid.Nil, "", meta, &outcome)
+			return s.failedLogin(ctx, tx, key, state, now, uuid.Nil, "", meta, &outcome, &signal)
 		}
 		if err != nil {
 			return fmt.Errorf("identity: locate user: %w", db.MapError(err))
@@ -130,13 +143,15 @@ func (s *Service) Login(ctx context.Context, email, plain string, meta RequestMe
 			if user.Status == "invited" {
 				reason = "not_active"
 			}
-			return s.failedLogin(ctx, tx, key, state, now, route.ID, reason, meta, &outcome)
+			signal.tenantID = route.TenantID
+			return s.failedLogin(ctx, tx, key, state, now, route.ID, reason, meta, &outcome, &signal)
 		}
 		if user.Status == "disabled" {
 			if err := s.recordLogin(ctx, tx, route.TenantID, route.ID, uuid.Nil, "auth.login_rejected_disabled", "", meta); err != nil {
 				return err
 			}
 			outcome = ErrAccountDisabled
+			signal = loginSignal{event: "login_disabled", tenantID: route.TenantID}
 			return nil
 		}
 		if needsRehash {
@@ -168,11 +183,12 @@ func (s *Service) Login(ctx context.Context, email, plain string, meta RequestMe
 	if err != nil {
 		return SessionResult{}, err
 	}
+	s.emitLoginSignal(ctx, signal, key, meta)
 	return result, outcome
 }
 
 func (s *Service) failedLogin(ctx context.Context, tx db.Tx, key []byte, state throttle, now time.Time,
-	userID uuid.UUID, reason string, meta RequestMeta, outcome *error) error {
+	userID uuid.UUID, reason string, meta RequestMeta, outcome *error, signal *loginSignal) error {
 	state, _, _ = nextThrottle(state, false, now)
 	if userID != uuid.Nil {
 		if err := s.recordLogin(ctx, tx, txTenantID(tx), userID, uuid.Nil, "auth.login_failed", reason, meta); err != nil {
@@ -193,7 +209,45 @@ func (s *Service) failedLogin(ctx context.Context, tx db.Tx, key []byte, state t
 		return fmt.Errorf("identity: save throttle: %w", db.MapError(err))
 	}
 	*outcome = ErrInvalidCredentials
+	signal.event = "login_failed"
+	signal.lockStarted = state.LockedUntil != nil
 	return nil
+}
+
+// emitLoginSignal runs only after commit: rolled-back attempts must not increment metrics or
+// claim a security event. The HMAC is hex-encoded for logs; plaintext email never leaves Login.
+func (s *Service) emitLoginSignal(ctx context.Context, signal loginSignal, key []byte, meta RequestMeta) {
+	if signal.event == "" {
+		return
+	}
+	switch signal.event {
+	case "login_failed":
+		loginFailedTotal.Add(1) // evaluated failure, including the fifth and unknown emails
+	case "login_locked":
+		loginLockedTotal.Add(1) // a rejected attempt while the 15-minute lock is active
+	}
+	ip := ""
+	if meta.IP.IsValid() {
+		ip = meta.IP.Unmap().String()
+	}
+	fields := []any{"security_event", signal.event, "email_hmac", hex.EncodeToString(key), "ip", ip}
+	if signal.tenantID != uuid.Nil {
+		fields = append(fields, "tenant_id", signal.tenantID.String())
+	}
+	if meta.RequestID != "" {
+		fields = append(fields, "request_id", meta.RequestID)
+	}
+	if signal.lockStarted {
+		fields = append(fields, "lock_started", true)
+	}
+	s.logger.WarnContext(ctx, "login security event", fields...)
+	if signal.lockStarted {
+		// The fifth bad password starts the lock but still returns 401. Log the transition;
+		// login_locked_total counts only attempts actually rejected with 429.
+		lockedFields := append([]any(nil), fields...)
+		lockedFields[1] = "login_locked"
+		s.logger.WarnContext(ctx, "login lock started", lockedFields...)
+	}
 }
 
 func txTenantID(tx db.Tx) uuid.UUID { id, _ := tx.TenantID(); return id }

@@ -60,7 +60,7 @@ func runServe(ctx context.Context, args []string, e env) error {
 	hasher := password.NewHasher(4)
 	recorder := audit.NewRecorder()
 	users := identity.NewService(runner, outbox.NewEnqueuer(c), c, cfg.SessionIdle, cfg.SessionAbsolute,
-		identity.WithAuthentication(hasher, recorder, cfg.AuthHMACKey))
+		identity.WithAuthentication(hasher, recorder, cfg.AuthHMACKey, logger))
 	companies := tenant.NewService(runner, users, industrytemplate.NoopSeeder{}, hasher, recorder, logger)
 	limiter := ratelimit.NewLimiter(rate.Every(12*time.Minute), 5, c, time.Hour)
 	smtp, err := mailer.NewSMTP(mailer.SMTPConfig{Host: cfg.SMTPHost, Port: cfg.SMTPPort,
