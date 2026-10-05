@@ -25,7 +25,9 @@ type PasswordValidationError struct{ Code string }
 
 func (e *PasswordValidationError) Error() string { return "identity: invalid password" }
 
-// RequestPasswordReset has one observable success result for every account state.
+// RequestPasswordReset returns nil for every account state, and the handler answers an empty 202
+// (INV-13). The work, and so the response time, still depends on the account state; that
+// difference is not equalized (accepted risk, DD-39).
 func (s *Service) RequestPasswordReset(ctx context.Context, email string, meta RequestMeta) error {
 	if s.hasher == nil {
 		return errors.New("identity: authentication not configured")
@@ -99,11 +101,7 @@ func (s *Service) issueToken(ctx context.Context, tx db.Tx, tenantID, userID uui
 	for k, v := range extra {
 		payload[k] = v
 	}
-	template := purpose
-	if purpose == "invitation" {
-		template = "invitation"
-	}
-	return s.outbox.Enqueue(ctx, tx, outbox.Message{TenantID: tenantID, Kind: "email", Template: template, Recipient: email, Payload: payload})
+	return s.outbox.Enqueue(ctx, tx, outbox.Message{TenantID: tenantID, Kind: "email", Template: purpose, Recipient: email, Payload: payload})
 }
 
 // withToken locates only routing columns as crm_auth, then locks the user and token under RLS.
