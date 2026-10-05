@@ -11,7 +11,7 @@ ampliada (lock de `GRANT crm_tenant`, DD-33); R-25 (IP del cliente detrás de pr
 (`405 method_not_allowed`) y R-27 (cancelaciones del cliente) agregadas.
 **Cuarta revisión 2026-09-30**: R-28 agregada (primer `SET ROLE` a una empresa recién aprovisionada
 desde otra conexión, DD-34); R-04 y R-04c mencionan el hallazgo; supuesto 12 nuevo.
-**Quinta revisión 2026-10-05**: nota en R-16 (el lock de la empresa pasa a `FOR NO KEY UPDATE`, DD-40). La evaluación original no se edita.
+**Quinta revisión 2026-10-05**: nota en R-16 (los locks de la empresa y del usuario pasan a `FOR NO KEY UPDATE`, DD-40). La evaluación original no se edita.
 
 Alternativas evaluadas por decisión. Las marcadas **(usuario)** las tomó el usuario antes del
 plan: acá se documenta por qué son razonables y qué cuestan. Las demás son defaults del
@@ -321,7 +321,9 @@ invitación no agregaría protección.
 > serializando entre sí las operaciones de administración de una empresa y no conflictúa con
 > `FOR KEY SHARE`. La desventaja "hay que recordarlo en cada operación" ahora incluye el modo; lo
 > vigilan la regresión y la regla estática de T-B604. El advisory lock tampoco chocaría con las FK,
-> pero sigue sin agregar nada frente a `FOR NO KEY UPDATE`.
+> pero sigue sin agregar nada frente a `FOR NO KEY UPDATE`. Por la misma razón, las filas de `users`
+> también se bloquean con `FOR NO KEY UPDATE` (DD-40): con `FOR UPDATE`, el cierre de sesión entraba
+> en ciclo con la desactivación y con la confirmación de reset.
 
 ## R-17 Rate limiting → DD-9
 

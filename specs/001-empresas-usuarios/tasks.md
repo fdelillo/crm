@@ -51,7 +51,7 @@ tanda): tiempo de respuesta del pedido de reset aceptado como riesgo residual (D
 precisado, R-7) y código muerto en `issueToken`. Tareas afectadas: T-B501, T-B503, T-B506 (Fase 5,
 ajustes antes de la Fase 6). La sección Frontend no cambia: el contrato no cambia.
 **Corrección 2026-10-05** (revisión del PR #12; plan §18, al final de la octava tanda): DD-9, DD-39 y R-7 corregidos en su descripción (cada cupo es ráfaga + reposición, no un máximo por hora; el pedido de reset tiene tres caminos, no dos). La decisión de DD-39 no cambia; T-B501 precisa el caso del 4.º pedido. El cupo por IP compartido entre pedido y confirmación (reset) y entre `confirm` y `resend` (verificación) queda registrado como deliberado. Contrato **v0.4.2**: solo el texto del rate limit de signup (*patch*; el frontend no cambia). Sin cambio de código.
-**Novena revisión 2026-10-05** (*Accepted*, aprobada por el usuario el 2026-10-05): lock de la empresa en la Fase 6 (plan §18, novena tanda). La query de INV-10 pasa de `FOR UPDATE` a `FOR NO KEY UPDATE`, porque `FOR UPDATE` choca con el `FOR KEY SHARE` con que PostgreSQL verifica las FK a `tenants` y producía un deadlock con el reset y el login (confirmado en CI; DD-40, INV-10). También: regresión que reemplaza al test diagnóstico (T-B604), fila de reinvitaciones concurrentes de T-B601 corregida, orden de escritura de la fila de `tenants` en la Fase 7 (T-B704) y caso de limpieza de T-B606 diferido a T-B901. Tareas afectadas: T-B601, T-B604, T-B605, T-B606 (Fase 6, en curso), T-B704 (Fase 7), T-B901 (Fase 9). Las Fases 3 a 5 no cambian. La sección Frontend no cambia: el contrato no cambia.
+**Novena revisión 2026-10-05** (*Accepted*, aprobada por el usuario el 2026-10-05): locks de la empresa y del usuario en la Fase 6 (plan §18, novena tanda). La query de INV-10 y el lock del usuario pasan de `FOR UPDATE` a `FOR NO KEY UPDATE`, porque `FOR UPDATE` choca con el `FOR KEY SHARE` con que PostgreSQL verifica las FK y producía deadlocks con el reset, el login y el cierre de sesión (el de la empresa, confirmado en CI; DD-40, INV-10). La sesión de un login concurrente con la desactivación queda como riesgo aceptado (DD-41, INV-11). También: regresión que reemplaza al test diagnóstico (T-B604), fila de reinvitaciones concurrentes de T-B601 corregida, orden de escritura de la fila de `tenants` en la Fase 7 (T-B704) y caso de limpieza de T-B606 diferido a T-B901. Tareas afectadas: T-B503 (Fase 5, ajuste de `GetTokenFlowUser` dentro del PR de la Fase 6), T-B601, T-B604, T-B605, T-B606 (Fase 6, en curso), T-B704 (Fase 7), T-B901 (Fase 9). La sección Frontend no cambia: el contrato no cambia.
 
 ---
 
@@ -162,17 +162,18 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
   `compose.yaml`; `APP_BASE_URL=https://localhost:8080` sin TLS (modo "backend only" de
   `.env.example`: HTTP plano, sin certificados); no se usó `.env`. Al terminar se bajaron los contenedores y volúmenes con `down -v`.
 
-- **Fase 6** (2026-10-05): en curso en `feat/001-backend-phase-6` (PR fdelillo/crm#13, borrador). **Detenida** antes del checkpoint: la query de INV-10 con `FOR UPDATE` entra en deadlock con los flujos de las Fases 4 y 5, que bloquean al usuario y después insertan filas cuya FK a `tenants` PostgreSQL verifica con `FOR KEY SHARE` (`40P01` reproducido en CI con el test diagnóstico `TestProposedTenantLockConflictsWithPasswordReset`). Se reanuda en la misma rama con la **novena revisión** (*Accepted*, plan §18, DD-40), en este orden y con `make check` en verde después de cada paso:
+- **Fase 6** (2026-10-05): en curso en `feat/001-backend-phase-6` (PR fdelillo/crm#13, borrador). **Detenida** antes del checkpoint: la query de INV-10 con `FOR UPDATE` entra en deadlock con los flujos de las Fases 4 y 5, que bloquean al usuario y después insertan filas cuya FK a `tenants` PostgreSQL verifica con `FOR KEY SHARE` (`40P01` reproducido en CI con el test diagnóstico `TestProposedTenantLockConflictsWithPasswordReset`). La verificación encontró además un deadlock entre el cierre de sesión y la desactivación o la confirmación de reset (lock del usuario con `FOR UPDATE`). Se reanuda en la misma rama con la **novena revisión** (*Accepted*, plan §18, DD-40 y DD-41), en este orden y con `make check` en verde después de cada paso:
 
   | Orden | Tarea | Ajuste |
   |---|---|---|
-  | 1 | T-B604 (Red) | Se escriben los casos R0 a R4 de la regresión de DD-40 y se borra el test diagnóstico (no se versiona: exigía el `40P01`). Con la query todavía en `FOR UPDATE` tienen que fallar por la razón que dice T-B604 |
-  | 2 | T-B605 | La query de INV-10 pasa a `FOR NO KEY UPDATE` (y `make generate`); el orden empresa → usuario → tokens queda como dice T-B605. Los flujos de las Fases 3 a 5 no se tocan. Pasan R0 a R4 y los casos de concurrencia de T-B601, T-B603 y T-B604 |
-  | 3 | T-B601 | La fila de reinvitaciones concurrentes usa el texto nuevo (es la interpretación que ya usa la rama) |
-  | 4 | T-B606 | La fila "Invitado cuya invitación venció hace 40 días, después de correr la limpieza (T-B901)" se **difiere a T-B901** (Fase 9), donde existe la limpieza (decisión ya tomada). El resto de T-B606 no cambia |
-  | 5 | Checkpoint de la Fase 6 | Sin cambios: `make check` en verde + prueba independiente |
+  | 1 | T-B604 (Red) | Se escriben R0 a R5, L1 y L2 de la regresión de DD-40 y se borra el test diagnóstico (no se versiona: exigía el `40P01`). Con las queries todavía en `FOR UPDATE`, R0 a R4, L1 y L2 tienen que fallar por la razón que dice T-B604. R5 caracteriza DD-41 y pasa desde el principio |
+  | 2 | T-B503 (Fase 5, ajuste) | `GetTokenFlowUser` pasa a `FOR NO KEY UPDATE` (y `make generate`). Va primero porque corrige un deadlock que ya existe en `main` y no depende del código nuevo. Pasa L2. Los tests de la Fase 5 (incluido `TestConcurrentLoginAndPasswordResetUseSameLockOrder`) siguen en verde sin cambios |
+  | 3 | T-B605 | La query de INV-10 pasa a `FOR NO KEY UPDATE`; `GetManagedUserForUpdate` se renombra `LockManagedUser` y pasa a `FOR NO KEY UPDATE` (y `make generate`); el orden empresa → usuario → tokens queda como dice T-B605. Pasan R0 completa, R1 a R4, L1 y los casos de concurrencia de T-B601, T-B603 y T-B604 |
+  | 4 | T-B601 | La fila de reinvitaciones concurrentes usa el texto nuevo (es la interpretación que ya usa la rama) |
+  | 5 | T-B606 | La fila "Invitado cuya invitación venció hace 40 días, después de correr la limpieza (T-B901)" se **difiere a T-B901** (Fase 9), donde existe la limpieza (decisión ya tomada). El resto de T-B606 no cambia |
+  | 6 | Checkpoint de la Fase 6 | Sin cambios: `make check` en verde + prueba independiente |
 
-  No cambia el contrato. Quedan dos preguntas abiertas de la novena tanda (plan §18). La primera (cierre de sesión contra desactivación) conviene decidirla antes del checkpoint, porque cambia el modo del lock del usuario en la Fase 6.
+  No cambia el contrato.
 
 ### Convenciones de esta sección
 
@@ -1323,7 +1324,7 @@ de invitación nuevo.
 - **Green**: pasa la tabla.
 
 **T-B503 — Implementar `RequestPasswordReset` (con DD-20) y `ConfirmPasswordReset`**. La
-reemisión reutiliza la misma función interna que la reinvitación del Administrador (DD-5).
+reemisión reutiliza la misma función interna que la reinvitación del Administrador (DD-5). Novena revisión (DD-40): `GetTokenFlowUser` (que también usan la verificación y su reenvío, T-B505) bloquea al usuario con `FOR NO KEY UPDATE`, nunca `FOR UPDATE`; el ajuste se aplica en el PR de la Fase 6 (Estado de la implementación) con la regresión L2 de T-B604.
 
 **T-B504 [T] — Verificación de email** · US-1.3, DD-13, P-2
 - **Red**: confirmar con token válido → `email_verified_at` puesto y auditoría; repetir con el
@@ -1404,7 +1405,7 @@ vuelve a entrar con su contraseña.
   | **Concurrencia**: empresa con 2 admins; cada uno baja al otro a la vez (20 repeticiones) | en todas, exactamente una operación tiene éxito y la otra `ErrLastAdmin`; siempre queda ≥ 1 admin activo |
 - **Green**: pasa la tabla.
 
-**T-B604 [T] — Desactivar y reactivar** · US-3.3, US-3.4, FR-005, FR-008, INV-10, INV-11, P-3, DD-40
+**T-B604 [T] — Desactivar y reactivar** · US-3.3, US-3.4, FR-005, FR-008, INV-10, INV-11, P-3, DD-40, DD-41
 - **Red** (integración):
 
   | Caso | Esperado |
@@ -1425,27 +1426,31 @@ vuelve a entrar con su contraseña.
   | **Concurrencia**: un admin reactiva a X mientras otro desactiva a X (20 repeticiones) | las operaciones se serializan por el lock de `tenants`; el estado final es consistente con una de las dos órdenes y hay exactamente una fila de auditoría por operación exitosa |
   | Cualquier operación fallida | ninguna fila de auditoría |
 
-- **Red, regresión del lock de la empresa** (novena revisión, DD-40, INV-10; integración contra PostgreSQL real). Reemplaza al test diagnóstico `TestProposedTenantLockConflictsWithPasswordReset` de la rama de la Fase 6, que exigía un `40P01` y se borra. Los flujos de las Fases 4 y 5 corren **reales y sin cambios** (`identity.Service`). La operación de administración es una transacción del test, `T_admin` (`InTenantTx`), armada con las mismas queries de `store` que usa el servicio y en el mismo orden: la query de INV-10 (`LockUsersTenant`), `GetManagedUserForUpdate` y las escrituras de la operación (desactivar: `SetManagedUserStatus` a `disabled`, `RevokeDisabledUserSessions`, `RevokeDisabledUserTokens`; cambiar rol: `SetManagedUserRole`). Así el test controla cuándo toma cada lock y conoce su `pg_backend_pid()`. Hay dos mecanismos deterministas, sin `sleep` en el camino que pasa:
-  - **E (la empresa primero)**: `T_admin` toma la empresa con la query de INV-10 y la retiene; el flujo corre en otra goroutine. El test espera, sondeando cada 10 ms con un contexto de 20 s, a que pase una de dos cosas: el flujo devuelve, o aparece un backend bloqueado por `T_admin` (`SELECT pid FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))`). Lo segundo es un fallo inmediato. Con el flujo terminado, `T_admin` bloquea al usuario (no debe esperar), aplica la operación y hace `COMMIT`.
-  - **U (el usuario primero)**: la intercalación del diagnóstico. El flujo se detiene con el hasher instrumentado (`Hash` bloquea hasta que el test lo libera) **después** de bloquear al usuario y antes de su primera inserción con FK a `tenants`. `T_admin` toma la empresa (no debe esperar), pide al usuario y el test confirma que espera (`wait_event_type = 'Lock'` de su pid). Después el test libera el hasher.
+- **Red, regresión de los locks de empresa y usuario** (novena revisión, DD-40, DD-41, INV-10, INV-11; integración contra PostgreSQL real). Reemplaza al test diagnóstico `TestProposedTenantLockConflictsWithPasswordReset` de la rama de la Fase 6, que exigía un `40P01` y se borra. Los flujos de las Fases 4 y 5 corren **reales** (`identity.Service`); el único cambio en ellos es el modo de `GetTokenFlowUser`. La operación de administración es una transacción del test, `T_admin` (`InTenantTx`), armada con las mismas queries de `store` que usa el servicio y en el mismo orden: la query de INV-10 (`LockUsersTenant`), `LockManagedUser` (antes `GetManagedUserForUpdate`) y las escrituras de la operación (desactivar: `SetManagedUserStatus` a `disabled`, `RevokeDisabledUserSessions`, `RevokeDisabledUserTokens`; cambiar rol: `SetManagedUserRole`). Así el test controla cuándo toma cada lock y conoce su `pg_backend_pid()`. Los mecanismos son deterministas y el camino que pasa no tiene `sleep`; "bloqueado por P" se detecta sondeando cada 10 ms, con un contexto de 20 s, `SELECT pid FROM pg_stat_activity WHERE P = ANY(pg_blocking_pids(pid))`:
+  - **E (la empresa primero)**: `T_admin` toma la empresa con la query de INV-10 y la retiene; el flujo corre en otra goroutine. El test espera a que el flujo devuelva o a que aparezca un backend bloqueado por `T_admin`; lo segundo es un fallo inmediato. Con el flujo terminado, `T_admin` bloquea al usuario (no debe esperar), aplica la operación y hace `COMMIT`.
+  - **U (el usuario primero)**: la intercalación del diagnóstico. El flujo se detiene con el hasher instrumentado (`Hash` bloquea hasta que el test lo libera) **después** de bloquear al usuario y antes de su primera inserción con FK. `T_admin` toma la empresa (no debe esperar), pide al usuario y el test confirma que espera (`wait_event_type = 'Lock'` de su pid). Después libera el hasher.
+  - **S (la sesión primero)**: el cierre de sesión corre real con un `audit.Recorder` instrumentado que, en el `Record` de `auth.logout`, guarda `pg_backend_pid()` con la `tx` que recibe y bloquea hasta que el test lo libera; los demás `Record` pasan directo. El cierre queda detenido con la fila de su sesión actualizada (`RevokeSession`) y antes de la inserción de la auditoría (`KEY SHARE` sobre el usuario).
+  - **V (el login detenido)**: el login se detiene en `Verify` del hasher instrumentado: ya leyó al usuario sin lock y todavía no insertó la sesión.
 
-  Solo la confirmación de reset llama al hasher entre el lock del usuario y sus inserciones. El pedido de reset no hashea, y el login hashea **antes** de tocar al usuario (y solo lo bloquea si rehashea). Por eso esos flujos usan E, que no necesita *hooks* y prueba algo más fuerte: el flujo termina sin esperar mientras la empresa está tomada.
+  Solo la confirmación de reset llama al hasher entre el lock del usuario y sus inserciones. El pedido de reset no hashea, y el login hashea **antes** de tocar al usuario. Por eso esos flujos usan E, que no necesita *hooks* y prueba algo más fuerte: el flujo termina sin esperar mientras la empresa está tomada.
 
-  | Caso | Flujo real | Mecanismo y `T_admin` | Esperado con DD-40 |
+  | Caso | Flujo real | Mecanismo y `T_admin` | Esperado |
   |---|---|---|---|
-  | R0 | — (regla estática, unitario: junto a la regla de T-B112 o en `internal/identity/store`) | — | ninguna query de `internal/*/store/*.sql` que nombre `app.tenants` lleva cláusula de lock (`FOR UPDATE`, `FOR NO KEY UPDATE`, `FOR SHARE`, `FOR KEY SHARE`; un `FOR UPDATE` sin `OF` en un `JOIN` con `tenants` también la bloquea), salvo la de INV-10, que usa exactamente `FOR NO KEY UPDATE` |
+  | R0 | — (regla estática, unitario: junto a la regla de T-B112 o en `internal/identity/store`) | — | En las queries de `internal/*/store/*.sql`, una cláusula de lock sin `OF` en un `JOIN` cuenta para todas sus tablas. **(a)** Ninguna query bloquea filas de `app.tenants` salvo la de INV-10, que usa exactamente `FOR NO KEY UPDATE`. **(b)** Toda query que bloquea filas de `app.users` usa exactamente `FOR NO KEY UPDATE` (ni `FOR UPDATE`, ni `FOR SHARE`, ni `FOR KEY SHARE`) |
   | R1 | `RequestPasswordReset` de un operador `active` | E; desactivar a ese usuario | el pedido devuelve `nil` sin que ningún backend quede bloqueado por `T_admin`; después `T_admin` termina con `nil`. Estado final: usuario `disabled`; el token `password_reset` que creó el pedido, revocado; un mensaje `password_reset` encolado; una auditoría `auth.password_reset_requested` |
   | R2 | `RequestPasswordReset` de un invitado `operator` (reemite la invitación, DD-20) | E; cambiar su rol a `admin` | el pedido devuelve `nil` sin bloqueo; `T_admin` termina con `nil`. Estado final: `invited` con `role = admin`; **una** invitación abierta (la reemitida; la anterior, revocada), que el cambio de rol no toca (T-B603); un mensaje `invitation` encolado con el rol que leyó el pedido (`operator`; `Preview` muestra el actual, T-B602); una auditoría `user.invitation_reissued {role: operator, trigger: password_reset_request}` |
   | R3 | `ConfirmPasswordReset` de un usuario `active` con una sesión abierta | U; desactivar a ese usuario | las dos terminan con `nil`, ninguna con `40P01`. Estado final: contraseña nueva (`Verify` la acepta); token usado; la sesión previa revocada con `revoked_reason = password_reset` (el reset terminó primero; `RevokeDisabledUserSessions` de `T_admin` afecta 0 filas); usuario `disabled`; sin fila de `login_throttles` para ese email; una auditoría `auth.password_reset_completed` |
   | R4 | `Login` exitoso de un operador `active` (sin rehash) | E; desactivar a ese usuario | el login devuelve la sesión sin bloqueo; `T_admin` termina con `nil`. Estado final: usuario `disabled`; la sesión creada por el login, revocada con `revoked_reason = user_disabled`; `ResolveSession` con ese token → no autenticado; una auditoría `auth.login_succeeded` |
+  | R5 | (caracteriza DD-41; pasa desde el principio, no es Red) `Login` exitoso de un operador `active` (sin rehash) | V; `T_admin` desactiva y hace `COMMIT` sin esperar (el login solo tiene el throttle); el test libera `Verify` | las dos terminan con `nil`. Estado final: usuario `disabled`; la sesión del login **sin revocar**; `ResolveSession` con ese token → no autenticado; una auditoría `auth.login_succeeded`. Si después otra transacción del test lo reactiva (`SetManagedUserStatus` a `active`) dentro de las 24 h, `ResolveSession` lo autentica (consecuencia aceptada en DD-41) |
+  | L1 | `Logout` de un operador `active` con una sesión | S; desactivar a ese usuario | `T_admin` toma la empresa y al usuario sin esperar, cambia el estado y su `RevokeDisabledUserSessions` queda bloqueado por el cierre (el test lo confirma con el pid del cierre); el test libera el *recorder*. Las dos terminan con `nil`, ninguna con `40P01`. Estado final: usuario `disabled`; la sesión revocada con `revoked_reason = logout` (la revocó el cierre; `RevokeDisabledUserSessions` no la vuelve a tocar); una auditoría `auth.logout` |
+  | L2 | `Logout` de un usuario `active` con una sola sesión, y `ConfirmPasswordReset` real del mismo usuario | S; sin `T_admin` | con el cierre detenido, la confirmación bloquea throttle, usuario y token, hashea y su `RevokeUserSessions` queda bloqueado por el cierre (el test lo confirma con el pid del cierre); el test libera el *recorder*. Las dos terminan con `nil`, ninguna con `40P01`. Estado final: contraseña nueva; token usado; la sesión revocada con `revoked_reason = logout`; auditorías `auth.logout` y `auth.password_reset_completed {sessions_revoked: 0}` |
 
-  **Si la query de INV-10 vuelve a `FOR UPDATE`, el test falla** (ese es su valor de regresión):
-  - R0 falla por la regla estática.
-  - R1, R2 y R4 fallan porque la primera inserción del flujo con FK a `tenants` (`InsertUserToken`, `InsertSession`) espera `FOR KEY SHARE` detrás de `T_admin`. El test lo detecta, falla con un mensaje que nombra DD-40 y hace `ROLLBACK` de `T_admin` para no dejar goroutines colgadas. Sin esa detección, R1 y R2 terminarían en `40P01` al pedir `T_admin` al usuario.
-  - R3 falla porque una de las dos transacciones recibe `40P01` (lo que afirmaba el diagnóstico).
+  **Si alguna de esas queries vuelve a `FOR UPDATE`, el test falla** (ese es su valor de regresión):
+  - **Query de INV-10:** falla R0 (a). R1, R2 y R4 fallan porque la primera inserción del flujo con FK a `tenants` (`InsertUserToken`, `InsertSession`) espera `FOR KEY SHARE` detrás de `T_admin`: el test lo detecta, falla con un mensaje que nombra DD-40 y hace `ROLLBACK` de `T_admin` para no dejar goroutines colgadas (sin esa detección, R1 y R2 terminarían en `40P01` al pedir `T_admin` al usuario). R3 falla porque una de las dos recibe `40P01`.
+  - **`LockManagedUser` o `GetTokenFlowUser`:** falla R0 (b), y L1 o L2 respectivamente terminan en `40P01`. El cierre pide `KEY SHARE` sobre un usuario bloqueado con `FOR UPDATE`, cuyo dueño espera la sesión del cierre.
 
-  Cada caso corre una vez: el mecanismo es determinista. Al escribirlos, con la query todavía en `FOR UPDATE`, tienen que fallar así (Red).
-- **Green** (regresión): pasan R0 a R4 con la query de INV-10 en `FOR NO KEY UPDATE`, sin tocar los flujos de las Fases 4 y 5.
+  Cada caso corre una vez: el mecanismo es determinista. Al escribirlos, con las queries todavía en `FOR UPDATE`, R0 a R4, L1 y L2 tienen que fallar así (Red).
+- **Green** (regresión): pasan R0 a R5, L1 y L2 con la query de INV-10, `LockManagedUser` y `GetTokenFlowUser` en `FOR NO KEY UPDATE`, sin otros cambios en los flujos de las Fases 4 y 5.
 - **Green**: pasa la tabla.
 
 **T-B605 — Implementar `Invite`, `PreviewInvitation`, `AcceptInvitation`, `ListUsers`,
@@ -1454,9 +1459,9 @@ tabla (`estado actual × acción → estado nuevo | error`) con su test unitario
 salidas de `reactivate` según tenga o no contraseña y el rechazo de `changeRole` en `disabled`),
 y cada operación de cambio de rol o estado (incluida la reinvitación) empieza con el lock de la
 fila `tenants` con la query de INV-10, `FOR NO KEY UPDATE` y nunca `FOR UPDATE` (DD-40, novena
-revisión), y recién después bloquea al usuario con `FOR UPDATE` (orden empresa → usuario →
+revisión), y recién después bloquea al usuario, también con `FOR NO KEY UPDATE` (`LockManagedUser`, antes `GetManagedUserForUpdate`) (orden empresa → usuario →
 tokens). `AcceptInvitation` no lo necesita (solo puede subir la cuenta de Administradores
-activos); si lo toma, lo toma antes que al usuario. Los flujos de las Fases 4 y 5 no se tocan. `ListUsers` informa `invitation_expires_at` desde la invitación abierta
+activos); si lo toma, lo toma antes que al usuario. Ninguna query nueva bloquea `users` ni `tenants` con `FOR UPDATE` (regla R0 de T-B604). De las Fases 4 y 5 solo cambia el modo de `GetTokenFlowUser` (T-B503). `ListUsers` informa `invitation_expires_at` desde la invitación abierta
 de cada invitado, aunque haya vencido (DD-25).
 
 **T-B606 [T] — Endpoints de usuarios e invitaciones** · contrato, FR-005, FR-007, P-3, DD-25, DD-26, H-4, H-5
