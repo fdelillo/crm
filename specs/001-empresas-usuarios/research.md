@@ -11,6 +11,7 @@ ampliada (lock de `GRANT crm_tenant`, DD-33); R-25 (IP del cliente detrás de pr
 (`405 method_not_allowed`) y R-27 (cancelaciones del cliente) agregadas.
 **Cuarta revisión 2026-09-30**: R-28 agregada (primer `SET ROLE` a una empresa recién aprovisionada
 desde otra conexión, DD-34); R-04 y R-04c mencionan el hallazgo; supuesto 12 nuevo.
+**Quinta revisión 2026-10-05**: nota en R-16 (el lock de la empresa pasa a `FOR NO KEY UPDATE`, DD-40). La evaluación original no se edita.
 
 Alternativas evaluadas por decisión. Las marcadas **(usuario)** las tomó el usuario antes del
 plan: acá se documenta por qué son razonables y qué cuestan. Las demás son defaults del
@@ -310,6 +311,17 @@ invitación no agregaría protección.
 | Aislamiento `SERIALIZABLE` | Correcto sin locks explícitos | Reintentos por errores de serialización que hay que manejar | Descartada |
 | Advisory lock por empresa | Sin tocar filas | Otra primitiva que aprender; claves numéricas a derivar del UUID | Descartada |
 | Trigger que verifica la regla | En la base | Lógica de negocio escondida en la base; mismo problema de concurrencia sin lock | Descartada |
+
+> **Nota 2026-10-05** (DD-40, plan §18 novena tanda): la opción elegida se mantiene, pero con
+> `FOR NO KEY UPDATE` en lugar de `FOR UPDATE`. La evaluación no consideró que PostgreSQL verifica
+> cada FK hacia `tenants` con `SELECT … FOR KEY SHARE` sobre la fila de la empresa, incompatible con
+> `FOR UPDATE`. Un reset o un login que ya tenía bloqueado al usuario y después insertaba su token,
+> sesión o auditoría quedaba en ciclo con una operación de administración que tenía la empresa y
+> esperaba al usuario (`40P01`, reproducido en CI con PostgreSQL 18). `FOR NO KEY UPDATE` sigue
+> serializando entre sí las operaciones de administración de una empresa y no conflictúa con
+> `FOR KEY SHARE`. La desventaja "hay que recordarlo en cada operación" ahora incluye el modo; lo
+> vigilan la regresión y la regla estática de T-B604. El advisory lock tampoco chocaría con las FK,
+> pero sigue sin agregar nada frente a `FOR NO KEY UPDATE`.
 
 ## R-17 Rate limiting → DD-9
 
