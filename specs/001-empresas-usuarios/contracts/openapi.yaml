@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CRM - API 001 Empresas, usuarios y roles
-  version: 0.4.1
+  version: 0.4.2
   summary: Registro de empresas, autenticación, sesiones, invitaciones, usuarios y datos de la empresa.
   description: |
     Contrato **canónico** de la spec 001 (`specs/001-empresas-usuarios/spec.md`).
@@ -57,6 +57,9 @@ info:
       65 536 bytes, que el servidor ya aplicaba sin declararlo; plan §18, séptima tanda). Es
       *patch*: no agrega valores a ningún enum ni cambia esquemas; declara una respuesta que ya
       existía y cuyo `code` ya estaba en `ErrorCode`.
+    - 0.4.2: texto del rate limit de `POST /auth/signup`: es una ráfaga de 5 más una reposición
+      cada 12 minutos, no un máximo de 5 por hora (DD-9; revisión del PR #12). Es *patch*: solo
+      cambia una descripción.
 servers:
   - url: /api/v1
 tags:
@@ -120,7 +123,8 @@ paths:
         espera más de 2 segundos, responde `503 service_unavailable` con `Retry-After` y no crea
         nada: se puede reintentar con los mismos datos.
 
-        Rate limit: 5 intentos por hora por IP, contando éxitos y rechazos (DD-9).
+        Rate limit por IP, contando éxitos y rechazos (DD-9): 5 intentos de una vez y después uno
+        cada 12 minutos (unos 5 por hora sostenidos; en una hora pueden entrar hasta 10).
       security: []
       requestBody:
         required: true

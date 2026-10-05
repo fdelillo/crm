@@ -50,7 +50,7 @@ a ningún enum (ver "Coordinación con la sección Frontend").
 tanda): tiempo de respuesta del pedido de reset aceptado como riesgo residual (DD-39, INV-13
 precisado, R-7) y código muerto en `issueToken`. Tareas afectadas: T-B501, T-B503, T-B506 (Fase 5,
 ajustes antes de la Fase 6). La sección Frontend no cambia: el contrato no cambia.
-**Corrección 2026-10-05** (revisión del PR #12; plan §18, al final de la octava tanda): DD-9, DD-39 y R-7 corregidos en su descripción (cada cupo es ráfaga + reposición, no un máximo por hora; el pedido de reset tiene tres caminos, no dos). La decisión de DD-39 no cambia; T-B501 precisa el caso del 4.º pedido. Sin cambio de código.
+**Corrección 2026-10-05** (revisión del PR #12; plan §18, al final de la octava tanda): DD-9, DD-39 y R-7 corregidos en su descripción (cada cupo es ráfaga + reposición, no un máximo por hora; el pedido de reset tiene tres caminos, no dos). La decisión de DD-39 no cambia; T-B501 precisa el caso del 4.º pedido. El cupo por IP compartido entre pedido y confirmación (reset) y entre `confirm` y `resend` (verificación) queda registrado como deliberado. Contrato **v0.4.2**: solo el texto del rate limit de signup (*patch*; el frontend no cambia). Sin cambio de código.
 
 ---
 
