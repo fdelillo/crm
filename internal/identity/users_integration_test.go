@@ -19,6 +19,7 @@ import (
 	"github.com/fdelillo/crm/internal/testsupport/fixture"
 	"github.com/fdelillo/crm/internal/testsupport/pgtest"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func usersFixture(t *testing.T) (*Service, db.TxRunner, authz.Principal, *loginClock) {
@@ -364,8 +365,8 @@ func TestDeactivateReactivateAndConstraint(t *testing.T) {
 					_, err := tx.Exec(ctx, `UPDATE app.users SET status='active' WHERE tenant_id=$1 AND id=$2`, p.TenantID, u.ID)
 					return db.MapError(err)
 				})
-				var constraint *db.ConstraintError
-				if !errors.As(err, &constraint) || constraint.Constraint != "users_active_complete_chk" {
+				var constraint *pgconn.PgError
+				if !errors.As(err, &constraint) || constraint.Code != "23514" || constraint.ConstraintName != "users_active_complete_chk" {
 					t.Fatalf("constraint: %v", err)
 				}
 			}

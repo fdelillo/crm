@@ -18,6 +18,21 @@ const (
 	reactivate       userAction = "reactivate"
 )
 
+// userTransitions is the single source of truth for plan §4.6. Reactivation's
+// password-dependent destination is resolved after looking up its allowed transition.
+var userTransitions = map[string]map[userAction]string{
+	"invited":  {reinvite: "invited", acceptInvitation: "active", changeRole: "invited", deactivate: "disabled"},
+	"active":   {changeRole: "active", deactivate: "disabled"},
+	"disabled": {reactivate: "active"},
+}
+
 func nextUserStatus(status string, action userAction, hasPassword bool) (string, error) {
-	return "", ErrInvalidTransition
+	next, ok := userTransitions[status][action]
+	if !ok {
+		return "", ErrInvalidTransition
+	}
+	if action == reactivate && !hasPassword {
+		return "invited", nil
+	}
+	return next, nil
 }
