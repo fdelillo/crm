@@ -162,8 +162,8 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
   `.env.example`: HTTP plano, sin certificados); no se usó `.env`. Al terminar se bajaron los contenedores y volúmenes con `down -v`.
 
 - **Fase 6** (2026-10-05): avance parcial en `feat/001-backend-phase-6`, desde `main`
-  `6065a2c`. T-B601 a T-B604 y T-B606 tienen tests preparados; todavía no se verificó su
-  Red contra PostgreSQL. De T-B605 están implementadas la tabla de transiciones (test
+  `6065a2c`. T-B601 a T-B604 y T-B606 tienen tests preparados; la CI verificó el Red del
+  alta de invitación contra PostgreSQL (las filas posteriores todavía no se alcanzan). De T-B605 están implementadas la tabla de transiciones (test
   unitario Red → Green), `ListUsers` y `PreviewInvitation`. T-B607 tiene handlers preparados
   y el cupo compartido de preview/accept verificado Red → Green, aún sin cableado en
   `cmd/crm/serve.go`. `Invite`, `AcceptInvitation`, `ChangeRole`, `Deactivate` y `Reactivate`
@@ -171,7 +171,7 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
 
   | Paso | Tarea / punto | Estado y motivo |
   |---|---|---|
-  | 1 | Orden de locks (INV-10 y Fase 5) | **Detenido por hueco del diseño**: administración toma `tenants FOR UPDATE` y luego espera el usuario; reset/verificación de Fase 5 toman `users FOR UPDATE` y después insertan tokens o auditoría cuyas FK toman `FOR KEY SHARE` en `tenants`. Puede formarse un ciclo. No se cambió el diseño ni Fase 5. Se agregó el diagnóstico `TestProposedTenantLockConflictsWithPasswordReset`, pendiente de ejecución contra PostgreSQL; hace falta una decisión de diseño para coordinar esos flujos antes de implementar las mutaciones |
+  | 1 | Orden de locks (INV-10 y Fase 5) | **Detenido por hueco del diseño**: administración toma `tenants FOR UPDATE` y luego espera el usuario; reset/verificación de Fase 5 toman `users FOR UPDATE` y después insertan tokens o auditoría cuyas FK toman `FOR KEY SHARE` en `tenants`. Puede formarse un ciclo. No se cambió el diseño ni Fase 5. Se agregó el diagnóstico `TestProposedTenantLockConflictsWithPasswordReset`, que pasó en CI contra PostgreSQL 18 y confirmó una víctima de deadlock `40P01`; hace falta una decisión de diseño para coordinar esos flujos antes de implementar las mutaciones |
   | 2 | T-B601, concurrencia de reinvitaciones | **Pendiente de aclaración**: la fila pide dos pares de auditoría, pero, con los dos roles existentes, uno de los pedidos puede tener el mismo rol actual y la misma tabla prohíbe `user.role_changed` para ese caso. El test preparado verifica dos reemisiones y los cambios reales; esa interpretación todavía no está aprobada |
   | 3 | T-B606, invitación vencida hace 40 días después de limpieza | **Diferida a T-B901**, por instrucción del usuario: la limpieza de Fase 9 todavía no existe. No se creó `cleanup.sql` ni se adelantó esa fase. La fila de vencimiento hace 3 días está en el test HTTP preparado |
   | 4 | Checkpoint de Fase 6 | **Abierto**. `make lint` y `make test` (`go test -race ./...`) en verde. La integración no puede arrancar PostgreSQL porque Docker Desktop no inicia en este entorno. La prueba independiente con binario real, PostgreSQL, Mailpit y MinIO no fue ejecutada; no se levantaron contenedores ni volúmenes |
@@ -180,7 +180,12 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
   y las reglas `queryrules`/`reporules` están en verde; sqlc se generó con `make generate`
   y `sqlc diff` no informa diferencias. El intento de integración falló al iniciar Docker,
   **no por el comportamiento bajo prueba**, por lo que no cuenta como Red de T-B601 a
-  T-B604 ni de la tabla HTTP de T-B606. Las mutaciones y su reutilización de
+  T-B604 ni de la tabla HTTP de T-B606. En [CI](https://github.com/fdelillo/crm/actions/runs/37316099915),
+  lint y unitarios pasaron; la integración llegó a PostgreSQL 18 y quedó en Red por
+  `identity: users not implemented` en el alta de invitación, y por el `500` correspondiente
+  en HTTP. Los casos posteriores fallan en ese prerrequisito, por lo que aún no se verificó
+  su Red individual. El diagnóstico del lock pasó y comprobó el ciclo con una víctima
+  `40P01`. Las mutaciones y su reutilización de
   `issueToken`/`reissueInvitation` quedan pendientes de la decisión del paso 1. No hubo
   cambios a código de fases anteriores ni a `spec.md`, `plan.md`, `data-model.md` o el
   contrato. El PR se publica como borrador, sin afirmar un checkpoint en verde.
