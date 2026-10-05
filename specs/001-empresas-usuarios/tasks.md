@@ -50,6 +50,7 @@ a ningún enum (ver "Coordinación con la sección Frontend").
 tanda): tiempo de respuesta del pedido de reset aceptado como riesgo residual (DD-39, INV-13
 precisado, R-7) y código muerto en `issueToken`. Tareas afectadas: T-B501, T-B503, T-B506 (Fase 5,
 ajustes antes de la Fase 6). La sección Frontend no cambia: el contrato no cambia.
+**Corrección 2026-10-05** (revisión del PR #12; plan §18, al final de la octava tanda): DD-9, DD-39 y R-7 corregidos en su descripción (cada cupo es ráfaga + reposición, no un máximo por hora; el pedido de reset tiene tres caminos, no dos). La decisión de DD-39 no cambia; T-B501 precisa el caso del 4.º pedido. Sin cambio de código.
 
 ---
 
@@ -1287,7 +1288,7 @@ de invitación nuevo.
   | Usuario `invited` | invitación reemitida: token `invitation` anterior revocado, uno nuevo de 7 días con `created_by_user_id` nulo, mensaje `invitation` pendiente; auditoría `user.invitation_reissued` con actor `NULL` y `trigger: password_reset_request`; **no** se crea token de reset (DD-20) |
   | Usuario `disabled` o email inexistente | no se crea nada |
   | En todos los casos anteriores | el servicio devuelve `nil` (mismo resultado, INV-13) |
-  | 4.º pedido en una hora para el mismo email | se ignora (rate limit por email) sin cambiar la respuesta |
+  | 4.º pedido seguido para el mismo email (sin esperar la reposición: 3 de ráfaga y 1 cada 20 min, DD-9) | se ignora (rate limit por email) sin cambiar la respuesta |
 
   Fuera del alcance (octava revisión, DD-39): el tiempo de respuesta. No se escribe un test de
   tiempos: la decisión no promete igualarlo.
