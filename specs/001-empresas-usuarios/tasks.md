@@ -46,6 +46,10 @@ operación con body JSON, decisión del usuario). Tareas afectadas: T-B004, T-B2
 T-B215, T-B216 (ajustes al comienzo de la Fase 3) y T-B301, T-B302, T-B303, T-B304, T-B305,
 T-B309, T-B311, T-B312 (Fase 3). La sección Frontend no cambia: el contrato 0.4.1 no agrega valores
 a ningún enum (ver "Coordinación con la sección Frontend").
+**Octava revisión 2026-10-04** (*Accepted*, aprobada por el usuario el 2026-10-04): revisión posterior a la Fase 5 (plan §18, octava
+tanda): tiempo de respuesta del pedido de reset aceptado como riesgo residual (DD-39, INV-13
+precisado, R-7) y código muerto en `issueToken`. Tareas afectadas: T-B501, T-B503, T-B506 (Fase 5,
+ajustes antes de la Fase 6). La sección Frontend no cambia: el contrato no cambia.
 
 ---
 
@@ -53,7 +57,7 @@ a ningún enum (ver "Coordinación con la sección Frontend").
 
 Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invocación**.
 
-### Estado de la implementación (2026-10-03)
+### Estado de la implementación (2026-10-04)
 
 - **Fase 0**: implementada y mergeada (PR fdelillo/crm#6).
 - **Fase 1**: implementada y mergeada.
@@ -96,7 +100,7 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
   | T-B213 / T-B214 | Código extendido leído del texto en todas las fases, con control de clase (ADR-025 §3); caso de *deadline* de DD-35; comentario de `Mailer.Send` |
   | T-B303 / T-B304 (Fase 3) | `CreateSession` normaliza `user_agent` (DD-38): se hace al implementar la Fase 3, no en este PR |
 
-- **Fase 4** (2026-10-03): implementación de T-B401 a T-B405 en `feat/001-backend-phase-4`, desde el merge del PR #9. Login con bloqueo por HMAC del email, auditoría, rehash y sesión; logout idempotente; pruebas unitarias, de integración y HTTP con contrato. `make lint` y `make test` locales en verde; `make check` en CI en verde (Docker no está disponible en el equipo local).
+- **Fase 4** (2026-10-03): implementación de T-B401 a T-B405 en `feat/001-backend-phase-4`, desde el merge del PR #9. Login con bloqueo por HMAC del email, auditoría, rehash y sesión; logout idempotente; pruebas unitarias, de integración y HTTP con contrato. `make lint` y `make test` locales en verde; `make check` en CI en verde (Docker no está disponible en el equipo local). **Mergeada** en `main` con el PR fdelillo/crm#10 (f379160).
 
 - **Fase 3** (2026-10-03): implementada en `feat/001-backend-phase-3`, creada desde `main`
   (2ff34be). **Séptima revisión (*Accepted*, aprobada por el usuario el 2026-10-02)**: antes de
@@ -118,6 +122,43 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
   verificación apareció en Mailpit y el registro repetido devolvió `409`. PostgreSQL se publicó
   temporalmente en `127.0.0.1:15432` porque el puerto 5432 del host ya estaba ocupado; no se
   modificó `compose.yaml` por este conflicto local.
+
+- **Fase 5** (2026-10-04): T-B501 a T-B507 implementadas en `feat/001-backend-phase-5` y
+  **mergeadas** en `main` con el PR fdelillo/crm#11 (fa22314). `make check` en CI en verde. Revisada
+  con Codex: el orden de locks entre el login y la confirmación de reset (`throttle → user → token`)
+  se corrigió en el mismo PR (`TestConcurrentLoginAndPasswordResetUseSameLockOrder`). Las Fases 3 y 4
+  también están en `main`. **Checkpoint verificado el 2026-10-04** en `fix/001-phase-5-followups`
+  (ver "Ajustes posteriores a la Fase 5" y el resultado más abajo): `make check` en verde y la
+  prueba independiente (a) a (h) ejecutada con el binario real contra `docker compose`.
+
+  **Ajustes posteriores a la Fase 5 (octava revisión, 2026-10-04, *Accepted*)**. Se aplican en
+  `fix/001-phase-5-followups` (creada desde `main` en fa22314), antes de la Fase 6, en este orden y
+  con `make check` en verde después de cada paso:
+
+  | Orden | Tarea | Ajuste |
+  |---|---|---|
+  | 1 | T-B503 (refactor; sin Red) | En `issueToken` (`internal/identity/token_flows.go`) se borran la variable `template` y el `if purpose == "invitation"`, y `outbox.Message.Template` recibe `purpose`. **No hay test que deba fallar**: no cambia el comportamiento. La red de seguridad ya existe; correrla **antes** de tocar el código para confirmar que está en verde. En `internal/identity/token_flows_integration_test.go`, `deliveredToken` busca el mensaje por plantilla en `TestPasswordResetLifecycle` (`password_reset`), `TestPasswordResetInvitedAndUnknown` (`invitation`, reemisión de DD-20) y `TestEmailVerificationLifecycle` (`email_verification`). Si alguno deja de encontrar su mensaje después del cambio, el refactor rompió algo. **Refactor**: nada más en esa función |
+  | 2 | T-B501 / T-B503 / T-B506 (DD-39; sin cambio de comportamiento) | El tiempo de respuesta **no** se iguala (DD-39): no se agrega piso de tiempo, ni procesamiento fuera del request, ni un test de tiempos (sería frágil y fijaría algo que la decisión no promete). Único cambio: el comentario de `RequestPasswordReset` dice qué es uniforme y qué no. Uniforme: el resultado `nil`, y el `202` sin cuerpo del handler en todos los estados (INV-13). No uniforme: el trabajo y el tiempo, que dependen del estado de la cuenta (riesgo aceptado, DD-39). **Tests**: `TestPasswordResetInvitedAndUnknown` y `TestPasswordResetEmailRateLimit` (T-B501) y `TestRecoveryHTTPContractAndUniformResponses` (T-B506) no cambian y siguen en verde. DD-39 aprobada por el usuario el 2026-10-04 |
+  | 3 | Checkpoint de la Fase 5 (**verificado 2026-10-04**, resultado abajo) | `make check` en verde y la **prueba independiente** con el binario real y `docker compose up -d` (PostgreSQL, Mailpit, MinIO): (a) registrar una empresa; (b) `POST /api/v1/auth/password-reset` con su email → `202` sin cuerpo; (c) el email con el enlace aparece en Mailpit; (d) `POST /api/v1/auth/password-reset/confirm` con el token del fragmento `#token=` y una contraseña nueva → `204`; (e) la cookie de la sesión del registro da `401` en `GET /api/v1/me`; (f) login con la contraseña nueva → `200`, con la anterior → `401`; (g) registrar otra empresa y llevar a su administrador a `invited` con `psql` en el contenedor (solo para esta prueba, respetando `users_active_complete_chk`; hasta la Fase 6 no hay endpoint de invitación) y pedir reset → llega a Mailpit un email de **invitación** nuevo y ningún enlace de reset; (h) email inexistente → el mismo `202` vacío y nada nuevo en Mailpit. El resultado se reporta en esta sección, como el checkpoint de la Fase 3, incluidos los desvíos locales (p. ej. el puerto de PostgreSQL) |
+
+  **Resultado del checkpoint de la Fase 5 (2026-10-04)**: pasos 1 y 2 aplicados (el paso 1 con
+  `TestPasswordResetLifecycle`, `TestPasswordResetInvitedAndUnknown` y `TestEmailVerificationLifecycle`
+  en verde antes de tocar el código) y `make check` en verde (lint, `go test -race` y
+  `go test -race -tags=integration` de todos los paquetes). Prueba independiente con el binario
+  real (`crm migrate up` y `crm serve`) contra `docker compose up -d --wait` (PostgreSQL, Mailpit,
+  MinIO): (a) alta de empresa → `201` con cookie de sesión; (b) `POST /auth/password-reset` →
+  `202`, `Content-Length: 0`; (c) en Mailpit, el email "Recuperá tu contraseña" con
+  `/reset-password#token=...`; (d) confirm con ese token y contraseña nueva → `204`; (e) la
+  cookie previa en `GET /me` → `401` (antes del reset daba `200`); (f) login con la nueva → `200`,
+  con la anterior → `401`; (g) segunda empresa, su administrador llevado a `invited` con
+  `UPDATE app.users SET status='invited', password_hash=NULL` como `postgres` (cumple
+  `users_active_complete_chk`; sin choque con CHECK ni RLS) y reset → `202` vacío y un único
+  email nuevo, "Invitación a tu empresa" con `/accept-invitation#token=...`, ningún enlace de
+  reset; (h) email inexistente → el mismo `202` vacío, nada nuevo en Mailpit. Desvíos locales:
+  el puerto 5432 del host estaba ocupado por otro contenedor, así que PostgreSQL se publicó en
+  `127.0.0.1:15432` con un archivo de override fuera del repo (`!override` de `ports`), sin tocar
+  `compose.yaml`; `APP_BASE_URL=https://localhost:8080` sin TLS (modo "backend only" de
+  `.env.example`: HTTP plano, sin certificados); no se usó `.env`. Al terminar se bajaron los contenedores y volúmenes con `down -v`.
 
 ### Convenciones de esta sección
 
@@ -1247,6 +1288,9 @@ de invitación nuevo.
   | Usuario `disabled` o email inexistente | no se crea nada |
   | En todos los casos anteriores | el servicio devuelve `nil` (mismo resultado, INV-13) |
   | 4.º pedido en una hora para el mismo email | se ignora (rate limit por email) sin cambiar la respuesta |
+
+  Fuera del alcance (octava revisión, DD-39): el tiempo de respuesta. No se escribe un test de
+  tiempos: la decisión no promete igualarlo.
 - **Green**: pasa la tabla.
 
 **T-B502 [T] — Confirmación de reset** · US-2.3, INV-09, INV-11
@@ -1280,11 +1324,11 @@ reemisión reutiliza la misma función interna que la reinvitación del Administ
 - **Red**: `POST /auth/password-reset` → `202` sin cuerpo, con respuestas **idénticas** (status,
   headers relevantes y cuerpo vacío) para email de un usuario activo, invitado, desactivado e
   inexistente; `confirm` → `204` / `400 token_invalid` / `422`; `email-verification/confirm` →
-  `204` / `400`; `resend` → `202` / `401` sin cookie. Todos validados contra el contrato.
+  `204` / `400`; `resend` → `202` / `401` sin cookie. Todos validados contra el contrato. "Idénticas" no incluye el tiempo de respuesta (DD-39, octava revisión).
 
 **T-B507 — Implementar los handlers**.
 
-**Checkpoint Fase 5**: `make check` en verde + prueba independiente contra `docker compose`.
+**Checkpoint Fase 5**: `make check` en verde + prueba independiente contra `docker compose`: **verificado el 2026-10-04** (pasos (a) a (h) en verde con el binario real; detalle y desvíos locales en "Estado de la implementación", "Ajustes posteriores a la Fase 5").
 
 ---
 
@@ -1680,7 +1724,7 @@ de la fase y se agrega a plan §11.1 en el mismo cambio (matriz §16).
 | SC-002 0 accesos cruzados | T-B110, T-B801..T-B804 |
 | P-2 Verificación no bloqueante | T-B309, T-B504 |
 | P-3 Reactivación | T-B604, T-B605, T-B606, T-B801 |
-| P-4 `email_already_registered` + login/reset no enumerables | T-B201, T-B305, T-B402, T-B404, T-B501, T-B506, T-B801 |
+| P-4 `email_already_registered` + login/reset no enumerables (tiempo del reset fuera, DD-39) | T-B201, T-B305, T-B402, T-B404, T-B501, T-B506, T-B801 |
 | P-5 Sesión 24 h / 7 días | T-B002, T-B305, T-B307, T-B402, T-B404 |
 | H-1 Mux raíz (DD-22, INV-22) | T-B004, T-B005, T-B011, T-B801; T-F007, T-F008 |
 | H-2 Caché del logo (DD-23, INV-21) | T-B703, T-B705, T-B801 |
