@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"net/mail"
 	"strings"
 	"unicode/utf8"
 
@@ -29,8 +28,7 @@ func RegisterAuthRoutes(r chi.Router, users *identity.Service, companies *tenant
 		}
 		fields := map[string]string{}
 		email := strings.ToLower(strings.TrimSpace(input.Email))
-		address, parseErr := mail.ParseAddress(email)
-		if email == "" || len(email) > 254 || parseErr != nil || address.Address != email || strings.ContainsRune(email, '\x00') {
+		if !identity.ValidEmail(email) {
 			fields["email"] = "invalid_format"
 		}
 		if input.Password == "" || utf8.RuneCountInString(input.Password) > 128 {

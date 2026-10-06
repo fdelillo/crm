@@ -172,7 +172,7 @@ func TestTenantLockRegressionE(t *testing.T) {
 					if err != nil {
 						return err
 					}
-					return s.issueToken(ctx, tx, c.ID, c.UserID, email, "invitation", 7*24*time.Hour, nil)
+					return s.issueToken(ctx, tx, c.ID, c.UserID, email, "invitation", 7*24*time.Hour, nil, nil)
 				}))
 			}
 			done := make(chan error, 1)
@@ -247,7 +247,7 @@ func TestTenantLockRegressionE(t *testing.T) {
 					if open != 1 || revoked != 1 {
 						t.Errorf("tokens open=%d revoked=%d", open, revoked)
 					}
-					err = tx.QueryRow(ctx, `SELECT payload->>'role' FROM app.outbox_messages WHERE tenant_id=$1 AND recipient=$2 AND template='invitation' AND payload->>'role'='operator'`, c.ID, email).Scan(&role)
+					err = tx.QueryRow(ctx, `SELECT m.payload->>'role' FROM app.outbox_messages m JOIN app.user_tokens tok ON tok.tenant_id=m.tenant_id AND tok.xmin=m.xmin WHERE m.tenant_id=$1 AND m.recipient=$2 AND m.template='invitation' AND tok.user_id=$3 AND tok.purpose='invitation' AND tok.used_at IS NULL AND tok.revoked_at IS NULL`, c.ID, email, c.UserID).Scan(&role)
 					if role != "operator" {
 						t.Errorf("mail role=%s", role)
 					}

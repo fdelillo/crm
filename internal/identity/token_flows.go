@@ -57,12 +57,12 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email string, meta R
 		}
 		now := s.clock.Now()
 		if user.Status == "invited" {
-			return s.reissueInvitation(ctx, tx, route.TenantID, route.ID, user.Email, user.Role, now, "password_reset_request", meta)
+			return s.reissueInvitation(ctx, tx, route.TenantID, route.ID, user.Email, user.Role, now, "password_reset_request", meta, nil)
 		}
 		if user.Status != "active" {
 			return nil
 		}
-		if err := s.issueToken(ctx, tx, route.TenantID, route.ID, user.Email, "password_reset", time.Hour, nil); err != nil {
+		if err := s.issueToken(ctx, tx, route.TenantID, route.ID, user.Email, "password_reset", time.Hour, nil, nil); err != nil {
 			return err
 		}
 		return s.audit.Record(ctx, tx, audit.Entry{TenantID: route.TenantID, Action: "auth.password_reset_requested", TargetType: "user", TargetID: &route.ID, IP: meta.IP, UserAgent: meta.UserAgent})
@@ -70,24 +70,20 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email string, meta R
 }
 
 // reissueInvitation is shared by self-service recovery and future administrator reinvitation.
-func (s *Service) reissueInvitation(ctx context.Context, tx db.Tx, tenantID, userID uuid.UUID, email, role string, now time.Time, trigger string, meta RequestMeta, actor ...uuid.UUID) error {
+func (s *Service) reissueInvitation(ctx context.Context, tx db.Tx, tenantID, userID uuid.UUID, email, role string, now time.Time, trigger string, meta RequestMeta, actor *uuid.UUID) error {
 	companyName, err := store.New(tx).GetTokenFlowTenantName(ctx, tenantID)
 	if err != nil {
 		return fmt.Errorf("identity: invitation company: %w", db.MapError(err))
 	}
 	if err := s.issueToken(ctx, tx, tenantID, userID, email, "invitation", 7*24*time.Hour,
-		map[string]string{"company_name": companyName, "role": role}, actor...); err != nil {
+		map[string]string{"company_name": companyName, "role": role}, actor); err != nil {
 		return err
 	}
-	var actorID *uuid.UUID
-	if len(actor) > 0 {
-		actorID = &actor[0]
-	}
-	return s.audit.Record(ctx, tx, audit.Entry{TenantID: tenantID, ActorUserID: actorID, Action: "user.invitation_reissued", TargetType: "user", TargetID: &userID,
+	return s.audit.Record(ctx, tx, audit.Entry{TenantID: tenantID, ActorUserID: actor, Action: "user.invitation_reissued", TargetType: "user", TargetID: &userID,
 		Data: map[string]any{"role": role, "trigger": trigger}, IP: meta.IP, UserAgent: meta.UserAgent})
 }
 
-func (s *Service) issueToken(ctx context.Context, tx db.Tx, tenantID, userID uuid.UUID, email, purpose string, lifetime time.Duration, extra map[string]string, actor ...uuid.UUID) error {
+func (s *Service) issueToken(ctx context.Context, tx db.Tx, tenantID, userID uuid.UUID, email, purpose string, lifetime time.Duration, extra map[string]string, actor *uuid.UUID) error {
 	raw, hash, err := securetoken.New()
 	if err != nil {
 		return fmt.Errorf("identity: generate token: %w", err)
@@ -98,8 +94,8 @@ func (s *Service) issueToken(ctx context.Context, tx db.Tx, tenantID, userID uui
 		return fmt.Errorf("identity: revoke prior token: %w", db.MapError(err))
 	}
 	var creator uuid.NullUUID
-	if len(actor) > 0 {
-		creator = uuid.NullUUID{UUID: actor[0], Valid: true}
+	if actor != nil {
+		creator = uuid.NullUUID{UUID: *actor, Valid: true}
 	}
 	if err := q.InsertUserToken(ctx, store.InsertUserTokenParams{CreatedByUserID: creator, TenantID: tenantID, UserID: userID, Purpose: purpose,
 		TokenHash: hash, CreatedAt: now, ExpiresAt: now.Add(lifetime)}); err != nil {
@@ -271,6 +267,6 @@ func (s *Service) ResendEmailVerification(ctx context.Context, p authz.Principal
 		if user.Status != "active" || user.EmailVerifiedAt != nil {
 			return nil
 		}
-		return s.issueToken(ctx, tx, p.TenantID, p.UserID, user.Email, "email_verification", 48*time.Hour, nil)
+		return s.issueToken(ctx, tx, p.TenantID, p.UserID, user.Email, "email_verification", 48*time.Hour, nil, nil)
 	})
 }

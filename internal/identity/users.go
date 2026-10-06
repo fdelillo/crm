@@ -3,7 +3,6 @@ package identity
 import (
 	"context"
 	"errors"
-	"net/mail"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -44,9 +43,8 @@ func (e *UserValidationError) Error() string { return "identity: invalid user in
 // invitee before rechecking its state (acceptance does not take the tenant lock).
 func (s *Service) Invite(ctx context.Context, p authz.Principal, email string, role authz.Role, meta RequestMeta) (User, bool, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
-	address, parseErr := mail.ParseAddress(email)
 	fields := map[string]string{}
-	if parseErr != nil || address.Address != email || !strings.Contains(email, "@") || strings.ContainsRune(email, '\x00') {
+	if !ValidEmail(email) {
 		fields["email"] = "invalid_format"
 	}
 	if !validUserRole(role) {
@@ -75,7 +73,7 @@ func (s *Service) Invite(ctx context.Context, p authz.Principal, email string, r
 			if err != nil {
 				return db.MapError(err)
 			}
-			if err := s.issueToken(ctx, tx, p.TenantID, id, email, "invitation", 7*24*time.Hour, map[string]string{"company_name": company, "role": string(role)}, p.UserID); err != nil {
+			if err := s.issueToken(ctx, tx, p.TenantID, id, email, "invitation", 7*24*time.Hour, map[string]string{"company_name": company, "role": string(role)}, &p.UserID); err != nil {
 				return err
 			}
 			if err := s.recordUser(ctx, tx, p, id, "user.invited", map[string]any{"role": string(role)}, meta); err != nil {
@@ -95,7 +93,7 @@ func (s *Service) Invite(ctx context.Context, p authz.Principal, email string, r
 			if err := s.setUserRole(ctx, tx, p, user, role, meta); err != nil {
 				return err
 			}
-			if err := s.reissueInvitation(ctx, tx, p.TenantID, id, email, string(role), now, "admin", meta, p.UserID); err != nil {
+			if err := s.reissueInvitation(ctx, tx, p.TenantID, id, email, string(role), now, "admin", meta, &p.UserID); err != nil {
 				return err
 			}
 			reissued = true
@@ -235,7 +233,7 @@ func (s *Service) Reactivate(ctx context.Context, p authz.Principal, userID uuid
 			return db.MapError(err)
 		}
 		if next == "invited" {
-			if err := s.reissueInvitation(ctx, tx, p.TenantID, userID, user.Email, user.Role, now, "reactivation", meta, p.UserID); err != nil {
+			if err := s.reissueInvitation(ctx, tx, p.TenantID, userID, user.Email, user.Role, now, "reactivation", meta, &p.UserID); err != nil {
 				return err
 			}
 		}
@@ -297,7 +295,8 @@ func (s *Service) withInvitation(ctx context.Context, raw string, fn func(contex
 		if err != nil {
 			return db.MapError(err)
 		}
-		if token.UserID != id || token.Purpose != "invitation" || token.UsedAt != nil || token.RevokedAt != nil || !s.clock.Now().Before(token.ExpiresAt) || user.Status != "invited" {
+		_, transitionErr := nextUserStatus(user.Status, acceptInvitation, false)
+		if token.UserID != id || token.Purpose != "invitation" || token.UsedAt != nil || token.RevokedAt != nil || !s.clock.Now().Before(token.ExpiresAt) || transitionErr != nil {
 			return ErrTokenInvalid
 		}
 		return fn(ctx, tx, route, id, user, token)
