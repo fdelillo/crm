@@ -13,6 +13,7 @@ import (
 	"github.com/fdelillo/crm/internal/platform/db"
 	"github.com/fdelillo/crm/internal/tenant/store"
 	"github.com/fdelillo/crm/internal/testsupport/pgtest"
+	"github.com/jackc/pgx/v5"
 )
 
 // Mechanism E holds the tenant until every call waits directly or transitively.
@@ -21,6 +22,17 @@ func runTenantQueue(t *testing.T, runner db.TxRunner, p authz.Principal, ordered
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
+	// T_admin plus three upload transactions exhaust a four-connection pool.
+	// Observe through a separate crm_app connection, not a privileged role.
+	monitor, connectErr := pgx.Connect(ctx, pgtest.AppURL(t))
+	if connectErr != nil {
+		t.Fatal(connectErr)
+	}
+	defer func() {
+		closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		_ = monitor.Close(closeCtx)
+	}()
 	done := make(chan error, len(calls))
 	var outcomes []error
 	release := errors.New("test: release tenant lock")
@@ -46,7 +58,7 @@ func runTenantQueue(t *testing.T, runner db.TxRunner, p authz.Principal, ordered
 					return errors.New("INV-34/DD-40: call returned before tenant lock release")
 				case <-ticker.C:
 					var blocked int
-					if err := pgtest.AppPool(t).QueryRow(ctx, `WITH RECURSIVE waiting(pid) AS (
+					if err := monitor.QueryRow(ctx, `WITH RECURSIVE waiting(pid) AS (
      SELECT pid FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))
      UNION SELECT a.pid FROM pg_stat_activity a JOIN waiting w ON w.pid = ANY(pg_blocking_pids(a.pid))
     ) SELECT count(*) FROM waiting`, pid).Scan(&blocked); err != nil {
