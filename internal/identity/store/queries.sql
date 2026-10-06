@@ -56,8 +56,8 @@ WHERE tenant_id = @tenant_id AND user_id = @user_id AND purpose = @purpose
   AND used_at IS NULL AND revoked_at IS NULL;
 
 -- name: InsertUserToken :exec
-INSERT INTO app.user_tokens (tenant_id, user_id, purpose, token_hash, created_at, expires_at)
-VALUES (@tenant_id, @user_id, @purpose, @token_hash, @created_at, @expires_at);
+INSERT INTO app.user_tokens (tenant_id, user_id, purpose, token_hash, created_at, expires_at, created_by_user_id)
+VALUES (@tenant_id, @user_id, @purpose, @token_hash, @created_at, @expires_at, sqlc.narg(created_by_user_id));
 
 -- name: UseUserToken :execrows
 UPDATE app.user_tokens SET used_at = @now

@@ -72,6 +72,9 @@ func lockFixture(t *testing.T) (*Service, db.TxRunner, fixture.Company, string, 
 		if _, err := tx.Exec(ctx, `UPDATE app.sessions SET revoked_at=$3, revoked_reason='logout' WHERE tenant_id=$1 AND user_id=$2`, c.ID, c.UserID, s.clock.Now()); err != nil {
 			return err
 		}
+		if _, err := tx.Exec(ctx, `UPDATE app.user_tokens SET purpose='email_verification', revoked_at=$3 WHERE tenant_id=$1 AND id=$2`, c.ID, c.Rows["user_tokens"], s.clock.Now()); err != nil {
+			return err
+		}
 		_, err := tx.Exec(ctx, `UPDATE app.users SET role='operator' WHERE tenant_id=$1 AND id=$2`, c.ID, c.UserID)
 		return err
 	}); err != nil {
@@ -104,7 +107,7 @@ func awaitLock(t *testing.T, ctx context.Context, pid int32, blockedBy bool) {
 }
 func adminMutation(ctx context.Context, tx db.Tx, c fixture.Company, role bool, now time.Time) error {
 	q := store.New(tx)
-	if _, err := q.GetManagedUserForUpdate(ctx, store.GetManagedUserForUpdateParams{TenantID: c.ID, UserID: c.UserID}); err != nil {
+	if _, err := q.LockManagedUser(ctx, store.LockManagedUserParams{TenantID: c.ID, UserID: c.UserID}); err != nil {
 		return err
 	}
 	if role {
@@ -244,7 +247,7 @@ func TestTenantLockRegressionE(t *testing.T) {
 					if open != 1 || revoked != 1 {
 						t.Errorf("tokens open=%d revoked=%d", open, revoked)
 					}
-					err = tx.QueryRow(ctx, `SELECT payload->>'role' FROM app.outbox_messages WHERE tenant_id=$1 AND recipient=$2 AND template='invitation' ORDER BY created_at DESC,id DESC LIMIT 1`, c.ID, email).Scan(&role)
+					err = tx.QueryRow(ctx, `SELECT payload->>'role' FROM app.outbox_messages WHERE tenant_id=$1 AND recipient=$2 AND template='invitation' AND payload->>'role'='operator'`, c.ID, email).Scan(&role)
 					if role != "operator" {
 						t.Errorf("mail role=%s", role)
 					}

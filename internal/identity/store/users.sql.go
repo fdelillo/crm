@@ -111,43 +111,6 @@ func (q *Queries) GetManagedUser(ctx context.Context, arg GetManagedUserParams) 
 	return i, err
 }
 
-const getManagedUserForUpdate = `-- name: GetManagedUserForUpdate :one
-SELECT id, email, name, role, status, password_hash, email_verified_at, created_at
-FROM app.users WHERE tenant_id = $1 AND id = $2 FOR UPDATE
-`
-
-type GetManagedUserForUpdateParams struct {
-	TenantID uuid.UUID
-	UserID   uuid.UUID
-}
-
-type GetManagedUserForUpdateRow struct {
-	ID              uuid.UUID
-	Email           string
-	Name            pgtype.Text
-	Role            string
-	Status          string
-	PasswordHash    pgtype.Text
-	EmailVerifiedAt *time.Time
-	CreatedAt       time.Time
-}
-
-func (q *Queries) GetManagedUserForUpdate(ctx context.Context, arg GetManagedUserForUpdateParams) (GetManagedUserForUpdateRow, error) {
-	row := q.db.QueryRow(ctx, getManagedUserForUpdate, arg.TenantID, arg.UserID)
-	var i GetManagedUserForUpdateRow
-	err := row.Scan(
-		&i.ID,
-		&i.Email,
-		&i.Name,
-		&i.Role,
-		&i.Status,
-		&i.PasswordHash,
-		&i.EmailVerifiedAt,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
 const insertInvitedUser = `-- name: InsertInvitedUser :one
 INSERT INTO app.users (tenant_id, email, role, status, created_at, updated_at, status_changed_at)
 VALUES ($1, $2, $3, 'invited', $4, $4, $4) RETURNING id
@@ -221,8 +184,45 @@ func (q *Queries) ListManagedUsers(ctx context.Context, tenantID uuid.UUID) ([]L
 	return items, nil
 }
 
+const lockManagedUser = `-- name: LockManagedUser :one
+SELECT id, email, name, role, status, password_hash, email_verified_at, created_at
+FROM app.users WHERE tenant_id = $1 AND id = $2 FOR NO KEY UPDATE
+`
+
+type LockManagedUserParams struct {
+	TenantID uuid.UUID
+	UserID   uuid.UUID
+}
+
+type LockManagedUserRow struct {
+	ID              uuid.UUID
+	Email           string
+	Name            pgtype.Text
+	Role            string
+	Status          string
+	PasswordHash    pgtype.Text
+	EmailVerifiedAt *time.Time
+	CreatedAt       time.Time
+}
+
+func (q *Queries) LockManagedUser(ctx context.Context, arg LockManagedUserParams) (LockManagedUserRow, error) {
+	row := q.db.QueryRow(ctx, lockManagedUser, arg.TenantID, arg.UserID)
+	var i LockManagedUserRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Name,
+		&i.Role,
+		&i.Status,
+		&i.PasswordHash,
+		&i.EmailVerifiedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const lockUsersTenant = `-- name: LockUsersTenant :one
-SELECT id FROM app.tenants WHERE id = $1 FOR UPDATE
+SELECT id FROM app.tenants WHERE id = $1 FOR NO KEY UPDATE
 `
 
 func (q *Queries) LockUsersTenant(ctx context.Context, tenantID uuid.UUID) (uuid.UUID, error) {

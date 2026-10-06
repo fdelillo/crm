@@ -1,9 +1,9 @@
 -- name: LockUsersTenant :one
-SELECT id FROM app.tenants WHERE id = @tenant_id FOR UPDATE;
+SELECT id FROM app.tenants WHERE id = @tenant_id FOR NO KEY UPDATE;
 
--- name: GetManagedUserForUpdate :one
+-- name: LockManagedUser :one
 SELECT id, email, name, role, status, password_hash, email_verified_at, created_at
-FROM app.users WHERE tenant_id = @tenant_id AND id = @user_id FOR UPDATE;
+FROM app.users WHERE tenant_id = @tenant_id AND id = @user_id FOR NO KEY UPDATE;
 
 -- name: FindInvitedEmail :one
 SELECT id, status FROM app.users WHERE tenant_id = @tenant_id AND email = @email;
