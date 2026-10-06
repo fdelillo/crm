@@ -52,6 +52,7 @@ precisado, R-7) y código muerto en `issueToken`. Tareas afectadas: T-B501, T-B5
 ajustes antes de la Fase 6). La sección Frontend no cambia: el contrato no cambia.
 **Corrección 2026-10-05** (revisión del PR #12; plan §18, al final de la octava tanda): DD-9, DD-39 y R-7 corregidos en su descripción (cada cupo es ráfaga + reposición, no un máximo por hora; el pedido de reset tiene tres caminos, no dos). La decisión de DD-39 no cambia; T-B501 precisa el caso del 4.º pedido. El cupo por IP compartido entre pedido y confirmación (reset) y entre `confirm` y `resend` (verificación) queda registrado como deliberado. Contrato **v0.4.2**: solo el texto del rate limit de signup (*patch*; el frontend no cambia). Sin cambio de código.
 **Novena revisión 2026-10-05** (*Accepted*, aprobada por el usuario el 2026-10-05): locks de la empresa y del usuario en la Fase 6 (plan §18, novena tanda). La query de INV-10 y el lock del usuario pasan de `FOR UPDATE` a `FOR NO KEY UPDATE`, porque `FOR UPDATE` choca con el `FOR KEY SHARE` con que PostgreSQL verifica las FK y producía deadlocks con el reset, el login y el cierre de sesión (el de la empresa, confirmado en CI; DD-40, INV-10). La sesión de un login concurrente con la desactivación queda como riesgo aceptado (DD-41, INV-11). También: regresión que reemplaza al test diagnóstico (T-B604), fila de reinvitaciones concurrentes de T-B601 corregida, orden de escritura de la fila de `tenants` en la Fase 7 (T-B704) y caso de limpieza de T-B606 diferido a T-B901. Tareas afectadas: T-B503 (Fase 5, ajuste de `GetTokenFlowUser` dentro del PR de la Fase 6), T-B601, T-B604, T-B605, T-B606 (Fase 6, en curso), T-B704 (Fase 7), T-B901 (Fase 9). La sección Frontend no cambia: el contrato no cambia.
+**Décima revisión 2026-10-06** (*Accepted*, aprobada por el usuario el 2026-10-06): revisión del PR fdelillo/crm#15 (Fase 7; plan §18, décima tanda): `COMMIT` de resultado incierto al subir el logo y lectura con el objeto ausente (DD-42, INV-17 precisada), `LockTenant` en `PATCH /tenant` y en el logo con sus tests de concurrencia (DD-40 corregida, INV-34 nueva), semántica de `PATCH /tenant` y `Local` en el registro (DD-43, DD-27), defensas sin test de la subida y bucket de desarrollo. Tareas afectadas: T-B303 (Fase 3), T-B604 (Fase 6, regla R0), T-B701 a T-B706 y T-B707 nueva (Fase 7). Contrato **v0.4.3** (*patch*: solo descripciones). La sección Frontend no cambia.
 
 ---
 
@@ -190,6 +191,18 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
   **Prueba independiente**: binario real, PostgreSQL 18.6 y MinIO/Mailpit de compose, con curl en los 14 pasos: signup 201; PNG 200; CUIT 200 normalizado; invitación 201 y correo recibido; aceptación del operador 201; datos y logo 200; PATCH del operador 403; ETag vigente 304 sin cuerpo; reemplazo 200; ETag viejo 200 con bytes nuevos y otro ETag; archivo de 2 097 153 bytes 413; DELETE 204; GET con ETag viejo tras DELETE 404, nunca 304. Caché y nosniff verificados. Binario detenido y `down -v` completado, incluidos los dos volúmenes. Desvíos locales: proyecto compose `crm-phase7`, PostgreSQL 15432 por conflicto con 5432 (override fuera del repo); HTTP backend 18080 con APP_BASE_URL HTTPS y cookie explícita según DD-24; Ryuk deshabilitado solo local por fallos de puertos de Docker 29.7.2; cachés de Go/lint bajo /tmp por el sandbox. CI usa make check sin estos overrides.
 
   **Alcance**: se agregó la opción de storage al constructor de tenant, las variables S3 en config y el cableado de serve; el comentario de archivos de .env.example se actualizó. El control estático de locks de la Fase 6 se extendió con una excepción precisa para la query nueva. No cambiaron los cuerpos de registro/login/logout/reset/verificación ni gestión de usuarios; sus suites siguen en verde. Sin dependencias nuevas, migraciones ni cambios a plan.md o al contrato; esta es la única entrada modificada en tasks.md.
+
+- **Décima revisión (2026-10-06, *Accepted*: aprobada por el usuario)**: revisión del PR fdelillo/crm#15 (Fase 7, HEAD `c4650c9`; plan §18, décima tanda). Se aplica en `feat/001-backend-phase-7`, en este orden y con `make check` en verde después de cada paso. Los casos marcados "Décima revisión" se escriben primero. Cada uno dice si es Red (falla hoy) o si caracteriza código que ya está bien y se protege con una **mutación**: se aplica, el caso tiene que fallar, y se restaura (el resultado se reporta como en la Fase 6).
+
+  | Orden | Tarea | Ajuste |
+  |---|---|---|
+  | 1 | T-B604 (Fase 6, regla R0) | R0 (a) admite `LockTenant` por nombre, además de la query de INV-10, las dos en `FOR NO KEY UPDATE`. Si R0 (a) pasa hoy con `LockTenant` en `internal/tenant/store`, primero averiguar por qué (debería recorrer `internal/*/store/*.sql`) |
+  | 2 | T-B303 (Fase 3) | `timezone: "Local"` en el registro → default y `signup_timezone_defaulted` (Red: hoy se guarda `Local`). Usa la misma función de validación que el `PATCH` (DD-43) |
+  | 3 | T-B701, T-B702, T-B705 (`PATCH`) | DD-43: `Local` y `""` (T-B701); texto vacío → `NULL`, `PATCH` sin cambios y `fields` solo con cambios reales (Red); `null` en `name`/`timezone` → `400` (Red); dos `PATCH` concurrentes (mutación: quitar `LockTenant` de `Update`) |
+  | 4 | T-B703, T-B704 (logo, servicio) | DD-42: `COMMIT` confirmado con error, `COMMIT` que no ocurrió, relectura que falla y `COMMIT` en vuelo (Red); `GetLogo` con el objeto ausente, con un reemplazo entre la lectura y el `Get`, y `ErrLogoNotFound` en lugar de `db.ErrNotFound` (Red); subidas concurrentes y subida con baja (mutación: quitar `LockTenant` de `SetLogo` y de `RemoveLogo`); limpieza con el contexto cancelado (mutación: el contexto del request en el `Delete`); quitar el logo cuando no hay, sin auditoría (Red si hoy audita) |
+  | 5 | T-B705, T-B706 (HTTP) | Epílogo de más de `LogoMaxBodyBytes` (mutación: quitar la lectura del resto del cuerpo); `GET /tenant/logo` con el storage caído → `503` (caracteriza); corte del cliente durante la descarga → `INFO` y `499` (Red: hoy `WARN`) |
+  | 6 | T-B707 (nueva) | Bucket de desarrollo con el *healthcheck* de `minio` (plan §10.5.1) |
+  | 7 | Checkpoint de la Fase 7 | `make check` en verde y la prueba independiente con `docker compose down -v && docker compose up -d --wait`, sin crear el bucket a mano |
 
 ### Convenciones de esta sección
 
@@ -1143,7 +1156,7 @@ error de compilación del catálogo, no de runtime).
   | Plantilla inexistente | error de validación `unknown_template`; nada creado |
   | `Seeder` falso que falla | error; nada creado (incluido el rol) |
   | `timezone` `America/Argentina/Cordoba` / `Asia/Kathmandu` | se guarda tal cual (la base IANA embebida las conoce) |
-  | `timezone` ausente, vacía, `Marte/Olympus` o de 64 caracteres inventados | la empresa se crea con `America/Argentina/Buenos_Aires`; log `event=signup_timezone_defaulted`; **sin** error (DD-27) |
+  | `timezone` ausente, vacía, `Marte/Olympus`, de 64 caracteres inventados o `Local` (décima revisión, DD-27 y DD-43: `time.LoadLocation` acepta `Local` pero no es un nombre IANA; hoy se guarda `Local`) | la empresa se crea con `America/Argentina/Buenos_Aires`; log `event=signup_timezone_defaulted`; **sin** error (DD-27) |
   | `base_currency` fuera de ARS/USD | validación `invalid_value` |
   | Contraseña de 9 caracteres o igual al email | validación; **no** se calcula hash ni se abre transacción |
   | (Tercera revisión, DD-33) **10 registros concurrentes** con emails distintos | los 10 tienen éxito (ninguno `ErrUnavailable`): 10 empresas y 10 roles |
@@ -1453,7 +1466,7 @@ vuelve a entrar con su contraseña.
 
   | Caso | Flujo real | Mecanismo y `T_admin` | Esperado |
   |---|---|---|---|
-  | R0 | — (regla estática, unitario: junto a la regla de T-B112 o en `internal/identity/store`) | — | En las queries de `internal/*/store/*.sql`, una cláusula de lock sin `OF` en un `JOIN` cuenta para todas sus tablas. **(a)** Ninguna query bloquea filas de `app.tenants` salvo la de INV-10, que usa exactamente `FOR NO KEY UPDATE`. **(b)** Toda query que bloquea filas de `app.users` usa exactamente `FOR NO KEY UPDATE` (ni `FOR UPDATE`, ni `FOR SHARE`, ni `FOR KEY SHARE`) |
+  | R0 | — (regla estática, unitario: junto a la regla de T-B112 o en `internal/identity/store`) | — | En las queries de `internal/*/store/*.sql`, una cláusula de lock sin `OF` en un `JOIN` cuenta para todas sus tablas. **(a)** Las únicas queries que bloquean filas de `app.tenants` son la de INV-10 (`LockUsersTenant`) y, desde la Fase 7, `LockTenant` (`internal/tenant/store`; INV-34, décima revisión), y las dos usan exactamente `FOR NO KEY UPDATE`: cualquier otra, o una de esas con otro modo, hace fallar la regla. **(b)** Toda query que bloquea filas de `app.users` usa exactamente `FOR NO KEY UPDATE` (ni `FOR UPDATE`, ni `FOR SHARE`, ni `FOR KEY SHARE`) |
   | R1 | `RequestPasswordReset` de un operador `active` | E; desactivar a ese usuario | el pedido devuelve `nil` sin que ningún backend quede bloqueado por `T_admin`; después `T_admin` termina con `nil`. Estado final: usuario `disabled`; el token `password_reset` que creó el pedido, revocado; un mensaje `password_reset` encolado; una auditoría `auth.password_reset_requested` |
   | R2 | `RequestPasswordReset` de un invitado `operator` (reemite la invitación, DD-20) | E; cambiar su rol a `admin` | el pedido devuelve `nil` sin bloqueo; `T_admin` termina con `nil`. Estado final: `invited` con `role = admin`; **una** invitación abierta (la reemitida; la anterior, revocada), que el cambio de rol no toca (T-B603); un mensaje `invitation` encolado con el rol que leyó el pedido (`operator`; `Preview` muestra el actual, T-B602); una auditoría `user.invitation_reissued {role: operator, trigger: password_reset_request}` |
   | R3 | `ConfirmPasswordReset` de un usuario `active` con una sesión abierta | U; desactivar a ese usuario | las dos terminan con `nil`, ninguna con `40P01`. Estado final: contraseña nueva (`Verify` la acepta); token usado; la sesión previa revocada con `revoked_reason = password_reset` (el reset terminó primero; `RevokeDisabledUserSessions` de `T_admin` afecta 0 filas); usuario `disabled`; sin fila de `login_throttles` para ese email; una auditoría `auth.password_reset_completed` |
@@ -1531,17 +1544,27 @@ con `curl`, un archivo de 2 097 153 bytes recibe `413`.
   | CUIT de 10 dígitos o con letras | `invalid_format` |
   | Casos del módulo 11 donde el resto da 10 o 11 | según la regla oficial (tabla de casos en el test, con fuente citada) |
   | `timezone` `America/Argentina/Cordoba` / `Marte/Olympus` | ok / `invalid_timezone` |
+  | **Décima revisión** (DD-43): `timezone` `Local` o `""` (`time.LoadLocation` los acepta: `Local` es la zona del servidor y `""` es UTC) | `invalid_timezone`: no son nombres IANA. La misma función la usa el registro (T-B303) |
   | `name` vacío | `required` |
 - **Green**: pasa la tabla.
 
-**T-B702 [T] — Actualización de datos** · US-4, FR-008, DD-27
-- **Red** (integración): `PATCH` parcial solo cambia los campos presentes; `null` borra un campo
-  opcional; `updated_at` avanza; auditoría `tenant.updated` con la **lista de nombres** de campos
-  (no los valores); `base_currency` en el payload → `400 malformed_request` (campo desconocido);
-  `timezone: "Marte/Olympus"` → validación `invalid_timezone` (acá **sí** es error, a diferencia
-  del registro).
+**T-B702 [T] — Actualización de datos** · US-4, FR-008, DD-27, DD-40, DD-43, INV-34
+- **Red** (integración):
 
-**T-B703 [T] — Logo (servicio)** · US-4, DD-11, DD-23, DD-31, INV-17, INV-24, H-2, H-11
+  | Caso | Esperado |
+  |---|---|
+  | `PATCH` parcial | solo cambian los campos presentes; `updated_at` avanza; auditoría `tenant.updated` con la **lista de nombres** de los campos cuyo valor cambió (no los valores), en el orden de columnas de `data-model.md` §2.1 |
+  | `null` en un campo opcional | lo borra (`NULL`) |
+  | `base_currency` en el payload | `400 malformed_request` (campo desconocido) |
+  | `timezone: "Marte/Olympus"` | validación `invalid_timezone` (acá **sí** es error, a diferencia del registro) |
+  | **Décima revisión** (DD-43): `timezone: "Local"` | `invalid_timezone`; sin cambios ni auditoría |
+  | **Décima revisión** (DD-43; Red): `legal_name`, `tax_id`, `address`, `phone` o `email` con `""` o solo espacios | se guarda `NULL`, igual que con `null` (nunca una cadena vacía); `tax_id: ""` no da `422` |
+  | **Décima revisión** (DD-43; Red): `PATCH` cuyos valores, ya normalizados, son iguales a los guardados (p. ej. el mismo CUIT escrito con guiones) | ningún `UPDATE`: `updated_at` igual, **ninguna** auditoría; devuelve el `Tenant` vigente |
+  | **Décima revisión** (DD-43; Red): `PATCH` con un campo igual al guardado y otro distinto | `fields` lista solo el distinto |
+  | **Décima revisión, concurrencia** (INV-34, DD-40): dos `PATCH` en paralelo de la misma empresa, uno con `phone` y otro con `address`. Mecanismo E de T-B604: `T_admin` retiene la fila con `LockTenant` (o con la query de INV-10: mismo modo); el test espera (sondeo de `pg_blocking_pids` cada 10 ms, contexto de 20 s) a que haya **dos** backends bloqueados por `T_admin` de forma directa o transitiva (aclaración de la Fase 6) y hace `ROLLBACK`. Corre una vez | los dos tienen éxito y **los dos** valores quedan guardados; dos auditorías `tenant.updated` (`[phone]` y `[address]`). Sin `LockTenant`, o con la lectura antes del lock, los dos leen la fila vieja, el `UPDATE` de cada uno espera a `T_admin` y, si el `UPDATE` reescribe todas las columnas de datos (leer-mezclar-reescribir), el segundo pisa el campo del primero con el valor viejo: la fila falla. Pasa hoy: mutación y se restaura |
+- **Green**: pasa la tabla.
+
+**T-B703 [T] — Logo (servicio)** · US-4, DD-11, DD-23, DD-31, DD-40, DD-42, INV-17, INV-24, INV-34, H-2, H-11
 - **Red** (integración con `ObjectStorage` falso instrumentado; `SetLogo` recibe `[]byte`):
 
   | Caso | Esperado |
@@ -1557,16 +1580,27 @@ con `curl`, un archivo de 2 097 153 bytes recibe `413`.
   | PNG de 2000×2000 | aceptado |
   | Bytes truncados después de la firma PNG | `ErrLogoInvalidImage` |
   | `Put` falla | `503`; la fila de la empresa sin cambios |
-  | La transacción falla después del `Put` | el objeto nuevo se borra (mejor esfuerzo, logueado si falla) |
-  | Borrar el objeto viejo falla | la operación igual responde éxito; log `WARN` (objeto huérfano aceptado) |
-  | `RemoveLogo` | columnas en `NULL`, `updated_at` avanza, objeto borrado, auditoría `tenant.logo_removed`; repetir → sin error |
+  | La transacción falla **dentro** de su función después del `Put` (p. ej. el `audit.Recorder` del test devuelve error) | `ROLLBACK` seguro: el objeto nuevo se borra con un contexto propio (`WithoutCancel` + 5 s); la fila conserva la clave anterior y su objeto existe; ninguna auditoría. Si ese `Delete` falla: log `WARN` `event=logo_delete_failed`, `reason=compensation` (huérfano aceptado) |
+  | **Décima revisión, `COMMIT` confirmado con error** (DD-42, INV-17; Red): un `db.TxRunner` del test delega en el real y, cuando el real confirma, cancela el contexto del request y devuelve un error de commit (`context.Canceled` envuelto) | la fila apunta a `K_nuevo` y **su objeto existe** (con la regla anterior se borraba: referencia rota); `K_viejo` borrado; `SetLogo` devuelve el `Tenant` con la clave nueva; log `WARN` `event=logo_commit_uncertain`, `outcome=committed` |
+  | **Décima revisión, `COMMIT` que no ocurrió** (DD-42; Red): el runner del test ejecuta la función del servicio, fuerza el `ROLLBACK`, cancela el contexto del request y devuelve un error de commit | la relectura (con contexto propio) ve `K_viejo`: `K_nuevo` se borra; la fila y `K_viejo`, intactos; `SetLogo` devuelve el error; `outcome=rolled_back`. Si la relectura usara el contexto del request (cancelado), fallaría y `K_nuevo` quedaría huérfano: la fila falla |
+  | **Décima revisión, relectura que falla** (DD-42; Red): como "`COMMIT` confirmado con error", y además la segunda llamada al runner (la relectura) devuelve `db.ErrUnavailable` | no se borra **nada**: la fila apunta a `K_nuevo` y su objeto existe; `K_viejo` queda huérfano; `SetLogo` devuelve el error original; `outcome=unknown` |
+  | **Décima revisión, `COMMIT` en vuelo** (DD-42; Red): el runner del test corre la transacción real en otra goroutine; cuando la función del servicio termina, guarda el `pg_backend_pid()` de esa transacción (`P`), deja la transacción abierta (con la fila bloqueada) y le devuelve al servicio un error de commit | el test espera (sondeo de `pg_blocking_pids` cada 10 ms, contexto de 20 s) a que haya un backend bloqueado por `P` (la relectura en `LockTenant`) y recién entonces deja confirmar a la goroutine. Esperado: la relectura ve `K_nuevo`, su objeto existe, `outcome=committed`. Si `SetLogo` devuelve antes de que aparezca el bloqueo, el test falla con un mensaje que nombra DD-42 (la relectura no tomó el lock: vería `K_viejo` y borraría `K_nuevo` justo antes de que el `COMMIT` lo haga visible). Al terminar, la goroutine siempre se libera |
+  | Borrar el objeto viejo falla | la operación igual responde éxito; log `WARN` `event=logo_delete_failed`, `reason=replaced` (objeto huérfano aceptado) |
+  | **Décima revisión, limpieza con el contexto cancelado** (DD-42 (3)): el `Delete` del fake falla si `ctx.Err() != nil` y registra el *deadline* que recibió; el runner del test cancela el contexto del request apenas el real confirma y devuelve `nil` | `K_viejo` borrado: el `Delete` recibió un contexto vivo con *deadline* de 5 s como máximo. Pasa hoy: mutación (pasarle al `Delete` el contexto del request → falla) y se restaura |
+  | **Décima revisión, subidas concurrentes** (INV-34, DD-40): empresa con logo `K_0`; 3 `SetLogo` en paralelo con PNG distintos. Mecanismo E de T-B604: `T_admin` retiene la fila con `LockTenant` (o con la query de INV-10: mismo modo); el test espera (sondeo cada 10 ms, contexto de 20 s) a que haya **3** backends bloqueados por `T_admin` de forma directa o transitiva y hace `ROLLBACK`. Corre una vez | las 3 tienen éxito; 3 auditorías `tenant.logo_updated`; en el storage queda **exactamente un** objeto bajo `tenants/{A}/logo/`, el que referencia la fila (`K_0` y los otros dos, borrados). Sin `LockTenant` en `SetLogo` (clave anterior leída sin lock), las tres leen `K_0` y lo borran, y quedan dos huérfanos: la fila falla. Pasa hoy: mutación y se restaura |
+  | **Décima revisión, subida y baja concurrentes** (INV-34): empresa con logo `K_0`; con `T_admin` reteniendo la fila (mecanismo E) se lanza `SetLogo` y el test espera a que quede bloqueado; recién entonces lanza `RemoveLogo` y espera a que haya 2 bloqueados (directos o transitivos); `ROLLBACK` de `T_admin` | se aplican en orden de llegada (subida, baja): la fila sin logo y **ningún** objeto bajo `tenants/{A}/logo/`; auditorías `tenant.logo_updated` y `tenant.logo_removed`. Sin `LockTenant` en `RemoveLogo`, la baja lee `K_0` antes de esperar, pone `NULL` y borra `K_0`: el objeto de la subida queda huérfano y la fila falla. Supuesto a validar en Red: PostgreSQL atiende la espera por la fila en orden de llegada; si no resulta determinista, aviso al arquitecto en vez de agregar `sleep` |
+  | `RemoveLogo` | columnas en `NULL`, `updated_at` avanza, objeto borrado, auditoría `tenant.logo_removed`; repetir → sin error, **sin** auditoría y sin mover `updated_at` (décima revisión, DD-42 (4): sin logo no hay `content_type` que auditar) |
   | `GetLogo` con `ifNoneMatch` vacío | `ETag = "<uuid de la clave>"`, cuerpo del objeto |
   | `GetLogo` con `ifNoneMatch` igual al vigente | `NotModified = true`; el fake de S3 **no** recibió `Get` |
   | `GetLogo` con un `ifNoneMatch` viejo o de otra empresa | cuerpo completo con el `ETag` vigente |
+  | **Décima revisión** (plan §11.1): `GetLogo` sin logo | `ErrLogoNotFound` (no `db.ErrNotFound`) |
+  | **Décima revisión, objeto ausente** (DD-42 (6), INV-17; Red): la fila tiene clave pero el test borró el objeto del fake | `ErrLogoNotFound`; log `ERROR` `event=logo_object_missing` con `tenant_id` y `object_key` (el test captura el logger) |
+  | **Décima revisión, reemplazo entre la lectura y el `Get`** (DD-42 (6); Red): el fake, en el primer `Get`, corre un `SetLogo` real de la misma empresa (confirma y borra `K_viejo`) y después devuelve `ErrNotFound` | cuerpo de `K_nuevo` con su `ETag`; **sin** log `ERROR` |
+  | Lo mismo con un `RemoveLogo` en lugar del `SetLogo` | `ErrLogoNotFound`, sin log `ERROR` |
 - **Green**: pasa la tabla.
 
 **T-B704 — Implementar `tenant.Service.Update`, `SetLogo`, `RemoveLogo`, `GetLogo`** y las
-constantes `LogoMaxBytes`, `LogoMaxBodyBytes`, `LogoMaxSide` (plan §11.1). Novena revisión (DD-40): cada transacción hace el `UPDATE` de la fila de `tenants` antes de cualquier otra escritura (la auditoría va después) y, si necesita leer con lock la clave del logo anterior, usa `FOR NO KEY UPDATE`, nunca `FOR UPDATE`.
+constantes `LogoMaxBytes`, `LogoMaxBodyBytes`, `LogoMaxSide` (plan §11.1). Novena y décima revisión (DD-40 corregida, DD-42, DD-43, INV-17, INV-34): `Update`, `SetLogo` y `RemoveLogo` empiezan su transacción con `LockTenant` (`FOR NO KEY UPDATE`, nunca `FOR UPDATE`) y leen bajo ese lock lo que mezclan o la clave del logo anterior; después hacen el `UPDATE` de la fila antes de cualquier otra escritura (`Update` no escribe las columnas del logo; `SetLogo` y `RemoveLogo`, solo esas y `updated_at`) y por último la auditoría. `SetLogo` resuelve un fallo de la transacción según DD-42: si el error lo devolvió su propia función, el `ROLLBACK` es seguro y borra `K_nuevo`; si apareció después (el `COMMIT`), relee la fila con `LockTenant` en otra transacción con contexto propio (`context.WithoutCancel` + 5 s) y, según la clave, sigue el camino confirmado (borra `K_viejo`, devuelve el `Tenant`) o el de `ROLLBACK` (borra `K_nuevo`); si la relectura falla, no borra nada. `RemoveLogo` no borra nada ante un `COMMIT` incierto y, sin logo, no escribe ni audita. Todo `Delete` posterior a la transacción usa ese contexto propio y loguea `WARN` `event=logo_delete_failed` si falla. `GetLogo` devuelve `ErrLogoNotFound` (no `db.ErrNotFound`) y, ante `ErrNotFound` del storage, relee la clave una vez (DD-42 (6)). `Update` aplica DD-43; la validación de la zona horaria es la misma función que usa `Register` (T-B303).
 
 **T-B705 [T] — Endpoints de empresa** · contrato, FR-007, DD-23, DD-28, DD-31, INV-21, INV-24, H-2, H-7, H-11
 - **Red** (HTTP + contrato):
@@ -1575,10 +1609,14 @@ constantes `LogoMaxBytes`, `LogoMaxBodyBytes`, `LogoMaxSide` (plan §11.1). Nove
   |---|---|
   | `GET /tenant` como admin y como operador | `200`; `Cache-Control: no-store` |
   | `PATCH /tenant` | `200` admin, `403` operador, `422` CUIT inválido o `timezone` desconocida; `no-store` |
+  | **Décima revisión** (DD-43; Red): `PATCH /tenant` con `name: null` o con `timezone: null` | `400 malformed_request` sin `errors` (el contrato no los admite: es un error de tipo, como `name: 123`); sin cambios |
+  | **Décima revisión** (DD-43; Red): `PATCH /tenant` con `phone: ""` | `200` con `phone: null` |
+  | **Décima revisión** (DD-43): `PATCH /tenant` con `timezone: "Local"` | `422` con `errors: [{field: timezone, code: invalid_timezone}]` |
   | `PUT /tenant/logo` multipart con un PNG válido | `200` (el `Tenant` devuelto tiene `updated_at` nuevo); `403` para el operador |
   | Parte `file` de **exactamente 2 097 152 bytes** con un nombre de archivo de 200 caracteres | `200` (el límite es del archivo, no del cuerpo) |
   | Parte `file` de **2 097 153 bytes** | `413 payload_too_large`; el handler dejó de leer: un lector instrumentado del cuerpo registra como máximo `LogoMaxBodyBytes` bytes leídos |
   | Cuerpo de más de 2 162 688 bytes (una parte `file` chica precedida de relleno en su encabezado o en el preámbulo) | `413 payload_too_large` |
+  | **Décima revisión** (plan §9.2): parte `file` chica (PNG válido de 1 KB), *boundary* de cierre y un **epílogo** que lleva el cuerpo a `LogoMaxBodyBytes` + 1 bytes | `413 payload_too_large`; el fake de S3 **no** recibió `Put` (el handler lee el cuerpo hasta el final antes de llamar al servicio). Con un epílogo que lo deja en exactamente `LogoMaxBodyBytes` → `200`. Pasa hoy: mutación (quitar la lectura del resto del cuerpo → `200` en el primer caso) y se restaura |
   | Sin parte `file`, o con la parte `file` vacía | `422` con `errors: [{field: file, code: required}]` |
   | Parte `file` más otra parte `foo`, o dos partes `file` | `400 malformed_request` |
   | Cuerpo multipart mal formado (sin *boundary* de cierre) | `400 malformed_request` |
@@ -1590,12 +1628,16 @@ constantes `LogoMaxBytes`, `LogoMaxBodyBytes`, `LogoMaxSide` (plan §11.1). Nove
   | `GET /tenant/logo` con `If-None-Match` igual al `ETag` | `304` sin cuerpo, con `ETag` y `Cache-Control: private, no-cache` |
   | Reemplazar el logo y repetir con el `If-None-Match` anterior | `200` con los bytes nuevos y otro `ETag` |
   | Sin logo | `404` problem+json con `no-store` |
+  | **Décima revisión** (plan §9.1, DD-42): `GET /tenant/logo` con el storage caído (el fake devuelve `objectstore.ErrUnavailable` en `Get`) | `503 service_unavailable` problem+json con `no-store` |
+  | **Décima revisión** (plan §9.2; Red): el cliente corta la conexión durante la descarga (un `ResponseWriter` del test cancela el contexto del request y falla en `Write`) | ningún log `WARN` ni `ERROR`; log de request con `status=499` y `event=client_canceled` en `INFO` |
   | `DELETE /tenant/logo` | `204` con `no-store`; un `GET` posterior con el `If-None-Match` viejo → `404` (nunca `304`) |
 - **Green**: pasa la tabla.
 
 **T-B706 — Implementar los handlers** (en `tenant/http.go`: `http.MaxBytesReader` con
 `LogoMaxBodyBytes`, `r.MultipartReader()` con exactamente una parte `file` leída con tope de
-`LogoMaxBytes + 1` bytes, y el mapeo de errores de DD-31 y plan §9.2).
+`LogoMaxBytes + 1` bytes, y el mapeo de errores de DD-31 y plan §9.2). Décima revisión: después de la parte `file`, el handler lee el resto del cuerpo hasta el final (con el mismo `MaxBytesReader`) **antes** de llamar al servicio: una parte más → `400`, superar `LogoMaxBodyBytes` → `413`. La descarga del logo trata un error de escritura con el contexto del request cancelado como `client_canceled` (`INFO`, `499`) y cualquier otro error a mitad de la copia como `WARN` `event=logo_stream_failed` (plan §9.2). El decodificador del `PATCH` distingue campo ausente de `null` y responde `400` ante `null` en `name` o `timezone` (DD-43).
+
+**T-B707 — Bucket de desarrollo en `compose.yaml`** (décima revisión; plan §10.5.1). El servicio `minio` suma un *healthcheck* en forma exec que crea el bucket del modo local: `mc mb --ignore-existing local/${S3_BUCKET:-crm-dev}`, con `MC_HOST_local` en el `environment` del servicio, armado con `MINIO_ROOT_USER` y `MINIO_ROOT_PASSWORD` (los mismos defaults) y `127.0.0.1:9000`. No se agrega ningún servicio ni imagen: el test de `internal/testsupport/containers` no cambia. Primero se confirma que la imagen de DD-36 trae `mc` (`docker run --rm --entrypoint mc <referencia> --version`); si no lo trae, no se elige otra imagen: aviso al arquitecto. En el mismo cambio, el README ("Levantar todo": `--wait` deja el bucket creado) y `.env.example` (comentario de `S3_BUCKET`). **Verificación**: `docker compose down -v`, `docker compose up -d --wait` sin login a ningún registro, y en la prueba independiente de la Fase 7 la subida del logo responde `200` (antes, `503`).
 
 **Checkpoint Fase 7**: `make check` en verde + prueba independiente con MinIO de `docker compose`.
 
@@ -1800,6 +1842,9 @@ de la fase y se agrega a plan §11.1 en el mismo cambio (matriz §16).
 | H-8 Cabeceras y gzip de la SPA (DD-29) | T-B004 (cabeceras comunes); T-F007, T-F008 (CSP, caché, gzip) |
 | H-9 CSRF en problem+json (DD-30) | T-B203, T-B204, T-B903 |
 | H-11 Límites exactos del logo (DD-31, INV-24) | T-B703, T-B704, T-B705, T-B706 |
+| DD-40 / DD-42 / INV-17 / INV-34 Lock de la fila de `tenants` en la Fase 7, `COMMIT` incierto y lectura del logo (décima revisión) | T-B604 (R0), T-B702, T-B703, T-B704, T-B705, T-B706 |
+| DD-43 / DD-27 Semántica de `PATCH /tenant` y `Local` (décima revisión; contrato v0.4.3) | T-B303, T-B701, T-B702, T-B705 |
+| Bucket de desarrollo (plan §10.5.1) | T-B707 |
 | JPEG re-codificado en el navegador (DD-F21): el backend no depende de eso (DD-11, INV-24) | T-B703 |
 | Rutas de la SPA en inglés (DD-14) | T-B002, T-B213 |
 | `405` con `method_not_allowed` y `Allow` (contrato v0.4.0, research R-26) | T-B004, T-B005, T-B201, T-B203; T-F004, T-F101 (frontend) |
