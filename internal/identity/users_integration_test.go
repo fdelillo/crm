@@ -16,6 +16,7 @@ import (
 	"github.com/fdelillo/crm/internal/authz"
 	"github.com/fdelillo/crm/internal/platform/db"
 	"github.com/fdelillo/crm/internal/platform/password"
+	"github.com/fdelillo/crm/internal/platform/securetoken"
 	"github.com/fdelillo/crm/internal/testsupport/fixture"
 	"github.com/fdelillo/crm/internal/testsupport/pgtest"
 	"github.com/google/uuid"
@@ -129,7 +130,10 @@ func TestInviteAndReinvite(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := userAuditCount(t, runner, p)
-	for _, email := range []string{ownEmail, "not an email", "x\x00@example.com"} {
+	if _, _, err := s.Invite(ctx, p, ownEmail, authz.RoleOperator, RequestMeta{}); !errors.Is(err, ErrEmailTaken) {
+		t.Fatalf("own active email: %v", err)
+	}
+	for _, email := range []string{"not an email", "x\x00@example.com"} {
 		_, _, err := s.Invite(ctx, p, email, authz.RoleOperator, RequestMeta{})
 		if err == nil {
 			t.Fatalf("accepted %q", email)
@@ -168,6 +172,12 @@ func TestInvitationPreviewAcceptanceAndInvalidTokens(t *testing.T) {
 					t.Fatal(err)
 				}
 				newer := deliveredToken(t, runner, p.TenantID, u.Email, "invitation")
+				if _, err := s.PreviewInvitation(ctx, raw); !errors.Is(err, ErrTokenInvalid) {
+					t.Fatalf("reset-replaced preview: %v", err)
+				}
+				if _, err := s.AcceptInvitation(ctx, raw, "Ana", "valid-password", RequestMeta{}); !errors.Is(err, ErrTokenInvalid) {
+					t.Fatalf("reset-replaced accept: %v", err)
+				}
 				if _, err := s.PreviewInvitation(ctx, newer); err != nil {
 					t.Fatal(err)
 				}
@@ -336,9 +346,82 @@ func TestDeactivateReactivateAndConstraint(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+
+			type tokenState struct {
+				used, revoked *time.Time
+				revoke        bool
+			}
+			tokens := map[uuid.UUID]tokenState{}
+			if err := runner.InTenantTx(ctx, p.TenantID, func(ctx context.Context, tx db.Tx) error {
+				if accepted {
+					// The reset above created a pending password_reset. Add a pending
+					// verification, a used reset and a previously revoked reset.
+					for _, state := range []struct {
+						purpose       string
+						used, revoked *time.Time
+					}{
+						{purpose: "email_verification"},
+						{purpose: "password_reset", used: timePtr(c.now.Add(-time.Hour))},
+						{purpose: "password_reset", revoked: timePtr(c.now.Add(-2 * time.Hour))},
+					} {
+						_, hash, err := securetoken.New()
+						if err != nil {
+							return err
+						}
+						if _, err := tx.Exec(ctx, `INSERT INTO app.user_tokens (tenant_id,user_id,purpose,token_hash,created_at,expires_at,used_at,revoked_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, p.TenantID, u.ID, state.purpose, hash, c.now.Add(-3*time.Hour), c.now.Add(time.Hour), state.used, state.revoked); err != nil {
+							return err
+						}
+					}
+				}
+				// Include the target's invitation and all other token states. The
+				// company fixture also has a pending reset for the administrator.
+				rows, err := tx.Query(ctx, `SELECT id,user_id,used_at,revoked_at FROM app.user_tokens WHERE tenant_id=$1 AND (user_id=$2 OR (user_id=$3 AND purpose='password_reset'))`, p.TenantID, u.ID, p.UserID)
+				if err != nil {
+					return err
+				}
+				defer rows.Close()
+				for rows.Next() {
+					var id, user uuid.UUID
+					var state tokenState
+					if err := rows.Scan(&id, &user, &state.used, &state.revoked); err != nil {
+						return err
+					}
+					state.revoke = user == u.ID && state.used == nil && state.revoked == nil
+					tokens[id] = state
+				}
+				return rows.Err()
+			}); err != nil {
+				t.Fatal(err)
+			}
+			expectedTokens := 2
+			if accepted {
+				expectedTokens = 6
+			}
+			if len(tokens) != expectedTokens {
+				t.Fatalf("token fixture=%d want=%d", len(tokens), expectedTokens)
+			}
 			disabled, err := s.Deactivate(ctx, p, u.ID, RequestMeta{})
 			if err != nil || disabled.Status != "disabled" || disabled.InvitationExpiresAt != nil {
 				t.Fatalf("disabled: %+v %v", disabled, err)
+			}
+
+			if err := runner.InTenantTx(ctx, p.TenantID, func(ctx context.Context, tx db.Tx) error {
+				for id, before := range tokens {
+					var used, revoked *time.Time
+					if err := tx.QueryRow(ctx, `SELECT used_at,revoked_at FROM app.user_tokens WHERE tenant_id=$1 AND id=$2`, p.TenantID, id).Scan(&used, &revoked); err != nil {
+						return err
+					}
+					expectedRevoked := before.revoked
+					if before.revoke {
+						expectedRevoked = &c.now
+					}
+					if !sameTokenTime(used, before.used) || !sameTokenTime(revoked, expectedRevoked) {
+						t.Errorf("INV-11 token %s: used=%v revoked=%v want used=%v revoked=%v", id, used, revoked, before.used, expectedRevoked)
+					}
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
 			}
 			count := float64(0)
 			if accepted {
@@ -441,7 +524,7 @@ func concurrentUsers(t *testing.T, a, b func() error) []error {
 	return out
 }
 func TestConcurrentUserOperations(t *testing.T) {
-	for _, operation := range []string{"reinvite", "accept", "demote", "deactivate", "reactivate_deactivate"} {
+	for _, operation := range []string{"reinvite_distinct_roles", "accept", "demote", "deactivate", "reactivate_deactivate"} {
 		t.Run(operation, func(t *testing.T) {
 			for i := range 20 {
 				t.Run(fmt.Sprint(i), func(t *testing.T) {
@@ -449,12 +532,12 @@ func TestConcurrentUserOperations(t *testing.T) {
 					ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 					defer cancel()
 					initialRole := authz.RoleAdmin
-					if operation == "reinvite" {
+					if operation == "reinvite_distinct_roles" {
 						initialRole = authz.RoleOperator
 					}
 					u := inviteForTest(t, s, p, initialRole)
 					raw := deliveredToken(t, runner, p.TenantID, u.Email, "invitation")
-					if operation != "reinvite" && operation != "accept" {
+					if operation != "reinvite_distinct_roles" && operation != "accept" {
 						if _, err := s.AcceptInvitation(ctx, raw, "B", "valid-password", RequestMeta{}); err != nil {
 							t.Fatal(err)
 						}
@@ -466,9 +549,10 @@ func TestConcurrentUserOperations(t *testing.T) {
 					}
 					before := userAuditCount(t, runner, p)
 					var a, b func() error
+					var deactivateErr error
 					other := authz.Principal{TenantID: p.TenantID, UserID: u.ID, Role: authz.RoleAdmin}
 					switch operation {
-					case "reinvite":
+					case "reinvite_distinct_roles":
 						// The ninth review starts with an operator and permits either serial order.
 						a = func() error { _, _, err := s.Invite(ctx, p, u.Email, authz.RoleOperator, RequestMeta{}); return err }
 						b = func() error { _, _, err := s.Invite(ctx, p, u.Email, authz.RoleAdmin, RequestMeta{}); return err }
@@ -486,7 +570,10 @@ func TestConcurrentUserOperations(t *testing.T) {
 						b = func() error { _, err := s.Deactivate(ctx, other, p.UserID, RequestMeta{}); return err }
 					default:
 						a = func() error { _, err := s.Reactivate(ctx, p, u.ID, RequestMeta{}); return err }
-						b = func() error { _, err := s.Deactivate(ctx, p, u.ID, RequestMeta{}); return err }
+						b = func() error {
+							_, deactivateErr = s.Deactivate(ctx, p, u.ID, RequestMeta{})
+							return deactivateErr
+						}
 					}
 					results := concurrentUsers(t, a, b)
 					success := 0
@@ -506,7 +593,7 @@ func TestConcurrentUserOperations(t *testing.T) {
 							t.Fatalf("outcomes: %v", results)
 						}
 					}
-					if operation == "reinvite" {
+					if operation == "reinvite_distinct_roles" {
 						if success != 2 {
 							t.Fatalf("outcomes: %v", results)
 						}
@@ -622,6 +709,26 @@ func TestConcurrentUserOperations(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
+					if operation == "reactivate_deactivate" {
+						want := "disabled"
+						if success == 1 {
+							want = "active"
+							if !errors.Is(deactivateErr, ErrInvalidTransition) {
+								t.Fatalf("failure must come from Deactivate: %v", results)
+							}
+						} else if success != 2 {
+							t.Fatalf("outcomes: %v", results)
+						}
+						var status string
+						for _, item := range list {
+							if item.ID == u.ID {
+								status = item.Status
+							}
+						}
+						if status != want {
+							t.Fatalf("reactivate/deactivate successes=%d final=%s want=%s outcomes=%v", success, status, want, results)
+						}
+					}
 					admins := 0
 					for _, item := range list {
 						if item.Status == "active" && item.Role == authz.RoleAdmin {
@@ -678,4 +785,12 @@ func TestAdministratorSelfDeactivationAndRestoration(t *testing.T) {
 	if _, err := s.ResolveSession(ctx, firstSession.RawToken); !errors.Is(err, ErrUnauthenticated) {
 		t.Fatal("reactivation reopened old session", err)
 	}
+}
+
+func timePtr(value time.Time) *time.Time { return &value }
+func sameTokenTime(a, b *time.Time) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return a.Equal(*b)
 }
