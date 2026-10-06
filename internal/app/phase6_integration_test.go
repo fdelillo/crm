@@ -309,6 +309,7 @@ func TestUsersHTTPValidationPreservesInvitation(t *testing.T) {
 	c.advance(time.Second)
 	for _, tc := range []struct{ body, field, code string }{
 		{`{"email":"not an email","role":"operator"}`, "email", "invalid_format"},
+		{`{"email":"` + strings.Repeat("a", 243) + `@example.com","role":"operator"}`, "email", "invalid_format"},
 		{`{"email":"valid@example.com","role":"unknown"}`, "role", "invalid_value"},
 	} {
 		problem, _ := usersRequest(t, s, "POST", "/api/v1/users/invitations", tc.body, 422)
@@ -329,4 +330,29 @@ func TestUsersHTTPValidationPreservesInvitation(t *testing.T) {
 		usersRequest(t, s, "POST", "/api/v1/auth/invitations/preview", `{"token":"`+raw+`"}`, 200)
 	}
 	usersRequest(t, s, "POST", "/api/v1/auth/invitations/accept", `{"token":"`+raw+`","name":"B","password":"valid-password"}`, 201)
+}
+
+func TestInvitationTokenRoutesShareIPQuota(t *testing.T) {
+	s, _, _ := phase6Server(t)
+	for i := range 21 {
+		path := "/api/v1/auth/invitations/preview"
+		if i%2 == 1 {
+			path = "/api/v1/auth/invitations/accept"
+		}
+		body := `{"token":"invalid-token"}`
+		if i%2 == 1 {
+			body = `{"token":"invalid-token","name":"B","password":"valid-password"}`
+		}
+		want, code := 400, "token_invalid"
+		if i == 20 {
+			want, code = 429, "rate_limited"
+		}
+		problem, response := usersRequest(t, s, "POST", path, body, want)
+		if problem["code"] != code {
+			t.Fatalf("request %d: %v", i+1, problem)
+		}
+		if i == 20 && response.Header.Get("Retry-After") == "" {
+			t.Fatal("missing Retry-After")
+		}
+	}
 }
