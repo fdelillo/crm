@@ -377,14 +377,19 @@ func TestLogoGetCacheAndRemove(t *testing.T) {
 		t.Fatalf("revalidation fetched S3: gets=%d want=%d result=%+v err=%v", len(f.gets), n, result, err)
 	}
 	other := companyAdmin(t, svc)
-	if _, err := svc.SetLogo(context.Background(), other, jpegLogo(t, false), identity.RequestMeta{}); err != nil {
+	otherData := jpegLogo(t, false)
+	if _, err := svc.SetLogo(context.Background(), other, otherData, identity.RequestMeta{}); err != nil {
 		t.Fatal(err)
 	}
 	result, err = svc.GetLogo(context.Background(), other, etag)
 	if err != nil || result.NotModified || result.ETag == etag {
 		t.Fatalf("other tenant validator=%+v err=%v", result, err)
 	}
+	otherBody, readErr := io.ReadAll(result.Body)
 	result.Body.Close()
+	if readErr != nil || !bytes.Equal(otherBody, otherData) || result.ContentType != "image/jpeg" || result.Size != int64(len(otherData)) {
+		t.Fatalf("other tenant returned wrong logo bytes/type: result=%+v err=%v", result, readErr)
+	}
 	before, _ := svc.Get(context.Background(), p)
 	f.onDelete = func(deleted string) {
 		current, _ := companyRow(t, runner, p)

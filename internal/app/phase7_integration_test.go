@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"hash/crc32"
 	"image"
+	"image/jpeg"
 	"image/png"
 	"io"
 	"log/slog"
@@ -317,6 +318,18 @@ func TestTenantHTTPLogoCacheLifecycle(t *testing.T) {
 	newLogo := tenantRequest(t, h, operator, "GET", "/api/v1/tenant/logo", "", nil, tag, 200)
 	if newLogo.Header().Get("ETag") == tag || !bytes.Equal(newLogo.Body.Bytes(), replacement) {
 		t.Fatal("replacement reused old ETag/bytes")
+	}
+	// A .png filename and image/png part header must not override JPEG magic bytes.
+	var jpegBytes bytes.Buffer
+	if err := jpeg.Encode(&jpegBytes, image.NewRGBA(image.Rect(0, 0, 10, 10)), nil); err != nil {
+		t.Fatal(err)
+	}
+	body, ct = logoMultipart(t, jpegBytes.Bytes(), "file")
+	body = bytes.ReplaceAll(body, []byte("application/octet-stream"), []byte("image/png"))
+	tenantRequest(t, h, admin, "PUT", "/api/v1/tenant/logo", ct, body, "", 200)
+	newLogo = tenantRequest(t, h, operator, "GET", "/api/v1/tenant/logo", "", nil, "", 200)
+	if newLogo.Header().Get("Content-Type") != "image/jpeg" || newLogo.Header().Get("X-Content-Type-Options") != "nosniff" || !bytes.Equal(newLogo.Body.Bytes(), jpegBytes.Bytes()) {
+		t.Fatal("JPEG magic bytes were overridden by multipart metadata")
 	}
 	f.getErr = objectstore.ErrUnavailable
 	tenantRequest(t, h, operator, "GET", "/api/v1/tenant/logo", "", nil, "", 503)
