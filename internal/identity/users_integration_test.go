@@ -448,7 +448,11 @@ func TestConcurrentUserOperations(t *testing.T) {
 					s, runner, p, _ := usersFixture(t)
 					ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 					defer cancel()
-					u := inviteForTest(t, s, p, authz.RoleAdmin)
+					initialRole := authz.RoleAdmin
+					if operation == "reinvite" {
+						initialRole = authz.RoleOperator
+					}
+					u := inviteForTest(t, s, p, initialRole)
 					raw := deliveredToken(t, runner, p.TenantID, u.Email, "invitation")
 					if operation != "reinvite" && operation != "accept" {
 						if _, err := s.AcceptInvitation(ctx, raw, "B", "valid-password", RequestMeta{}); err != nil {
@@ -465,8 +469,7 @@ func TestConcurrentUserOperations(t *testing.T) {
 					other := authz.Principal{TenantID: p.TenantID, UserID: u.ID, Role: authz.RoleAdmin}
 					switch operation {
 					case "reinvite":
-						// Two different roles, both different from the preceding role, require three roles;
-						// with the two designed roles one request can be a no-op. Assert exact coherent pairs.
+						// The ninth review starts with an operator and permits either serial order.
 						a = func() error { _, _, err := s.Invite(ctx, p, u.Email, authz.RoleOperator, RequestMeta{}); return err }
 						b = func() error { _, _, err := s.Invite(ctx, p, u.Email, authz.RoleAdmin, RequestMeta{}); return err }
 					case "accept":
@@ -507,47 +510,105 @@ func TestConcurrentUserOperations(t *testing.T) {
 						if success != 2 {
 							t.Fatalf("outcomes: %v", results)
 						}
-						var roles []string
-						var changes int
+						// Deduce the serial order from the final role, never transaction
+						// timestamps: the transaction waiting on the tenant may have started first.
+						var final string
+						type event struct {
+							action string
+							data   map[string]any
+							xid    string
+						}
+						var events []event
 						if err := runner.InTenantTx(ctx, p.TenantID, func(ctx context.Context, tx db.Tx) error {
-							rows, err := tx.Query(ctx, `SELECT data->>'role' FROM app.audit_log WHERE tenant_id=$1 AND target_id=$2 AND action='user.invitation_reissued' ORDER BY occurred_at,id`, p.TenantID, u.ID)
+							if err := tx.QueryRow(ctx, `SELECT role FROM app.users WHERE tenant_id=$1 AND id=$2`, p.TenantID, u.ID).Scan(&final); err != nil {
+								return err
+							}
+							rows, err := tx.Query(ctx, `SELECT action,data,xmin::text FROM app.audit_log WHERE tenant_id=$1 AND target_id=$2 AND action IN ('user.invitation_reissued','user.role_changed')`, p.TenantID, u.ID)
 							if err != nil {
 								return err
 							}
 							defer rows.Close()
 							for rows.Next() {
-								var role string
-								if err := rows.Scan(&role); err != nil {
+								var e event
+								var raw []byte
+								if err := rows.Scan(&e.action, &raw, &e.xid); err != nil {
 									return err
 								}
-								roles = append(roles, role)
+								if err := json.Unmarshal(raw, &e.data); err != nil {
+									return err
+								}
+								events = append(events, e)
 							}
 							return rows.Err()
 						}); err != nil {
 							t.Fatal(err)
 						}
-						list, err := s.ListUsers(ctx, p)
-						if err != nil {
-							t.Fatal(err)
+						order := []string{"operator", "admin"}
+						if final == "operator" {
+							order = []string{"admin", "operator"}
+						} else if final != "admin" {
+							t.Fatal(final)
 						}
-						final := ""
-						for _, item := range list {
-							if item.ID == u.ID {
-								final = string(item.Role)
+						reissues := map[string]event{}
+						changes := map[string][]event{}
+						for _, e := range events {
+							if e.action == "user.invitation_reissued" {
+								role, ok := e.data["role"].(string)
+								if !ok {
+									t.Fatal(e)
+								}
+								if _, duplicate := reissues[role]; duplicate {
+									t.Fatal("duplicate reissue", events)
+								}
+								reissues[role] = e
+							} else {
+								changes[e.xid] = append(changes[e.xid], e)
 							}
 						}
-						if len(roles) != 2 || roles[1] != final {
-							t.Fatalf("serial order: %v final=%s", roles, final)
+						if len(reissues) != 2 {
+							t.Fatal(events)
 						}
-						previous := "admin"
-						for _, role := range roles {
-							if role != previous {
-								changes++
+						previous := "operator"
+						expectedChanges := 0
+						for _, role := range order {
+							e, ok := reissues[role]
+							if !ok || !reflect.DeepEqual(e.data, map[string]any{"role": role, "trigger": "admin"}) {
+								t.Fatal(events)
+							}
+							paired := changes[e.xid]
+							if previous == role {
+								if len(paired) != 0 {
+									t.Fatal("no-op role change audited", events)
+								}
+							} else {
+								expectedChanges++
+								if len(paired) != 1 || !reflect.DeepEqual(paired[0].data, map[string]any{"from": previous, "to": role, "status": "invited"}) {
+									t.Fatal("role chain or transaction differs", events)
+								}
 							}
 							previous = role
 						}
-						if userAuditCount(t, runner, p) != before+2+changes {
-							t.Fatal("incoherent concurrent audits")
+						if reissues["operator"].xid == reissues["admin"].xid || len(events) != 2+expectedChanges || userAuditCount(t, runner, p) != before+2+expectedChanges {
+							t.Fatal("incoherent concurrent audits", events)
+						}
+						if err := runner.InTenantTx(ctx, p.TenantID, func(ctx context.Context, tx db.Tx) error {
+							var open, revoked int
+							var xid string
+							if err := tx.QueryRow(ctx, `SELECT count(*) FILTER(WHERE used_at IS NULL AND revoked_at IS NULL), count(*) FILTER(WHERE revoked_at IS NOT NULL) FROM app.user_tokens WHERE tenant_id=$1 AND user_id=$2 AND purpose='invitation'`, p.TenantID, u.ID).Scan(&open, &revoked); err != nil {
+								return err
+							}
+							if open != 1 || revoked != 2 {
+								t.Errorf("open=%d revoked=%d", open, revoked)
+							}
+							if err := tx.QueryRow(ctx, `SELECT xmin::text FROM app.user_tokens WHERE tenant_id=$1 AND user_id=$2 AND purpose='invitation' AND used_at IS NULL AND revoked_at IS NULL`, p.TenantID, u.ID).Scan(&xid); err != nil {
+								return err
+							}
+							if xid != reissues[final].xid {
+								t.Error("open invitation is not from last reissue")
+							}
+							return nil
+						}); err != nil {
+							t.Fatal(err)
 						}
 						return
 					}
@@ -573,5 +634,48 @@ func TestConcurrentUserOperations(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+func TestAdministratorSelfDeactivationAndRestoration(t *testing.T) {
+	s, r, p, _ := usersFixture(t)
+	ctx := context.Background()
+	u := inviteForTest(t, s, p, authz.RoleAdmin)
+	accepted, err := s.AcceptInvitation(ctx, deliveredToken(t, r, p.TenantID, u.Email, "invitation"), "Second admin", "valid-password", RequestMeta{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var firstSession SessionResult
+	if err := r.InTenantTx(ctx, p.TenantID, func(ctx context.Context, tx db.Tx) error {
+		var err error
+		firstSession, err = s.CreateSession(ctx, tx, p, RequestMeta{})
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	disabled, err := s.Deactivate(ctx, p, p.UserID, RequestMeta{})
+	if err != nil || disabled.Status != "disabled" {
+		t.Fatalf("self deactivation: %+v %v", disabled, err)
+	}
+	if _, err := s.ResolveSession(ctx, firstSession.RawToken); !errors.Is(err, ErrUnauthenticated) {
+		t.Fatal(err)
+	}
+	other := accepted.Principal
+	if _, err := s.ChangeRole(ctx, other, u.ID, authz.RoleOperator, RequestMeta{}); !errors.Is(err, ErrLastAdmin) {
+		t.Fatal("disabled administrator counted", err)
+	}
+	active, err := s.Reactivate(ctx, other, p.UserID, RequestMeta{})
+	if err != nil || active.Status != "active" {
+		t.Fatalf("restore administrator: %+v %v", active, err)
+	}
+	requireUserAudit(t, r, p, p.UserID, "user.reactivated", other.UserID, map[string]any{"to_status": "active"})
+	if _, err := s.ChangeRole(ctx, other, u.ID, authz.RoleOperator, RequestMeta{}); err != nil {
+		t.Fatal("restored administrator must count", err)
+	}
+	if _, err := s.ChangeRole(ctx, p, p.UserID, authz.RoleOperator, RequestMeta{}); !errors.Is(err, ErrLastAdmin) {
+		t.Fatal(err)
+	}
+	if _, err := s.ResolveSession(ctx, firstSession.RawToken); !errors.Is(err, ErrUnauthenticated) {
+		t.Fatal("reactivation reopened old session", err)
 	}
 }
