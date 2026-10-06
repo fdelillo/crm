@@ -47,10 +47,10 @@ func (s *Service) Invite(ctx context.Context, p authz.Principal, email string, r
 	address, parseErr := mail.ParseAddress(email)
 	fields := map[string]string{}
 	if parseErr != nil || address.Address != email || !strings.Contains(email, "@") || strings.ContainsRune(email, '\x00') {
-		fields["email"] = "invalid"
+		fields["email"] = "invalid_format"
 	}
 	if !validUserRole(role) {
-		fields["role"] = "invalid"
+		fields["role"] = "invalid_value"
 	}
 	if len(fields) > 0 {
 		return User{}, false, &UserValidationError{Fields: fields}
@@ -201,7 +201,7 @@ func managedUser(row store.GetManagedUserRow) User {
 }
 func (s *Service) ChangeRole(ctx context.Context, p authz.Principal, userID uuid.UUID, role authz.Role, meta RequestMeta) (User, error) {
 	if !validUserRole(role) {
-		return User{}, &UserValidationError{Fields: map[string]string{"role": "invalid"}}
+		return User{}, &UserValidationError{Fields: map[string]string{"role": "invalid_value"}}
 	}
 	return s.withManagedUser(ctx, p, userID, changeRole, func(ctx context.Context, tx db.Tx, user store.LockManagedUserRow, _ string) error {
 		return s.setUserRole(ctx, tx, p, user, role, meta)
@@ -308,7 +308,7 @@ func (s *Service) AcceptInvitation(ctx context.Context, raw, name, plain string,
 	err := s.withInvitation(ctx, raw, func(ctx context.Context, tx db.Tx, route store.LookupTokenByHashRow, id uuid.UUID, user store.GetTokenFlowUserRow, _ store.GetTokenForUpdateRow) error {
 		name = strings.TrimSpace(name)
 		if name == "" || utf8.RuneCountInString(name) > 120 || strings.ContainsRune(name, '\x00') {
-			return &UserValidationError{Fields: map[string]string{"name": "invalid"}}
+			return &UserValidationError{Fields: map[string]string{"name": "invalid_value"}}
 		}
 		if code := password.Validate(plain, user.Email); code != "" {
 			return &PasswordValidationError{Code: code}
