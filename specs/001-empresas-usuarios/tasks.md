@@ -1362,7 +1362,7 @@ invitado acepta y entra como Administrador; como otro operador, `/users` da `403
 desactiva a un usuario y el siguiente request de ese usuario da `401`; el admin lo reactiva y
 vuelve a entrar con su contraseña.
 
-**T-B601 [T] — Invitar y reinvitar** · US-3.1, FR-005, FR-008, INV-10, INV-16, DD-1, DD-5, DD-26, H-5
+**T-B601 [T] — Invitar y reinvitar** · US-3.1, FR-005, FR-008, INV-10, INV-16, DD-1, DD-5, DD-26, DD-40, H-5
 - **Red** (integración):
 
   | Caso | Esperado |
@@ -1371,7 +1371,8 @@ vuelve a entrar con su contraseña.
   | Mismo email ya `invited` en la misma empresa, **mismo** rol | token anterior revocado, token nuevo; `reissued = true`; auditoría `user.invitation_reissued {role, trigger: admin}`; **sin** `user.role_changed`; sigue habiendo **un** usuario |
   | Mismo email ya `invited`, rol **distinto** (`operator` → `admin`) | además del caso anterior, `role = admin`; auditoría `user.role_changed {from: operator, to: admin, status: invited}` en la misma transacción (dos filas en total) |
   | Reinvitar como `operator` a un invitado `admin` siendo el creador el único admin activo | permitido (los invitados no cuentan para INV-10) |
-  | La reinvitación toma el lock de la empresa (INV-10, DD-40) | un invitado `operator` recibe dos reinvitaciones concurrentes, una como `operator` y otra como `admin` (20 repeticiones). En cada repetición: las dos tienen éxito; hay exactamente dos `user.invitation_reissued` (uno con `data.role = operator`, otro con `admin`) y un `user.role_changed` por cada cambio **real** de rol, con `from`/`to` encadenados según el orden en que se aplicaron. Si primero se aplicó la de `operator`: ningún `role_changed` por ella (mismo rol) y `operator → admin` por la segunda (3 filas en total). Si primero la de `admin`: `operator → admin` y después `admin → operator` (4 filas). El rol final es el de la última reinvitación aplicada; cada `user.role_changed` está en la misma transacción que el `user.invitation_reissued` de su reinvitación (p. ej., mismo `xmin`); queda **una** invitación abierta (la de la última) y la otra revocada. El orden se deduce de la cadena de auditoría y del rol final, no de `occurred_at` (con reloj falso puede coincidir, y con el default `now()` es el inicio de la transacción: la que esperó el lock pudo empezar antes) |
+  | Reinvitaciones concurrentes del mismo invitado con roles distintos (DD-26). Las serializa el lock del usuario (`LockManagedUser`): esta fila **no** detecta la falta del lock de la empresa en `Invite`; eso lo hace la siguiente | un invitado `operator` recibe dos reinvitaciones concurrentes, una como `operator` y otra como `admin` (20 repeticiones). En cada repetición: las dos tienen éxito; hay exactamente dos `user.invitation_reissued` (uno con `data.role = operator`, otro con `admin`) y un `user.role_changed` por cada cambio **real** de rol, con `from`/`to` encadenados según el orden en que se aplicaron. Si primero se aplicó la de `operator`: ningún `role_changed` por ella (mismo rol) y `operator → admin` por la segunda (3 filas en total). Si primero la de `admin`: `operator → admin` y después `admin → operator` (4 filas). El rol final es el de la última reinvitación aplicada; cada `user.role_changed` está en la misma transacción que el `user.invitation_reissued` de su reinvitación (p. ej., mismo `xmin`); queda **una** invitación abierta (la de la última) y la otra revocada. El orden se deduce de la cadena de auditoría y del rol final, no de `occurred_at` (con reloj falso puede coincidir, y con el default `now()` es el inicio de la transacción: la que esperó el lock pudo empezar antes) |
+  | **Concurrencia, lock de la empresa en `Invite`** (INV-10, DD-40): dos `Invite` del mismo email **nuevo**, con el mismo rol, en la misma empresa. Mecanismo E de T-B604: `T_admin` toma la empresa con la query de INV-10 y la retiene; se lanzan las dos `Invite`; el test espera (sondeo de `pg_blocking_pids` cada 10 ms, contexto de 20 s) a que haya **dos** backends bloqueados por `T_admin`, y después `T_admin` hace `ROLLBACK`. Corre una vez: el mecanismo es determinista | Las dos quedan bloqueadas por `T_admin` antes de devolver (si alguna devuelve antes, el test falla con un mensaje que nombra INV-10 y DD-40: `Invite` no tomó el lock). Después, las dos tienen éxito y ninguna devuelve `ErrEmailTaken`: exactamente una con `reissued = false` y otra con `reissued = true` (`201` y `200` en HTTP, T-B606); **un** usuario `invited` con ese email y ese rol; auditoría: un `user.invited` y un `user.invitation_reissued {role, trigger: admin}`, sin `user.role_changed`; dos mensajes `invitation` pendientes (INV-16); **una** invitación abierta (la de la reemisión) y la de la creación, revocada. No se asume cuál de las dos crea: se identifica por el `reissued` que devolvió cada una. Sin el lock, las dos ven el email libre, las dos insertan y la segunda choca con `users_email_key` (`ErrEmailTaken`, un `409 email_taken` falso); con el lock tomado **después** de buscar el email, las dos quedan bloqueadas pero ya lo vieron libre y una termina en `ErrEmailTaken`: la fila falla en los dos casos |
   | Email de un usuario activo o desactivado de esta empresa | `ErrEmailTaken` |
   | Email de un usuario (cualquier estado) de **otra** empresa | `ErrEmailTaken` (sin datos de la otra empresa en el error) |
   | Rol `admin` en una invitación nueva | permitido |
@@ -1414,12 +1415,12 @@ vuelve a entrar con su contraseña.
 
   | Caso | Esperado |
   |---|---|
-  | Desactivar un operador con 2 sesiones abiertas | `disabled`; ambas sesiones con `revoked_reason = user_disabled`; tokens pendientes revocados; auditoría `user.deactivated {sessions_revoked: 2}` |
+  | Desactivar un operador con 2 sesiones abiertas y, en `user_tokens` (los arma el fixture), un `password_reset` y un `email_verification` pendientes, un `password_reset` ya usado y uno ya revocado; además, un `password_reset` pendiente de **otro** usuario de la empresa | `disabled`; ambas sesiones con `revoked_reason = user_disabled`; los dos tokens pendientes con `revoked_at` puesto, afirmado sobre la fila (INV-11: que el token deje de funcionar no alcanza, porque el estado `disabled` ya lo rechaza); el usado, intacto (`used_at` igual y `revoked_at` nulo: tocarlo violaría `NOT (used_at IS NOT NULL AND revoked_at IS NOT NULL)` y la desactivación fallaría); el ya revocado conserva su `revoked_at`; el del otro usuario, intacto; auditoría `user.deactivated {sessions_revoked: 2}` |
   | El siguiente request con cualquiera de sus cookies | `401` |
   | Desactivar al único admin activo | `ErrLastAdmin` |
   | Un admin se desactiva a sí mismo habiendo otro admin | permitido; su sesión actual queda revocada |
   | Desactivar un usuario ya `disabled` | `ErrInvalidTransition` |
-  | Desactivar un `invited` | `disabled`; su invitación queda revocada |
+  | Desactivar un `invited` | `disabled`; su invitación abierta con `revoked_at` puesto, afirmado sobre la fila de `user_tokens` (INV-11; `PreviewInvitation` ya la rechaza por el estado, así que no prueba la revocación); auditoría `user.deactivated {sessions_revoked: 0}` |
   | **Concurrencia**: 2 admins se desactivan mutuamente a la vez | uno solo tiene éxito |
   | Reactivar un `disabled` con contraseña | `active`; auditoría `user.reactivated {to_status: active}` con actor = admin, en la **misma** transacción; sus sesiones viejas **siguen** revocadas; puede iniciar sesión con su contraseña |
   | Reactivar un `disabled` que nunca tuvo contraseña | `invited` con invitación nueva de 7 días (`created_by_user_id` = admin) y mensaje `invitation` encolado; auditoría `user.reactivated {to_status: invited}` **y** `user.invitation_reissued {trigger: reactivation}` (FR-008: toda invitación se audita) |
@@ -1461,7 +1462,7 @@ vuelve a entrar con su contraseña.
 `ChangeRole`, `Deactivate`, `Reactivate`**. Las transiciones de estado se expresan como una
 tabla (`estado actual × acción → estado nuevo | error`) con su test unitario (incluye las dos
 salidas de `reactivate` según tenga o no contraseña y el rechazo de `changeRole` en `disabled`),
-y cada operación de cambio de rol o estado (incluida la reinvitación) empieza con el lock de la
+y cada operación de cambio de rol o estado (incluida `Invite`, que toma el lock **antes** de buscar el email porque todavía no sabe si va a crear o a reemitir; lo verifica la fila de concurrencia del email nuevo de T-B601) empieza con el lock de la
 fila `tenants` con la query de INV-10, `FOR NO KEY UPDATE` y nunca `FOR UPDATE` (DD-40, novena
 revisión), y recién después bloquea al usuario, también con `FOR NO KEY UPDATE` (`LockManagedUser`, antes `GetManagedUserForUpdate`) (orden empresa → usuario →
 tokens). `AcceptInvitation` no lo necesita (solo puede subir la cuenta de Administradores
@@ -1488,6 +1489,7 @@ de cada invitado, aunque haya vencido (DD-25).
   | `POST /users/{id}/reactivate` sobre `active` o `invited` | `409 invalid_state` |
   | `409 last_admin`, `409 invalid_state` en `role`/`deactivate` | según T-B603..T-B604 |
   | `POST /auth/invitations/preview` y `accept` | `200` / `201` + cookie / `400 token_invalid` |
+  | Cupo compartido (DD-9): desde una misma IP, 10 `preview` y 10 `accept` intercalados con un token inválido, y después un 21.º `preview` | los 20 primeros, `400 token_invalid`; el 21.º, `429 rate_limited` con `Retry-After` (con cupos separados, el 21.º pasaría) |
 - **Green**: pasa la tabla.
 
 **T-B607 — Implementar los handlers**.
