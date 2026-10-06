@@ -69,7 +69,7 @@ func lockFixture(t *testing.T) (*Service, db.TxRunner, fixture.Company, string, 
 	}
 	setLoginPassword(t, r, c, hash, "active")
 	if err := r.InTenantTx(ctx, c.ID, func(ctx context.Context, tx db.Tx) error {
-		if _, err := tx.Exec(ctx, `DELETE FROM app.sessions WHERE tenant_id=$1 AND user_id=$2`, c.ID, c.UserID); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE app.sessions SET revoked_at=$3, revoked_reason='logout' WHERE tenant_id=$1 AND user_id=$2`, c.ID, c.UserID, s.clock.Now()); err != nil {
 			return err
 		}
 		_, err := tx.Exec(ctx, `UPDATE app.users SET role='operator' WHERE tenant_id=$1 AND id=$2`, c.ID, c.UserID)
