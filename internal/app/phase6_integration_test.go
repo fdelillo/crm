@@ -200,6 +200,7 @@ func TestUsersHTTPInvitationLifecycleAndPermissions(t *testing.T) {
 func TestUsersHTTPStatesAndNotFound(t *testing.T) {
 	s, c, runner := phase6Server(t)
 	tenantID, adminID := usersSignup(t, s)
+	c.advance(time.Second) // Registration uses the database clock; later invitations use the fake clock.
 	cookie := s.Client.Jar.Cookies(mustURL(t, s.URL))
 	email := uuid.NewString() + "@example.com"
 	invited, _ := usersRequest(t, s, "POST", "/api/v1/users/invitations", `{"email":"`+email+`","role":"operator"}`, 201)
@@ -234,6 +235,12 @@ func TestUsersHTTPStatesAndNotFound(t *testing.T) {
 	if reactivated["status"] != "invited" || reactivated["invitation_expires_at"] == nil {
 		t.Fatal(reactivated)
 	}
+	// List covers all three states and preserves the expired invitation.
+	c.advance(time.Second)
+	disabledEmail := uuid.NewString() + "@example.com"
+	disabledUser, _ := usersRequest(t, s, "POST", "/api/v1/users/invitations", `{"email":"`+disabledEmail+`","role":"operator"}`, 201)
+	disabledID := disabledUser["id"].(string)
+	usersRequest(t, s, "POST", "/api/v1/users/"+disabledID+"/deactivate", "", 200)
 	// A real second tenant's ID, not a fabricated cross-tenant case.
 	otherID, _ := usersSignup(t, s)
 	var otherUser uuid.UUID
@@ -273,11 +280,14 @@ func TestUsersHTTPStatesAndNotFound(t *testing.T) {
 	usersRequest(t, s, "POST", "/api/v1/auth/login", `{"email":"`+adminEmail+`","password":"valid-password"}`, 200)
 	list, _ := usersRequest(t, s, "GET", "/api/v1/users", "", 200)
 	items := list["items"].([]any)
-	if len(items) != 2 || items[0].(map[string]any)["id"] != adminID.String() {
+	if len(items) != 3 || items[0].(map[string]any)["id"] != adminID.String() || items[1].(map[string]any)["id"] != id || items[2].(map[string]any)["id"] != disabledID {
 		t.Fatal(list)
 	}
 	if items[1].(map[string]any)["invitation_expires_at"] != reactivated["invitation_expires_at"] {
 		t.Fatal("expired invitation date lost")
+	}
+	if items[2].(map[string]any)["status"] != "disabled" || items[2].(map[string]any)["invitation_expires_at"] != nil {
+		t.Fatal("disabled list entry", items[2])
 	}
 	if items[0].(map[string]any)["invitation_expires_at"] != nil {
 		t.Fatal("active user invitation expiry")
