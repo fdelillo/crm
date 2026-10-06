@@ -4,7 +4,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"net/mail"
 	"strings"
 
 	"github.com/fdelillo/crm/internal/authz"
@@ -23,8 +22,7 @@ func RegisterRecoveryRoutes(r chi.Router, users *identity.Service, resetLimiter,
 			return
 		}
 		email := strings.ToLower(strings.TrimSpace(input.Email))
-		address, err := mail.ParseAddress(email)
-		if email == "" || len(email) > 254 || err != nil || address.Address != email || strings.ContainsRune(email, '\x00') {
+		if !identity.ValidEmail(email) {
 			httpx.ValidationError(w, req, map[string]string{"email": "invalid_format"})
 			return
 		}

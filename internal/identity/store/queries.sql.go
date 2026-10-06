@@ -96,7 +96,7 @@ func (q *Queries) GetTokenFlowTenantName(ctx context.Context, tenantID uuid.UUID
 
 const getTokenFlowUser = `-- name: GetTokenFlowUser :one
 SELECT email, status, role, email_verified_at FROM app.users
-WHERE tenant_id = $1 AND id = $2 FOR UPDATE
+WHERE tenant_id = $1 AND id = $2 FOR NO KEY UPDATE
 `
 
 type GetTokenFlowUserParams struct {
@@ -247,17 +247,18 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) (u
 }
 
 const insertUserToken = `-- name: InsertUserToken :exec
-INSERT INTO app.user_tokens (tenant_id, user_id, purpose, token_hash, created_at, expires_at)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO app.user_tokens (tenant_id, user_id, purpose, token_hash, created_at, expires_at, created_by_user_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 `
 
 type InsertUserTokenParams struct {
-	TenantID  uuid.UUID
-	UserID    uuid.UUID
-	Purpose   string
-	TokenHash []byte
-	CreatedAt time.Time
-	ExpiresAt time.Time
+	TenantID        uuid.UUID
+	UserID          uuid.UUID
+	Purpose         string
+	TokenHash       []byte
+	CreatedAt       time.Time
+	ExpiresAt       time.Time
+	CreatedByUserID uuid.NullUUID
 }
 
 func (q *Queries) InsertUserToken(ctx context.Context, arg InsertUserTokenParams) error {
@@ -268,6 +269,7 @@ func (q *Queries) InsertUserToken(ctx context.Context, arg InsertUserTokenParams
 		arg.TokenHash,
 		arg.CreatedAt,
 		arg.ExpiresAt,
+		arg.CreatedByUserID,
 	)
 	return err
 }
