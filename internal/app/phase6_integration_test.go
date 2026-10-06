@@ -302,3 +302,31 @@ func mustURL(t *testing.T, raw string) *url.URL {
 	}
 	return u
 }
+
+func TestUsersHTTPValidationPreservesInvitation(t *testing.T) {
+	s, c, r := phase6Server(t)
+	tenantID, adminID := usersSignup(t, s)
+	c.advance(time.Second)
+	for _, tc := range []struct{ body, field, code string }{
+		{`{"email":"not an email","role":"operator"}`, "email", "invalid_format"},
+		{`{"email":"valid@example.com","role":"unknown"}`, "role", "invalid_value"},
+	} {
+		problem, _ := usersRequest(t, s, "POST", "/api/v1/users/invitations", tc.body, 422)
+		validation := problem["errors"].([]any)[0].(map[string]any)
+		if validation["field"] != tc.field || validation["code"] != tc.code {
+			t.Fatal(problem)
+		}
+	}
+	usersRequest(t, s, "PUT", "/api/v1/users/"+adminID.String()+"/role", `{"role":"unknown"}`, 422)
+	email := uuid.NewString() + "@example.com"
+	usersRequest(t, s, "POST", "/api/v1/users/invitations", `{"email":"`+email+`","role":"operator"}`, 201)
+	raw := invitationHTTPToken(t, r, tenantID, email)
+	for _, body := range []string{
+		`{"token":"` + raw + `","name":"","password":"valid-password"}`,
+		`{"token":"` + raw + `","name":"B","password":"short"}`,
+	} {
+		usersRequest(t, s, "POST", "/api/v1/auth/invitations/accept", body, 422)
+		usersRequest(t, s, "POST", "/api/v1/auth/invitations/preview", `{"token":"`+raw+`"}`, 200)
+	}
+	usersRequest(t, s, "POST", "/api/v1/auth/invitations/accept", `{"token":"`+raw+`","name":"B","password":"valid-password"}`, 201)
+}
