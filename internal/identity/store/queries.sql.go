@@ -96,7 +96,7 @@ func (q *Queries) GetTokenFlowTenantName(ctx context.Context, tenantID uuid.UUID
 
 const getTokenFlowUser = `-- name: GetTokenFlowUser :one
 SELECT email, status, role, email_verified_at FROM app.users
-WHERE tenant_id = $1 AND id = $2 FOR UPDATE
+WHERE tenant_id = $1 AND id = $2 FOR NO KEY UPDATE
 `
 
 type GetTokenFlowUserParams struct {

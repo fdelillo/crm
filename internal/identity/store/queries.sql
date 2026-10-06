@@ -41,7 +41,7 @@ RETURNING user_id;
 
 -- name: GetTokenFlowUser :one
 SELECT email, status, role, email_verified_at FROM app.users
-WHERE tenant_id = @tenant_id AND id = @user_id FOR UPDATE;
+WHERE tenant_id = @tenant_id AND id = @user_id FOR NO KEY UPDATE;
 
 -- name: GetTokenForUpdate :one
 SELECT id, user_id, purpose, expires_at, used_at, revoked_at FROM app.user_tokens
