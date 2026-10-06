@@ -28,6 +28,7 @@ const (
 )
 
 var (
+	ErrLogoNotFound        = errors.New("tenant: logo not found")
 	ErrLogoTooLarge        = errors.New("tenant: logo too large")
 	ErrLogoUnsupportedType = errors.New("tenant: unsupported logo type")
 	ErrLogoInvalidImage    = errors.New("tenant: invalid logo image")
@@ -87,6 +88,7 @@ func (s *Service) SetLogo(ctx context.Context, p authz.Principal, data []byte, m
 	}
 	var out Tenant
 	var oldKey string
+	functionCompleted := false
 	err = s.runner.InTenantTx(ctx, p.TenantID, func(ctx context.Context, tx db.Tx) error {
 		q := store.New(tx)
 		row, err := q.LockTenant(ctx, p.TenantID)
@@ -102,10 +104,40 @@ func (s *Service) SetLogo(ctx context.Context, p authz.Principal, data []byte, m
 			return err
 		}
 		out = tenantFrom(row)
+		functionCompleted = true
 		return nil
 	})
 	if err != nil {
-		s.deleteLogo(ctx, key, "rollback")
+		if !functionCompleted {
+			// fn failed (or never ran): the runner guarantees a safe rollback.
+			s.deleteLogo(ctx, key, "compensation")
+			return Tenant{}, err
+		}
+		// A Commit error does not tell whether PostgreSQL committed. A locked
+		// reread waits for an in-flight transaction before choosing an object.
+		reconcile, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		var row store.AppTenant
+		readErr := s.runner.InTenantTx(reconcile, p.TenantID, func(ctx context.Context, tx db.Tx) error {
+			var err error
+			row, err = store.New(tx).LockTenant(ctx, p.TenantID)
+			return db.MapError(err)
+		})
+		outcome := "unknown"
+		if readErr == nil {
+			outcome = "rolled_back"
+			if row.LogoObjectKey.Valid && row.LogoObjectKey.String == key {
+				outcome = "committed"
+			}
+		}
+		s.logger.WarnContext(reconcile, "logo commit result uncertain", "event", "logo_commit_uncertain", "tenant_id", p.TenantID.String(), "outcome", outcome)
+		if outcome == "committed" {
+			s.deleteLogo(ctx, oldKey, "replaced")
+			return tenantFrom(row), nil
+		}
+		if outcome == "rolled_back" {
+			s.deleteLogo(ctx, key, "compensation")
+		}
 		return Tenant{}, err
 	}
 	s.deleteLogo(ctx, oldKey, "replaced")
@@ -134,7 +166,7 @@ func (s *Service) RemoveLogo(ctx context.Context, p authz.Principal, meta identi
 	if err != nil {
 		return err
 	}
-	s.deleteLogo(ctx, oldKey, "removed")
+	s.deleteLogo(ctx, oldKey, "replaced")
 	return nil
 }
 
@@ -146,40 +178,61 @@ func (s *Service) deleteLogo(ctx context.Context, key, reason string) {
 	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	if err := s.storage.Delete(cleanup, key); err != nil {
-		s.logger.WarnContext(cleanup, "logo object cleanup failed", "event", "logo_cleanup_failed", "reason", reason, "object_key", key, "error", err)
+		s.logger.WarnContext(cleanup, "logo object cleanup failed", "event", "logo_delete_failed", "reason", reason, "object_key", key, "error", err)
 	}
 }
-func (s *Service) GetLogo(ctx context.Context, p authz.Principal, ifNoneMatch string) (LogoResult, error) {
-	var key string
-	var result LogoResult
+
+// readLogoTenant releases the transaction before any storage call or ETag comparison.
+func (s *Service) readLogoTenant(ctx context.Context, p authz.Principal) (store.AppTenant, error) {
+	var row store.AppTenant
 	err := s.runner.InTenantTx(ctx, p.TenantID, func(ctx context.Context, tx db.Tx) error {
-		row, err := store.New(tx).GetTenant(ctx, p.TenantID)
+		var err error
+		row, err = store.New(tx).GetTenant(ctx, p.TenantID)
 		if err != nil {
 			return db.MapError(err)
 		}
 		if !row.LogoObjectKey.Valid {
-			return db.ErrNotFound
+			return ErrLogoNotFound
 		}
-		key = row.LogoObjectKey.String
-		id, err := uuid.Parse(strings.TrimSuffix(path.Base(key), path.Ext(key)))
-		if err != nil {
-			return fmt.Errorf("tenant: invalid logo object key: %w", err)
-		}
-		result.ETag = `"` + id.String() + `"`
-		result.ContentType = row.LogoContentType.String
-		result.NotModified = ifNoneMatch == result.ETag
 		return nil
 	})
+	return row, err
+}
+func (s *Service) GetLogo(ctx context.Context, p authz.Principal, ifNoneMatch string) (LogoResult, error) {
+	row, err := s.readLogoTenant(ctx, p)
 	if err != nil {
 		return LogoResult{}, err
 	}
-	if result.NotModified {
-		return result, nil
+	for attempt := range 2 {
+		key := row.LogoObjectKey.String
+		id, err := uuid.Parse(strings.TrimSuffix(path.Base(key), path.Ext(key)))
+		if err != nil {
+			return LogoResult{}, fmt.Errorf("tenant: invalid logo object key: %w", err)
+		}
+		result := LogoResult{ETag: `"` + id.String() + `"`, ContentType: row.LogoContentType.String}
+		result.NotModified = ifNoneMatch == result.ETag
+		if result.NotModified {
+			return result, nil
+		}
+		body, info, err := s.storage.Get(ctx, key)
+		if err == nil {
+			result.Body, result.Size = body, info.Size
+			return result, nil
+		}
+		if !errors.Is(err, objectstore.ErrNotFound) {
+			return LogoResult{}, fmt.Errorf("tenant: get logo: %w", err)
+		}
+		if attempt == 1 {
+			return LogoResult{}, ErrLogoNotFound
+		}
+		row, err = s.readLogoTenant(ctx, p)
+		if err != nil {
+			return LogoResult{}, err
+		}
+		if row.LogoObjectKey.String == key {
+			s.logger.ErrorContext(ctx, "referenced logo object missing", "event", "logo_object_missing", "tenant_id", p.TenantID.String(), "object_key", key)
+			return LogoResult{}, ErrLogoNotFound
+		}
 	}
-	body, info, err := s.storage.Get(ctx, key)
-	if err != nil {
-		return LogoResult{}, fmt.Errorf("tenant: get logo: %w", err)
-	}
-	result.Body, result.Size = body, info.Size
-	return result, nil
+	return LogoResult{}, ErrLogoNotFound
 }

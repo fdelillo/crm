@@ -114,10 +114,7 @@ func (s *Service) Register(ctx context.Context, in Signup, meta identity.Request
 	if len(timezone) > 64 {
 		timezone = ""
 	}
-	if timezone == "" {
-		timezone = defaultTimezone
-		s.logger.InfoContext(ctx, "signup timezone defaulted", "event", "signup_timezone_defaulted")
-	} else if _, err := time.LoadLocation(timezone); err != nil {
+	if !validTimezone(timezone) {
 		timezone = defaultTimezone
 		s.logger.InfoContext(ctx, "signup timezone defaulted", "event", "signup_timezone_defaulted")
 	}

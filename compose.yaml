@@ -37,11 +37,18 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio_dev}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_dev_secret}
+      MC_HOST_local: http://${MINIO_ROOT_USER:-minio_dev}:${MINIO_ROOT_PASSWORD:-minio_dev_secret}@127.0.0.1:9000
     ports:
       - "127.0.0.1:9000:9000" # S3 API
       - "127.0.0.1:9001:9001" # console
     volumes:
       - miniodata:/data
+    healthcheck:
+      # Healthy means the server is ready and the configured development bucket exists.
+      test: ["CMD", "mc", "mb", "--ignore-existing", "local/${S3_BUCKET:-crm-dev}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
 
 volumes:
   pgdata:

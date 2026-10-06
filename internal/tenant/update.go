@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -58,7 +57,10 @@ func (u Update) checkFields() error {
 	if len(u) == 0 {
 		return ErrMalformedUpdate
 	}
-	for key := range u {
+	for key, value := range u {
+		if value == nil && (key == "name" || key == "timezone") {
+			return ErrMalformedUpdate
+		}
 		if _, ok := updateLimits[key]; !ok {
 			return ErrMalformedUpdate
 		}
@@ -74,21 +76,23 @@ func (u Update) validate() (Update, error) {
 	for name, value := range u {
 		normalized[name] = value
 		if value == nil {
-			if name == "name" {
-				fields[name] = "required"
-			}
-			if name == "timezone" {
-				fields[name] = "invalid_timezone"
-			}
 			continue
 		}
-		v := *value
+		raw := *value
+		if !validText(raw, updateLimits[name]) {
+			fields[name] = "invalid_value"
+			continue
+		}
+		v := strings.TrimSpace(raw)
+		if v == "" && name != "name" && name != "timezone" {
+			normalized[name] = nil
+			continue
+		}
 		switch name {
 		case "name":
-			if code := validateName(v); code != "" {
+			if code := validateName(raw); code != "" {
 				fields[name] = code
 			}
-			v = strings.TrimSpace(v)
 		case "timezone":
 			if code := validateTimezone(v); code != "" {
 				fields[name] = code
@@ -100,14 +104,11 @@ func (u Update) validate() (Update, error) {
 				fields[name] = code
 			}
 		case "email":
-			if !validEmail(v) || !validText(v, updateLimits[name]) {
+			if !validEmail(v) {
 				fields[name] = "invalid_format"
 			}
-		default:
-			if !validText(v, updateLimits[name]) {
-				fields[name] = "invalid_value"
-			}
 		}
+
 		normalized[name] = &v
 	}
 	if len(fields) != 0 {
@@ -160,14 +161,23 @@ func (s *Service) Update(ctx context.Context, p authz.Principal, input Update, m
 		current := tenantFrom(row)
 		values := map[string]*string{"name": &current.Name, "legal_name": current.LegalName, "tax_id": current.TaxID, "address": current.Address, "phone": current.Phone, "email": current.Email, "timezone": &current.Timezone}
 		changed := make([]string, 0, len(input))
-		for key, v := range input {
+		// Audit order follows data-model §2.1, independently of JSON/map ordering.
+		for _, key := range []string{"name", "legal_name", "tax_id", "address", "phone", "email", "timezone"} {
+			v, present := input[key]
+			if !present {
+				continue
+			}
 			old := values[key]
 			if (old == nil) != (v == nil) || old != nil && v != nil && *old != *v {
 				changed = append(changed, key)
 			}
 			values[key] = v
 		}
-		sort.Strings(changed)
+		if len(changed) == 0 {
+			out = current
+			return nil
+		}
+
 		row, err = q.UpdateTenantDetails(ctx, store.UpdateTenantDetailsParams{TenantID: p.TenantID, Name: *values["name"], LegalName: nullableText(values["legal_name"]), TaxID: nullableText(values["tax_id"]), Address: nullableText(values["address"]), Phone: nullableText(values["phone"]), Email: nullableText(values["email"]), Timezone: *values["timezone"], UpdatedAt: time.Now().UTC()})
 		if err != nil {
 			return db.MapError(err)

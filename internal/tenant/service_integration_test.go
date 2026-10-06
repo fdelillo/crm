@@ -3,6 +3,7 @@
 package tenant_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -296,5 +297,27 @@ func TestRegisterLockTimeoutIsUnavailableAndRetryWorks(t *testing.T) {
 	}
 	if _, err := svc.Register(ctx, input, identity.RequestMeta{}); err != nil {
 		t.Fatalf("retry after lock release: %v", err)
+	}
+}
+
+func TestRegisterLocalTimezoneDefaultsAndLogs(t *testing.T) {
+	_, ident, runner := newRegistrationServices(t)
+	var logs bytes.Buffer
+	svc := tenant.NewService(runner, ident, industrytemplate.NoopSeeder{}, password.NewHasher(2), audit.NewRecorder(), slog.New(slog.NewTextHandler(&logs, nil)))
+	input := signupWithEmail(uuid.NewString() + "@example.com")
+	input.Timezone = "Local"
+	got, err := svc.Register(context.Background(), input, identity.RequestMeta{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Tenant.Timezone != "America/Argentina/Buenos_Aires" {
+		t.Fatalf("DD-27: stored timezone=%q", got.Tenant.Timezone)
+	}
+	if !strings.Contains(logs.String(), "level=INFO") || !strings.Contains(logs.String(), "event=signup_timezone_defaulted") {
+		t.Fatalf("default log missing: %s", logs.String())
+	}
+	stored, err := svc.Get(context.Background(), got.Session.Principal)
+	if err != nil || stored.Timezone != got.Tenant.Timezone {
+		t.Fatalf("persisted timezone=%s err=%v", stored.Timezone, err)
 	}
 }

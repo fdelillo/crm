@@ -80,6 +80,27 @@ func TestRowLockRuleScopes(t *testing.T) {
 	}
 }
 
+// DD-40's two tenant lock queries are allowlisted by name and owning SQL file.
+func TestTenantLockAllowlist(t *testing.T) {
+	for _, owner := range []struct{ file, name string }{
+		{"internal/identity/store/users.sql", "LockUsersTenant"},
+		{"internal/tenant/store/queries.sql", "LockTenant"},
+	} {
+		for _, mode := range []string{"NO KEY UPDATE", "UPDATE", "SHARE", "KEY SHARE"} {
+			sql := "SELECT * FROM app.tenants FOR " + mode
+			if got := len(rowLockErrors(owner.file, owner.name, sql)); (got == 0) != (mode == "NO KEY UPDATE") {
+				t.Fatalf("%s %s: violations=%d", owner.name, mode, got)
+			}
+			if len(rowLockErrors(owner.file, "UnexpectedTenantLock", sql)) == 0 {
+				t.Fatal("unnamed exception admitted a tenant lock")
+			}
+			if len(rowLockErrors("internal/other/store/queries.sql", owner.name, sql)) == 0 {
+				t.Fatal("exception admitted a lock outside its owning store")
+			}
+		}
+	}
+}
+
 func TestR0IdentityRowLocks(t *testing.T) {
 	root := "../../.."
 	err := filepath.WalkDir(filepath.Join(root, "internal"), func(p string, d fs.DirEntry, err error) error {

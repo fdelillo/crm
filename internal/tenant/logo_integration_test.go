@@ -89,7 +89,7 @@ func (f *logoStorage) Delete(_ context.Context, key string) error {
 	delete(f.objects, key)
 	return nil
 }
-func logoService(t *testing.T, runner db.TxRunner, recorder audit.Recorder, f *logoStorage, logs io.Writer) *tenant.Service {
+func logoService(t *testing.T, runner db.TxRunner, recorder audit.Recorder, f objectstore.ObjectStorage, logs io.Writer) *tenant.Service {
 	t.Helper()
 	_, ident, _ := newRegistrationServices(t)
 	return tenant.NewService(runner, ident, industrytemplate.NoopSeeder{}, password.NewHasher(2), recorder, slog.New(slog.NewTextHandler(logs, nil)), tenant.WithObjectStorage(f))
@@ -294,16 +294,6 @@ func TestLogoReplacementOrderingAndCleanup(t *testing.T) {
 	}
 }
 
-type rollbackAfterLogo struct{ db.TxRunner }
-
-func (r rollbackAfterLogo) InTenantTx(ctx context.Context, id uuid.UUID, fn func(context.Context, db.Tx) error) error {
-	return r.TxRunner.InTenantTx(ctx, id, func(ctx context.Context, tx db.Tx) error {
-		if err := fn(ctx, tx); err != nil {
-			return err
-		}
-		return errors.New("injected failure after callback")
-	})
-}
 func TestLogoFailureCompensation(t *testing.T) {
 	_, _, runner := newRegistrationServices(t)
 	f := newLogoStorage()
@@ -327,7 +317,7 @@ func TestLogoFailureCompensation(t *testing.T) {
 		t.Fatal("Put failure changed row")
 	}
 	f.putErr = nil
-	broken := logoService(t, rollbackAfterLogo{runner}, audit.NewRecorder(), f, &logs)
+	broken := logoService(t, runner, failedLogoAudit{}, f, &logs)
 	_, err = broken.SetLogo(context.Background(), p, pngLogo(t, 10, 10, 0), identity.RequestMeta{})
 	if err == nil || len(f.deletes) != 1 || len(f.objects) != 1 {
 		t.Fatalf("rollback compensation err=%v deletes=%v", err, f.deletes)
@@ -412,7 +402,7 @@ func TestLogoGetCacheAndRemove(t *testing.T) {
 	if err := svc.RemoveLogo(context.Background(), p, identity.RequestMeta{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.GetLogo(context.Background(), p, etag); !errors.Is(err, db.ErrNotFound) {
+	if _, err := svc.GetLogo(context.Background(), p, etag); !errors.Is(err, tenant.ErrLogoNotFound) {
 		t.Fatalf("deleted logo=%v", err)
 	}
 }

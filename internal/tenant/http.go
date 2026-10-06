@@ -103,7 +103,12 @@ func RegisterCompanyRoutes(r chi.Router, service *Service, logger *slog.Logger) 
 		w.Header().Set("Content-Length", strconv.FormatInt(out.Size, 10))
 		w.WriteHeader(http.StatusOK)
 		if _, err := io.Copy(w, out.Body); err != nil {
-			logger.WarnContext(req.Context(), "logo response transfer failed", "event", "logo_transfer_failed", "error", err)
+			if req.Context().Err() != nil {
+				// The headers already went out; mark the existing request log as 499.
+				httpx.WriteDBError(w, req, db.ErrCanceled, logger)
+			} else {
+				logger.WarnContext(req.Context(), "logo response stream failed", "event", "logo_stream_failed", "error", err)
+			}
 		}
 	})
 	r.Group(func(r chi.Router) {
@@ -224,7 +229,7 @@ func writeCompanyError(w http.ResponseWriter, req *http.Request, err error, logg
 		httpx.ValidationError(w, req, map[string]string{"file": "invalid_value"})
 	case errors.Is(err, authz.ErrForbidden):
 		httpx.WriteProblem(w, req, httpx.CodeForbidden)
-	case errors.Is(err, objectstore.ErrNotFound):
+	case errors.Is(err, ErrLogoNotFound), errors.Is(err, objectstore.ErrNotFound):
 		httpx.WriteProblem(w, req, httpx.CodeNotFound)
 	case errors.Is(err, objectstore.ErrUnavailable):
 		if req.Context().Err() != nil {

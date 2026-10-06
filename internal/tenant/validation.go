@@ -33,11 +33,17 @@ func validateName(value string) string {
 	}
 	return ""
 }
-func validateTimezone(value string) string {
-	if value == "" || value == "Local" || !validText(value, 64) {
-		return "invalid_timezone"
+
+// validTimezone is shared by signup (default invalid values) and PATCH (reject them).
+func validTimezone(value string) bool {
+	if value == "" || value == "Local" {
+		return false
 	}
-	if _, err := time.LoadLocation(value); err != nil {
+	_, err := time.LoadLocation(value)
+	return err == nil
+}
+func validateTimezone(value string) string {
+	if !validText(value, 64) || !validTimezone(value) {
 		return "invalid_timezone"
 	}
 	return ""

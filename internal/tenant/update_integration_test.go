@@ -77,7 +77,7 @@ func TestUpdatePartialNullableAndAudit(t *testing.T) {
 func TestUpdateValidationAndUnknownFields(t *testing.T) {
 	svc, _, _ := newRegistrationServices(t)
 	p := companyAdmin(t, svc)
-	for _, body := range []string{`{"base_currency":"USD"}`, `{}`, `null`, `{"name":3}`} {
+	for _, body := range []string{`{"base_currency":"USD"}`, `{}`, `null`, `{"name":3}`, `{"name":null}`, `{"timezone":null}`} {
 		var input tenant.Update
 		if err := json.Unmarshal([]byte(body), &input); err == nil {
 			t.Fatalf("accepted malformed update %s", body)
@@ -85,7 +85,7 @@ func TestUpdateValidationAndUnknownFields(t *testing.T) {
 	}
 	for _, tc := range []struct{ body, field, code string }{
 		{`{"timezone":"Marte/Olympus"}`, "timezone", "invalid_timezone"},
-		{`{"name":""}`, "name", "required"}, {`{"name":null}`, "name", "required"},
+		{`{"name":""}`, "name", "required"},
 		{`{"tax_id":"30123456782"}`, "tax_id", "invalid_tax_id"},
 		{`{"email":"not-an-email"}`, "email", "invalid_format"},
 	} {

@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"hash/crc32"
 	"image"
 	"image/jpeg"
@@ -40,12 +42,14 @@ type httpLogoStorage struct {
 	mu             sync.Mutex
 	objects        map[string][]byte
 	getCount       int
+	putCount       int
 	putErr, getErr error
 }
 
 func (s *httpLogoStorage) Put(_ context.Context, key string, r io.Reader, _ int64, _ string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.putCount++
 	if s.putErr != nil {
 		return s.putErr
 	}
@@ -72,13 +76,17 @@ func (s *httpLogoStorage) Delete(_ context.Context, key string) error {
 	delete(s.objects, key)
 	return nil
 }
-func phase7Handler(t *testing.T) (http.Handler, string, string, *httpLogoStorage) {
+func phase7Handler(t *testing.T, logSinks ...io.Writer) (http.Handler, string, string, *httpLogoStorage) {
 	t.Helper()
 	runner := db.NewTxRunner(pgtest.AppPool(t))
 	c := clock.Real{}
 	h := password.NewHasher(2)
 	recorder := audit.NewRecorder()
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logSink := io.Discard
+	if len(logSinks) > 0 {
+		logSink = logSinks[0]
+	}
+	logger := slog.New(slog.NewTextHandler(logSink, nil))
 	storage := &httpLogoStorage{objects: map[string][]byte{}}
 	users := identity.NewService(runner, outbox.NewEnqueuer(c), c, 24*time.Hour, 7*24*time.Hour, identity.WithAuthentication(h, recorder, []byte("0123456789abcdef0123456789abcdef"), logger))
 	companies := tenant.NewService(runner, users, industrytemplate.NoopSeeder{}, h, recorder, logger, tenant.WithObjectStorage(storage))
@@ -340,4 +348,103 @@ func TestTenantHTTPLogoCacheLifecycle(t *testing.T) {
 	}
 	tenantRequest(t, h, operator, "GET", "/api/v1/tenant/logo", "", nil, newLogo.Header().Get("ETag"), 404)
 	tenantRequest(t, h, admin, "DELETE", "/api/v1/tenant/logo", "", nil, "", 204)
+}
+
+func TestTenantHTTPPatchRevisionSemantics(t *testing.T) {
+	h, admin, _, _ := phase7Handler(t)
+	for _, body := range []string{`{"name":null}`, `{"timezone":null}`} {
+		t.Run(body, func(t *testing.T) {
+			before := tenantRequest(t, h, admin, "GET", "/api/v1/tenant", "", nil, "", 200)
+			response := tenantRequest(t, h, admin, "PATCH", "/api/v1/tenant", "application/json", []byte(body), "", 400)
+			var problem map[string]any
+			if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := problem["errors"]; ok {
+				t.Fatal("malformed request has field errors")
+			}
+			after := tenantRequest(t, h, admin, "GET", "/api/v1/tenant", "", nil, "", 200)
+			if !bytes.Equal(before.Body.Bytes(), after.Body.Bytes()) {
+				t.Fatal("malformed PATCH changed tenant")
+			}
+		})
+	}
+	t.Run("empty phone", func(t *testing.T) {
+		rec := tenantRequest(t, h, admin, "PATCH", "/api/v1/tenant", "application/json", []byte(`{"phone":""}`), "", 200)
+		var out tenant.Tenant
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		if out.Phone != nil {
+			t.Fatal("empty phone not NULL")
+		}
+	})
+	t.Run("Local", func(t *testing.T) {
+		rec := tenantRequest(t, h, admin, "PATCH", "/api/v1/tenant", "application/json", []byte(`{"timezone":"Local"}`), "", 422)
+		if !bytes.Contains(rec.Body.Bytes(), []byte(`"invalid_timezone"`)) {
+			t.Fatal(rec.Body.String())
+		}
+	})
+}
+
+func TestTenantHTTPMultipartEpilogueLimit(t *testing.T) {
+	h, admin, _, f := phase7Handler(t)
+	body, ct := logoMultipart(t, httpPNG(t, 10, 10, 1024), "file")
+	body = append(body, bytes.Repeat([]byte("x"), tenant.LogoMaxBodyBytes-len(body))...)
+	tenantRequest(t, h, admin, "PUT", "/api/v1/tenant/logo", ct, body, "", 200)
+	if f.putCount != 1 {
+		t.Fatalf("exact body Put count=%d", f.putCount)
+	}
+	body = append(body, 'x')
+	tenantRequest(t, h, admin, "PUT", "/api/v1/tenant/logo", ct, body, "", 413)
+	if f.putCount != 1 {
+		t.Fatalf("oversize epilogue reached Put: count=%d", f.putCount)
+	}
+}
+func TestTenantHTTPStorageUnavailableOnGet(t *testing.T) {
+	h, admin, _, f := phase7Handler(t)
+	body, ct := logoMultipart(t, httpPNG(t, 10, 10, 0), "file")
+	tenantRequest(t, h, admin, "PUT", "/api/v1/tenant/logo", ct, body, "", 200)
+	f.getErr = objectstore.ErrUnavailable
+	rec := tenantRequest(t, h, admin, "GET", "/api/v1/tenant/logo", "", nil, "", 503)
+	if !bytes.Contains(rec.Body.Bytes(), []byte(`"service_unavailable"`)) {
+		t.Fatal(rec.Body.String())
+	}
+}
+
+type brokenDownloadWriter struct {
+	*httptest.ResponseRecorder
+	cancel context.CancelFunc
+}
+
+func (w brokenDownloadWriter) Write([]byte) (int, error) {
+	if w.cancel != nil {
+		w.cancel()
+	}
+	return 0, errors.New("test: download write failed")
+}
+func TestTenantHTTPDownloadFailureLogs(t *testing.T) {
+	for _, clientCanceled := range []bool{true, false} {
+		t.Run(fmt.Sprint(clientCanceled), func(t *testing.T) {
+			var logs bytes.Buffer
+			h, admin, _, _ := phase7Handler(t, &logs)
+			body, ct := logoMultipart(t, httpPNG(t, 10, 10, 0), "file")
+			tenantRequest(t, h, admin, "PUT", "/api/v1/tenant/logo", ct, body, "", 200)
+			logs.Reset()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			req := httptest.NewRequest("GET", "/api/v1/tenant/logo", nil).WithContext(ctx)
+			req.AddCookie(&http.Cookie{Name: identity.SessionCookieName, Value: admin})
+			w := brokenDownloadWriter{ResponseRecorder: httptest.NewRecorder()}
+			if clientCanceled {
+				w.cancel = cancel
+			}
+			h.ServeHTTP(w, req)
+			if clientCanceled {
+				if strings.Contains(logs.String(), "level=WARN") || strings.Contains(logs.String(), "level=ERROR") || !strings.Contains(logs.String(), "level=INFO") || !strings.Contains(logs.String(), "status=499") || !strings.Contains(logs.String(), "event=client_canceled") {
+					t.Fatalf("client cancellation log: %s", logs.String())
+				}
+			} else if !strings.Contains(logs.String(), "level=WARN") || !strings.Contains(logs.String(), "event=logo_stream_failed") || strings.Contains(logs.String(), "level=ERROR") {
+				t.Fatalf("stream failure log: %s", logs.String())
+			}
+		})
+	}
 }
