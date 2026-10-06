@@ -28,6 +28,7 @@ esquema: los `CHECK` de `user_agent` y `last_error` se mantienen.
 del plan, §18): `audit_log.data` también rechaza una credencial incrustada en un texto
 (DD-37 (4)) y solo lleva valores que arma el servidor según el catálogo; el texto libre que
 escribe un usuario no va en `data` (§2.6). Sin cambios de esquema.
+**Séptima revisión 2026-10-05** (*Accepted*, aprobada por el usuario el 2026-10-05; novena tanda del plan, §18): las filas de `tenants` y `users` se bloquean con `FOR NO KEY UPDATE`, nunca con `FOR UPDATE`, porque toda FK hacia esas tablas se verifica con `FOR KEY SHARE` (DD-40; §2.1, §2.2 y checklist de §6). Sin cambios de esquema ni de privilegios.
 
 DDL **conceptual**: define tablas, tipos, constraints, índices, políticas y privilegios. No es
 una migración ejecutable: las migraciones goose las escribe quien implementa, respetando esto.
@@ -191,6 +192,8 @@ Constraints de tabla:
 Índices: solo la PK. Toda lectura es por `id` (incluida la revalidación del logo, que solo lee
 esta fila para comparar el `ETag` y no toca S3).
 
+**Locks sobre la fila** (DD-40, INV-10): cada `INSERT` en una tabla con FK hacia `tenants` (`users`, `sessions`, `user_tokens`, `outbox_messages`, `audit_log` y las tablas de empresa de las specs siguientes) verifica la FK con `FOR KEY SHARE` sobre esta fila. Por eso la fila se bloquea solo con `FOR NO KEY UPDATE`: la query de INV-10 de la administración de usuarios y el `UPDATE` de datos o logo, que lo toma implícito porque no cambia `id`. Nunca con `FOR UPDATE`: cada inserción de la empresa esperaría, y los flujos que ya bloquearon a un usuario entrarían en deadlock con la administración de usuarios. `id` no se actualiza y ningún rol de runtime tiene `DELETE`, que también tomaría `FOR UPDATE`.
+
 **Objeto referido por `logo_object_key` (DD-11, DD-31, H-11)**: PNG o JPEG de **hasta 2 097 152
 bytes** (2 MiB, medidos sobre el archivo) y hasta 2000×2000 px. Lo valida `tenant.Service` antes
 de subirlo a S3; la base no guarda el tamaño ni las dimensiones porque el objeto no cambia después
@@ -230,7 +233,11 @@ Constraints de tabla:
 
 La cuenta de Administradores activos (INV-10) recorre los usuarios de una empresa (pocas decenas)
 con `users_tenant_created_idx`; no justifica un índice propio. Solo cuentan `status = 'active'` y
-`role = 'admin'`: un invitado con rol `admin` no cuenta.
+`role = 'admin'`: un invitado con rol `admin` no cuenta. Se cuenta después de tomar la fila de la
+empresa con `FOR NO KEY UPDATE` (INV-10, DD-40): dos operaciones de administración de la misma
+empresa nunca cuentan a la vez.
+
+**Locks sobre la fila** (DD-40): `sessions.user_id`, `user_tokens.user_id`, `user_tokens.created_by_user_id` y `audit_log.actor_user_id` referencian esta tabla, y cada `INSERT` que las llena toma `FOR KEY SHARE` sobre la fila del usuario. Por eso las filas de `users` se bloquean solo con `FOR NO KEY UPDATE` (`LockManagedUser` en la administración de usuarios, `GetTokenFlowUser` en reset y verificación); los `UPDATE` de 001 (estado, rol, contraseña, verificación, nombre) lo toman implícito porque no cambian columnas con índice único. Nunca `FOR UPDATE`: el cierre de sesión (actualiza su sesión y después audita) entraría en deadlock con la desactivación y con la confirmación de reset. `id` y `email` no se actualizan (lo harían tomar `FOR UPDATE`) y ningún rol de runtime tiene `DELETE`. El login lee la fila sin lock (DD-41).
 
 ### 2.3 `app.sessions` — Sesión (`Session`)
 
@@ -599,9 +606,9 @@ y lo reactiva antes de terminar (ADR-004): queda explícito y versionado.
 
 ### Checklist para una tabla de empresa nueva (cualquier spec)
 
-1. `tenant_id uuid NOT NULL` con FK a `tenants(id)`.
+1. `tenant_id uuid NOT NULL` con FK a `tenants(id)`. Cada `INSERT` verifica esa FK con `FOR KEY SHARE` sobre la fila de la empresa: ninguna query de la spec bloquea `tenants` con `FOR UPDATE` (DD-40 de 001).
 2. `UNIQUE (tenant_id, id)` si otras tablas la van a referenciar; FKs **compuestas** hacia otras
-   tablas de empresa (INV-07).
+   tablas de empresa (INV-07). Si la tabla es destino de FK, sus filas se bloquean con `FOR NO KEY UPDATE`, nunca con `FOR UPDATE` (cada `INSERT` que la referencia toma `FOR KEY SHARE`; DD-40 de 001), y no se actualizan sus columnas con índice único.
 3. `ENABLE` + `FORCE ROW LEVEL SECURITY` y política `tenant_isolation`.
 4. `UPDATE`/`DELETE` para `crm_tenant` solo si la tabla es mutable (los movimientos de caja y de
    cuenta corriente **no** reciben `DELETE`, y su `UPDATE` se limita por columna a los campos de
