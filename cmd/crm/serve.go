@@ -17,6 +17,7 @@ import (
 	"github.com/fdelillo/crm/internal/platform/config"
 	"github.com/fdelillo/crm/internal/platform/db"
 	"github.com/fdelillo/crm/internal/platform/mailer"
+	"github.com/fdelillo/crm/internal/platform/objectstore"
 	"github.com/fdelillo/crm/internal/platform/outbox"
 	"github.com/fdelillo/crm/internal/platform/password"
 	"github.com/fdelillo/crm/internal/platform/ratelimit"
@@ -61,7 +62,12 @@ func runServe(ctx context.Context, args []string, e env) error {
 	recorder := audit.NewRecorder()
 	users := identity.NewService(runner, outbox.NewEnqueuer(c), c, cfg.SessionIdle, cfg.SessionAbsolute,
 		identity.WithAuthentication(hasher, recorder, cfg.AuthHMACKey, logger))
-	companies := tenant.NewService(runner, users, industrytemplate.NoopSeeder{}, hasher, recorder, logger)
+	storage, err := objectstore.NewS3(objectstore.S3Config{Endpoint: cfg.S3Endpoint, Bucket: cfg.S3Bucket,
+		AccessKey: cfg.S3AccessKey, SecretKey: cfg.S3SecretKey, UseSSL: cfg.S3UseSSL})
+	if err != nil {
+		return err
+	}
+	companies := tenant.NewService(runner, users, industrytemplate.NoopSeeder{}, hasher, recorder, logger, tenant.WithObjectStorage(storage))
 	limiter := ratelimit.NewLimiter(rate.Every(12*time.Minute), 5, c, time.Hour)
 	smtp, err := mailer.NewSMTP(mailer.SMTPConfig{Host: cfg.SMTPHost, Port: cfg.SMTPPort,
 		Username: cfg.SMTPUsername, Password: cfg.SMTPPassword, From: cfg.SMTPFrom})
@@ -83,6 +89,7 @@ func runServe(ctx context.Context, args []string, e env) error {
 	app.RegisterRecoveryRoutes(api, users, ratelimit.NewLimiter(rate.Every(12*time.Minute), 5, c, time.Hour),
 		ratelimit.NewLimiter(rate.Every(3*time.Minute), 20, c, time.Hour), logger)
 	app.RegisterUserRoutes(api, users, companies, ratelimit.NewLimiter(rate.Every(3*time.Minute), 20, c, time.Hour), logger)
+	app.RegisterTenantRoutes(api, users, companies, logger)
 	root := app.NewRootHandler(app.RootDeps{
 		API:       api,
 		Liveness:  app.LivenessHandler(),

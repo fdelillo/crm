@@ -31,7 +31,7 @@ func TestTenantNameAndTimezone(t *testing.T) {
 			t.Fatalf("name code=%s", got)
 		}
 	}
-	for _, tc := range []struct{ value, code string }{{"America/Argentina/Cordoba", ""}, {"Marte/Olympus", "invalid_timezone"}, {"", "invalid_timezone"}} {
+	for _, tc := range []struct{ value, code string }{{"America/Argentina/Cordoba", ""}, {"Marte/Olympus", "invalid_timezone"}, {"Local", "invalid_timezone"}, {"", "invalid_timezone"}} {
 		if got := validateTimezone(tc.value); got != tc.code {
 			t.Fatalf("timezone code=%s", got)
 		}

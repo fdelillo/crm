@@ -34,7 +34,7 @@ func validateName(value string) string {
 	return ""
 }
 func validateTimezone(value string) string {
-	if value == "" || !validText(value, 64) {
+	if value == "" || value == "Local" || !validText(value, 64) {
 		return "invalid_timezone"
 	}
 	if _, err := time.LoadLocation(value); err != nil {

@@ -29,6 +29,8 @@ import (
 	"github.com/fdelillo/crm/internal/platform/password"
 	"github.com/fdelillo/crm/internal/tenant"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type logoObject struct {
@@ -308,6 +310,12 @@ func TestLogoFailureCompensation(t *testing.T) {
 	var logs bytes.Buffer
 	svc := logoService(t, runner, audit.NewRecorder(), f, &logs)
 	p := companyAdmin(t, svc)
+	if _, err := svc.SetLogo(context.Background(), p, jpegLogo(t, false), identity.RequestMeta{}); err != nil {
+		t.Fatal(err)
+	}
+	original, _ := companyRow(t, runner, p)
+	f.puts = nil
+	f.deletes = nil
 	before, _ := svc.Get(context.Background(), p)
 	f.putErr = objectstore.ErrUnavailable
 	_, err := svc.SetLogo(context.Background(), p, pngLogo(t, 10, 10, 0), identity.RequestMeta{})
@@ -321,8 +329,11 @@ func TestLogoFailureCompensation(t *testing.T) {
 	f.putErr = nil
 	broken := logoService(t, rollbackAfterLogo{runner}, audit.NewRecorder(), f, &logs)
 	_, err = broken.SetLogo(context.Background(), p, pngLogo(t, 10, 10, 0), identity.RequestMeta{})
-	if err == nil || len(f.deletes) != 1 || len(f.objects) != 0 {
+	if err == nil || len(f.deletes) != 1 || len(f.objects) != 1 {
 		t.Fatalf("rollback compensation err=%v deletes=%v", err, f.deletes)
+	}
+	if _, ok := f.objects[*original]; !ok {
+		t.Fatal("rollback deleted original logo")
 	}
 	after, _ = svc.Get(context.Background(), p)
 	if !reflect.DeepEqual(before, after) {
@@ -375,6 +386,12 @@ func TestLogoGetCacheAndRemove(t *testing.T) {
 	}
 	result.Body.Close()
 	before, _ := svc.Get(context.Background(), p)
+	f.onDelete = func(deleted string) {
+		current, _ := companyRow(t, runner, p)
+		if deleted != *key || current != nil {
+			t.Fatal("RemoveLogo deleted object before COMMIT")
+		}
+	}
 	if err := svc.RemoveLogo(context.Background(), p, identity.RequestMeta{}); err != nil {
 		t.Fatal(err)
 	}
@@ -392,5 +409,76 @@ func TestLogoGetCacheAndRemove(t *testing.T) {
 	}
 	if _, err := svc.GetLogo(context.Background(), p, etag); !errors.Is(err, db.ErrNotFound) {
 		t.Fatalf("deleted logo=%v", err)
+	}
+}
+
+// Observe actual SQL on the real transaction, including the recorder's INSERT.
+// DD-40 protects FK lock order; merely sharing xmin does not prove write order.
+type tenantWriteRunner struct {
+	db.TxRunner
+	writes []string
+}
+type tenantWriteTx struct {
+	db.Tx
+	runner *tenantWriteRunner
+}
+
+func (r *tenantWriteRunner) InTenantTx(ctx context.Context, id uuid.UUID, fn func(context.Context, db.Tx) error) error {
+	return r.TxRunner.InTenantTx(ctx, id, func(ctx context.Context, tx db.Tx) error { return fn(ctx, &tenantWriteTx{Tx: tx, runner: r}) })
+}
+func (tx *tenantWriteTx) observe(sql string) {
+	for strings.HasPrefix(strings.TrimSpace(sql), "--") {
+		_, tail, ok := strings.Cut(sql, "\n")
+		if !ok {
+			return
+		}
+		sql = tail
+	}
+	upper := strings.ToUpper(strings.TrimSpace(sql))
+	if strings.HasPrefix(upper, "UPDATE ") || strings.HasPrefix(upper, "INSERT ") || strings.HasPrefix(upper, "DELETE ") {
+		tx.runner.writes = append(tx.runner.writes, upper)
+	}
+}
+func (tx *tenantWriteTx) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	tx.observe(sql)
+	return tx.Tx.Exec(ctx, sql, args...)
+}
+func (tx *tenantWriteTx) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	tx.observe(sql)
+	return tx.Tx.QueryRow(ctx, sql, args...)
+}
+func (tx *tenantWriteTx) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	tx.observe(sql)
+	return tx.Tx.Query(ctx, sql, args...)
+}
+func TestTenantWritesPrecedeAudit(t *testing.T) {
+	_, _, base := newRegistrationServices(t)
+	runner := &tenantWriteRunner{TxRunner: base}
+	f := newLogoStorage()
+	svc := logoService(t, runner, audit.NewRecorder(), f, io.Discard)
+	p := companyAdmin(t, svc)
+	for _, tc := range []struct {
+		name string
+		run  func() error
+	}{
+		{"Update", func() error {
+			_, err := svc.Update(context.Background(), p, patch(t, `{"name":"Changed"}`), identity.RequestMeta{})
+			return err
+		}},
+		{"SetLogo", func() error {
+			_, err := svc.SetLogo(context.Background(), p, pngLogo(t, 10, 10, 0), identity.RequestMeta{})
+			return err
+		}},
+		{"RemoveLogo", func() error { return svc.RemoveLogo(context.Background(), p, identity.RequestMeta{}) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			runner.writes = nil
+			if err := tc.run(); err != nil {
+				t.Fatal(err)
+			}
+			if len(runner.writes) != 2 || !strings.HasPrefix(runner.writes[0], "UPDATE APP.TENANTS SET") || !strings.HasPrefix(runner.writes[1], "INSERT INTO APP.AUDIT_LOG") {
+				t.Fatalf("DD-40 write order=%v", runner.writes)
+			}
+		})
 	}
 }

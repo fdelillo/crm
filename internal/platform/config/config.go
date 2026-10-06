@@ -39,6 +39,11 @@ type Config struct {
 	SMTPUsername         string
 	SMTPPassword         string
 	SMTPFrom             string
+	S3Endpoint           string
+	S3Bucket             string
+	S3AccessKey          string
+	S3SecretKey          string
+	S3UseSSL             bool
 	HTTPAddr             string
 	MetricsAddr          string
 	TLS                  *TLSFiles // nil except in local mode with TLS_* set
@@ -105,6 +110,20 @@ func Load(getenv func(string) string) (Config, error) {
 		c.SMTPPort = 1025
 	}
 	c.SMTPUsername, c.SMTPPassword = getenv("SMTP_USERNAME"), getenv("SMTP_PASSWORD")
+	c.S3Endpoint, c.S3Bucket = getenv("S3_ENDPOINT"), getenv("S3_BUCKET")
+	c.S3AccessKey, c.S3SecretKey = getenv("S3_ACCESS_KEY"), getenv("S3_SECRET_KEY")
+	if rawSSL := getenv("S3_USE_SSL"); rawSSL != "" {
+		c.S3UseSSL, err = strconv.ParseBool(rawSSL)
+		if err != nil {
+			return Config{}, errors.New("config: S3_USE_SSL must be a boolean")
+		}
+	}
+	if c.IsLocal() {
+		c.S3Endpoint = orDefault(c.S3Endpoint, "localhost:9000")
+		c.S3Bucket = orDefault(c.S3Bucket, "crm-dev")
+		c.S3AccessKey = orDefault(c.S3AccessKey, "minio_dev")
+		c.S3SecretKey = orDefault(c.S3SecretKey, "minio_dev_secret")
+	}
 	if c.TrustedProxies, err = trustedProxies(getenv("TRUSTED_PROXIES")); err != nil {
 		return Config{}, err
 	}
