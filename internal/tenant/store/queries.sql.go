@@ -7,10 +7,38 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const getTenant = `-- name: GetTenant :one
+SELECT id, name, legal_name, tax_id, address, phone, email, logo_object_key, logo_content_type, base_currency, timezone, industry_template_code, industry_template_version, created_at, updated_at FROM app.tenants WHERE id = $1
+`
+
+func (q *Queries) GetTenant(ctx context.Context, tenantID uuid.UUID) (AppTenant, error) {
+	row := q.db.QueryRow(ctx, getTenant, tenantID)
+	var i AppTenant
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.LegalName,
+		&i.TaxID,
+		&i.Address,
+		&i.Phone,
+		&i.Email,
+		&i.LogoObjectKey,
+		&i.LogoContentType,
+		&i.BaseCurrency,
+		&i.Timezone,
+		&i.IndustryTemplateCode,
+		&i.IndustryTemplateVersion,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
 
 const getTenantSummary = `-- name: GetTenantSummary :one
 SELECT id, name, base_currency, timezone, logo_object_key
@@ -62,4 +90,125 @@ func (q *Queries) InsertTenant(ctx context.Context, arg InsertTenantParams) erro
 		arg.IndustryTemplateVersion,
 	)
 	return err
+}
+
+const lockTenant = `-- name: LockTenant :one
+SELECT id, name, legal_name, tax_id, address, phone, email, logo_object_key, logo_content_type, base_currency, timezone, industry_template_code, industry_template_version, created_at, updated_at FROM app.tenants WHERE id = $1 FOR NO KEY UPDATE
+`
+
+// DD-40: serialize partial edits and logo reference replacement without blocking FK checks.
+func (q *Queries) LockTenant(ctx context.Context, tenantID uuid.UUID) (AppTenant, error) {
+	row := q.db.QueryRow(ctx, lockTenant, tenantID)
+	var i AppTenant
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.LegalName,
+		&i.TaxID,
+		&i.Address,
+		&i.Phone,
+		&i.Email,
+		&i.LogoObjectKey,
+		&i.LogoContentType,
+		&i.BaseCurrency,
+		&i.Timezone,
+		&i.IndustryTemplateCode,
+		&i.IndustryTemplateVersion,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateTenantDetails = `-- name: UpdateTenantDetails :one
+UPDATE app.tenants SET name = $1, legal_name = $2,
+    tax_id = $3, address = $4, phone = $5,
+    email = $6, timezone = $7, updated_at = $8
+WHERE id = $9 RETURNING id, name, legal_name, tax_id, address, phone, email, logo_object_key, logo_content_type, base_currency, timezone, industry_template_code, industry_template_version, created_at, updated_at
+`
+
+type UpdateTenantDetailsParams struct {
+	Name      string
+	LegalName pgtype.Text
+	TaxID     pgtype.Text
+	Address   pgtype.Text
+	Phone     pgtype.Text
+	Email     pgtype.Text
+	Timezone  string
+	UpdatedAt time.Time
+	TenantID  uuid.UUID
+}
+
+func (q *Queries) UpdateTenantDetails(ctx context.Context, arg UpdateTenantDetailsParams) (AppTenant, error) {
+	row := q.db.QueryRow(ctx, updateTenantDetails,
+		arg.Name,
+		arg.LegalName,
+		arg.TaxID,
+		arg.Address,
+		arg.Phone,
+		arg.Email,
+		arg.Timezone,
+		arg.UpdatedAt,
+		arg.TenantID,
+	)
+	var i AppTenant
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.LegalName,
+		&i.TaxID,
+		&i.Address,
+		&i.Phone,
+		&i.Email,
+		&i.LogoObjectKey,
+		&i.LogoContentType,
+		&i.BaseCurrency,
+		&i.Timezone,
+		&i.IndustryTemplateCode,
+		&i.IndustryTemplateVersion,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateTenantLogo = `-- name: UpdateTenantLogo :one
+UPDATE app.tenants SET logo_object_key = $1,
+    logo_content_type = $2, updated_at = $3
+WHERE id = $4 RETURNING id, name, legal_name, tax_id, address, phone, email, logo_object_key, logo_content_type, base_currency, timezone, industry_template_code, industry_template_version, created_at, updated_at
+`
+
+type UpdateTenantLogoParams struct {
+	LogoObjectKey   pgtype.Text
+	LogoContentType pgtype.Text
+	UpdatedAt       time.Time
+	TenantID        uuid.UUID
+}
+
+func (q *Queries) UpdateTenantLogo(ctx context.Context, arg UpdateTenantLogoParams) (AppTenant, error) {
+	row := q.db.QueryRow(ctx, updateTenantLogo,
+		arg.LogoObjectKey,
+		arg.LogoContentType,
+		arg.UpdatedAt,
+		arg.TenantID,
+	)
+	var i AppTenant
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.LegalName,
+		&i.TaxID,
+		&i.Address,
+		&i.Phone,
+		&i.Email,
+		&i.LogoObjectKey,
+		&i.LogoContentType,
+		&i.BaseCurrency,
+		&i.Timezone,
+		&i.IndustryTemplateCode,
+		&i.IndustryTemplateVersion,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

@@ -38,8 +38,9 @@ func rowLockErrors(file, name, sql string) []string {
 			if table == "users" && mode != "NO KEY UPDATE" {
 				errors = append(errors, "DD-40: users must use FOR NO KEY UPDATE")
 			}
-			if table == "tenants" && (mode != "NO KEY UPDATE" || name != "LockUsersTenant" || file != "internal/identity/store/users.sql") {
-				errors = append(errors, "DD-40: only LockUsersTenant may lock tenants, with FOR NO KEY UPDATE")
+			tenantLockAllowed := name == "LockUsersTenant" && file == "internal/identity/store/users.sql" || name == "LockTenant" && file == "internal/tenant/store/queries.sql"
+			if table == "tenants" && (mode != "NO KEY UPDATE" || !tenantLockAllowed) {
+				errors = append(errors, "DD-40: only the named identity and tenant locks may lock tenants, with FOR NO KEY UPDATE")
 			}
 		}
 	}
@@ -70,6 +71,12 @@ func TestRowLockRuleScopes(t *testing.T) {
 	}
 	if errs := rowLockErrors("internal/identity/store/users.sql", "LockUsersTenant", `SELECT id FROM app.tenants FOR NO KEY UPDATE`); len(errs) != 0 {
 		t.Fatal(errs)
+	}
+	for _, mode := range []string{"UPDATE", "SHARE", "KEY SHARE", "NO KEY UPDATE"} {
+		errs := rowLockErrors("internal/tenant/store/queries.sql", "LockTenant", `SELECT * FROM app.tenants WHERE id = @tenant_id FOR `+mode)
+		if (len(errs) > 0) != (mode != "NO KEY UPDATE") {
+			t.Fatalf("tenant mode %s: %v", mode, errs)
+		}
 	}
 }
 
