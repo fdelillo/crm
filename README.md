@@ -92,6 +92,9 @@ go run ./cmd/crm serve             # loguea listen=https_local
 curl https://localhost:8443/healthz   # sin -k: {"status":"ok"}
 ```
 
+`--wait` deja también creado el bucket de desarrollo (`S3_BUCKET`, por defecto `crm-dev`): el
+healthcheck de MinIO lo crea de forma idempotente, incluso después de `docker compose down -v`.
+
 Hasta que exista el frontend embebido, `https://localhost:8443/` responde `503` ("La interfaz no
 está compilada"): es esperado.
 

@@ -15,6 +15,7 @@ import (
 	"github.com/fdelillo/crm/internal/industrytemplate"
 	"github.com/fdelillo/crm/internal/platform/audit"
 	"github.com/fdelillo/crm/internal/platform/db"
+	"github.com/fdelillo/crm/internal/platform/objectstore"
 	"github.com/fdelillo/crm/internal/platform/password"
 	"github.com/fdelillo/crm/internal/tenant/store"
 	"github.com/google/uuid"
@@ -61,20 +62,25 @@ type AdminOnboarding interface {
 }
 
 type Service struct {
-	runner db.TxRunner
-	admins AdminOnboarding
-	seeder industrytemplate.Seeder
-	hasher password.Hasher
-	audit  audit.Recorder
-	logger *slog.Logger
+	runner  db.TxRunner
+	admins  AdminOnboarding
+	seeder  industrytemplate.Seeder
+	hasher  password.Hasher
+	audit   audit.Recorder
+	logger  *slog.Logger
+	storage objectstore.ObjectStorage
 }
 
 func NewService(runner db.TxRunner, admins AdminOnboarding, seeder industrytemplate.Seeder,
-	hasher password.Hasher, recorder audit.Recorder, logger *slog.Logger) *Service {
+	hasher password.Hasher, recorder audit.Recorder, logger *slog.Logger, options ...ServiceOption) *Service {
 	if runner == nil || admins == nil || seeder == nil || hasher == nil || recorder == nil || logger == nil {
 		panic("tenant: invalid service dependencies")
 	}
-	return &Service{runner: runner, admins: admins, seeder: seeder, hasher: hasher, audit: recorder, logger: logger}
+	s := &Service{runner: runner, admins: admins, seeder: seeder, hasher: hasher, audit: recorder, logger: logger}
+	for _, option := range options {
+		option(s)
+	}
+	return s
 }
 
 func (s *Service) Register(ctx context.Context, in Signup, meta identity.RequestMeta) (Registration, error) {
@@ -108,10 +114,7 @@ func (s *Service) Register(ctx context.Context, in Signup, meta identity.Request
 	if len(timezone) > 64 {
 		timezone = ""
 	}
-	if timezone == "" {
-		timezone = defaultTimezone
-		s.logger.InfoContext(ctx, "signup timezone defaulted", "event", "signup_timezone_defaulted")
-	} else if _, err := time.LoadLocation(timezone); err != nil {
+	if !validTimezone(timezone) {
 		timezone = defaultTimezone
 		s.logger.InfoContext(ctx, "signup timezone defaulted", "event", "signup_timezone_defaulted")
 	}

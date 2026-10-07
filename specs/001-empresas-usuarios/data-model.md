@@ -29,6 +29,7 @@ del plan, §18): `audit_log.data` también rechaza una credencial incrustada en 
 (DD-37 (4)) y solo lleva valores que arma el servidor según el catálogo; el texto libre que
 escribe un usuario no va en `data` (§2.6). Sin cambios de esquema.
 **Séptima revisión 2026-10-05** (*Accepted*, aprobada por el usuario el 2026-10-05; novena tanda del plan, §18): las filas de `tenants` y `users` se bloquean con `FOR NO KEY UPDATE`, nunca con `FOR UPDATE`, porque toda FK hacia esas tablas se verifica con `FOR KEY SHARE` (DD-40; §2.1, §2.2 y checklist de §6). Sin cambios de esquema ni de privilegios.
+**Octava revisión 2026-10-06** (*Accepted*, aprobada por el usuario el 2026-10-06; décima tanda del plan, §18): `LockTenant` es la segunda query que bloquea la fila de `tenants`, también con `FOR NO KEY UPDATE` (INV-34, §2.1); `""` y `Local` no son zonas válidas; las columnas de contacto nunca guardan `''`; `tenant.updated` solo con cambios reales (DD-43, §2.1, §2.6); escritura de archivos según DD-42 en el checklist de §6. Sin cambios de esquema ni de privilegios.
 
 DDL **conceptual**: define tablas, tipos, constraints, índices, políticas y privilegios. No es
 una migración ejecutable: las migraciones goose las escribe quien implementa, respetando esto.
@@ -179,7 +180,7 @@ Toda tabla con `tenant_id` tiene **dos** clases de FK hacia la empresa: `tenant_
 | `logo_object_key` | `text` | sí | `<= 300` | Clave en S3: `tenants/{tenant_id}/logo/{uuidv7}.{png\|jpg}`. El UUIDv7 del nombre es **el `ETag`** de `GET /tenant/logo` (DD-23): cambia en cada subida y nunca coincide entre empresas |
 | `logo_content_type` | `text` | sí | `IN ('image/png','image/jpeg')` | |
 | `base_currency` | `text` | no | `IN ('ARS','USD')` | ISO 4217; no editable en 001 (DD-15) |
-| `timezone` | `text` | no | default `'America/Argentina/Buenos_Aires'`, `<= 64` | Nombre IANA; se valida en Go con `time.LoadLocation` (base IANA embebida con `time/tzdata`). En el registro, una zona desconocida se reemplaza por el default; en `PATCH /tenant`, se rechaza (DD-27) |
+| `timezone` | `text` | no | default `'America/Argentina/Buenos_Aires'`, `<= 64` | Nombre IANA; se valida en Go con `time.LoadLocation` (base IANA embebida con `time/tzdata`) y, además, se rechazan `""` y `Local`, que Go acepta sin ser nombres IANA (DD-43). En el registro, una zona inválida se reemplaza por el default; en `PATCH /tenant`, se rechaza (DD-27) |
 | `industry_template_code` | `text` | no | `<= 64` | Código del catálogo embebido; se valida en Go |
 | `industry_template_version` | `integer` | no | `> 0` | Versión de la plantilla aplicada (002 puede evolucionar las plantillas) |
 | `created_at` | `timestamptz` | no | default `now()` | |
@@ -188,11 +189,12 @@ Toda tabla con `tenant_id` tiene **dos** clases de FK hacia la empresa: `tenant_
 Constraints de tabla:
 
 - `tenants_logo_pair_chk`: `(logo_object_key IS NULL) = (logo_content_type IS NULL)`.
+- Sin `CHECK` contra `''` en `legal_name`, `tax_id`, `address`, `phone` y `email`: el `PATCH` normaliza un texto vacío o solo con espacios a `NULL` (DD-43) y el registro no las escribe.
 
 Índices: solo la PK. Toda lectura es por `id` (incluida la revalidación del logo, que solo lee
 esta fila para comparar el `ETag` y no toca S3).
 
-**Locks sobre la fila** (DD-40, INV-10): cada `INSERT` en una tabla con FK hacia `tenants` (`users`, `sessions`, `user_tokens`, `outbox_messages`, `audit_log` y las tablas de empresa de las specs siguientes) verifica la FK con `FOR KEY SHARE` sobre esta fila. Por eso la fila se bloquea solo con `FOR NO KEY UPDATE`: la query de INV-10 de la administración de usuarios y el `UPDATE` de datos o logo, que lo toma implícito porque no cambia `id`. Nunca con `FOR UPDATE`: cada inserción de la empresa esperaría, y los flujos que ya bloquearon a un usuario entrarían en deadlock con la administración de usuarios. `id` no se actualiza y ningún rol de runtime tiene `DELETE`, que también tomaría `FOR UPDATE`.
+**Locks sobre la fila** (DD-40, INV-10): cada `INSERT` en una tabla con FK hacia `tenants` (`users`, `sessions`, `user_tokens`, `outbox_messages`, `audit_log` y las tablas de empresa de las specs siguientes) verifica la FK con `FOR KEY SHARE` sobre esta fila. Por eso la fila se bloquea solo con `FOR NO KEY UPDATE`: la query de INV-10 de la administración de usuarios, `LockTenant` (primera sentencia de `PATCH /tenant` y de subir o quitar el logo, que lee bajo ese lock lo que mezcla o la clave anterior; INV-34, décima tanda del plan) y el `UPDATE` de datos o logo, que lo toma implícito porque no cambia `id`. Nunca con `FOR UPDATE`: cada inserción de la empresa esperaría, y los flujos que ya bloquearon a un usuario entrarían en deadlock con la administración de usuarios. `id` no se actualiza y ningún rol de runtime tiene `DELETE`, que también tomaría `FOR UPDATE`.
 
 **Objeto referido por `logo_object_key` (DD-11, DD-31, H-11)**: PNG o JPEG de **hasta 2 097 152
 bytes** (2 MiB, medidos sobre el archivo) y hasta 2000×2000 px. Lo valida `tenant.Service` antes
@@ -370,8 +372,8 @@ de rol); ✚ = obligatoria por decisión del usuario (P-3: la reactivación se a
 | `action` | Actor | Target | `data` |
 |---|---|---|---|
 | `tenant.registered` | admin nuevo | tenant | `{industry_template_code}` |
-| `tenant.updated` | admin | tenant | `{fields: [nombres de campos cambiados]}` |
-| `tenant.logo_updated` / `tenant.logo_removed` | admin | tenant | `{content_type}` |
+| `tenant.updated` | admin | tenant | `{fields: [nombres de campos cuyo valor cambió]}`, en el orden de las columnas de §2.1; un `PATCH` sin cambios reales no audita (DD-43) |
+| `tenant.logo_updated` / `tenant.logo_removed` | admin | tenant | `{content_type}`; quitar el logo cuando no hay no audita (DD-42) |
 | `auth.login_succeeded` ✱ | usuario | session | `{}` |
 | `auth.login_failed` | `NULL` | user | `{reason: "bad_password" \| "not_active"}` |
 | `auth.login_locked` | `NULL` | user | `{}` |
@@ -616,7 +618,9 @@ y lo reactiva antes de terminar (ADR-004): queda explícito y versionado.
 5. Agregar la tabla a la lista esperada del test de catálogo (T-B107).
 6. Si la tabla referencia un archivo que se sirve por el backend (adjuntos de 004, PDF de 005), la
    respuesta que lo sirve sigue la política de caché del logo (DD-23, nota en ADR-011), y la
-   subida define su límite de archivo y de cuerpo como el logo (DD-31).
+   subida define su límite de archivo y de cuerpo como el logo (DD-31) y escribe el objeto y la fila
+   como el logo: el objeto antes del `COMMIT`, el nuevo se borra solo si es seguro que ninguna fila
+   lo referencia y el viejo solo después de un `COMMIT` confirmado (DD-42 de 001).
 7. Si un rol de sistema necesita leerla o limpiarla sin empresa conocida, la query va en el archivo
    de sistema **del módulo dueño de la tabla** y ese archivo se agrega a la tabla de plan §4.4 y a
    la lista de excepciones de T-B112 (es una decisión de diseño, no un detalle de implementación).

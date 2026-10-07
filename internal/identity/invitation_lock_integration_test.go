@@ -15,6 +15,7 @@ import (
 	"github.com/fdelillo/crm/internal/platform/db"
 	"github.com/fdelillo/crm/internal/testsupport/pgtest"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // Mechanism E deliberately holds the tenant before either Invite starts. Both
@@ -23,8 +24,22 @@ import (
 // Count the direct/transitive blocking chain, approved by the user on 2026-10-06.
 func TestConcurrentNewInvitationsLockTenantBeforeEmailLookup(t *testing.T) {
 	s, r, p, _ := usersFixture(t)
+	const waitingCalls = 2
+	if maxConns := pgtest.AppPool(t).Config().MaxConns; waitingCalls+1 > int(maxConns) {
+		t.Fatalf("app pool has %d connections: insufficient for T_admin plus %d waiting calls (need %d)", maxConns, waitingCalls, waitingCalls+1)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
+	// Observe outside the app pool so T_admin and Invite waiters cannot starve the probe.
+	monitor, err := pgx.Connect(ctx, pgtest.AppURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		_ = monitor.Close(closeCtx)
+	}()
 	email := uuid.NewString() + "@example.com"
 	type outcome struct {
 		call     int
@@ -32,10 +47,10 @@ func TestConcurrentNewInvitationsLockTenantBeforeEmailLookup(t *testing.T) {
 		reissued bool
 		err      error
 	}
-	done := make(chan outcome, 2)
+	done := make(chan outcome, waitingCalls)
 	var outcomes []outcome
 	rollback := errors.New("test: release tenant through rollback")
-	err := r.InTenantTx(ctx, p.TenantID, func(ctx context.Context, tx db.Tx) error {
+	err = r.InTenantTx(ctx, p.TenantID, func(ctx context.Context, tx db.Tx) error {
 		if _, err := store.New(tx).LockUsersTenant(ctx, p.TenantID); err != nil {
 			return err
 		}
@@ -43,7 +58,7 @@ func TestConcurrentNewInvitationsLockTenantBeforeEmailLookup(t *testing.T) {
 		if err := tx.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&pid); err != nil {
 			return err
 		}
-		for i := range 2 {
+		for i := range waitingCalls {
 			go func() {
 				u, reissued, err := s.Invite(ctx, p, email, authz.RoleOperator, RequestMeta{})
 				done <- outcome{call: i, user: u, reissued: reissued, err: err}
@@ -61,7 +76,7 @@ func TestConcurrentNewInvitationsLockTenantBeforeEmailLookup(t *testing.T) {
 				return fmt.Errorf("INV-10/DD-40: Invite %d returned before acquiring the tenant lock", result.call)
 			case <-ticker.C:
 				var blocked int
-				if err := pgtest.AppPool(t).QueryRow(ctx, `WITH RECURSIVE waiting(pid) AS (
+				if err := monitor.QueryRow(ctx, `WITH RECURSIVE waiting(pid) AS (
      SELECT pid FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))
      UNION
      SELECT a.pid FROM pg_stat_activity a JOIN waiting w ON w.pid = ANY(pg_blocking_pids(a.pid))
@@ -69,7 +84,7 @@ func TestConcurrentNewInvitationsLockTenantBeforeEmailLookup(t *testing.T) {
 					return err
 				}
 
-				if blocked == 2 {
+				if blocked == waitingCalls {
 					return rollback
 				}
 			case <-ctx.Done():
@@ -79,7 +94,7 @@ func TestConcurrentNewInvitationsLockTenantBeforeEmailLookup(t *testing.T) {
 	})
 	// Always roll back the held tenant and join both calls before failing, including
 	// the mutation that removes its lock. The buffered channel cannot strand a sender.
-	for len(outcomes) < 2 {
+	for len(outcomes) < waitingCalls {
 		outcomes = append(outcomes, <-done)
 	}
 	if !errors.Is(err, rollback) {

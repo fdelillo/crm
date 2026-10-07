@@ -317,3 +317,23 @@ func TestLoad_TrustedProxiesErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestLoad_ObjectStorage(t *testing.T) {
+	cfg, err := config.Load(env(map[string]string{"APP_BASE_URL": "https://localhost:8080"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.S3Endpoint != "localhost:9000" || cfg.S3Bucket != "crm-dev" || cfg.S3AccessKey != "minio_dev" || cfg.S3SecretKey != "minio_dev_secret" || cfg.S3UseSSL {
+		t.Fatal("local S3 defaults do not match compose")
+	}
+	cfg, err = config.Load(env(map[string]string{"S3_ENDPOINT": "s3.example", "S3_BUCKET": "private", "S3_ACCESS_KEY": "access", "S3_SECRET_KEY": "secret", "S3_USE_SSL": "true"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.S3Endpoint != "s3.example" || cfg.S3Bucket != "private" || cfg.S3AccessKey != "access" || cfg.S3SecretKey != "secret" || !cfg.S3UseSSL {
+		t.Fatal("S3 settings not propagated")
+	}
+	if _, err = config.Load(env(map[string]string{"S3_USE_SSL": "invalid"})); err == nil || !strings.Contains(err.Error(), "S3_USE_SSL") {
+		t.Fatalf("invalid SSL=%v", err)
+	}
+}

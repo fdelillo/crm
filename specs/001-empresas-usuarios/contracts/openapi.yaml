@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CRM - API 001 Empresas, usuarios y roles
-  version: 0.4.2
+  version: 0.4.3
   summary: Registro de empresas, autenticación, sesiones, invitaciones, usuarios y datos de la empresa.
   description: |
     Contrato **canónico** de la spec 001 (`specs/001-empresas-usuarios/spec.md`).
@@ -60,6 +60,10 @@ info:
     - 0.4.2: texto del rate limit de `POST /auth/signup`: es una ráfaga de 5 más una reposición
       cada 12 minutos, no un máximo de 5 por hora (DD-9; revisión del PR #12). Es *patch*: solo
       cambia una descripción.
+    - 0.4.3: semántica de `PATCH /tenant` (plan DD-43; revisión del PR #15): un texto vacío en un
+      campo opcional equivale a `null`; `null` en `name` o `timezone` responde `400`; `Local` es
+      una zona inválida; un `PATCH` sin cambios no modifica `updated_at`. Es *patch*: solo cambian
+      descripciones, no esquemas ni enums.
 servers:
   - url: /api/v1
 tags:
@@ -486,9 +490,14 @@ paths:
       summary: Editar datos de la empresa (Historia 4)
       description: |
         Requiere `settings.manage`. Solo se modifican los campos presentes. En los campos
-        opcionales, `null` los borra. `base_currency` no es editable (DD-15). Una `timezone`
-        desconocida responde `422` con `invalid_timezone` (a diferencia del registro, acá el
-        campo es visible para el usuario).
+        opcionales, `null` los borra, y un texto vacío o solo con espacios también (se guarda
+        `null`). `name` y `timezone` no admiten `null`: un `null` ahí responde `400` con
+        `malformed_request`, como cualquier valor de otro tipo. Los textos se guardan sin los
+        espacios de los extremos. `base_currency` no es editable (DD-15). Una `timezone`
+        desconocida, vacía o `Local` (no es un nombre IANA) responde `422` con
+        `invalid_timezone` (a diferencia del registro, acá el campo es visible para el usuario).
+        Si los valores enviados son iguales a los guardados, no cambia nada: la respuesta es
+        `200` con la empresa tal cual, sin modificar `updated_at`.
       security:
         - sessionCookie: []
       requestBody:
@@ -1465,7 +1474,7 @@ components:
       type: object
       minProperties: 1
       additionalProperties: false
-      description: Solo se modifican los campos presentes; `null` borra un campo opcional.
+      description: Solo se modifican los campos presentes; `null` (o un texto vacío) borra un campo opcional; `name` y `timezone` no admiten `null` (DD-43).
       properties:
         name:
           type: string

@@ -38,8 +38,9 @@ func rowLockErrors(file, name, sql string) []string {
 			if table == "users" && mode != "NO KEY UPDATE" {
 				errors = append(errors, "DD-40: users must use FOR NO KEY UPDATE")
 			}
-			if table == "tenants" && (mode != "NO KEY UPDATE" || name != "LockUsersTenant" || file != "internal/identity/store/users.sql") {
-				errors = append(errors, "DD-40: only LockUsersTenant may lock tenants, with FOR NO KEY UPDATE")
+			tenantLockAllowed := name == "LockUsersTenant" && file == "internal/identity/store/users.sql" || name == "LockTenant" && file == "internal/tenant/store/queries.sql"
+			if table == "tenants" && (mode != "NO KEY UPDATE" || !tenantLockAllowed) {
+				errors = append(errors, "DD-40: only the named identity and tenant locks may lock tenants, with FOR NO KEY UPDATE")
 			}
 		}
 	}
@@ -70,6 +71,33 @@ func TestRowLockRuleScopes(t *testing.T) {
 	}
 	if errs := rowLockErrors("internal/identity/store/users.sql", "LockUsersTenant", `SELECT id FROM app.tenants FOR NO KEY UPDATE`); len(errs) != 0 {
 		t.Fatal(errs)
+	}
+	for _, mode := range []string{"UPDATE", "SHARE", "KEY SHARE", "NO KEY UPDATE"} {
+		errs := rowLockErrors("internal/tenant/store/queries.sql", "LockTenant", `SELECT * FROM app.tenants WHERE id = @tenant_id FOR `+mode)
+		if (len(errs) > 0) != (mode != "NO KEY UPDATE") {
+			t.Fatalf("tenant mode %s: %v", mode, errs)
+		}
+	}
+}
+
+// DD-40's two tenant lock queries are allowlisted by name and owning SQL file.
+func TestTenantLockAllowlist(t *testing.T) {
+	for _, owner := range []struct{ file, name string }{
+		{"internal/identity/store/users.sql", "LockUsersTenant"},
+		{"internal/tenant/store/queries.sql", "LockTenant"},
+	} {
+		for _, mode := range []string{"NO KEY UPDATE", "UPDATE", "SHARE", "KEY SHARE"} {
+			sql := "SELECT * FROM app.tenants FOR " + mode
+			if got := len(rowLockErrors(owner.file, owner.name, sql)); (got == 0) != (mode == "NO KEY UPDATE") {
+				t.Fatalf("%s %s: violations=%d", owner.name, mode, got)
+			}
+			if len(rowLockErrors(owner.file, "UnexpectedTenantLock", sql)) == 0 {
+				t.Fatal("unnamed exception admitted a tenant lock")
+			}
+			if len(rowLockErrors("internal/other/store/queries.sql", owner.name, sql)) == 0 {
+				t.Fatal("exception admitted a lock outside its owning store")
+			}
+		}
 	}
 }
 
