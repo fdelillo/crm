@@ -241,6 +241,18 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
   | 6 | T-B707 (nueva) | Bucket de desarrollo con el *healthcheck* de `minio` (plan §10.5.1) |
   | 7 | Checkpoint de la Fase 7 | `make check` en verde y la prueba independiente con `docker compose down -v && docker compose up -d --wait`, sin crear el bucket a mano |
 
+- **Undécima revisión (2026-10-07, *Accepted*)**: revisión del PR fdelillo/crm#16 (Fase 8, HEAD `ccaf265`; plan §18, undécima tanda). Sin bloqueantes; cierra huecos de lo que T-B801 a T-B803 exigen verificar. Se aplica en `feat/001-backend-phase-8`, en este orden y con `make check` en verde después de cada paso. Los casos marcados "Revisión del PR #16" se escriben primero; cada uno dice si es Red o si caracteriza código correcto y se protege con una **mutación** (se aplica, el caso falla, se restaura).
+
+  | Orden | Tarea | Ajuste |
+  |---|---|---|
+  | 1 | Fixture común, T-B802 | Cookies de los desactivados creadas después de `Deactivate`, con la precondición `revoked_at` nulo verificada en el fixture; fila nueva de T-B802 (caracteriza; mutación `row.Status == "invited"`). Se corrige el comentario de `e2e.New`, que hoy afirma una fila de sesión válida que para los desactivados no existe |
+  | 2 | T-B801 | Centinelas ampliados en cuerpo y cabeceras de toda respuesta, con el test del helper; cabeceras en la comparación de los `404` (mutación: una cabecera solo cuando el id del path es UUIDv7, como en la mutación del `404` de esta fase) |
+  | 3 | T-B801 | Fila de lecturas del operador derivada de T-B802 (caracteriza; el test falla si el conjunto derivado sale vacío) |
+  | 4 | T-B803 | Observador con lista cerrada de `UPDATE` y `DeferMessage` como `crm_worker`, con el aplazamiento inyectado en el *wrapper* (Red: hoy el observador lo marca como error) |
+  | 5 | T-B801 (`TestServeUsesSharedAPIRouter`) | Las tres reglas sobre `cmd/crm` (Red: hoy un alias del router, o la variable con otro nombre que `api`, pasan) |
+  | 6 | T-B801, checkpoint | Contador real de accesos cruzados y de verificaciones (mutación: forzar una detección → el reporte imprime 1 y el test falla) |
+  | 7 | Checkpoint de la Fase 8 | `make check` en verde y la suite `Isolation` con el reporte de los conteos |
+
 ### Convenciones de esta sección
 
 - `[T]` = tarea de test. Va **antes** de la tarea de código que la hace pasar, y el test debe
@@ -1690,7 +1702,7 @@ reporte de cobertura de rutas al 100 %.
 
 **Fixture común** (`internal/testsupport/fixture`): empresas `A` y `B`, cada una con un admin, un
 operador, un invitado, un desactivado con contraseña, un desactivado sin contraseña, logo y datos
-completos; cookies de sesión de cada usuario; tokens vigentes de reset, verificación e invitación
+completos; cookies de sesión de cada usuario (Revisión del PR #16: las de los dos desactivados se crean con `CreateSession` **después** de `Deactivate`, como la del invitado, y el fixture verifica que la fila de cada una tenga `revoked_at` nulo y el usuario esté `disabled`: así el rechazo depende del chequeo de estado de `ResolveSession` y no de la revocación; es el estado que deja DD-41, INV-11); tokens vigentes de reset, verificación e invitación
 de cada empresa.
 
 **T-B801 [T] — Matriz HTTP de aislamiento con cobertura de rutas** · SC-002, FR-006, INV-12, INV-21
@@ -1700,22 +1712,28 @@ de cada empresa.
     una tabla declarada `ruta → caso de aislamiento`. **Si existe una ruta sin caso, el test
     falla** (así se protege a las specs futuras). El mismo listado se compara con los `paths` del
     contrato (sin `/healthz` ni `/readyz`, que están en el mux raíz).
-  - Casos por ruta (como admin de `A`):
+  - Casos por ruta (como admin de `A`, salvo la fila de lecturas del operador):
 
     | Tipo de ruta | Ataque | Esperado |
     |---|---|---|
-    | Con `{userId}` (`role`, `deactivate`, `reactivate`) | usar ids de usuarios de `B` (cada estado) | `404`, cuerpo idéntico al de un id inexistente; `B` sin cambios ni filas de auditoría nuevas (verificado como `B`) |
-    | Sin id, lectura (`/me`, `/tenant`, `/users`, `/tenant/logo`) | — | solo datos de `A`: ningún id, email o nombre de `B` aparece en el cuerpo |
+    | Con `{userId}` (`role`, `deactivate`, `reactivate`) | usar ids de usuarios de `B` (cada estado) | `404`, cuerpo **y cabeceras** idénticos byte a byte a los de un id inexistente (Revisión del PR #16: todas las cabeceras, nombres y valores; se comparan sobre el router de la API con el mismo contexto de request, así que ninguna varía legítimamente; si la comparación pasara por un servidor real, la única excepción es `Date`, que escribe `net/http`); `B` sin cambios ni filas de auditoría nuevas (verificado como `B`) |
+    | Sin id, lectura (`/me`, `/tenant`, `/users`, `/tenant/logo`) | — | solo datos de `A`: ningún centinela de `B` (ver abajo) aparece en el cuerpo ni en las cabeceras |
     | `GET /tenant/logo` con cookie de `A` e `If-None-Match` = `ETag` del logo de `B` | reuso de caché entre empresas en un dispositivo compartido | `200` con el logo de `A` (nunca `304`) (INV-21) |
     | Sin id, escritura (`PATCH /tenant`, `PUT/DELETE /tenant/logo`, `POST /users/invitations`) | — | modifica solo `A`; `B` sin cambios; la clave del logo empieza con `tenants/{A}/` |
     | Públicas con token (`/auth/*`) | token de `B` usado junto con la cookie de `A` | la operación afecta solo a `B` (la cookie no cambia la empresa del token); ninguna fila de `A` cambia |
     | `POST /auth/signup` con el email de un usuario de `B` | — | `409 email_already_registered` sin ningún dato de `B` (INV-20) |
+    | Revisión del PR #16: lectura como **operador** de `A` (toda ruta `GET` que la tabla de T-B802 declara con éxito para el operador; hoy `/me`, `/tenant`, `/tenant/logo` y el catálogo) | el logo, también con `If-None-Match` = `ETag` de `B` | lo mismo que las filas de lectura de admin: solo datos de `A` y ningún centinela de `B` en cuerpo ni cabeceras (con la excepción del catálogo); el logo, `200` con los bytes y el `ETag` de `A` (nunca `304`). El conjunto se **deriva** de la tabla de T-B802, no de una lista aparte (una lectura nueva del operador queda cubierta sin editar esta fila), y el test falla si sale vacío |
+  - **Centinelas de "ningún dato de la empresa ajena"** (Revisión del PR #16). La empresa ajena de cada fila es la que la operación no debe tocar ni mostrar: `B` en las filas autenticadas como `A` y en el registro con el email de `B`; `A` en las públicas con token o credenciales de `B` (incluido el login de un usuario de `B`), que viajan con la cookie de `A`. Centinelas de una empresa: su id; nombre, zona horaria, moneda, plantilla, fechas y datos de contacto; ids, emails y nombres no nulos de sus usuarios; la clave del logo, su `ETag` y el uuid del logo **sin comillas**; sus tokens crudos de reset, verificación e invitación; el valor de la cookie de cada uno de sus usuarios; y el sufijo común que el fixture agrega a todos sus textos (el fixture lo expone). Se buscan en bytes crudos en el cuerpo **y** en los nombres y valores de todas las cabeceras (incluidas `Set-Cookie`, `Location` y `ETag`) de **toda** respuesta de T-B801, también las `202` y `204` sin cuerpo y los `404` de ids ajenos. Única excepción: la respuesta del catálogo de plantillas (`/industry-templates`, pública y sin datos de empresa) contiene por construcción el código de plantilla de `B`; ahí se buscan todos los centinelas menos ese. El helper tiene su propio test con respuestas armadas: un centinela en una cabecera, otro en el cuerpo, el uuid del logo sin comillas y el sufijo, cada uno detectado.
+  - **Conteo de accesos cruzados** (Revisión del PR #16): cada verificación de aislamiento de T-B801 (centinela encontrado, empresa ajena modificada, `404` distinto del de un id inexistente, sesión creada en otra empresa, logo o `ETag` de la otra empresa) suma 1 a un contador **cuando detecta**. El reporte imprime ese contador y la cantidad de verificaciones ejecutadas siempre, también si el test falla; el test falla si el contador no es 0 o si no se ejecutó ninguna verificación. Ningún número del reporte es un texto fijo.
+  - **El router de `chi.Walk` es el que sirve `crm serve`** (Revisión del PR #16). Test estático sobre **todos** los `.go` no-test de `cmd/crm` (no solo `serve.go`), con los identificadores resueltos por su declaración y no por su nombre: (1) `app.BuildAPIRouter` se llama exactamente una vez, y su resultado es directamente el valor del campo `API` de `app.RootDeps`, o se asigna a una variable local que no se reasigna y cuyo único uso es ese campo; (2) ningún archivo no-test de `cmd/crm` importa `github.com/go-chi/chi/v5` ni sus subpaquetes, ni llama a `http.NewServeMux`, `http.Handle` o `http.HandleFunc`; (3) el resultado de `app.NewRootHandler` llega a `app.NewServer` con la misma regla de un solo uso, sin envolverlo, y nada asigna el campo `Handler` del servidor. Mutaciones que tienen que hacerlo fallar, cada una nombrando archivo y línea: alias (`r := api` y `r.Get(...)`), función local que recibe el router, `API: wrap(app.BuildAPIRouter(...))`, un router chi nuevo en otro archivo de `cmd/crm`, y `app.NewServer(cfg, wrap(root))`.
+  - **Nota para las specs siguientes** (H3, Revisión del PR #16): los casos con id de esta tabla son de **usuarios** (`{userId}`). Cuando la spec 002 sume rutas con id de otro recurso, cada recurso necesita su propio caso (ids de `B` en cada estado del recurso → `404` idéntico en cuerpo y cabeceras, `B` sin cambios), no reusar el de usuarios: la cobertura de rutas obliga a declarar una fila, no a que el caso elegido corresponda al recurso. Un caso de id ajeno que falle si la ruta no tiene el parámetro que espera lo haría verificable.
 - **Green**: todas las filas pasan y la cobertura de rutas es total.
 
 **T-B802 [T] — Matriz de permisos por endpoint** · FR-007, INV-12
 - **Red**: para cada ruta de la tabla de T-B801 × {anónimo, operador, admin}: el status esperado
   (`401` / `403` / éxito) declarado en la tabla; el `403` se obtiene **aunque el id sea de otra
   empresa o no exista** (la autorización no depende de la existencia del recurso).
+  - **Revisión del PR #16**: cada ruta protegida (las que la tabla declara `401` para el anónimo), con la cookie de cada usuario no activo de cada empresa (invitado, desactivado con contraseña y desactivado sin contraseña), responde `401` como el anónimo. Las sesiones de los dos desactivados existen **sin revocar** (fixture común): es el estado que deja un login concurrente con la desactivación (DD-41), y solo lo rechaza el chequeo de estado de `ResolveSession` (INV-11). Mutación: cambiar `row.Status != "active"` por `row.Status == "invited"` → fallan las cookies de los dos desactivados (y R5 de T-B604).
 
 **T-B803 [T] — Aislamiento en flujos sin empresa conocida** · plan §4.4
 - **Red**:
@@ -1725,7 +1743,8 @@ de cada empresa.
   | Login de un usuario de `B` | la sesión creada tiene `tenant_id = B` y `/me` devuelve `B` |
   | Reset de un usuario de `B` | cambia solo ese usuario; sesiones de `A` intactas |
   | Pedido de reset del invitado de `B` | la invitación reemitida y su auditoría quedan en `B`; nada cambia en `A` |
-  | Worker con mensajes de `A` y `B` | cada `UPDATE` corre bajo el rol de su empresa; ningún mensaje de `B` pasa por una transacción de `A` |
+  | Worker con mensajes de `A` y `B` | cada `UPDATE` de **marcado** corre bajo el rol de su empresa; ningún mensaje de `B` pasa por una transacción de `A` |
+  | Revisión del PR #16: aplazamiento (`DeferMessage`, ADR-024 §6, INV-31) | El observador reconoce cada `UPDATE` por el nombre de la query de sqlc (el comentario inicial), contra una lista cerrada: las de marcado del outbox (rol de la empresa y `tenant_id` explícito, como en la fila anterior) y `DeferMessage`. Para `DeferMessage` exige `current_user` = `current_setting('role')` = `crm_worker`, `app.current_tenant_id()` nulo y la transacción sin empresa asociada; no cuenta como marcado ni entra en el control de empresa por transacción. Un `UPDATE` fuera de la lista hace fallar el test. Para ejercitarlo, el *wrapper* de test hace fallar el primer `AsTenant` hacia `B` (solo en el *wrapper*, sin *hooks* en producción): ese mensaje se aplaza **una** vez como `crm_worker`, queda `pending` con `attempts` y `last_error` sin cambios y no se marca en la corrida; los demás se marcan una vez cada uno |
   | `ResolveSession` con token de `B` | `Principal.TenantID = B` |
 
 **T-B804 [T] — Defensa en profundidad demostrada** · INV-01, INV-04
@@ -1738,7 +1757,7 @@ de cada empresa.
 III): se corrige antes de cerrar la fase, con su test de regresión.
 
 **Checkpoint Fase 8**: `make check` en verde; el test T-B801 imprime el conteo de rutas cubiertas
-(= total de rutas) y 0 accesos cruzados.
+(= total de rutas) y 0 accesos cruzados, los dos como conteos reales junto con la cantidad de verificaciones ejecutadas (Revisión del PR #16, ver T-B801).
 
 ---
 
