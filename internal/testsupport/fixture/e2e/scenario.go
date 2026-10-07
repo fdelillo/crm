@@ -97,8 +97,12 @@ func (f *Scenario) company(t testing.TB, label string, tint color.NRGBA, taxID, 
 	t.Helper()
 	ctx := context.Background()
 	suffix := strings.ToLower(label) + "-" + uuid.NewString()
+	currency, template := "ARS", "generic"
+	if label == "B" {
+		currency, template = "USD", "aluminum_carpentry"
+	}
 	reg, err := f.Companies.Register(ctx, tenant.Signup{Name: "Admin " + suffix, Email: "admin-" + suffix + "@example.test",
-		Password: Password, CompanyName: "Company " + suffix, BaseCurrency: "ARS", IndustryTemplateCode: "generic", Timezone: timezone}, identity.RequestMeta{})
+		Password: Password, CompanyName: "Company " + suffix, BaseCurrency: currency, IndustryTemplateCode: template, Timezone: timezone}, identity.RequestMeta{})
 	require(t, err)
 	p := reg.Session.Principal
 	c := Company{ID: p.TenantID, Users: map[string]User{"admin": {ID: p.UserID, Email: reg.User.Email, Name: reg.User.Name, Status: "active", Principal: p, Cookie: cookie(reg.Session.RawToken)}}}

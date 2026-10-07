@@ -14,7 +14,9 @@ import (
 )
 
 func TestIsolationFixture(t *testing.T) {
-	f := e2e.New(t, pgtest.AppPool(t))
+	pool := pgtest.AppPool(t)
+	t.Logf("runtime pool max connections=%d; fixture and assertions acquire at most one at a time", pool.Config().MaxConns)
+	f := e2e.New(t, pool)
 	for _, c := range []*e2e.Company{&f.A, &f.B} {
 		if len(c.Users) != 5 || c.Reset == "" || c.Verification == "" || c.Invitation == "" || len(c.Logo) == 0 {
 			t.Fatal("incomplete isolation fixture")

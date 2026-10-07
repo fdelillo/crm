@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fdelillo/crm/internal/app"
 	"github.com/fdelillo/crm/internal/identity"
@@ -182,11 +183,11 @@ func assertChanged(t *testing.T, f *e2e.Scenario, id uuid.UUID, before map[strin
 }
 
 // Search the raw body, including unexpected JSON fields and binary responses.
-// Shared enum values (currency/template/status/role) cannot identify a company; all company
+// Currency/template are distinct in A/B; shared user statuses/roles cannot identify a company. All company
 // identifiers/contact data and every non-null user name/email/id are distinct sentinels.
 func assertNoCompanyData(t *testing.T, body []byte, c e2e.Company) {
 	t.Helper()
-	values := []string{c.ID.String(), c.Details.Name, c.Details.Timezone, c.LogoKey, c.ETag}
+	values := []string{c.ID.String(), c.Details.Name, c.Details.Timezone, c.Details.BaseCurrency, c.Details.IndustryTemplateCode, c.Details.CreatedAt.Format(time.RFC3339Nano), c.Details.UpdatedAt.Format(time.RFC3339Nano), c.LogoKey, c.ETag}
 	for _, v := range []*string{c.Details.LegalName, c.Details.TaxID, c.Details.Address, c.Details.Phone, c.Details.Email} {
 		if v != nil {
 			values = append(values, *v)
@@ -211,7 +212,7 @@ func TestIsolationHTTPMatrix(t *testing.T) {
 	sort.Strings(keys)
 	covered := 0
 	for _, key := range keys {
-		if !t.Run(key, func(t *testing.T) {
+		t.Run(key, func(t *testing.T) {
 			f := e2e.New(t, pgtest.AppPool(t))
 			api := app.BuildAPIRouter(f.Users, f.Companies, f.Clock, f.Logger)
 			h := isolationRoot(t, f, api)
@@ -393,13 +394,10 @@ func TestIsolationHTTPMatrix(t *testing.T) {
 			default:
 				t.Fatalf("unimplemented isolation case for %s", key)
 			}
-		}) {
-			continue
-		}
-		covered++
-	}
-	if covered != total {
-		t.Errorf("covered routes=%d total=%d", covered, total)
+			if !t.Failed() {
+				covered++
+			}
+		})
 	}
 	if !t.Failed() {
 		t.Logf("Isolation: covered routes=%d/%d; cross-company accesses=0", covered, total)

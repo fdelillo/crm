@@ -128,8 +128,8 @@ func (r *observingRunner) InSystemTx(ctx context.Context, role db.SystemRole, fn
 func (tx *observingTx) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 	if regexp.MustCompile(`(?m)^UPDATE\s`).MatchString(sql) {
 		var role, setting string
-		var current uuid.UUID
-		if err := tx.Tx.QueryRow(ctx, `SELECT current_user, current_setting('role'), app.current_tenant_id()`).Scan(&role, &setting, &current); err != nil {
+		var currentTenant uuid.NullUUID
+		if err := tx.Tx.QueryRow(ctx, `SELECT current_user, current_setting('role'), app.current_tenant_id()`).Scan(&role, &setting, &currentTenant); err != nil {
 			return pgconn.CommandTag{}, err
 		}
 		tenantMatch, idMatch := tenantArgument.FindStringSubmatch(sql), idArgument.FindStringSubmatch(sql)
@@ -140,6 +140,7 @@ func (tx *observingTx) Exec(ctx context.Context, sql string, args ...any) (pgcon
 		tenantIndex, _ := strconv.Atoi(tenantMatch[1])
 		idIndex, _ := strconv.Atoi(idMatch[1])
 		tenant, message := args[tenantIndex-1].(uuid.UUID), args[idIndex-1].(uuid.UUID)
+		current := currentTenant.UUID
 		bound, ok := tx.TenantID()
 		if !ok || bound != tenant || current != tenant || role != db.TenantRoleName(tenant) || setting != role {
 			tx.owner.t.Errorf("worker UPDATE message=%s argument=%s bound=%s current=%s role=%s setting=%s", message, tenant, bound, current, role, setting)
