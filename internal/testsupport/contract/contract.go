@@ -244,3 +244,20 @@ func (v *Validator) RequireRecorded(t testing.TB, req *http.Request, rec *httpte
 		}
 	}
 }
+
+// Operation is one explicitly declared HTTP method and path of the canonical document.
+type Operation struct{ Method, Path string }
+
+// Operations exposes paths/methods without deriving expectations from the application's router.
+// Paths are relative to the OpenAPI server (/api/v1 for business routes); ops remain root paths.
+func (v *Validator) Operations() []Operation {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	var result []Operation
+	for path, item := range v.model.Paths.PathItems.FromOldest() {
+		for method := range item.GetOperations().FromOldest() {
+			result = append(result, Operation{Method: strings.ToUpper(method), Path: path})
+		}
+	}
+	return result
+}
