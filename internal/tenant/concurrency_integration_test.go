@@ -20,6 +20,9 @@ import (
 // ordered launches each next call only after PostgreSQL reports the previous waiter.
 func runTenantQueue(t *testing.T, runner db.TxRunner, p authz.Principal, ordered bool, calls ...func(context.Context) error) {
 	t.Helper()
+	if maxConns := pgtest.AppPool(t).Config().MaxConns; len(calls)+1 > int(maxConns) {
+		t.Fatalf("app pool has %d connections: insufficient for T_admin plus %d waiting calls (need %d)", maxConns, len(calls), len(calls)+1)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	// T_admin plus three upload transactions exhaust a four-connection pool.

@@ -80,7 +80,16 @@ func (u Update) validate() (Update, error) {
 		}
 		raw := *value
 		if !validText(raw, updateLimits[name]) {
-			fields[name] = "invalid_value"
+			switch name {
+			case "timezone":
+				fields[name] = "invalid_timezone"
+			case "email", "tax_id":
+				fields[name] = "invalid_format"
+			case "name":
+				fields[name] = validateName(raw)
+			default:
+				fields[name] = "invalid_value"
+			}
 			continue
 		}
 		v := strings.TrimSpace(raw)

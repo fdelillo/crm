@@ -167,10 +167,17 @@ func TestLogoCommitInFlightWaitsForLock(t *testing.T) {
 	svc = logoService(t, r, audit.NewRecorder(), f, &logs)
 	done := make(chan error, 1)
 	go func() { _, err := svc.SetLogo(ctx, p, pngLogo(t, 10, 10, 0), identity.RequestMeta{}); done <- err }()
-	pid := <-r.pid
 	var once sync.Once
 	release := func() { once.Do(func() { close(r.release) }) }
 	defer release()
+	var pid int32
+	select {
+	case pid = <-r.pid:
+	case err := <-done:
+		t.Fatalf("DD-42: SetLogo returned before publishing the in-flight transaction PID: %v", err)
+	case <-ctx.Done():
+		t.Fatalf("DD-42: in-flight transaction did not publish its PID before the context deadline: %v", ctx.Err())
+	}
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 	var operationErr, errorBeforeLock error
