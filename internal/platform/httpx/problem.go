@@ -176,6 +176,8 @@ func WriteDBError(w http.ResponseWriter, r *http.Request, err error, logger *slo
 			markClientCanceled(r)
 			return
 		}
+		SetLogLevel(r, slog.LevelInfo)
+		logger.InfoContext(r.Context(), "database operation canceled", "event", "internal_canceled", "request_id", RequestIDFrom(r.Context()))
 		WriteProblem(w, r, CodeServiceUnavailable)
 	case errors.Is(err, db.ErrNotFound):
 		WriteProblem(w, r, CodeNotFound)

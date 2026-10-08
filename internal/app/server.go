@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/fdelillo/crm/internal/platform/config"
+	"github.com/fdelillo/crm/internal/platform/outbox"
 )
 
 // Server timeouts (plan §10.3). IdleTimeout is not in the plan; 60 s is the usual keep-alive window.
@@ -22,8 +23,8 @@ const (
 	writeTimeout      = 30 * time.Second
 	idleTimeout       = 60 * time.Second
 
-	// shutdownTimeout bounds how long Serve waits for in-flight requests after the context is cancelled.
-	shutdownTimeout = 15 * time.Second
+	// ShutdownTimeout bounds how long Serve waits for in-flight requests after the context is cancelled.
+	ShutdownTimeout = outbox.SendBudget + 5*time.Second
 )
 
 // NewServer builds the *http.Server with the timeouts of plan §10.3. With cfg.TLS set (local mode
@@ -79,7 +80,7 @@ func loadKeyPair(f config.TLSFiles) (tls.Certificate, error) {
 }
 
 // Serve runs srv on ln until ctx is cancelled (SIGTERM in production), then shuts down gracefully:
-// in-flight requests finish, bounded by shutdownTimeout. It logs the listen mode: https_local when
+// in-flight requests finish, bounded by ShutdownTimeout. It logs the listen mode: https_local when
 // the server has a certificate (DD-24), http otherwise. It returns nil after a clean shutdown.
 func Serve(ctx context.Context, srv *http.Server, ln net.Listener, logger *slog.Logger) error {
 	mode := "http"
@@ -112,9 +113,10 @@ func Serve(ctx context.Context, srv *http.Server, ln net.Listener, logger *slog.
 
 	logger.Info("shutting down")
 	// The parent context is already cancelled: the shutdown deadline must not derive from it.
-	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
+	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), ShutdownTimeout)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
+		_ = srv.Close()
 		return fmt.Errorf("shutting down HTTP server: %w", err)
 	}
 	if err := <-errc; err != nil && !errors.Is(err, http.ErrServerClosed) {

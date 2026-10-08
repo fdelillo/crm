@@ -141,8 +141,8 @@ func runServe(ctx context.Context, args []string, e env) error {
 		if serveErr == nil && workerErr != nil {
 			return workerErr
 		}
-	case <-time.After(25 * time.Second):
-		return fmt.Errorf("outbox worker did not stop within 25 seconds")
+	case <-time.After(app.ShutdownTimeout):
+		return fmt.Errorf("outbox worker did not stop within %s", app.ShutdownTimeout)
 	}
 	return serveErr
 }

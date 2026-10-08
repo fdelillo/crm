@@ -193,6 +193,10 @@ func (d *Dispatcher) RunOnce(ctx context.Context) error {
 		}
 		handled, err := d.processOne(ctx)
 		if err != nil {
+			if ctx.Err() != nil {
+				d.logger.InfoContext(ctx, "outbox cycle canceled", "event", "outbox_delivery", "outcome", "canceled")
+				return nil
+			}
 			if errors.Is(err, context.Canceled) || errors.Is(err, errCycleStop) {
 				return nil
 			}

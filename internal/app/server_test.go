@@ -298,6 +298,8 @@ func TestServe_GracefulShutdown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	shutdownEntered := make(chan struct{})
+	srv.RegisterOnShutdown(func() { close(shutdownEntered) })
 	ctx, cancel := context.WithCancel(context.Background())
 	served := make(chan error, 1)
 	go func() { served <- app.Serve(ctx, srv, ln, slog.New(slog.NewJSONHandler(io.Discard, nil))) }()
@@ -324,7 +326,7 @@ func TestServe_GracefulShutdown(t *testing.T) {
 	select {
 	case err := <-served:
 		t.Fatalf("Serve returned (%v) while a request was still in flight", err)
-	case <-time.After(100 * time.Millisecond):
+	case <-shutdownEntered:
 	}
 	close(release)
 
