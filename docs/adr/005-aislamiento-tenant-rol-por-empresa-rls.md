@@ -60,6 +60,30 @@
 > creados de antemano (research R-04c) también lo evitaría: la membresía se concede mucho antes
 > del primer uso. Alternativas evaluadas en research R-28 del plan de 001.
 
+> **Nota 2026-10-08 (c) (decimotercera revisión del plan de 001; *Accepted*, aprobada por el usuario el 2026-10-08;
+> no cambia la decisión)**: la primera corrida de T-B905 (PostgreSQL 18.6, 10.000
+> empresas) no cumplió el target de registros concurrentes: 673 ms de p95 contra < 250 ms con 10
+> simultáneos, con 0 `503`. Ese target medía la transacción de registro **incluida la espera por
+> el lock** de `crm_tenant`. Con un pool de 8 conexiones, lo medido es ≈ 8 × la retención, así que
+> no decía si la retención cumplía (la inferida es de 84–91 ms, sin medir).
+>
+> El target se redefine (DD-33 R-b y R-e del plan):
+>
+> - la retención, medida sin contención con 10.000 roles, debe tener p95 < 140 ms;
+> - una ráfaga de 10 registros debe terminar con 0 `503`;
+> - el pool de producción se fija explícitamente, con (P − 1) × retención ≤ `lock_timeout` / 2.
+>
+> Lo mide T-B910, con reglas de decisión fijadas antes de medir. El punto (2) de la "Recomendación
+> del arquitecto" se evalúa sobre T-B910: si la retención o la ráfaga no cumplen, se escribe el ADR
+> que reemplaza a este, con la alternativa B recomendada y el *pool* de roles creados de antemano
+> como alternativa.
+>
+> Hipótesis que confirma o descarta el desglose de T-B910: cada registro cambia `pg_auth_members`,
+> y cada conexión recalcula la lista de roles de `crm_app` en su siguiente `SET ROLE`, con un costo
+> proporcional a la cantidad de empresas. PostgreSQL 17 eliminó la parte cuadrática de ese cálculo,
+> no la lineal. Es la consecuencia 1 de este ADR, ahora con números. Detalle en
+> `specs/001-empresas-usuarios/revision-13-t-b905.md`.
+
 ## Contexto
 
 La constitución (principio III) exige que todo dato de negocio pertenezca a una empresa, que toda

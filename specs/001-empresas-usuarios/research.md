@@ -12,6 +12,7 @@ ampliada (lock de `GRANT crm_tenant`, DD-33); R-25 (IP del cliente detrás de pr
 **Cuarta revisión 2026-09-30**: R-28 agregada (primer `SET ROLE` a una empresa recién aprovisionada
 desde otra conexión, DD-34); R-04 y R-04c mencionan el hallazgo; supuesto 12 nuevo.
 **Quinta revisión 2026-10-05**: nota en R-16 (los locks de la empresa y del usuario pasan a `FOR NO KEY UPDATE`, DD-40). La evaluación original no se edita.
+**Sexta revisión 2026-10-08** (*Accepted*, aprobada por el usuario el 2026-10-08; decimotercera tanda del plan): nota en R-04c (la corrida 1 de T-B905 sumaba la espera en el lock a la retención; hipótesis H-1 sobre el costo con miles de roles), fuentes nuevas y supuesto 15. La evaluación original no se edita.
 
 Alternativas evaluadas por decisión. Las marcadas **(usuario)** las tomó el usuario antes del
 plan: acá se documenta por qué son razonables y qué cuestan. Las demás son defaults del
@@ -121,6 +122,12 @@ aprovisionamiento abierta, la segunda cae por el `statement_timeout` de `crm_app
 | *Pool* de roles creados de antemano (un job crea roles `crm_t_*` con su membresía, uno por transacción; el registro reclama uno con `FOR UPDATE SKIP LOCKED` y usa su UUID como `tenants.id`) | Elimina el lock del camino del registro; **también elimina el problema de R-28** (la membresía a `crm_app` se concede mucho antes del primer uso) | Redefine INV-14 (el rol existe antes que la empresa); una tabla y un job más; roles sin empresa que inventariar | Postergada: mejora natural si T-B905 no cumple o si R-17 del plan se materializa |
 | Alternativa B de ADR-005 (sin roles por empresa) | Elimina el problema de raíz | Es cambiar la decisión del usuario | Salida si T-B905 o P-1 lo piden (ADR que reemplace a ADR-005) |
 | Subir `statement_timeout` | Cero código | La espera sigue ahí, más larga y con conexiones del pool retenidas | Descartada |
+
+**Nota 2026-10-08 (decimotercera tanda del plan; *Accepted*, aprobada por el usuario el 2026-10-08)**: la primera corrida de T-B905 (PostgreSQL 18.6, 10.000 empresas) midió la transacción de registro con 10 y 50 simultáneos **incluida la espera por el lock**: p95 de 673 y 730 ms, 0 `503`. Con un pool de 8 conexiones eso es ≈ 8 × la retención, así que la retención inferida es de 84–91 ms, sin medir. El target pasa a ser la retención sin contención (p95 < 140 ms) y 0 `503` en una ráfaga de 10, con el pool fijado (DD-33 R-e); lo mide T-B910.
+
+Hipótesis **H-1** (supuesto 15): el registro HTTP sin contención (236 ms de p95, con ~40–50 ms de argon2) sugiere un costo fuera de la transacción medida. Cada registro cambia `pg_auth_members`: la membresía `ADMIN` que PostgreSQL 16+ le da a `crm_provisioner` sobre el rol que crea, y los dos `GRANT`. Después, cada conexión reconstruye la lista de roles de `crm_app` en su siguiente `SET ROLE`, con un costo proporcional a la cantidad de empresas. PostgreSQL 17 eliminó la parte cuadrática de ese cálculo (filtro de Bloom en `roles_is_member_of()`), no la lineal.
+
+Si T-B910 no cumple, las salidas de esta tabla se evalúan con las reglas de la decimotercera tanda: alternativa B recomendada, *pool* de roles pre-creados como alternativa. La evaluación original de la tabla no se edita.
 
 ## R-05 Migraciones **(usuario: goose embebido)** → ADR-004
 
@@ -703,6 +710,9 @@ y es efímero en tests; producción usa el servicio S3 que se elija con el hosti
 - Códigos de estado extendidos de SMTP (RFC 3463): <https://www.rfc-editor.org/rfc/rfc3463>
 - Imágenes de MinIO (R-30): <https://www.chainguard.dev/unchained/secure-and-free-minio-chainguard-containers>, <https://github.com/gofr-dev/gofr/pull/4378>, <https://github.com/HeliosSoftware/hfs/issues/1520>, <https://github.com/ponack/crucible-iap/issues/387>, <https://bex.co/blog/2026/09/25/minio-docker-hub-removal-quay-repoint>, <https://github.com/enorm-labs/event-junkie/issues/1859>, <https://github.com/coollabsio/minio>, CVE-2025-62506: <https://asec.ahnlab.com/en/91238/>
 
+- Costo de las membresías con miles de roles (decimotercera tanda, H-1): hilo "Slow GRANT ROLE on PostgreSQL 16 with thousands of ROLEs" (<https://www.postgresql.org/message-id/907785.1711121266%40sss.pgh.pa.us>, <https://www.postgresql.org/message-id/20240322163952.GA2347986%40nathanxps13>); commit d365ae7 de PostgreSQL 17, "Optimize roles_is_member_of() with a Bloom filter" (<https://postgresql.org/message-id/E1rpCj9-005ouH-7L%40gemulon.postgresql.org>)
+- Default de `pool_max_conns` en pgxpool ("the greater of 4 or runtime.NumCPU()"): <https://pkg.go.dev/github.com/jackc/pgx/v5/pgxpool>. Tracers de pgx v5.11.0 (código fuente en el *module cache* del proyecto: `tx.go`, donde `BeginTx` y `Commit` ejecutan por `Conn.Exec`; `conn.go`; `pgxpool/tracer.go`; `pgxpool/pool.go`)
+
 Supuestos a validar durante la implementación (no verificados con documentación primaria):
 
 1. `SET LOCAL ROLE` a un rol cuya membresía se otorgó **en la misma transacción** funciona (el
@@ -742,6 +752,12 @@ Supuestos a validar durante la implementación (no verificados con documentació
 14. `ghcr.io/coollabsio/minio:RELEASE.2025-10-15T17-29-55Z` sigue descargable sin login y arranca
     como la imagen oficial (`server /data`, `MINIO_ROOT_*`, `/minio/health/ready`) (S-18 del plan,
     DD-36). Lo confirma el test de T-B215; si falla, respaldo de R-30.
+15. H-1 (decimotercera tanda): con miles de roles, el costo dominante del registro, y del primer
+    `SET ROLE` de cada conexión después de un registro, es reconstruir las listas de membresía
+    después de cada cambio de `pg_auth_members`; desde PostgreSQL 17 ese costo es lineal en la
+    cantidad de roles. Es consistente con el reporte de PostgreSQL 16, con su arreglo y con la
+    corrida 1 de T-B905, pero no está verificado en el código de PostgreSQL. Lo confirma o lo
+    descarta el desglose de T-B910 (M-1 a M-4).
 
 ---
 

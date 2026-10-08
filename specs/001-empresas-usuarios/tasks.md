@@ -55,6 +55,7 @@ ajustes antes de la Fase 6). La sección Frontend no cambia: el contrato no camb
 **Décima revisión 2026-10-06** (*Accepted*, aprobada por el usuario el 2026-10-06): revisión del PR fdelillo/crm#15 (Fase 7; plan §18, décima tanda): `COMMIT` de resultado incierto al subir el logo y lectura con el objeto ausente (DD-42, INV-17 precisada), `LockTenant` en `PATCH /tenant` y en el logo con sus tests de concurrencia (DD-40 corregida, INV-34 nueva), semántica de `PATCH /tenant` y `Local` en el registro (DD-43, DD-27), defensas sin test de la subida y bucket de desarrollo. Tareas afectadas: T-B303 (Fase 3), T-B604 (Fase 6, regla R0), T-B701 a T-B706 y T-B707 nueva (Fase 7). Contrato **v0.4.3** (*patch*: solo descripciones). La sección Frontend no cambia.
 **Undécima revisión 2026-10-07** (*Accepted*): revisión del PR fdelillo/crm#16 (Fase 8; plan §18, undécima tanda): precisa lo que T-B801 a T-B803 verifican (cabeceras del `404` de un id ajeno, lecturas del operador, centinelas en cuerpo y cabeceras, sesiones sin revocar de los desactivados, aplazamiento como `crm_worker`, router de `crm serve`, conteo real). Tareas afectadas: fixture común, T-B801, T-B802, T-B803 y checkpoint de la Fase 8. La sección Frontend no cambia: el contrato no cambia. (Línea agregada en la duodécima revisión.)
 **Duodécima revisión 2026-10-08** (*Accepted*, aprobada por el usuario el 2026-10-08): pendientes de la revisión de cierre del PR fdelillo/crm#16, aplicados en el paso 0 de la Fase 9 (plan §18, duodécima tanda): guard del router de `crm serve` con `go/types` que cubre también el servidor de métricas, armado por `internal/app` (`app.NewMetricsServer`); centinelas cortos y conteo por tipo en T-B801. Cierres para la Fase 9: `/readyz` lee la versión de la base con `SELECT (version_id)` concedido solo a `crm_auth` (migración `00009`), las métricas que leen la base se muestrean cada 60 s y el inventario de roles suma `tenant_roles_missing` y `tenants_total`. Tareas afectadas: T-B801 (Fase 8) y T-B903, T-B904, T-B908 (Fase 9). La sección Frontend no cambia: el contrato no cambia.
+**Decimotercera revisión 2026-10-08** (*Accepted*, aprobada por el usuario el 2026-10-08): detención en T-B905 y pendientes de la revisión de código del PR fdelillo/crm#17 (plan §18, decimotercera tanda; [`revision-13-t-b905.md`](revision-13-t-b905.md)). Target de §13 redefinido (retención sin contención y ráfaga), DD-33 R-e, re-medición T-B910 con reglas de decisión, reglas (4) y (5) del guard de `crm serve` y tests de `runServe` (T-B911). Tareas afectadas: T-B801 (Fase 8, en la rama de la Fase 9), T-B905, T-B910 y T-B911 (nuevas), y la prueba independiente y el checkpoint de la Fase 9. La sección Frontend no cambia: el contrato no cambia.
 
 ---
 
@@ -341,6 +342,18 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
   **Corrección del estado de Fase 8**: la afirmación anterior de que la spec permitía expresamente `go/ast` era incorrecta: pedía identificadores resueltos por su declaración. El paso 0.4 reemplazó `ast.Object` por `go/types` y eliminó el `nolint`.
 
   **Desvíos locales**: acceso aprobado a caché Go y Docker; Ryuk falló durante el arranque (puerto `8080/tcp` desaparecido). `TESTCONTAINERS_RYUK_DISABLED=true` solo en el verificador local; no se cambia CI. Evidencia de corridas y mutaciones guardada temporalmente en `/tmp/crm-phase9-evidence`.
+
+- **Decimotercera revisión (2026-10-08, *Accepted*, aprobada por el usuario el 2026-10-08)**: respuesta del arquitecto a la detención en T-B905 y a los pendientes de diseño de la revisión de código del PR fdelillo/crm#17 (plan §18, decimotercera tanda; detalle en [`revision-13-t-b905.md`](revision-13-t-b905.md)). La corrida 1 de T-B905 no se descarta ni se repite: queda como dato. Su target sumaba la espera en el lock a la retención (con P = 8, lo medido es ≈ 8 × la retención), así que no decide si ADR-005 cumple. Orden sobre `feat/001-backend-phase-9`, con `make check` en verde después de cada paso:
+
+  | Orden | Tarea | Qué | Red / mutación |
+  |---|---|---|---|
+  | 0 | Prueba independiente (opcional, ya) | La de Compose descrita en la entrada de la Fase 9, como señal temprana. No reemplaza la del checkpoint | — |
+  | 1 | T-B801 (reglas (4) y (5)) + costura `env.listen` | Regla (5): las cinco funciones del guard solo como llamada directa. Regla (4): listeners desde `e.listen`, con `(&net.ListenConfig{}).Listen` como único valor en `run` | Red: (e) y (f) dan hoy 0 violaciones. Las mutaciones (e) a (i) de T-B801 fallan nombrando archivo, línea y regla; las anteriores siguen fallando |
+  | 2 | T-B911 | Tests de `runServe` | Red: hoy sobreviven quitar la espera de `workerDone` y quitar `stopServers()`. Se aplican las mutaciones de T-B911 |
+  | 3 | T-B910 | Re-medición con desglose, dos corridas | Autocontroles del tracer; targets T-1 a T-3; reglas D-a a D-d reportadas |
+  | 4 | Checkpoint de la Fase 9 | El texto nuevo, debajo de T-B911 | El veredicto de T-B910 no bloquea el cierre |
+
+  El plan documenta en §11.1 la API exportada de la Fase 9, sin cambio de código. Si T-B910 cumple, DD-33 registra los números. Si no, el arquitecto escribe el ADR que reemplaza a ADR-005, y 001 no sale a producción hasta implementarlo.
 
 ### Convenciones de esta sección
 
@@ -1818,8 +1831,9 @@ de cada empresa.
     (1) `app.BuildAPIRouter` se llama exactamente una vez; su resultado es directamente el valor de la clave `API` de un literal `app.RootDeps`, o una variable de un solo uso que aparece en esa clave. Todo literal de tipo `app.RootDeps` es **directamente** el primer argumento de `app.NewRootHandler` (sin variable intermedia), y ningún objeto declarado en `cmd/crm` (variable, parámetro, resultado o campo) tiene tipo `app.RootDeps` ni `*app.RootDeps`: nadie conserva una referencia al router después de entregarlo.
     (2) Ningún archivo no-test de `cmd/crm` importa `net/http` ni sus subpaquetes (`net/http/pprof`, `net/http/httptest`, `net/http/httputil`, …), `expvar`, ni `github.com/go-chi/chi/v5` ni sus subpaquetes. Ninguno los necesita: handlers y servidores los arma `internal/app`, y las métricas se publican en el paquete que las produce. Reemplaza la lista anterior (`http.NewServeMux`, `http.Handle`, `http.HandleFunc`) y además impide `http.ListenAndServe`, `http.Serve`, `http.DefaultServeMux` y handlers propios.
     (3) `app.NewRootHandler` se llama exactamente una vez y su resultado llega al segundo argumento de `app.NewServer`, directo o en una variable de un solo uso, sin envolverlo. `app.NewServer` se llama exactamente una vez y su `*http.Server` es una variable de un solo uso que aparece como argumento `srv` de una llamada a `app.Serve`. En `cmd/crm` no hay ningún literal compuesto de tipo `net/http.Server` (tampoco a través de un alias) ni ninguna selección del campo `net/http.Server.Handler`, de lectura o de escritura.
-    (4) Servidor de métricas (T-B903, T-B904, plan §12.1): `app.NewMetricsServer` se llama exactamente una vez y su resultado es una variable de un solo uso que aparece como argumento `srv` de otra llamada a `app.Serve`. Hay exactamente dos llamadas a `app.Serve` y cada una recibe un par coherente: (servidor de `app.NewServer`, listener de `HTTP_ADDR`) o (servidor de `app.NewMetricsServer`, listener de `METRICS_ADDR`). El listener es una variable de un solo uso asignada desde `(*net.ListenConfig).Listen` o `net.Listen`, cuyo argumento de dirección es directamente la selección del campo `HTTPAddr` o `MetricsAddr` de `config.Config`, respectivamente.
-    Cada violación nombra archivo, línea y número de regla. Mutaciones que tienen que hacerlo fallar: las cinco de la undécima revisión (alias `r := api` y `r.Get(...)`, función local que recibe el router, `API: wrap(app.BuildAPIRouter(...))`, un router chi nuevo en otro archivo de `cmd/crm`, `app.NewServer(cfg, wrap(root))`); y, de la duodécima: (a) `deps := app.RootDeps{API: app.BuildAPIRouter(...), …}` con `deps.API.(interface{ Get(string, http.HandlerFunc) }).Get("/api/v1/backdoor", h)` antes de `app.NewRootHandler(deps, …)` (reglas (1) y (2)); (a') la misma idea sin `net/http`, `deps.Liveness = deps.API` (solo regla (1)); (b) `_ = srv` y `app.Serve(ctx, &http.Server{Handler: otro}, ln, logger)` (reglas (2), (3) y (4)); (c) los listeners intercambiados entre las dos llamadas a `app.Serve` (regla (4)); (d) `metricsSrv.Handler = …` (reglas (3) y (4)). Siguen en verde: renombrar variables, cambiar el alias del import de `app` y mover el cableado a otro archivo de `cmd/crm`. Si el importer `"source"` no resuelve algún paquete (p. ej. con cgo bajo `-race`) o su duración no es aceptable en `make check`, se usa el importer `"gc"` con un `lookup` que abre los archivos de export de `go list -export -deps -json` (también solo librería estándar); las reglas no cambian. Si una fase posterior cambia cómo arranca `crm serve` (p. ej. T-B909), estas reglas se actualizan en el mismo PR.
+    (4) Servidor de métricas (T-B903, T-B904, plan §12.1): `app.NewMetricsServer` se llama exactamente una vez y su resultado es una variable de un solo uso que aparece como argumento `srv` de otra llamada a `app.Serve`. Hay exactamente dos llamadas a `app.Serve` y cada una recibe un par coherente: (servidor de `app.NewServer`, listener de `HTTP_ADDR`) o (servidor de `app.NewMetricsServer`, listener de `METRICS_ADDR`). El listener es una variable de un solo uso asignada desde una llamada al campo `listen` de un valor de tipo `env` (decimotercera revisión; antes, desde `(*net.ListenConfig).Listen` o `net.Listen`), cuyo argumento de dirección es directamente la selección del campo `HTTPAddr` o `MetricsAddr` de `config.Config`, respectivamente. Fuera de esas dos llamadas, el campo `env.listen` aparece una sola vez en los archivos no-test de `cmd/crm`: en el literal de `env` de `run`, con valor exactamente `(&net.ListenConfig{}).Listen` o `new(net.ListenConfig).Listen`, sin ninguna otra asignación ni lectura. Es la costura de T-B911: los tests de `runServe` arman su propio `env`.
+    (5) (decimotercera revisión) Las cinco funciones que nombran las reglas (1), (3) y (4) (`app.BuildAPIRouter`, `app.NewRootHandler`, `app.NewServer`, `app.NewMetricsServer` y `app.Serve`) solo se usan como llamada directa: cada aparición de su `types.Func` en `Info.Uses` es exactamente el `Fun` de un `ast.CallExpr` (la selección `app.X`, o el identificador si el import es con punto), sin paréntesis de por medio. Cualquier otro uso es una violación (asignarla a una variable, pasarla como argumento, guardarla en un campo o en un literal, `reflect`), aunque las reglas (1) a (4) no vean ninguna llamada fuera de lugar. `go app.Serve(…)` y `defer app.Serve(…)` son llamadas directas.
+    Cada violación nombra archivo, línea y número de regla. Mutaciones que tienen que hacerlo fallar: las cinco de la undécima revisión (alias `r := api` y `r.Get(...)`, función local que recibe el router, `API: wrap(app.BuildAPIRouter(...))`, un router chi nuevo en otro archivo de `cmd/crm`, `app.NewServer(cfg, wrap(root))`); y, de la duodécima: (a) `deps := app.RootDeps{API: app.BuildAPIRouter(...), …}` con `deps.API.(interface{ Get(string, http.HandlerFunc) }).Get("/api/v1/backdoor", h)` antes de `app.NewRootHandler(deps, …)` (reglas (1) y (2)); (a') la misma idea sin `net/http`, `deps.Liveness = deps.API` (solo regla (1)); (b) `_ = srv` y `app.Serve(ctx, &http.Server{Handler: otro}, ln, logger)` (reglas (2), (3) y (4)); (c) los listeners intercambiados entre las dos llamadas a `app.Serve` (regla (4)); (d) `metricsSrv.Handler = …` (reglas (3) y (4)); y, de la decimotercera: (e) `mk := app.NewMetricsServer` y `mk(cfg)` (reglas (5) y (4)); (f) `serve := app.Serve` y `serve(serverCtx, srv, ln, logger)` (regla (5)); (g) `(app.Serve)(…)` (regla (5)); (h) un listener de `net.Listen` o de `(*net.ListenConfig).Listen` directo en `runServe` (regla (4)); (i) `e.listen = otro` en `serve.go`, o un valor distinto de `(&net.ListenConfig{}).Listen` en el literal de `env` de `run` (regla (4)). Siguen en verde: renombrar variables, cambiar el alias del import de `app` y mover el cableado a otro archivo de `cmd/crm`. Si el importer `"source"` no resuelve algún paquete (p. ej. con cgo bajo `-race`) o su duración no es aceptable en `make check`, se usa el importer `"gc"` con un `lookup` que abre los archivos de export de `go list -export -deps -json` (también solo librería estándar); las reglas no cambian. Si una fase posterior cambia cómo arranca `crm serve` (p. ej. T-B909), estas reglas se actualizan en el mismo PR.
   - **Nota para las specs siguientes** (H3, Revisión del PR #16): los casos con id de esta tabla son de **usuarios** (`{userId}`). Cuando la spec 002 sume rutas con id de otro recurso, cada recurso necesita su propio caso (ids de `B` en cada estado del recurso → `404` idéntico en cuerpo y cabeceras, `B` sin cambios), no reusar el de usuarios: la cobertura de rutas obliga a declarar una fila, no a que el caso elegido corresponda al recurso. Un caso de id ajeno que falle si la ruta no tiene el parámetro que espera lo haría verificable.
 - **Green**: todas las filas pasan y la cobertura de rutas es total.
 
@@ -1861,8 +1875,11 @@ III): se corrige antes de cerrar la fase, con su test de regresión.
 restaura sin perder los roles, y su rendimiento con muchas empresas (y con registros
 concurrentes) está medido.
 
-**Prueba independiente**: con 10.000 empresas cargadas, los targets de `plan.md` §13 se cumplen;
-borrar un rol de empresa y correr `crm tenants reprovision-roles` restablece el acceso.
+**Prueba independiente**: con 10.000 empresas cargadas, T-B910 reporta los targets de `plan.md`
+§13 (decimotercera revisión) con su veredicto; borrar un rol de empresa y correr
+`crm tenants reprovision-roles` restablece el acceso. Decimotercera revisión: antes decía "los
+targets de §13 se cumplen"; cumplirlos pasa a ser condición para salir a producción, no para
+cerrar la fase.
 
 **T-B901 [T] — Limpieza periódica** · `data-model.md` §3.4, DD-25, ADR-001, plan §4.4
 - **Red** (integración): sesiones y tokens vencidos hace > 30 días, mensajes terminales de > 30
@@ -1968,6 +1985,10 @@ registra las tareas. Las cuatro rutas de sistema ya están en `queryrules.Defaul
   analiza con el runbook de plan §12.3).
 - Comparar con `plan.md` §13. **Si algún target no se cumple, frenar y volver al arquitecto** (se
   reabre ADR-005; opciones ya analizadas en research R-04c y R-28).
+- **Decimotercera revisión**: ejecutada el 2026-10-08 (corrida 1; ver "Estado de la
+  implementación"). El target de registros concurrentes medía la espera en el lock más la
+  retención, no la retención: queda como dato reportado, sin target. Los targets nuevos y el
+  desglose los mide T-B910, que reemplaza este test y quita su `t.Fatal` por `registration_tx_10`.
 
 **T-B906 [T] — Reaprovisionamiento de roles** · plan §12.4, DD-33 (R-d)
 - **Red** (integración):
@@ -2003,7 +2024,80 @@ de la fase y se agrega a plan §11.1 en el mismo cambio (matriz §16).
 
 **T-B909 — Implementar el apagado ordenado del servidor y del worker**. Quinta revisión (DD-35): el timeout de apagado es ≥ 25 s (`outbox.SendBudget` + 5 s), porque go-mail no corta una conversación SMTP en curso al cancelarse el contexto.
 
-**Checkpoint Fase 9**: `make check` en verde + resultado de T-B905 reportado con los números.
+**T-B910 — Re-medición con 10.000 empresas: retención del lock, ráfagas y desglose** · R-2, R-3, R-15, R-17, ADR-005, DD-33 (R-b, R-e), DD-34, INV-26 · decimotercera revisión
+- **Alcance**: solo código de test en `internal/testsupport/phase9bench/` (build tag `bench`, fuera de `make check`). Reemplaza a `TestPhase9Benchmark` de T-B905 y conserva sus mediciones: `registration_tx_10` y `registration_tx_50` se siguen reportando, sin target. No cambia el código de producción, `lock_timeout`, el pool de runtime, los targets ni el diseño. Si algo no se puede medir sin tocar producción, se reporta "no medido" y se sigue.
+- **Entorno**:
+  - El de la corrida 1: imagen por digest, `server_version` 18.6 verificada, 10.000 empresas con `Register` real, hash precalculado salvo en login y signup HTTP.
+  - La medición usa un pool propio del bench como `crm_app`, con `pool_max_conns=8` **explícito** en el DSN.
+  - En `ConnConfig.Tracer` va un tracer del bench que implementa `pgx.QueryTracer` y `pgxpool.AcquireTracer`. En pgx v5.11, `BEGIN` y `COMMIT` pasan por `Conn.Exec` y también se trazan; pgxpool usa el `AcquireTracer` si el tracer de la conexión lo implementa.
+  - El log registra digest, `server_version`, Go, SO/arquitectura, CPU, memoria de Docker y `pool_max_conns`.
+- **Instrumentación**:
+  - Id de muestra: el bench lo pone en el contexto antes de llamar a `Register`. El tracer registra por evento el id de muestra, el PID del backend, una etiqueta y tiempos monotónicos.
+  - Etiquetas: el nombre de sqlc (`-- name: X`); `set_role:crm_signup`, `set_role:crm_auth` y `set_role:tenant`, por el texto de `setRole`; `begin`, `commit` y `acquire`.
+  - Intervalos por muestra:
+    - `pool_wait`: lo que tarda el `acquire`;
+    - `pre_callback`: del fin del `acquire` al fin de `set_role:crm_signup`;
+    - `provision`: la sentencia `ProvisionTenantRole`, que con contención incluye la espera por el lock;
+    - **`hold`**: del inicio de `ProvisionTenantRole` al fin del `commit`. Es la cota superior de la retención, porque incluye el `CREATE ROLE` que va antes del `GRANT`;
+    - `callback`: como en la corrida 1;
+    - `end_to_end`: de la llamada a `Register` a su retorno.
+  - Autocontroles (el test falla si no se cumplen): toda sentencia de una muestra tiene etiqueta conocida y el id de muestra; cada muestra tiene exactamente un `begin`, un `ProvisionTenantRole` y un `commit`; en M-2, los `hold` de muestras distintas no se solapan.
+- **Mediciones**:
+
+  | Id | Qué | Cómo | Se reporta |
+  |---|---|---|---|
+  | M-1 | Curva de escala | Durante la carga de las 10.000, por bloque de 1.000 registros | p50/p95 de `hold`, `provision`, `set_role:tenant`, `pre_callback` y `callback` por bloque; duración de cada bloque |
+  | M-2 | Registro aislado con 10.000 roles | 100 `Register` secuenciales después de la carga, sin otra actividad | p50/p95/máx de cada intervalo y de cada sentencia etiquetada |
+  | M-3 | Cuerpo de `provision_tenant_role` | 50 transacciones por el pool de superusuario: `SET LOCAL ROLE crm_provisioner`; luego `CREATE ROLE`, `GRANT crm_tenant … WITH INHERIT TRUE, SET FALSE` y `GRANT <rol> TO crm_app WITH INHERIT FALSE, SET TRUE`, con los mismos atributos que la función y cada uno medido; `ROLLBACK` | p50/p95 por sentencia (aproximación: sin plpgsql ni `SECURITY DEFINER`) |
+  | M-4 | Primer uso en otra conexión después de un registro | 20 veces: el bench toma 7 conexiones del pool de medición con `Acquire` y corre un `Register` (usa la 8.ª). En cada una de las 7 abre una transacción, mide dos veces seguidas el `setRole` de `crm_auth` (mismo texto que `platform/db`): la primera y la "caliente". Hace `ROLLBACK` y la libera. Además, 20 `GET /api/v1/me` por el router real, cada uno inmediatamente después de un registro | p50/p95/máx de la primera y de la caliente (140 muestras cada una); p95 del `GET /me` posterior a un registro |
+  | M-5 | Ráfagas | 10 y 50 `Register` simultáneos (barrera como en la corrida 1), **5 repeticiones** de cada una. Entre repeticiones se espera a que el pool no tenga conexiones tomadas. Durante cada ráfaga de 50, una goroutine hace `GET /api/v1/me` secuenciales por el router real (mismo pool) desde la barrera hasta que vuelve el último `Register` | Por tamaño: muestras, cantidad de `503` y p50/p95/máx de `end_to_end`, `pool_wait`, `provision`, `hold` y `callback`. Espera estimada en el lock = `provision` − p50 de `provision` en M-2. `GET /me` durante la ráfaga: muestras y p50/p95/máx |
+  | M-6 | Lo de la corrida 1 | Mismo método que T-B905 | Los mismos ocho valores; para `SET LOCAL ROLE`, además, las 10 muestras de calentamiento por separado; `set_role_retry_total` |
+
+- **Corridas**: dos completas, cada una con un contenedor nuevo. Cada target se evalúa en las dos. No se agregan corridas para desempatar ni se repite una buscando aprobar.
+- **Targets** (`plan.md` §13, decimotercera revisión). El test falla si alguno no se cumple en alguna de las dos corridas:
+
+  | Id | Target |
+  |---|---|
+  | T-1 | `hold` de M-2: p95 < 140 ms |
+  | T-2 | Ráfaga de 10 (M-5): 0 `503` en las 50 muestras |
+  | T-3 | M-6, p95: `GET /me` < 50 ms, logo `304` < 50 ms, login < 400 ms, signup < 1000 ms |
+  | — | `set_role_retry_total` = 0 (si no, runbook de plan §12.3) |
+
+- **Reglas que se reportan sin hacer fallar el test** (línea `BENCH rule <id> triggered=<bool>`):
+
+  | Id | Condición | Consecuencia (plan §18, decimotercera tanda) |
+  |---|---|---|
+  | D-a | Algún `503` con 50 simultáneos | Solo se reporta (DD-33 R-a) |
+  | D-b | `GET /me` durante la ráfaga de 50: p95 > 1 s | Se le propone al usuario un semáforo de registros en el proceso |
+  | D-c | M-4: primer `setRole` después de un registro con p95 > 250 ms | Volver al arquitecto |
+  | D-d | M-1: el p95 de `hold` del bloque 9.001–10.000 dividido el del bloque 4.001–5.000 da > 2,5 | Volver al arquitecto (crecimiento más que lineal) |
+
+- **Reporte**: va en la entrada de la Fase 9 de "Estado de la implementación": una tabla por medición y por corrida, y el veredicto por target y por regla. El desarrollador no decide ni cambia el diseño. Si T-1, T-2 o T-3 no se cumplen, o se dispara D-c o D-d, completa igual el checkpoint de la fase y lo reporta.
+
+**T-B911 [T] — Tests de `runServe`: falla de un servidor y espera del worker** · T-B904, T-B908, T-B909, DD-35, plan §9.4 · decimotercera revisión
+- **Costura**: `env` (`cmd/crm/main.go`) suma `listen func(ctx context.Context, network, address string) (net.Listener, error)`. `run` lo inicializa con `(&net.ListenConfig{}).Listen`, y `runServe` escucha `HTTP_ADDR` y `METRICS_ADDR` solo con `e.listen` (regla (4) de T-B801). Nada más cambia en `runServe`.
+- **Red** (integración en `cmd/crm`, contra el PostgreSQL del harness, con un SMTP de prueba propio del test y sin `t.Parallel()`):
+
+  | Caso | Esperado |
+  |---|---|
+  | El `listen` del test envuelve listeners reales. Con los dos servidores atendiendo, el `Accept` de `HTTP_ADDR` pasa a devolver un error permanente | `runServe` vuelve antes de `app.ShutdownTimeout` con un error que envuelve el del `Accept` (`errors.Is`). Después, `METRICS_ADDR` no acepta conexiones y el `Dispatcher` terminó |
+  | Lo mismo con el `Accept` de `METRICS_ADDR` | Simétrico: `HTTP_ADDR` deja de aceptar, el worker terminó y `runServe` devuelve el error |
+  | Se cancela el contexto (equivalente a SIGTERM) con un mensaje del outbox en envío, contra un SMTP de prueba que acepta la conexión y retiene la conversación hasta que el test lo libera (menos que los 5 s por etapa de DD-35) | `runServe` **no** vuelve mientras el SMTP retiene (se verifica durante al menos 500 ms). Al liberarlo, vuelve con `nil` antes de `app.ShutdownTimeout`. El mensaje queda `sent` o `pending`, nunca a medio actualizar (T-B908) |
+  | Se cancela el contexto sin trabajo en curso | `nil` |
+
+- **Mutaciones** (se aplican, el caso falla y se restauran):
+  - quitar el `stopServers()` después del `app.Serve` de la API → falla la fila 1 (el test acota la espera);
+  - lo mismo con el de métricas → falla la fila 2;
+  - quitar la espera de `workerDone` → falla la fila 3;
+  - devolver `nil` en lugar de `serveErr` → fallan las filas 1 y 2.
+- **Green**: las cuatro filas pasan. El guard de T-B801, con las reglas (4) y (5) nuevas, pasa sobre el código real y falla con sus mutaciones (e) a (i). `make check` en verde.
+
+**Checkpoint Fase 9** (decimotercera revisión; antes decía "`make check` en verde + resultado de T-B905 reportado con los números"):
+- `make check` en verde.
+- La prueba independiente con `crm serve` real **sobre el HEAD final**: `/readyz` con migrate down/up, dos ciclos de muestreo después de borrar y restaurar un rol, y SIGTERM con un request en curso.
+- T-B905 (corrida 1, ya reportada) y T-B910 reportada con su veredicto. El veredicto de T-B910 **no** bloquea el cierre de la fase: decide si 001 puede salir a producción con ADR-005 tal como está.
+
+**Condición de salida a producción** (no es una condición de la fase; viene de ADR-005, consecuencia 1): T-1, T-2 y T-3 de T-B910 cumplidos en las dos corridas, sin que se disparen D-c ni D-d. Si no, tiene que estar implementado el ADR que reemplace a ADR-005, o una decisión del usuario que lo evite.
 
 ---
 
@@ -2024,7 +2118,7 @@ de la fase y se agrega a plan §11.1 en el mismo cambio (matriz §16).
 | US-3 (1, 2, 3, 4) | T-B601 (1), T-B602 (2), T-B604 (3), T-B603/T-B604 (4) |
 | US-4 (1) | T-B702, T-B703, T-B705 |
 | Casos borde (404 de otra empresa, 403 de operador) | T-B606, T-B801, T-B802 |
-| SC-001 Panel en < 3 min | T-B305 (un request), T-B905 (latencia de signup, también con registros concurrentes) |
+| SC-001 Panel en < 3 min | T-B305 (un request), T-B905 (latencia de signup, también con registros concurrentes), T-B910 (de punta a punta en ráfagas) |
 | SC-002 0 accesos cruzados | T-B110, T-B801..T-B804 |
 | P-2 Verificación no bloqueante | T-B309, T-B504 |
 | P-3 Reactivación | T-B604, T-B605, T-B606, T-B801 |
@@ -2048,8 +2142,9 @@ de la fase y se agrega a plan §11.1 en el mismo cambio (matriz §16).
 | `405` con `method_not_allowed` y `Allow` (contrato v0.4.0, research R-26) | T-B004, T-B005, T-B201, T-B203; T-F004, T-F101 (frontend) |
 | DD-32 / INV-25 IP del cliente detrás de proxies (research R-25) | T-B002, T-B004, T-B011, T-B014, T-B203, T-B204, T-B217, T-B218, T-B219, T-B220 |
 | Cancelaciones: `db.ErrCanceled`, `499` en el log, worker sin intento (research R-27) | T-B103, T-B105, T-B106, T-B202, T-B203, T-B211, T-B901, T-B908 |
-| DD-33 / INV-26 Lock de `GRANT crm_tenant` (R-a..R-d; research R-04c; nota en ADR-005) | T-B105 (`55P03`), T-B201, T-B303, T-B304, T-B305, T-B306, T-B903, T-B905, T-B906, T-B907 |
-| DD-34 / INV-27 / R-17 Primer `SET ROLE` desde otra conexión: lectura de catálogo y reintento único (research R-28; nota (b) en ADR-005) | T-B103, T-B104, T-B903, T-B905 |
+| DD-33 / INV-26 Lock de `GRANT crm_tenant` (R-a..R-e; research R-04c; notas en ADR-005) | T-B105 (`55P03`), T-B201, T-B303, T-B304, T-B305, T-B306, T-B903, T-B905, T-B906, T-B907, T-B910 |
+| DD-34 / INV-27 / R-17 Primer `SET ROLE` desde otra conexión: lectura de catálogo y reintento único (research R-28; nota (b) en ADR-005) | T-B103, T-B104, T-B903, T-B905, T-B910 |
+| Arranque y apagado de `crm serve`: dos servidores, listeners, worker, guard de composición (decimotercera revisión) | T-B801, T-B903, T-B904, T-B908, T-B909, T-B911 |
 | Rutas exactas de las queries de sistema (plan §4.4, INV-04, ADR-001) | T-B112, T-B212, T-B304, T-B902, T-B903, T-B907 |
 | FK `tenant_id → tenants(id)` de `sessions` y `user_tokens` (`data-model.md` §2.3/§2.4) | T-B108, T-B111 |
 | ADR-024 / INV-28 / INV-30 Clasificación de fallos de entrega y `last_error` saneado (research R-29) | T-B211, T-B212, T-B213, T-B214, T-B903 |
