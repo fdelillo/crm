@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -114,10 +115,7 @@ func runServe(ctx context.Context, args []string, e env) error {
 	metricsLn, err := e.listen(serverCtx, "tcp", cfg.MetricsAddr)
 	if err != nil {
 		stopServers()
-		if serveErr := <-apiDone; serveErr != nil {
-			return serveErr
-		}
-		return fmt.Errorf("listening on METRICS_ADDR %s: %w", cfg.MetricsAddr, err)
+		return errors.Join(fmt.Errorf("listening on METRICS_ADDR %s: %w", cfg.MetricsAddr, err), <-apiDone)
 	}
 	metricsDone := make(chan error, 1)
 	go func() {

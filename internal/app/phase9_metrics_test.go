@@ -15,10 +15,14 @@ import (
 	"github.com/fdelillo/crm/internal/platform/clock"
 	"github.com/fdelillo/crm/internal/platform/config"
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 func TestMetricsServer(t *testing.T) {
 	cfg := config.Config{HTTPAddr: "127.0.0.1:8080", MetricsAddr: "127.0.0.1:9091"}
+	probePath := "/global-probe-" + uuid.NewString()
+	// Register in the original global mux: a delegation may retain this very pointer.
+	http.DefaultServeMux.HandleFunc(probePath, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
 	srv := app.NewMetricsServer(cfg)
 	if srv.Addr != cfg.MetricsAddr || srv.Handler == nil || srv.Handler == http.DefaultServeMux || srv.TLSConfig != nil {
 		t.Fatalf("metrics server: %#v", srv)
@@ -30,6 +34,9 @@ func TestMetricsServer(t *testing.T) {
 		rec := httptest.NewRecorder()
 		srv.Handler.ServeHTTP(rec, httptest.NewRequest(method, path, nil))
 		return rec
+	}
+	if got := request("GET", probePath).Code; got != 404 {
+		t.Fatalf("global mux probe=%d", got)
 	}
 	rec := request("GET", "/debug/vars")
 	var vars map[string]json.RawMessage
@@ -54,13 +61,6 @@ func TestMetricsServer(t *testing.T) {
 		if rec := request("GET", path); rec.Code != 404 {
 			t.Errorf("metrics exposed %s: %d", path, rec.Code)
 		}
-	}
-	old := http.DefaultServeMux
-	http.DefaultServeMux = http.NewServeMux()
-	t.Cleanup(func() { http.DefaultServeMux = old })
-	http.DefaultServeMux.HandleFunc("/global-probe", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
-	if got := request("GET", "/global-probe").Code; got != 404 {
-		t.Fatalf("global mux probe=%d", got)
 	}
 	spaCalled := false
 	root := app.NewRootHandler(app.RootDeps{API: api, Liveness: app.LivenessHandler(), Readiness: app.ReadinessPlaceholder(), SPA: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { spaCalled = true; _, _ = io.WriteString(w, "spa") })}, nil)

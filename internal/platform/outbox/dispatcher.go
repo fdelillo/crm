@@ -172,7 +172,7 @@ func (d *Dispatcher) runTasks(ctx context.Context) {
 			continue
 		}
 		if err := task.Run(ctx); err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(err, db.ErrCanceled) || ctx.Err() != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, db.ErrCanceled) {
 				d.logger.InfoContext(ctx, "periodic task canceled", "task", task.Name(), "outcome", "canceled")
 			} else {
 				d.logger.ErrorContext(ctx, "periodic task failed", "task", task.Name(), "err", err)
@@ -193,11 +193,11 @@ func (d *Dispatcher) RunOnce(ctx context.Context) error {
 		}
 		handled, err := d.processOne(ctx)
 		if err != nil {
-			if ctx.Err() != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, db.ErrCanceled) {
 				d.logger.InfoContext(ctx, "outbox cycle canceled", "event", "outbox_delivery", "outcome", "canceled")
 				return nil
 			}
-			if errors.Is(err, context.Canceled) || errors.Is(err, errCycleStop) {
+			if errors.Is(err, errCycleStop) {
 				return nil
 			}
 			d.logger.ErrorContext(ctx, "outbox cycle failed", "event", "outbox_cycle_failed", "err", err)
@@ -345,12 +345,12 @@ func (d *Dispatcher) resolveDelivery(ctx context.Context, q *store.Queries, item
 		}
 		outcome.failed = true
 		level := de.Cause.LogLevel()
-		outcome := []any{"outcome", "failed"}
+		outcomeFields := []any{"outcome", "failed"}
 		if !de.Cause.Permanent() {
-			outcome = append(outcome, "reason", "max_attempts")
+			outcomeFields = append(outcomeFields, "reason", "max_attempts")
 			level = slog.LevelError
 		}
-		d.logger.Log(ctx, level, "outbox delivery failed", append(fields, outcome...)...)
+		d.logger.Log(ctx, level, "outbox delivery failed", append(fields, outcomeFields...)...)
 	} else {
 		next := now.Add(retryDelay(int(attempts) + 1))
 		if err := q.MarkRecoverable(ctx, store.MarkRecoverableParams{TenantID: item.TenantID, ID: item.ID,

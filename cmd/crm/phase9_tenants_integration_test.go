@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"github.com/fdelillo/crm/internal/platform/db"
+	"github.com/fdelillo/crm/internal/tenant"
 	"github.com/fdelillo/crm/internal/testsupport/fixture"
 	"github.com/fdelillo/crm/internal/testsupport/pgtest"
 	"github.com/jackc/pgx/v5"
@@ -40,7 +41,7 @@ func TestPhase9ReprovisionCommand(t *testing.T) {
 		t.Errorf("role=%v report=%s", exists, &output)
 	}
 	locker := db.NewTxRunner(pool).(db.SessionLocker)
-	_, err = locker.WithSessionLock(ctx, 0x43524d525052, func(ctx context.Context) error {
+	_, err = locker.WithSessionLock(ctx, tenant.ReprovisionLockKey, func(ctx context.Context) error {
 		output.Reset()
 		runErr := run(ctx, []string{"tenants", "reprovision-roles"}, mapEnv(cfg), &output, io.Discard)
 		if runErr == nil || !strings.Contains(runErr.Error(), "otra reprovisión en curso") {
