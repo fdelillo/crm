@@ -92,16 +92,43 @@ func runServe(ctx context.Context, args []string, e env) error {
 	if err != nil {
 		return err
 	}
+	serverCtx, stopServers := context.WithCancel(ctx)
+	defer stopServers()
 	var lc net.ListenConfig
-	ln, err := lc.Listen(ctx, "tcp", cfg.HTTPAddr)
+	ln, err := lc.Listen(serverCtx, "tcp", cfg.HTTPAddr)
 	if err != nil {
 		return fmt.Errorf("listening on HTTP_ADDR %s: %w", cfg.HTTPAddr, err)
 	}
-	workerCtx, stopWorker := context.WithCancel(ctx)
+	// Serve owns each listener. Starting this goroutine here also releases HTTP_ADDR
+	// if the second bind fails, without retaining or reusing the listener.
+	apiDone := make(chan error, 1)
+	go func() {
+		apiDone <- app.Serve(serverCtx, srv, ln, logger)
+		stopServers()
+	}()
+	metricsSrv := app.NewMetricsServer(cfg)
+	metricsLn, err := lc.Listen(serverCtx, "tcp", cfg.MetricsAddr)
+	if err != nil {
+		stopServers()
+		if serveErr := <-apiDone; serveErr != nil {
+			return serveErr
+		}
+		return fmt.Errorf("listening on METRICS_ADDR %s: %w", cfg.MetricsAddr, err)
+	}
+	metricsDone := make(chan error, 1)
+	go func() {
+		metricsDone <- app.Serve(serverCtx, metricsSrv, metricsLn, logger.With("interface", "metrics"))
+		stopServers()
+	}()
+	workerCtx, stopWorker := context.WithCancel(serverCtx)
 	defer stopWorker()
 	workerDone := make(chan error, 1)
 	go func() { workerDone <- dispatcher.Run(workerCtx) }()
-	serveErr := app.Serve(ctx, srv, ln, logger)
+	serveErr := <-apiDone
+	metricsErr := <-metricsDone
+	if serveErr == nil {
+		serveErr = metricsErr
+	}
 	stopWorker()
 	select {
 	case workerErr := <-workerDone:

@@ -41,6 +41,7 @@ func validEnv() map[string]string {
 		"AUTH_HMAC_KEY": "a2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2s=", // 32 bytes of 'k'
 		"APP_BASE_URL":  "https://localhost:8443",
 		"HTTP_ADDR":     "127.0.0.1:0",
+		"METRICS_ADDR":  "127.0.0.1:0",
 	}
 }
 
@@ -156,7 +157,7 @@ func waitForListenAddr(t *testing.T, out *safeBuffer, done <-chan error) string 
 	for {
 		for _, l := range strings.Split(out.String(), "\n") {
 			var m map[string]any
-			if json.Unmarshal([]byte(l), &m) == nil && m["msg"] == "server listening" {
+			if json.Unmarshal([]byte(l), &m) == nil && m["msg"] == "server listening" && m["interface"] != "metrics" {
 				if m["listen"] != "http" {
 					t.Fatalf("listen = %v, want http (no TLS_* configured)", m["listen"])
 				}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"expvar"
 	"fmt"
 	"log/slog"
 	"net"
@@ -29,6 +30,9 @@ const (
 // only, DD-24) it loads the certificate pair now, before anything listens; a bad pair is an error
 // that names TLS_CERT_FILE/TLS_KEY_FILE and never includes file contents.
 func NewServer(cfg config.Config, root http.Handler) (*http.Server, error) {
+	if root == nil {
+		return nil, errors.New("app: root handler is nil")
+	}
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           root,
@@ -45,6 +49,15 @@ func NewServer(cfg config.Config, root http.Handler) (*http.Server, error) {
 		srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
 	}
 	return srv, nil
+}
+
+// NewMetricsServer exposes only GET /debug/vars on a private mux, without TLS or API middleware.
+func NewMetricsServer(cfg config.Config) *http.Server {
+	mux := http.NewServeMux()
+	mux.Handle("GET /debug/vars", expvar.Handler())
+	return &http.Server{Addr: cfg.MetricsAddr, Handler: mux,
+		ReadHeaderTimeout: readHeaderTimeout, ReadTimeout: readTimeout,
+		WriteTimeout: writeTimeout, IdleTimeout: idleTimeout}
 }
 
 // loadKeyPair reads each file separately so the error can name the variable at fault.

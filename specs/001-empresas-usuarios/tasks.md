@@ -297,6 +297,8 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
 
   Paso 0.2 completo: reporte separado `sentinel_checks`/`state_checks`, ambos exigidos mayores que cero. Red: no existía el reporte tipado. Mutaciones restauradas: contar todo como centinela → `state_checks=0`; omitir centinelas → `sentinel_checks=0`; ambas hacen fallar el caso del reporte. `make check` completo en verde (89,830 s).
 
+  Paso 0.3 completo: `NewMetricsServer` con mux privado (solo `GET /debug/vars`), timeouts y sin TLS; `NewServer` rechaza nil. Dos listeners/servidores, ambos ligados al contexto común antes de iniciar worker; una falla cancela al otro. Red: factory ausente y `METRICS_ADDR` ocupado aceptado. Mutaciones API en métricas, `/healthz`, handler nil y vars en mux raíz fallaron; restauradas. Tests del comando en verde; `make check` completo en verde (98,758 s).
+
   **Corrección del estado de Fase 8**: la afirmación anterior de que la spec permitía expresamente `go/ast` era incorrecta: pedía identificadores resueltos por su declaración. El paso 0.4 reemplaza `ast.Object` por `go/types` y elimina el `nolint`.
 
   **Desvíos locales**: acceso aprobado a caché Go y Docker; Ryuk falló durante el arranque (puerto `8080/tcp` desaparecido). `TESTCONTAINERS_RYUK_DISABLED=true` solo en el verificador local; no se cambia CI. Evidencia de corridas y mutaciones guardada temporalmente en `/tmp/crm-phase9-evidence`.
