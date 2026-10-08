@@ -233,6 +233,7 @@ func TestCleanupAndProvisioningNamesAreExemptOnlyAtTheirPath(t *testing.T) {
 		"internal/orders/store/provisioning.sql ",
 		"internal/tenant/store/provisioning.sql CountTenants",
 		"internal/tenant/store/provisioning.sql CountTenantsWithoutRole",
+		"internal/tenant/store/provisioning.sql ListTenantIDs",
 	}
 	if got := summarize(vs); !slices.Equal(got, want) {
 		t.Errorf("violations = %v, want %v", got, want)
@@ -279,6 +280,7 @@ func TestDefaultExceptionsCheckUnlistedAndStaleQueries(t *testing.T) {
 		"internal/platform/outbox/store/worker.sql PendingStats",
 		"internal/tenant/store/provisioning.sql CountTenants",
 		"internal/tenant/store/provisioning.sql CountTenantsWithoutRole",
+		"internal/tenant/store/provisioning.sql ListTenantIDs",
 	}
 	if got := summarize(vs); !slices.Equal(got, want) {
 		t.Errorf("violations:\n got %v\nwant %v", got, want)

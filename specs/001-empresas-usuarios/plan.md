@@ -1573,6 +1573,13 @@ type TxRunner interface {
     InSystemTx(ctx context.Context, role SystemRole, fn func(ctx context.Context, tx Tx) error) error // sin reintento
 }
 
+// T-B907: lock de sesión no bloqueante en una conexión dedicada como crm_app, fuera del pool.
+// Mantiene el lock durante fn; libera y cierra aun si fn falla, cancela o entra en panic.
+// fn usa las transacciones ordinarias del TxRunner: una por empresa, confirmada antes de la siguiente.
+type SessionLocker interface {
+    WithSessionLock(ctx context.Context, key int64, fn func(context.Context) error) (acquired bool, err error)
+}
+
 func TenantRoleName(tenantID uuid.UUID) string // "crm_t_" + 32 hex
 func MapError(err error) error                 // orden de clasificación en §9.2
 

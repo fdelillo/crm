@@ -17,3 +17,6 @@ WHERE NOT EXISTS (
 -- name: CountTenantRoles :one
 SELECT count(*) FROM pg_catalog.pg_roles
 WHERE rolname ~ '^crm_t_[0-9a-f]{32}$';
+
+-- name: ListTenantIDs :many
+SELECT id FROM app.tenants ORDER BY id;

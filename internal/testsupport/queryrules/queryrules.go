@@ -58,6 +58,7 @@ var DefaultExceptions = []Exception{
 			"DeferMessage":           "crm_worker: aplazar un mensaje pendiente cuya fase de empresa falló (ADR-024 §6)",
 		}},
 	{Path: "internal/tenant/store/provisioning.sql", Reason: "crm_worker and crm_signup: list tenants.id and provision company roles", Queries: map[string]string{
+		"ListTenantIDs":           "crm_worker: operational reprovisioning of every company",
 		"CountTenants":            "crm_worker: sample tenants count",
 		"CountTenantsWithoutRole": "crm_worker: sample companies missing their derived role",
 	}},

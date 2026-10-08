@@ -162,7 +162,7 @@ func (r *runner) run(ctx context.Context, enter func(context.Context, *tx) error
 	if err != nil {
 		return false, fmt.Errorf("db: begin: %w", MapError(err))
 	}
-	t := &tx{inner: pt, fault: r.fault}
+	t := &tx{inner: pt, fault: r.fault, logger: r.logger}
 	committed := false
 	defer func() {
 		if committed {
@@ -193,6 +193,7 @@ func (r *runner) run(ctx context.Context, enter func(context.Context, *tx) error
 // connection, escaping the runner (INV-03).
 type tx struct {
 	inner  pgx.Tx
+	logger *slog.Logger
 	tenant uuid.UUID
 	bound  bool
 	fault  func(role string) error // tests only
@@ -225,6 +226,9 @@ func (t *tx) AsTenant(ctx context.Context, tenantID uuid.UUID) error {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "22023" {
 			hint = " (was the company provisioned?)"
+			if t.logger != nil {
+				t.logger.ErrorContext(ctx, "company role missing", "security_event", "privilege_error", "step", "set_role", "role", role, "sqlstate", pgErr.Code)
+			}
 		}
 		return MapError(fmt.Errorf("set role %s%s: %w", role, hint, err))
 	}

@@ -49,6 +49,30 @@ func (q *Queries) CountTenantsWithoutRole(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const listTenantIDs = `-- name: ListTenantIDs :many
+SELECT id FROM app.tenants ORDER BY id
+`
+
+func (q *Queries) ListTenantIDs(ctx context.Context) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listTenantIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const provisionTenantRole = `-- name: ProvisionTenantRole :one
 SELECT provisioning.provision_tenant_role($1::uuid)
 `
