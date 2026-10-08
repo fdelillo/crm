@@ -30,13 +30,16 @@ del plan, §18): `audit_log.data` también rechaza una credencial incrustada en 
 escribe un usuario no va en `data` (§2.6). Sin cambios de esquema.
 **Séptima revisión 2026-10-05** (*Accepted*, aprobada por el usuario el 2026-10-05; novena tanda del plan, §18): las filas de `tenants` y `users` se bloquean con `FOR NO KEY UPDATE`, nunca con `FOR UPDATE`, porque toda FK hacia esas tablas se verifica con `FOR KEY SHARE` (DD-40; §2.1, §2.2 y checklist de §6). Sin cambios de esquema ni de privilegios.
 **Octava revisión 2026-10-06** (*Accepted*, aprobada por el usuario el 2026-10-06; décima tanda del plan, §18): `LockTenant` es la segunda query que bloquea la fila de `tenants`, también con `FOR NO KEY UPDATE` (INV-34, §2.1); `""` y `Local` no son zonas válidas; las columnas de contacto nunca guardan `''`; `tenant.updated` solo con cambios reales (DD-43, §2.1, §2.6); escritura de archivos según DD-42 en el checklist de §6. Sin cambios de esquema ni de privilegios.
+**Novena revisión 2026-10-08** (*Accepted*, aprobada por el usuario el 2026-10-08; duodécima tanda del plan, §18): `crm_auth` recibe `SELECT (version_id)` sobre `public.goose_db_version` y `USAGE` del esquema `public` (migración `00009`), para que `/readyz` compare la versión de la base con la del binario (convenciones, §3.4, §3.5, §6). Sin tablas, columnas, funciones ni políticas nuevas.
 
 DDL **conceptual**: define tablas, tipos, constraints, índices, políticas y privilegios. No es
 una migración ejecutable: las migraciones goose las escribe quien implementa, respetando esto.
 Convenciones:
 
 - Esquema de negocio: `app`. Funciones de aprovisionamiento: `provisioning`. Tabla de versiones
-  de goose: `public.goose_db_version` (sin privilegios para roles de runtime).
+  de goose: `public.goose_db_version`. Único privilegio de runtime sobre ella (novena revisión):
+  `SELECT (version_id)` para `crm_auth`, con `USAGE` del esquema `public`, para que `/readyz`
+  compare la versión (plan §12.2; §3.4 y §3.5). Ningún otro rol de runtime la ve.
 - Identificadores `uuid` (UUIDv7, `DEFAULT uuidv7()` de PostgreSQL 18), salvo `tenants.id`, que se
   genera en Go porque hace falta antes del `INSERT` para crear el rol (ADR-008).
 - Fechas: `timestamptz`, siempre en UTC.
@@ -530,6 +533,12 @@ Notas sobre estas decisiones:
   pase un valor equivocado.
 - Columnas de ruteo por rol de sistema = el conjunto que fija el test T-B109 (INV-05).
 - Ningún rol de runtime tiene `DELETE` sobre `users`, `tenants` ni `audit_log`.
+- **Versión del esquema para `/readyz`** (novena revisión; duodécima tanda del plan): `crm_auth`
+  tiene `SELECT (version_id)` sobre `public.goose_db_version` y `USAGE` de `public`, y nada más
+  fuera de `app`; es el conjunto que fija T-B109, ampliado al esquema `public`. No es una columna
+  de negocio (INV-05), y así no hace falta una segunda función `SECURITY DEFINER` (INV-08: solo en
+  `provisioning`). Una base sin la migración `00009` responde `42501` a esa lectura: `/readyz` da
+  `503` (plan §12.2, INV-19).
 - **Dónde viven las queries de los roles de sistema**: en cuatro archivos con ruta exacta, uno por
   módulo dueño de las tablas (plan §4.4): `identity/store/auth_lookup.sql` (`crm_auth`),
   `identity/store/cleanup.sql` (`crm_worker`: `sessions`, `user_tokens`, `login_throttles`),
@@ -543,7 +552,8 @@ Notas sobre estas decisiones:
 |---|---|---|
 | Esquema `app` | `crm_owner` | `USAGE` para `crm_tenant`, `crm_auth`, `crm_worker` |
 | Esquema `provisioning` | `crm_provisioner` | `USAGE` para `crm_signup` |
-| Esquema `public` | dueño de la base (`crm_owner`) | `REVOKE ALL ... FROM PUBLIC`; solo contiene la tabla de versiones de goose |
+| Esquema `public` | dueño de la base (`crm_owner`) | `REVOKE ALL ... FROM PUBLIC`; `USAGE` solo para `crm_auth` (novena revisión); solo contiene la tabla de versiones de goose |
+| `public.goose_db_version` | `crm_owner` (la crea goose en el primer `crm migrate up`) | `SELECT (version_id)` solo para `crm_auth` (migración `00009`, `/readyz`); ningún otro privilegio de runtime |
 | `app.current_tenant_id()` | `crm_owner` | `EXECUTE` para `PUBLIC` |
 | `provisioning.provision_tenant_role(uuid)` | `crm_provisioner` | `EXECUTE` solo para `crm_signup` |
 | Vistas (ninguna en 001) | `crm_owner` | Siempre `WITH (security_invoker = true)` (INV-08) |
@@ -596,6 +606,7 @@ filtra hasta el JSON.
 | 6 | `00006_outbox_messages.sql` | `outbox_messages` | T-B111 |
 | 7 | `00007_audit_log.sql` | `audit_log` | T-B111 |
 | 8 | `00008_login_throttles.sql` | `login_throttles` | T-B111 |
+| 9 | `00009_readiness_schema_version.sql` | `GRANT USAGE ON SCHEMA public` y `GRANT SELECT (version_id) ON public.goose_db_version` a `crm_auth` (§3.5); el `Down` los revoca. Novena revisión | T-B904 |
 
 Como todavía no hay código, los cambios del 2026-09-29 se aplican directamente en estas
 migraciones (no hace falta una migración correctiva). Si alguna ya se hubiera aplicado en un

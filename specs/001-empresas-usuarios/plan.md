@@ -40,6 +40,7 @@ DD-36 que quedó sin aplicar en la Fase 2. Detalle en §18.
 **Novena revisión 2026-10-05 (*Accepted*, aprobada por el usuario)**: locks de la empresa y del usuario en la Fase 6. La query de INV-10 pasa de `FOR UPDATE` a `FOR NO KEY UPDATE`, y también el lock del usuario (Fase 6 y `GetTokenFlowUser` de la Fase 5) (DD-40 nueva, INV-10 alterada): `FOR UPDATE` chocaba con el `FOR KEY SHARE` con que PostgreSQL verifica las FK y producía deadlocks con el reset, el login y el cierre de sesión (el de la empresa, confirmado en CI). Sesión de un login concurrente con la desactivación: riesgo aceptado (DD-41 nueva, INV-11 precisada); corrección del 2026-10-06 tras la revisión del PR fdelillo/crm#13 (DD-9; `tasks.md` T-B601, T-B604, T-B605, T-B606). Detalle en §18.
 **Décima revisión 2026-10-06 (*Accepted*, aprobada por el usuario el 2026-10-06)**: revisión del PR fdelillo/crm#15 (Fase 7). `COMMIT` de resultado incierto al subir el logo y lectura del logo con el objeto ausente (DD-42 nueva, INV-17 precisada); lock de la fila de `tenants` en `PATCH /tenant` y en el logo (DD-40 corregida, INV-34 nueva); semántica de `PATCH /tenant` (DD-43 nueva) y `Local` en el registro (DD-27); bucket de desarrollo (§10.5.1); contrato v0.4.3 (*patch*). Detalle en §18.
 **Undécima revisión 2026-10-07 (*Accepted*)**: revisión del PR fdelillo/crm#16 (Fase 8). Sin cambios de decisiones, contrato ni código de producción: precisa lo que T-B801 a T-B803 verifican (cabeceras del `404` de un id ajeno, lecturas del operador, centinelas en cuerpo y cabeceras, sesión sin revocar de un desactivado, aplazamiento del worker como `crm_worker`, router de `crm serve`, conteo real) y la columna de tests de INV-11. Detalle en §18.
+**Duodécima revisión 2026-10-08 (*Accepted*, aprobada por el usuario el 2026-10-08)**: pendientes de la revisión de cierre del PR fdelillo/crm#16 (Fase 8), aplicados en el paso 0 de la Fase 9 y en T-B903/T-B904. Servidor de métricas armado por `internal/app` (`app.NewMetricsServer`, mux propio, nunca `http.DefaultServeMux`) y `NewServer` sin handler nil (§11.1, §12.1); guard del router de `crm serve` con `go/types`, que cierra dos formas verificadas de esquivarlo y cubre los dos servidores; centinelas cortos y conteo por tipo en T-B801. `/readyz` lee la versión con `SELECT (version_id)` concedido solo a `crm_auth` (migración `00009`, `data-model.md` §3.5; INV-08 se preserva, INV-19 se precisa); las métricas que leen la base se muestrean cada 60 s y el inventario de roles suma `tenant_roles_missing` y `tenants_total` (§12.1, §12.4). Sin cambios de contrato, DD-22, ADR-002 ni INV-12. Detalle en §18.
 
 Artefactos de esta spec:
 
@@ -292,8 +293,8 @@ del PR fdelillo/crm#7, 2026-09-30):
 |---|---|---|---|
 | `internal/identity/store/auth_lookup.sql` | `crm_auth` | Fase 1 de login, pedido de reset, resolución de sesión y tokens (por igualdad exacta sobre una columna única); lecturas y escrituras de `login_throttles` | T-B308, T-B403, T-B503, T-B505, T-B605 |
 | `internal/identity/store/cleanup.sql` | `crm_worker` | `DELETE` de filas vencidas de `sessions`, `user_tokens` y `login_throttles` (las políticas de `data-model.md` §3.4 acotan qué filas) | T-B902 |
-| `internal/platform/outbox/store/worker.sql` | `crm_worker` | Tomar mensajes pendientes (`FOR UPDATE SKIP LOCKED`), aplazar un mensaje pendiente (`DeferMessage`, ADR-024 §6) y limpiar mensajes terminales de `outbox_messages` | T-B212, T-B902 |
-| `internal/tenant/store/provisioning.sql` | `crm_worker` y `crm_signup` | `SELECT id FROM app.tenants` (reaprovisionamiento y métrica `tenant_roles_total`) y la llamada a `provisioning.provision_tenant_role` (registro y reaprovisionamiento) | T-B304, T-B904, T-B907 |
+| `internal/platform/outbox/store/worker.sql` | `crm_worker` | Tomar mensajes pendientes (`FOR UPDATE SKIP LOCKED`), aplazar un mensaje pendiente (`DeferMessage`, ADR-024 §6), limpiar mensajes terminales de `outbox_messages` y contar los pendientes con la fecha del más viejo (`PendingStats`, métricas de §12.1; duodécima tanda) | T-B212, T-B902, T-B904 |
+| `internal/tenant/store/provisioning.sql` | `crm_worker` y `crm_signup` | `SELECT id FROM app.tenants` (reaprovisionamiento), los conteos del inventario de roles (`CountTenants` y `CountTenantsWithoutRole`, métricas `tenants_total` y `tenant_roles_missing`; `CountTenantRoles` solo lee `pg_catalog`; duodécima tanda) y la llamada a `provisioning.provision_tenant_role` (registro y reaprovisionamiento) | T-B304, T-B904, T-B907 |
 
 Regla: cada módulo guarda las queries de sistema **sobre sus propias tablas** (ADR-001). Agregar
 un archivo a esta tabla (p. ej. en una spec futura) es una decisión de diseño que actualiza esta
@@ -763,7 +764,7 @@ la vigila.
 | INV-16 | Ningún email se envía dentro del request: toda notificación se encola en el outbox dentro de la transacción de la operación. | `identity`, `outbox` | T-B211, T-B303, T-B601 |
 | INV-17 | La base nunca referencia un objeto de logo inexistente: se sube a S3 **antes** del `COMMIT`; el objeto anterior se borra solo **después** de un `COMMIT` confirmado, y el nuevo solo si es seguro que la fila no lo referencia (`ROLLBACK` seguro, o relectura **con lock** después de un `COMMIT` de resultado incierto; DD-42, décima tanda). Ante la duda, el objeto queda huérfano: un huérfano se acepta, una referencia rota no. | `tenant.Service` | T-B703 |
 | INV-18 | Los tests de integración se conectan como `crm_app`, nunca como superusuario (un superusuario ignora la RLS y haría pasar los tests de aislamiento en falso). | `internal/testsupport/pgtest` | T-B009 |
-| INV-19 | Una violación de RLS o de privilegio (`SQLSTATE 42501`) es un bug: se responde `500`, se loguea con `level=ERROR` y `security_event=rls_violation`, nunca se traduce a `403`/`404`. La única excepción acotada es el reintento de INV-27. | `platform/db`, `platform/httpx` | T-B105 |
+| INV-19 | Una violación de RLS o de privilegio (`SQLSTATE 42501`) es un bug: se responde `500`, se loguea con `level=ERROR` y `security_event=rls_violation`, nunca se traduce a `403`/`404`. La única excepción acotada es el reintento de INV-27. Precisión (duodécima tanda): `/readyz`, cuyo contrato solo tiene `200` y `503`, responde `503` ante un `42501` (la instancia queda no lista, nunca lista), con el mismo log `ERROR` y `security_event=rls_violation`. | `platform/db`, `platform/httpx`, `internal/app` (`/readyz`) | T-B105, T-B903 |
 | INV-20 | El `409 email_already_registered` del registro nunca incluye datos de la cuenta existente (empresa, nombre, estado, fechas) y es idéntico byte a byte (salvo `instance`) cualquiera sea el estado del usuario existente. | `tenant` HTTP | T-B305 |
 | INV-21 | Ninguna respuesta con datos de una empresa se reutiliza desde la caché del navegador sin preguntarle al servidor: todo `/api/v1` lleva `Cache-Control: no-store`, salvo `GET /tenant/logo`, que lleva `private, no-cache` con un `ETag` distinto por objeto (y por lo tanto por empresa). | Router chi, `tenant` HTTP | T-B203, T-B705, T-B801 |
 | INV-22 | Una ruta bajo `/api/` nunca llega al handler de la SPA (un `/api/…` inexistente es `404 problem+json`), y la SPA nunca queda registrada en el router chi. | `internal/app` (mux raíz) | T-B004, T-F007 |
@@ -1473,6 +1474,7 @@ type Config struct {
     // … resto de las variables de §10.5 (DATABASE_URL, SMTP_*, S3_*, APP_LINK_*, SESSION_*, …)
     AppBaseURL     *url.URL       // siempre https (DD-24)
     HTTPAddr       string         // HTTP_ADDR
+    MetricsAddr    string         // METRICS_ADDR (default 127.0.0.1:9090): solo /debug/vars (§12.1)
     TLS            *TLSFiles      // nil salvo modo local con TLS_* (DD-24)
     TrustedProxies []netip.Prefix // TRUSTED_PROXIES; vacía = no se confía en nadie (DD-32)
 }
@@ -1507,8 +1509,36 @@ type RootDeps struct {
 // CommonMiddleware recibe si el modo es local (omite HSTS, DD-24) y los proxies de confianza (DD-32).
 func NewRootHandler(deps RootDeps, common CommonMiddleware) http.Handler
 // NewServer arma el *http.Server con los timeouts de §10.3 y, si cfg.TLS != nil, carga el par de
-// certificados antes de escuchar (error que nombra la variable si falla).
+// certificados antes de escuchar (error que nombra la variable si falla). Duodécima tanda: root nil
+// → error (con Handler nil, net/http usaría http.DefaultServeMux, donde el init de expvar ya
+// registró /debug/vars).
 func NewServer(cfg config.Config, root http.Handler) (*http.Server, error)
+// NewMetricsServer arma el *http.Server de la interfaz interna (Addr = cfg.MetricsAddr, §12.1;
+// duodécima tanda): ServeMux propio con solo GET /debug/vars → expvar.Handler(); nunca
+// http.DefaultServeMux, sin la cadena común y sin rutas de la API, ops ni SPA; timeouts de §10.3,
+// sin TLS. No devuelve error: no carga archivos.
+func NewMetricsServer(cfg config.Config) *http.Server
+// Serve atiende srv en ln hasta que ctx se cancela y después lo apaga ordenadamente (plazo: T-B909).
+// crm serve la llama una vez por servidor, cada una con su par: (NewServer, listener de HTTP_ADDR)
+// y (NewMetricsServer, listener de METRICS_ADDR) (regla (4) de T-B801).
+func Serve(ctx context.Context, srv *http.Server, ln net.Listener, logger *slog.Logger) error
+// ReadinessHandler responde GET /readyz (§12.2; duodécima tanda): una InSystemTx(RoleAuth) con
+// ReadinessTimeout en total (incluye esperar una conexión del pool) lee db.SchemaVersion y la compara
+// con expected. 200 {"status":"ok"} si son iguales; si no, 503 {"status":"unavailable"} y log
+// event=readiness_failed con reason (nunca versiones en la respuesta). Nunca responde 500 (INV-19).
+func ReadinessHandler(runner db.TxRunner, expected int64, logger *slog.Logger) http.Handler
+const ReadinessTimeout = time.Second
+
+// ---------- db/migrations (duodécima tanda) ----------
+// ExpectedVersion: el mayor goose.NumericComponent de los .sql de fsys (en producción, FS). Error
+// si no hay ninguno o si un nombre no tiene número. crm serve la calcula al arrancar.
+func ExpectedVersion(fsys fs.FS) (int64, error)
+
+// ---------- internal/platform/db (duodécima tanda) ----------
+// SchemaVersion: SELECT max(version_id) FROM public.goose_db_version (la misma lectura que
+// goose GetDBVersion), con el SELECT (version_id) que solo tiene crm_auth (data-model.md §3.5).
+// ok=false si la tabla está vacía (max es NULL).
+func SchemaVersion(ctx context.Context, q DBTX) (version int64, ok bool, err error)
 
 // ---------- web (paquete en la raíz del repo) ----------
 func DistFS() fs.FS                     // sub-FS "dist" del embed
@@ -1749,6 +1779,10 @@ type IdentityUseCases interface {
 }
 // identity.Cleanup satisface outbox.PeriodicTask: borra filas vencidas de sessions, user_tokens y
 // login_throttles con las queries de identity/store/cleanup.sql (§4.4).
+// outbox.Stats y tenant.RoleInventory satisfacen outbox.PeriodicTask (Every() = 60 s, crm_worker;
+// duodécima tanda): muestrean los gauges de §12.1 que leen la base (PendingStats de
+// outbox/store/worker.sql; CountTenants, CountTenantsWithoutRole y CountTenantRoles de
+// tenant/store/provisioning.sql). /debug/vars nunca consulta la base; -1 = sin dato.
 
 // ---------- internal/testsupport/apitest (solo tests) ----------
 // Servidor HTTPS de prueba sobre el handler raíz real; el cliente trae un cookiejar y confía en el
@@ -1789,15 +1823,27 @@ func (v *Validator) RequireRecorded(t testing.TB, req *http.Request, rec *httpte
 | Evento operativo | `tenant`, `httpx`, `outbox`, `db` | `event` ∈ {`signup_timezone_defaulted` (DD-27), `signup_lock_timeout` (DD-33), `client_canceled` (`INFO`, §9.2), `bad_forwarded_for` (`WARN`, DD-32, con `request_id`; nunca el valor de la cabecera), `set_role_retry` (`WARN`, DD-34, con `tenant_id` y `outcome` ∈ {`recovered`, `failed`}), `logo_delete_failed` (`WARN`, DD-42, con `object_key` y `reason` ∈ {`replaced`, `compensation`}), `logo_commit_uncertain` (`WARN`, DD-42, con `outcome` ∈ {`committed`, `rolled_back`, `unknown`}), `logo_object_missing` (`ERROR`, DD-42, con `tenant_id` y `object_key`), `logo_stream_failed` (`WARN`, §9.2)}, sin datos personales |
 | Worker | `outbox` | `message_id`, `tenant_id`, `template`, `attempt`, `outcome` ∈ {`sent`,`retry`,`failed`,`canceled`,`deferred`}; en fallos de entrega: `error_cause`, `smtp_phase`, `smtp_code` (si hubo respuesta), `last_error` (texto saneado de ADR-024 §3 y ADR-025; nunca el `error` original) y `next_attempt_at`; intentos agotados: `reason=max_attempts`; aplazamientos: `step` ∈ {`as_tenant`,`get_message`,`mark`}, `defer_seconds`, `err`; fallo de ciclo: `event=outbox_cycle_failed` con `err`. Nivel según ADR-024 §1 y §9.4. Tareas periódicas: `task`, `deleted_rows`, `duration_ms` |
 | Auditoría de negocio | `audit_log` | ver `data-model.md` §2.6 (acciones de FR-008 y más) |
-| Métricas | `expvar` (stdlib) en `/debug/vars`, **solo** en la interfaz interna (`METRICS_ADDR`, default `127.0.0.1:9090`) | `http_requests_total{status}`, `http_client_canceled_total`, `login_failed_total`, `login_locked_total`, `signup_email_exists_total`, `signup_lock_timeout_total`, `set_role_retry_total`, `csrf_rejected_total`, `outbox_pending`, `outbox_oldest_pending_seconds`, `outbox_failed_total`, `outbox_delivery_errors_total{cause}` (ADR-024), `outbox_deferred_total`, `db_pool_acquire_wait_ms`, `tenant_roles_total` |
+| Métricas | `expvar` (stdlib) en `/debug/vars`, **solo** en la interfaz interna (`METRICS_ADDR`, default `127.0.0.1:9090`) | `http_requests_total{status}`, `http_client_canceled_total`, `login_failed_total`, `login_locked_total`, `signup_email_exists_total`, `signup_lock_timeout_total`, `set_role_retry_total`, `csrf_rejected_total`, `outbox_pending`, `outbox_oldest_pending_seconds`, `outbox_failed_total`, `outbox_delivery_errors_total{cause}` (ADR-024), `outbox_deferred_total`, `db_pool_acquire_wait_ms`, `tenants_total`, `tenant_roles_total` (roles `crm_t_*` del clúster), `tenant_roles_missing` (empresas sin rol). Las que leen la base se muestrean cada 60 s y valen `-1` sin dato (párrafo siguiente; duodécima tanda) |
 
-En el login, `login_failed_total` cuenta cada contraseña evaluada que termina en `invalid_credentials`, incluso para emails inexistentes y el quinto fallo. `login_locked_total` cuenta cada intento rechazado con `429 login_locked` mientras dura el bloqueo. Al quinto fallo se emite además un evento `login_locked` con `lock_started=true`, aunque esa respuesta todavía es `401`. Los eventos y contadores se emiten después del commit; incluyen el HMAC del email y la IP, nunca el email en claro. La publicación de `/debug/vars` en la interfaz interna corresponde a T-B904.
+En el login, `login_failed_total` cuenta cada contraseña evaluada que termina en `invalid_credentials`, incluso para emails inexistentes y el quinto fallo. `login_locked_total` cuenta cada intento rechazado con `429 login_locked` mientras dura el bloqueo. Al quinto fallo se emite además un evento `login_locked` con `lock_started=true`, aunque esa respuesta todavía es `401`. Los eventos y contadores se emiten después del commit; incluyen el HMAC del email y la IP, nunca el email en claro. La publicación de `/debug/vars` en la interfaz interna corresponde a T-B904. El servidor lo arma `app.NewMetricsServer` (§11.1, duodécima tanda) con un `ServeMux` propio que solo tiene `GET /debug/vars` → `expvar.Handler()`: nunca `http.DefaultServeMux` (el `init` de `expvar` registra ahí `/debug/vars`, y un import de `net/http/pprof` agregaría sus rutas sin que nadie lo decida), sin la cadena común (sus requests no entran en el log por request ni en `http_requests_total`) y sin rutas de la API, de ops ni de la SPA. El mux raíz no registra `/debug/vars`: en `HTTP_ADDR` esa ruta llega a la SPA. `crm serve` escucha `HTTP_ADDR` y `METRICS_ADDR` antes de arrancar el worker (si alguna falla, no arranca y el error nombra la variable), y la misma señal apaga los dos servidores.
+
+**Métricas que leen la base** (duodécima tanda): `outbox_pending`, `outbox_oldest_pending_seconds`, `tenants_total`, `tenant_roles_total` y `tenant_roles_missing` nunca consultan la base durante un scrape (un `expvar.Func` no recibe contexto: una base caída colgaría `/debug/vars`, y el ritmo del scraper dictaría la carga). Las muestrean cada 60 s, como `crm_worker`, dos `outbox.PeriodicTask` que registra `internal/app`: `outbox.Stats` (`PendingStats` de `outbox/store/worker.sql`: cantidad de pendientes y `created_at` del más viejo) y `tenant.RoleInventory` (`provisioning.sql`: `CountTenants`; `CountTenantsWithoutRole`, empresas cuyo `crm_t_<hex>` no está en `pg_catalog.pg_roles`, legible por `PUBLIC`; `CountTenantRoles`, roles `^crm_t_[0-9a-f]{32}$` del clúster). Guardan el último valor; `outbox_oldest_pending_seconds` se calcula al leer (reloj − fecha guardada; 0 sin pendientes). Hasta la primera muestra, o si la última falló, cada gauge vale `-1` (sin dato) y la falla queda en el log `ERROR` `task=<Name()>` (T-B901). Alternativa descartada: calcularlas en cada scrape con un *timeout* propio (sigue acoplando la base al scraper y suma una consulta por scrape y por métrica).
 
 ### 12.2 Health checks
 
 - `GET /healthz`: 200 si el proceso atiende (no toca la base).
-- `GET /readyz`: 200 si `SELECT 1` bajo `crm_auth` responde en < 1 s y la versión de migración
-  en la base es la que espera el binario; si no, 503. Al arrancar se loguea `server_version`
+- `GET /readyz` (duodécima tanda): 200 si, en menos de 1 s en total (`app.ReadinessTimeout`, que
+  incluye esperar una conexión del pool), una transacción como `crm_auth` lee la versión de la base
+  (`db.SchemaVersion`: `SELECT max(version_id) FROM public.goose_db_version`, la misma lectura que
+  goose) y es igual a la que espera el binario (`migrations.ExpectedVersion`: el mayor número de los
+  `.sql` embebidos, calculado al arrancar). Si no, 503 con el mismo cuerpo `{"status":"unavailable"}`
+  (nunca versiones en la respuesta: el endpoint es público) y log `event=readiness_failed` con
+  `reason` ∈ {`unavailable`, `timeout`, `schema_mismatch` (con `db_version` y `expected_version`),
+  `schema_unknown` (tabla vacía), `privilege`}: `WARN`, salvo `privilege`, que es `ERROR` con
+  `security_event=rls_violation` (INV-19). Si el cliente corta, §9.2 (`499`). La lectura usa el
+  `SELECT (version_id)` que solo tiene `crm_auth` (migración `00009`, `data-model.md` §3.5), no una
+  función `SECURITY DEFINER` (INV-08). Entre `crm migrate up` y el reinicio, la instancia vieja
+  responde 503: ver el orden de despliegue en §12.3. Al arrancar se loguea `server_version`
   (control de R-4 y de R-17), el modo de escucha (`listen=http` o `listen=https_local`, DD-24) y la
   cantidad de rangos de `TRUSTED_PROXIES` (`trusted_proxies=0` en desarrollo; en producción detrás
   de un proxy debería ser mayor a 0, DD-32).
@@ -1812,7 +1858,8 @@ En el login, `login_failed_total` cuenta cada contraseña evaluada que termina e
 | Emails que nunca llegan a un usuario | `outbox_failed_total` sube | `last_error` del mensaje (consulta como DBA): `recipient …` = dirección inexistente o inválida; `bug …` = plantilla o payload (bug: abrir incidente); si el log dice `reason=max_attempts`, se agotaron los 8 intentos (ver las dos filas anteriores) |
 | `last_error` termina en `response text omitted` | `last_error` o log del worker con `smtp_phase=data` | Es a propósito (ADR-025): en la fase `data` el texto del proveedor puede citar el enlace con el token y no se guarda. La causa la dicen los códigos (`5.7.1` política o reputación, `5.6.x` contenido, `5.3.4` tamaño, `5.1.x` dirección); el texto completo está en el panel o los logs del proveedor, buscando por la hora del log del intento |
 | Mensajes aplazados una y otra vez | Logs `ERROR` `outcome=deferred`; `outbox_deferred_total` sube; `outbox_oldest_pending_seconds` crece | `step` y `err` del log. `step=as_tenant` con un rol `crm_t_…` inexistente = restore sin roles: `crm tenants reprovision-roles` (§12.4). `security_event=rls_violation` con una empresa registrada hace segundos = DD-34 (ver las filas de `rls_violation` y `set_role_retry`). `step=mark` = el marcado falla (revisar el `err`: constraint o privilegio; es un bug) |
-| Todos los requests de una empresa dan 500 | log `role "crm_t_…" does not exist` | Restore sin roles: correr `crm tenants reprovision-roles` (§12.4) |
+| Todos los requests de una empresa dan 500 | log `role "crm_t_…" does not exist`; `tenant_roles_missing` > 0 | Restore sin roles: correr `crm tenants reprovision-roles` (§12.4); en la próxima muestra (60 s), `tenant_roles_missing` vuelve a 0 |
+| `/readyz` responde 503 | log `event=readiness_failed` | `reason=schema_mismatch`: binario y base en versiones distintas (orden recomendado: desplegar el binario nuevo, que queda no listo, y después `crm migrate up`; la instancia vieja pasa a 503 en el mismo momento en que la nueva queda lista). `reason=privilege` (`ERROR`): la migración `00009` no está aplicada o alguien revocó el `SELECT (version_id)` de `crm_auth`. `reason=schema_unknown`: `public.goose_db_version` vacía (base sin migrar). `reason=unavailable` o `timeout`: la base o el pool (ver "Latencia alta generalizada") |
 | Algún 500 con `security_event=rls_violation` | alerta inmediata | Es un bug de aislamiento: request id → handler → query. Tratar como incidente crítico (principio III). **Antes**, mirar si el error dice `set role crm_t_…` (paso de cambio de rol) y si la empresa se registró hace segundos: en ese caso es el problema de DD-34 (fila siguiente), no una fuga |
 | `set_role_retry_total` > 0 **sostenido** (o eventos `set_role_retry` con `outcome=failed`, o `500` en el primer request después de registrarse) | `set_role_retry_total`; eventos `set_role_retry` | La lectura de catálogo de DD-34 dejó de alcanzar. ¿Cambió `server_version` (log de arranque)? Correr el test de reproducción de T-B103 contra esa versión exacta; ver R-17 y research R-28 (salidas: fijar el *minor* anterior, *pool* de roles pre-creados o alternativa B). Un valor aislado después de una ráfaga de registros se tolera: es la red funcionando |
 | Muchos `429 login_locked` | `login_locked_total` | Ataque de fuerza bruta o bloqueo masivo; IPs en logs; ajustar rate limit |
@@ -1848,8 +1895,12 @@ En el login, `login_failed_total` cuenta cada contraseña evaluada que termina e
   T-B103); después del cambio, vigilar `set_role_retry_total`.
 - **Un clúster por entorno**: los roles son globales al clúster; dos entornos en el mismo clúster
   compartirían (y mezclarían) roles `crm_t_*` (S-6).
-- **Inventario**: la cantidad de roles `crm_t_*` debe coincidir con la cantidad de filas de
-  `tenants` (métrica `tenant_roles_total`; diferencia = alerta).
+- **Inventario** (duodécima tanda): `tenant_roles_missing` (empresas cuyo rol `crm_t_*` no existe)
+  debe ser 0; mayor que 0 = alerta: esas empresas reciben `500`, y se corrige con
+  `crm tenants reprovision-roles`. `tenant_roles_total` (roles `crm_t_*` del clúster) mayor que
+  `tenants_total` − `tenant_roles_missing` indica roles sobrantes: otro entorno en el mismo clúster
+  (S-6) o un restore parcial; no rompe nada, se investiga. Las tres métricas se muestrean cada 60 s
+  (§12.1).
 
 ---
 
@@ -1999,7 +2050,7 @@ La actualización de la documentación va **en el mismo cambio** que el código.
 
 ---
 
-## 18. Cambios posteriores a la aprobación (2026-09-29 a 2026-10-07)
+## 18. Cambios posteriores a la aprobación (2026-09-29 a 2026-10-08)
 
 ### Estado de la implementación (2026-10-05)
 
@@ -2419,5 +2470,37 @@ Estado: las Fases 0 a 7 del backend están en `main`. La Fase 8 (T-B801 a T-B805
 **Nota para las specs siguientes (H3)**: los casos con id de T-B801 son de usuarios. Cuando la spec 002 sume rutas con id de otro recurso, cada recurso necesita su propio caso de id ajeno; queda anotado en T-B801.
 
 **Hallazgos de documentación**: (1) la fila del worker de T-B803 no se actualizó cuando ADR-024 §6 agregó el aplazamiento como `crm_worker` (quinta tanda): corregida. (2) El comentario de `e2e.New` afirma que las cookies de los usuarios inactivos tienen una fila de sesión válida; para los desactivados era falso: lo corrige el paso 1 de la undécima revisión de `tasks.md`.
+
+Esta tanda no le pide nada al frontend: no cambia el contrato.
+
+### Duodécima tanda (2026-10-08): pendientes de la revisión de cierre del PR #16, antes de la Fase 9 — *Accepted*
+
+Estado: las Fases 0 a 8 del backend están en `main` (`a06b8b8`). La revisión de cierre del PR fdelillo/crm#16 dejó pendientes que el usuario decidió llevar al paso 0 de la Fase 9: un hueco de diseño (el guard que asegura que `crm serve` sirve el router que verifica T-B801 se esquivaba de dos formas, verificadas ejecutándolas con el test en verde) y dos precisiones de T-B801. Al revisarlo apareció la interacción con la Fase 9: `/debug/vars` en `METRICS_ADDR` es un segundo servidor HTTP que el guard no contemplaba. Antes de aplicarla se cerraron, dentro de la misma tanda, tres huecos de T-B903: cómo lee `/readyz` la versión de la base, cuándo se calculan las métricas que leen la base y qué mide el inventario de roles. Verificado contra este plan, `data-model.md`, `tasks.md`, el código de `main` y el de goose v3.28. Aprobada por el usuario el 2026-10-08.
+
+| Tema | Qué faltaba | Qué se decide | Dónde |
+|---|---|---|---|
+| Guard: el valor `RootDeps` | La regla (1) seguía al router hasta la clave `API`, no al literal: `deps := app.RootDeps{…}` y `deps.API.(interface{ Get(…) }).Get(…)` antes de `NewRootHandler` agregaban una ruta sin que el test fallara | El literal va directamente como argumento de `NewRootHandler` y `cmd/crm` no declara valores de tipo `RootDeps`: nadie conserva una referencia al router | `tasks.md` T-B801, regla (1) |
+| Guard: otro servidor | La regla (3) solo miraba asignaciones `x.Handler = …`: `_ = srv` y `app.Serve(ctx, &http.Server{Handler: otro}, …)` servían otro handler | `cmd/crm` no importa `net/http` (ni subpaquetes), `expvar` ni chi; ningún literal `http.Server` ni selección del campo `Handler`; el resultado de `NewServer` llega a `app.Serve` con la regla de un solo uso | T-B801, reglas (2) y (3) |
+| Resolución de identificadores | El guard usaba `ast.Object` (deprecado; excepción de lint SA1019) | `go/types` con el importer `"source"` de la librería estándar; si el chequeo de tipos falla, el test falla. Respaldo si es lento o no resuelve cgo: importer `"gc"` con `go list -export` | T-B801 |
+| Servidor de métricas | §12.1 decía "solo en `METRICS_ADDR`" sin decir quién arma el servidor; armarlo en `cmd/crm` chocaba con la regla (2) | `app.NewMetricsServer(cfg)`: `ServeMux` propio con solo `GET /debug/vars`, sin cadena común ni rutas de API, ops o SPA; `NewServer` rechaza un handler nil. Regla (4) del guard: dos `app.Serve`, cada una con el listener de su dirección | §11.1, §12.1; `tasks.md` T-B801 regla (4), T-B903, T-B904, T-B908 |
+| Centinelas cortos | `ARS`/`USD` aparecían dentro de tokens base64url de `Set-Cookie` (alrededor de 1 de cada 3 200 corridas): falso acceso cruzado | Menos de 8 bytes → palabra completa, con delimitadores fuera de `[A-Za-z0-9_-]`; sufijo del fixture de 8 bytes o más | `tasks.md` T-B801 |
+| Conteo | 18 240 verificaciones, más del 95 % búsquedas de texto: un total alto no prueba que se haya verificado algún estado | `sentinel_checks` y `state_checks` por separado; el test falla si alguno es 0 | `tasks.md` T-B801 y checkpoint de la Fase 8 |
+| Versión de esquema en `/readyz` | §12.2 pedía comparar bajo `crm_auth` la versión de la base, pero `public.goose_db_version` no tenía privilegios de runtime (`data-model.md` y `TestMigrations_VersionTableInPublic` lo fijan) | `SELECT (version_id)` y `USAGE` de `public` solo para `crm_auth` (migración `00009`); `db.SchemaVersion` = `max(version_id)`, como goose; esperada = mayor versión embebida (`migrations.ExpectedVersion`); 1 s en total; `503` con `reason` en el log; un `42501` → `503` con el log de INV-19 | §11.1, §12.2, §12.3, INV-19 (precisada); `data-model.md` convenciones, §3.4, §3.5, §6; `tasks.md` T-B903, T-B904 |
+| Métricas que leen la base | No se decía si se calculaban en cada scrape | Muestreo cada 60 s como `crm_worker` por dos `PeriodicTask` (`outbox.Stats`, `tenant.RoleInventory`); `/debug/vars` nunca consulta la base; `-1` sin dato | §4.4, §11.1, §12.1; `tasks.md` T-B903, T-B904 |
+| Inventario de roles | `tenant_roles_total` era la cantidad de empresas: la diferencia que promete §12.4 no se veía | `tenant_roles_missing` (empresas sin rol; mayor que 0 = alerta) y `tenants_total`; `tenant_roles_total` pasa a contar los roles `crm_t_*` del clúster | §4.4, §12.1, §12.3, §12.4; `tasks.md` T-B903 |
+
+**Por qué el servidor de métricas en `internal/app`**: es el composition root (§11) y ya arma el otro servidor; así `cmd/crm` sigue sin tocar `net/http` y el guard queda en cuatro reglas verificables. Alternativas descartadas: (a) armarlo en `serve.go` con `http.NewServeMux` y un literal `http.Server`: obliga a reabrir las reglas (2) y (3) justo donde estaban los esquives; (b) servir `/debug/vars` en el mux raíz filtrando por IP o por cabecera: contradice §12.1 (solo la interfaz interna) y dependería de `TRUSTED_PROXIES` (DD-32); (c) `Handler: nil` (`http.DefaultServeMux`): además de `/debug/vars` (que registra el `init` de `expvar`), expondría cualquier ruta que registre un import, p. ej. `net/http/pprof`. Trade-off aceptado: `NewServer` rechaza un handler nil (cambio mínimo en código ya mergeado), y el servidor de métricas se apaga con la misma señal sin esperar al worker (no hay métricas durante el último tramo del apagado, de 25 s como máximo; los logs del worker sí).
+
+**Por qué prohibir el import de `net/http` en lugar de listar funciones**: una lista se esquiva con la próxima función que nadie listó (`ListenAndServe`, `Serve`, `DefaultServeMux`, un tipo propio con `ServeHTTP`). Ningún archivo de `cmd/crm` lo necesita hoy ni en la Fase 9: tampoco `crm tenants reprovision-roles` (T-B907), que no tiene HTTP.
+
+**Por qué un privilegio de columna y no una función `SECURITY DEFINER`**: la función (primera propuesta de esta tanda) contradice INV-08 (las únicas `SECURITY DEFINER` viven en `provisioning`; lo fija `TestCatalog_SecurityDefinerFunctions`). Ponerla en `provisioning` obligaría a darle a `crm_provisioner`, el rol con `CREATEROLE`, lectura de la tabla de goose, y a `crm_auth` `USAGE` de ese esquema. Descartadas también: leer como `crm_owner` (el runtime no tiene esa credencial, ADR-004), quitar el chequeo de versión (se pierde la señal de un binario desplegado contra una base sin migrar) y una tabla espejo que cada migración actualice (depende de que nadie se olvide; duplica a goose). El privilegio cubre una columna de una tabla para un rol, sin código que corra con otros privilegios. Trade-off: un `42501` en `/readyz` no responde `500` (su contrato solo tiene `200` y `503`), así que INV-19 se precisa para ese endpoint y conserva el log. Consecuencia operativa, con "distinta" y no "menor": después de `crm migrate up`, la instancia vieja responde `503`; el orden recomendado es desplegar primero (la instancia nueva queda no lista) y migrar después (§12.3).
+
+**Por qué agregar `tenant_roles_missing` en lugar de corregir §12.4**: una empresa sin rol recibe `500` en todos sus requests, y la métrica es la única señal antes de que lo reporte un usuario; cuesta una consulta por minuto. `tenant_roles_total` como cuenta real del catálogo es además lo que importa para R-2 (costo de `CREATE ROLE` con muchos roles) y deja ver roles sobrantes (S-6).
+
+**Invariantes**: se preservan INV-05 (`version_id` no es una columna de negocio y queda declarada en `data-model.md` §3.4), INV-08 (ninguna función `SECURITY DEFINER` nueva), INV-12, INV-21 e INV-22; DD-22 y ADR-002 no cambian (el mux raíz y chi siguen iguales; `/debug/vars` no está en ninguno de los dos). Se **precisa** INV-19: `/readyz` responde `503` ante un `42501`, con el mismo log.
+
+**Código de fases anteriores**: `app.NewServer` (rechaza un handler nil), `TestServeUsesSharedAPIRouter`, el helper y el contador de T-B801, y el snapshot de privilegios de T-B109 (ampliado al esquema `public`). Nada más cambia fuera de la Fase 9.
+
+**Hallazgos de documentación**: (1) la entrada de la Fase 8 en "Estado de la implementación" de `tasks.md` y el `nolint` del guard dicen que la spec "permite expresamente" `go/ast`; la spec solo pedía identificadores "resueltos por su declaración". Lo corrige la entrada de la duodécima revisión (con `go/types` el `nolint` desaparece). (2) La undécima revisión no agregó su línea al encabezado de `tasks.md`: se agrega junto con la de esta tanda. (3) §4.4 atribuía `tenant_roles_total` a `SELECT id FROM app.tenants`: corregido.
 
 Esta tanda no le pide nada al frontend: no cambia el contrato.
