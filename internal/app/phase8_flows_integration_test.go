@@ -51,12 +51,14 @@ func TestIsolationUnknownCompanyFlows(t *testing.T) {
 					t.Fatal(err)
 				}
 				err = f.Runner.InTenantTx(ctx, f.B.ID, func(ctx context.Context, tx db.Tx) error {
-					var id uuid.UUID
-					if err := tx.QueryRow(ctx, `SELECT tenant_id FROM app.sessions WHERE tenant_id=$1 AND id=$2`, f.B.ID, principal.SessionID).Scan(&id); err != nil {
+					var exists bool
+					var role, setting string
+					var bound uuid.UUID
+					if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM app.sessions WHERE tenant_id=$1 AND id=$2 AND user_id=$3 AND revoked_at IS NULL), current_user, current_setting('role'), app.current_tenant_id()`, f.B.ID, principal.SessionID, f.B.Users["operator"].ID).Scan(&exists, &role, &setting, &bound); err != nil {
 						return err
 					}
-					if id != f.B.ID {
-						t.Fatal("session persisted under wrong tenant")
+					if !exists || role != db.TenantRoleName(f.B.ID) || setting != role || bound != f.B.ID {
+						t.Errorf("new session visible as B=%t role=%s setting=%s tenant=%s", exists, role, setting, bound)
 					}
 					return nil
 				})

@@ -48,7 +48,7 @@ type Company struct {
 	Users                           map[string]User
 	Details                         tenant.Tenant
 	Logo                            []byte
-	ETag, LogoKey                   string
+	ETag, LogoKey, Suffix           string
 	Reset, Verification, Invitation string
 }
 
@@ -64,8 +64,8 @@ type Scenario struct {
 }
 
 // New uses Register, Invite, AcceptInvitation, Deactivate, Update, SetLogo and token services.
-// Inactive-user cookies are deliberately created with CreateSession, not Login: authentication
-// must reject them on use even when a valid session row exists (INV-11).
+// Invited cookies use CreateSession; disabled cookies use it after Deactivate. Each disabled
+// session is verified unrevoked, reproducing DD-41 so rejection exercises INV-11 status checks.
 func New(t testing.TB, pool *pgxpool.Pool) *Scenario {
 	t.Helper()
 	c := clock.Real{}
@@ -105,18 +105,19 @@ func (f *Scenario) company(t testing.TB, label string, tint color.NRGBA, taxID, 
 		Password: Password, CompanyName: "Company " + suffix, BaseCurrency: currency, IndustryTemplateCode: template, Timezone: timezone}, identity.RequestMeta{})
 	require(t, err)
 	p := reg.Session.Principal
-	c := Company{ID: p.TenantID, Users: map[string]User{"admin": {ID: p.UserID, Email: reg.User.Email, Name: reg.User.Name, Status: "active", Principal: p, Cookie: cookie(reg.Session.RawToken)}}}
+	c := Company{ID: p.TenantID, Suffix: suffix, Users: map[string]User{"admin": {ID: p.UserID, Email: reg.User.Email, Name: reg.User.Name, Status: "active", Principal: p, Cookie: cookie(reg.Session.RawToken)}}}
 	for _, key := range []string{"operator", "invited", "disabled_password", "disabled_no_password"} {
 		email := key + "-" + suffix + "@example.test"
 		u, _, err := f.Users.Invite(ctx, p, email, authz.RoleOperator, identity.RequestMeta{})
 		require(t, err)
 		member := User{ID: u.ID, Email: email, Status: "invited", Principal: authz.Principal{TenantID: c.ID, UserID: u.ID, Role: authz.RoleOperator}}
-		if key == "operator" || key == "disabled_password" {
+		switch key {
+		case "operator", "disabled_password":
 			member.Name = key + " " + suffix
 			session, err := f.Users.AcceptInvitation(ctx, f.Token(t, c.ID, email, "invitation"), member.Name, Password, identity.RequestMeta{})
 			require(t, err)
 			member.Principal, member.Cookie, member.Status = session.Principal, cookie(session.RawToken), "active"
-		} else {
+		case "invited":
 			require(t, f.Runner.InTenantTx(ctx, c.ID, func(ctx context.Context, tx db.Tx) error {
 				session, err := f.Users.CreateSession(ctx, tx, member.Principal, identity.RequestMeta{})
 				member.Cookie, member.Principal = cookie(session.RawToken), session.Principal
@@ -127,6 +128,22 @@ func (f *Scenario) company(t testing.TB, label string, tint color.NRGBA, taxID, 
 			_, err = f.Users.Deactivate(ctx, p, member.ID, identity.RequestMeta{})
 			require(t, err)
 			member.Status = "disabled"
+			require(t, f.Runner.InTenantTx(ctx, c.ID, func(ctx context.Context, tx db.Tx) error {
+				session, err := f.Users.CreateSession(ctx, tx, member.Principal, identity.RequestMeta{})
+				if err != nil {
+					return err
+				}
+				member.Cookie, member.Principal = cookie(session.RawToken), session.Principal
+				var status string
+				var unrevoked bool
+				if err := tx.QueryRow(ctx, `SELECT u.status, s.revoked_at IS NULL FROM app.sessions s JOIN app.users u ON u.tenant_id=s.tenant_id AND u.id=s.user_id WHERE s.tenant_id=$1 AND s.id=$2`, c.ID, session.Principal.SessionID).Scan(&status, &unrevoked); err != nil {
+					return err
+				}
+				if status != "disabled" || !unrevoked {
+					return fmt.Errorf("%s: disabled session precondition: status=%s unrevoked=%t", key, status, unrevoked)
+				}
+				return nil
+			}))
 		}
 		c.Users[key] = member
 	}

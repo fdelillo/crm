@@ -5,6 +5,7 @@ package app_test
 import (
 	"context"
 	"net/http"
+	"sort"
 	"strings"
 	"testing"
 
@@ -98,7 +99,13 @@ func TestIsolationPermissionMatrix(t *testing.T) {
 	if t.Failed() {
 		return
 	}
-	for key, wants := range isolationPermissions {
+	keys := make([]string, 0, len(isolationPermissions))
+	for key := range isolationPermissions {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		wants := isolationPermissions[key]
 		for i, actor := range []string{"anonymous", "operator", "admin"} {
 			t.Run(key+"/"+actor, func(t *testing.T) {
 				f := e2e.New(t, pgtest.AppPool(t))
@@ -111,6 +118,16 @@ func TestIsolationPermissionMatrix(t *testing.T) {
 					cookie = f.A.Users[actor].Cookie
 				}
 				before := f.Snapshot(t, f.A.ID)
+				// Each protected route rejects invited/disabled users even with actual session cookies.
+				if wants[0] == 401 {
+					for _, company := range []e2e.Company{f.A, f.B} {
+						for _, state := range []string{"invited", "disabled_password", "disabled_no_password"} {
+							t.Run(company.ID.String()+"/"+state, func(t *testing.T) {
+								isolationRequest(t, h, context.Background(), company.Users[state].Cookie, method, path, ct, body, "", 401)
+							})
+						}
+					}
+				}
 				isolationRequest(t, h, context.Background(), cookie, method, path, ct, body, "", wants[i])
 				if wants[i] == 403 || wants[i] == 401 {
 					assertUnchanged(t, f, f.A.ID, before)
@@ -125,12 +142,6 @@ func TestIsolationPermissionMatrix(t *testing.T) {
 						}
 					}
 					assertUnchanged(t, f, f.A.ID, before)
-				}
-				// Each protected route rejects invited/disabled users even with actual session cookies.
-				if wants[0] == 401 {
-					for _, state := range []string{"invited", "disabled_password", "disabled_no_password"} {
-						isolationRequest(t, h, context.Background(), f.B.Users[state].Cookie, method, path, ct, body, "", 401)
-					}
 				}
 			})
 		}

@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fdelillo/crm/internal/identity/store"
 	"github.com/fdelillo/crm/internal/platform/db"
@@ -19,6 +20,7 @@ import (
 	"github.com/fdelillo/crm/internal/testsupport/pgtest"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func TestMain(m *testing.M) { os.Exit(pgtest.Main(m)) }
@@ -103,12 +105,15 @@ type updateObservation struct {
 	tx              int
 	message, tenant uuid.UUID
 	role, setting   string
+	query           string
 }
 type observingRunner struct {
 	db.TxRunner
-	t       *testing.T
-	next    int
-	updates []updateObservation
+	t          *testing.T
+	next       int
+	updates    []updateObservation
+	failTenant uuid.UUID
+	failed     bool
 }
 type observingTx struct {
 	db.Tx
@@ -116,6 +121,8 @@ type observingTx struct {
 	number int
 }
 
+var workerUpdate = regexp.MustCompile(`(?m)^UPDATE\s`)
+var workerQueryName = regexp.MustCompile(`^-- name: (\w+) :\w+`)
 var tenantArgument = regexp.MustCompile(`tenant_id\s*=\s*\$(\d+)`)
 var idArgument = regexp.MustCompile(`\bid\s*=\s*\$(\d+)`)
 
@@ -125,25 +132,58 @@ func (r *observingRunner) InSystemTx(ctx context.Context, role db.SystemRole, fn
 		return fn(ctx, &observingTx{Tx: tx, owner: r, number: r.next})
 	})
 }
+func (tx *observingTx) AsTenant(ctx context.Context, id uuid.UUID) error {
+	if id == tx.owner.failTenant && !tx.owner.failed {
+		tx.owner.failed = true
+		return fmt.Errorf("injected first AsTenant(B) failure")
+	}
+	return tx.Tx.AsTenant(ctx, id)
+}
+
 func (tx *observingTx) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
-	if regexp.MustCompile(`(?m)^UPDATE\s`).MatchString(sql) {
-		var role, setting string
-		var currentTenant uuid.NullUUID
-		if err := tx.Tx.QueryRow(ctx, `SELECT current_user, current_setting('role'), app.current_tenant_id()`).Scan(&role, &setting, &currentTenant); err != nil {
-			return pgconn.CommandTag{}, err
+	if !workerUpdate.MatchString(sql) {
+		return tx.Tx.Exec(ctx, sql, args...)
+	}
+	name := workerQueryName.FindStringSubmatch(sql)
+	if len(name) != 2 {
+		tx.owner.t.Errorf("worker UPDATE has no sqlc query name: %s", sql)
+		return pgconn.CommandTag{}, fmt.Errorf("unnamed worker UPDATE")
+	}
+	query := name[1]
+	switch query {
+	case "MarkSent", "MarkRecoverable", "MarkFailed", "DeferMessage":
+	default:
+		tx.owner.t.Errorf("worker UPDATE outside closed query list: %s", query)
+		return pgconn.CommandTag{}, fmt.Errorf("unexpected worker UPDATE %s", query)
+	}
+	var role, setting string
+	var currentTenant uuid.NullUUID
+	if err := tx.Tx.QueryRow(ctx, `SELECT current_user, current_setting('role'), app.current_tenant_id()`).Scan(&role, &setting, &currentTenant); err != nil {
+		return pgconn.CommandTag{}, err
+	}
+	idMatch := idArgument.FindStringSubmatch(sql)
+	if len(idMatch) != 2 {
+		tx.owner.t.Errorf("worker UPDATE missing message: %s", query)
+		return pgconn.CommandTag{}, fmt.Errorf("missing message predicate")
+	}
+	idIndex, _ := strconv.Atoi(idMatch[1])
+	message := args[idIndex-1].(uuid.UUID)
+	bound, hasTenant := tx.TenantID()
+	tenant := uuid.Nil
+	if query == "DeferMessage" {
+		if role != string(db.RoleWorker) || setting != string(db.RoleWorker) || currentTenant.Valid || hasTenant {
+			tx.owner.t.Errorf("DeferMessage message=%s current_user=%s role=%s current_tenant=%+v bound=%s/%t", message, role, setting, currentTenant, bound, hasTenant)
 		}
-		tenantMatch, idMatch := tenantArgument.FindStringSubmatch(sql), idArgument.FindStringSubmatch(sql)
-		if len(tenantMatch) != 2 || len(idMatch) != 2 {
-			tx.owner.t.Errorf("worker UPDATE missing explicit tenant/message: %s", sql)
-			return pgconn.CommandTag{}, fmt.Errorf("missing tenant/message predicate")
+	} else {
+		tenantMatch := tenantArgument.FindStringSubmatch(sql)
+		if len(tenantMatch) != 2 {
+			tx.owner.t.Errorf("%s missing explicit tenant predicate", query)
+			return pgconn.CommandTag{}, fmt.Errorf("missing tenant predicate")
 		}
 		tenantIndex, _ := strconv.Atoi(tenantMatch[1])
-		idIndex, _ := strconv.Atoi(idMatch[1])
-		tenant, message := args[tenantIndex-1].(uuid.UUID), args[idIndex-1].(uuid.UUID)
-		current := currentTenant.UUID
-		bound, ok := tx.TenantID()
-		if !ok || bound != tenant || current != tenant || role != db.TenantRoleName(tenant) || setting != role {
-			tx.owner.t.Errorf("worker UPDATE message=%s argument=%s bound=%s current=%s role=%s setting=%s", message, tenant, bound, current, role, setting)
+		tenant = args[tenantIndex-1].(uuid.UUID)
+		if !hasTenant || bound != tenant || !currentTenant.Valid || currentTenant.UUID != tenant || role != db.TenantRoleName(tenant) || setting != role {
+			tx.owner.t.Errorf("%s message=%s argument=%s bound=%s current=%s role=%s setting=%s", query, message, tenant, bound, currentTenant.UUID, role, setting)
 		}
 		var actual uuid.UUID
 		if err := tx.Tx.QueryRow(ctx, `SELECT tenant_id FROM app.outbox_messages WHERE tenant_id=$1 AND id=$2`, tenant, message).Scan(&actual); err != nil {
@@ -152,9 +192,21 @@ func (tx *observingTx) Exec(ctx context.Context, sql string, args ...any) (pgcon
 		if actual != tenant {
 			tx.owner.t.Errorf("message %s routed to wrong tenant %s", message, tenant)
 		}
-		tx.owner.updates = append(tx.owner.updates, updateObservation{tx: tx.number, message: message, tenant: tenant, role: role, setting: setting})
 	}
+	tx.owner.updates = append(tx.owner.updates, updateObservation{tx: tx.number, message: message, tenant: tenant, role: role, setting: setting, query: query})
 	return tx.Tx.Exec(ctx, sql, args...)
+}
+
+// Freeze dispatcher time after fixture creation: deferred/recoverable messages cannot become
+// due again while earlier fixtures are drained, regardless of the machine's speed.
+type frozenWorkerClock struct{ now time.Time }
+
+func (c frozenWorkerClock) Now() time.Time { return c.now }
+
+type pendingMessage struct {
+	attempts    int
+	lastError   pgtype.Text
+	nextAttempt time.Time
 }
 
 type deliveryHandler struct{ messages map[uuid.UUID]bool }
@@ -180,19 +232,22 @@ func TestIsolationWorkerSessionRoles(t *testing.T) {
 	// Fixtures from earlier tests may have pending mail; retain all target IDs so we can prove
 	// each A/B message is observed exactly once even if it takes several dispatcher batches.
 	targets := map[uuid.UUID]uuid.UUID{}
+	initial := map[uuid.UUID]pendingMessage{}
 	for _, c := range []e2e.Company{f.A, f.B} {
 		err := f.Runner.InTenantTx(ctx, c.ID, func(ctx context.Context, tx db.Tx) error {
-			rows, err := tx.Query(ctx, `SELECT id FROM app.outbox_messages WHERE tenant_id=$1 AND status='pending'`, c.ID)
+			rows, err := tx.Query(ctx, `SELECT id, attempts, last_error, next_attempt_at FROM app.outbox_messages WHERE tenant_id=$1 AND status='pending'`, c.ID)
 			if err != nil {
 				return err
 			}
 			defer rows.Close()
 			for rows.Next() {
 				var id uuid.UUID
-				if err := rows.Scan(&id); err != nil {
+				var before pendingMessage
+				if err := rows.Scan(&id, &before.attempts, &before.lastError, &before.nextAttempt); err != nil {
 					return err
 				}
 				targets[id] = c.ID
+				initial[id] = before
 			}
 			return rows.Err()
 		})
@@ -200,8 +255,8 @@ func TestIsolationWorkerSessionRoles(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	r := &observingRunner{TxRunner: f.Runner, t: t}
-	worker := outbox.NewDispatcher(r, deliveryHandler{messages: map[uuid.UUID]bool{f.A.ID: true, f.B.ID: true}}, f.Clock, f.Logger)
+	r := &observingRunner{TxRunner: f.Runner, t: t, failTenant: f.B.ID}
+	worker := outbox.NewDispatcher(r, deliveryHandler{messages: map[uuid.UUID]bool{f.A.ID: true, f.B.ID: true}}, frozenWorkerClock{now: f.Clock.Now()}, f.Logger)
 	observed := map[uuid.UUID]bool{}
 	for range 100 {
 		if err := worker.RunOnce(ctx); err != nil {
@@ -209,7 +264,7 @@ func TestIsolationWorkerSessionRoles(t *testing.T) {
 		}
 		for _, u := range r.updates {
 			if expected, ok := targets[u.message]; ok {
-				if u.tenant != expected {
+				if u.query != "DeferMessage" && u.tenant != expected {
 					t.Errorf("message %s from %s passed through %s", u.message, expected, u.tenant)
 				}
 				observed[u.message] = true
@@ -222,9 +277,30 @@ func TestIsolationWorkerSessionRoles(t *testing.T) {
 	if len(observed) != len(targets) {
 		t.Fatalf("worker observed %d/%d fixture messages", len(observed), len(targets))
 	}
+	if !r.failed {
+		t.Fatal("AsTenant(B) failure was never injected")
+	}
+	deferred := uuid.Nil
+	deferrals := 0
+	for _, u := range r.updates {
+		if u.query == "DeferMessage" {
+			deferrals++
+			deferred = u.message
+			if targets[u.message] != f.B.ID {
+				t.Errorf("deferred message %s is not B's fixture message", u.message)
+			}
+			t.Logf("DeferMessage message=%s current_user=%s current_setting(role)=%s current_tenant=NULL bound=false", u.message, u.role, u.setting)
+		}
+	}
+	if deferrals != 1 {
+		t.Fatalf("DeferMessage count=%d want=1", deferrals)
+	}
 	perTx := map[int]uuid.UUID{}
 	counts := map[uuid.UUID]int{}
 	for _, u := range r.updates {
+		if u.query == "DeferMessage" {
+			continue
+		}
 		if previous, ok := perTx[u.tx]; ok && previous != u.tenant {
 			t.Errorf("transaction %d crossed tenants: %s -> %s", u.tx, previous, u.tenant)
 		}
@@ -235,13 +311,17 @@ func TestIsolationWorkerSessionRoles(t *testing.T) {
 		}
 	}
 	for id := range targets {
-		if counts[id] != 1 {
-			t.Errorf("message %s UPDATE count=%d want=1", id, counts[id])
+		want := 1
+		if id == deferred {
+			want = 0
+		}
+		if counts[id] != want {
+			t.Errorf("message %s mark count=%d want=%d", id, counts[id], want)
 		}
 	}
 	for _, c := range []e2e.Company{f.A, f.B} {
 		err := f.Runner.InTenantTx(ctx, c.ID, func(ctx context.Context, tx db.Tx) error {
-			rows, err := tx.Query(ctx, `SELECT id, template, status, attempts FROM app.outbox_messages WHERE tenant_id=$1`, c.ID)
+			rows, err := tx.Query(ctx, `SELECT id, template, status, attempts, last_error, next_attempt_at FROM app.outbox_messages WHERE tenant_id=$1`, c.ID)
 			if err != nil {
 				return err
 			}
@@ -250,7 +330,9 @@ func TestIsolationWorkerSessionRoles(t *testing.T) {
 				var id uuid.UUID
 				var template, status string
 				var attempts int
-				if err := rows.Scan(&id, &template, &status, &attempts); err != nil {
+				var lastError pgtype.Text
+				var nextAttempt time.Time
+				if err := rows.Scan(&id, &template, &status, &attempts, &lastError, &nextAttempt); err != nil {
 					return err
 				}
 				wantStatus, wantAttempts := "sent", 0
@@ -259,6 +341,13 @@ func TestIsolationWorkerSessionRoles(t *testing.T) {
 					wantStatus, wantAttempts = "pending", 1
 				case "email_verification":
 					wantStatus, wantAttempts = "failed", 1
+				}
+				if id == deferred {
+					before := initial[id]
+					wantStatus, wantAttempts = "pending", before.attempts
+					if lastError != before.lastError || !nextAttempt.After(before.nextAttempt) {
+						t.Errorf("deferred message %s: last_error changed or next_attempt_at not advanced", id)
+					}
 				}
 				if status != wantStatus || attempts != wantAttempts {
 					t.Errorf("message %s %s: %s/%d want %s/%d", id, template, status, attempts, wantStatus, wantAttempts)
