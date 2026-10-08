@@ -246,6 +246,29 @@ type sentinelCheck struct {
 	found           bool
 }
 
+// Values shorter than eight bytes require both base64url/UUID word boundaries.
+func containsSentinel(data, value []byte) bool {
+	if len(value) >= 8 {
+		return bytes.Contains(data, value)
+	}
+	word := func(b byte) bool {
+		return b >= 'A' && b <= 'Z' || b >= 'a' && b <= 'z' || b >= '0' && b <= '9' || b == '_' || b == '-'
+	}
+	for start := 0; start <= len(data)-len(value); {
+		i := bytes.Index(data[start:], value)
+		if i < 0 {
+			return false
+		}
+		i += start
+		end := i + len(value)
+		if (i == 0 || !word(data[i-1])) && (end == len(data) || !word(data[end])) {
+			return true
+		}
+		start = i + 1
+	}
+	return false
+}
+
 func responseSentinelChecks(rec *httptest.ResponseRecorder, c e2e.Company, catalog bool) []sentinelCheck {
 	type part struct {
 		location string
@@ -266,7 +289,7 @@ func responseSentinelChecks(rec *httptest.ResponseRecorder, c e2e.Company, catal
 	var checks []sentinelCheck
 	for _, value := range companySentinels(c, catalog) {
 		for _, p := range parts {
-			checks = append(checks, sentinelCheck{p.location, value, bytes.Contains(p.data, []byte(value))})
+			checks = append(checks, sentinelCheck{p.location, value, containsSentinel(p.data, []byte(value))})
 		}
 	}
 	return checks
@@ -314,6 +337,44 @@ func TestIsolationResponseSentinels(t *testing.T) {
 			}
 			if found != 1 {
 				t.Fatalf("detections=%d want=1", found)
+			}
+		})
+	}
+	if len(c.Suffix) < 8 {
+		t.Fatal("fixture suffix must contain at least 8 bytes")
+	}
+	fixture := e2e.New(t, pgtest.AppPool(t))
+	if len(fixture.A.Suffix) < 8 || len(fixture.B.Suffix) < 8 {
+		t.Fatal("real fixture suffix must contain at least 8 bytes")
+	}
+	c.Details.BaseCurrency = "ARS"
+	for _, tc := range []struct {
+		name, header, value string
+		want                bool
+	}{
+		{"short-json", "", `{"currency":"ARS"}`, true},
+		{"short-header", "X-Currency", "ARS", true},
+		{"short-list", "X-Currency", "ARS, USD", true},
+		{"short-cookie", "Set-Cookie", "token=Z0_ARS-zzz", false},
+		{"short-left", "", "xARS", false},
+		{"short-right", "", "ARSx", false},
+		{"short-underscore", "", "ARS_", false},
+		{"short-dash", "", "-ARS", false},
+		{"suffix-in-text", "", "prefix" + c.Suffix + "tail", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			if tc.header == "" {
+				rec.Body.WriteString(tc.value)
+			} else {
+				rec.Header().Set(tc.header, tc.value)
+			}
+			found := false
+			for _, check := range responseSentinelChecks(rec, c, false) {
+				found = found || check.found
+			}
+			if found != tc.want {
+				t.Fatalf("found=%v want=%v", found, tc.want)
 			}
 		})
 	}
