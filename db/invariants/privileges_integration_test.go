@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// privilegeSnapshot lists the privileges a grantee holds on the tables of schema app, from the ACLs
+// privilegeSnapshot lists the privileges a grantee holds on app/public tables and the public schema, from the ACLs
 // (not from has_*_privilege, which would fold table-level grants into every column):
 // "table:PRIV" for table-level ones and "table.column:PRIV" for column-level ones.
 func privilegeSnapshot(t *testing.T, grantee string) []string {

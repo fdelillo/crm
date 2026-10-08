@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// ReprovisionLockKey is a stable cluster-wide key for this operation (DD-33 R-d).
+// ReprovisionLockKey is a stable key shared by this database’s reprovision runs (DD-33 R-d).
 const ReprovisionLockKey int64 = 0x43524d525052
 
 type ReprovisionReport struct {

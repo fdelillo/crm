@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/fdelillo/crm/internal/platform/db"
-	"github.com/fdelillo/crm/internal/platform/securetoken"
 	"github.com/fdelillo/crm/internal/testsupport/pgtest"
 	"github.com/google/uuid"
 )
@@ -67,18 +66,16 @@ func TestPhase9PeriodicSchedulingAndFailure(t *testing.T) {
 func TestPhase9PeriodicCancellationRollsBack(t *testing.T) {
 	var logs bytes.Buffer
 	runner, id, _, d := newLoggedFixture(t, &logs)
-	var user, idSession uuid.UUID
-	if err := pgtest.SuperuserPool(t).QueryRow(context.Background(), `SELECT id FROM app.users WHERE tenant_id=$1 LIMIT 1`, id).Scan(&user); err != nil {
+	var idMessage uuid.UUID
+	if err := pgtest.SuperuserPool(t).QueryRow(context.Background(), `INSERT INTO app.outbox_messages(tenant_id,kind,template,recipient,payload,status,created_at,next_attempt_at,sent_at) VALUES($1,'email','password_reset','periodic@example.test',NULL,'sent',now()-interval '40 days',now()-interval '40 days',now()-interval '40 days') RETURNING id`, id).Scan(&idMessage); err != nil {
 		t.Fatal(err)
 	}
-	if err := pgtest.SuperuserPool(t).QueryRow(context.Background(), `INSERT INTO app.sessions(tenant_id,user_id,token_hash,created_at,last_seen_at,expires_at) VALUES($1,$2,$3,now()-interval '50 days',now()-interval '50 days',now()-interval '40 days') RETURNING id`, id, user, securetoken.Hash(uuid.NewString())).Scan(&idSession); err != nil {
-		t.Fatal(err)
-	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	task := &periodicProbe{fn: func(ctx context.Context) error {
 		return runner.InSystemTx(ctx, db.RoleWorker, func(ctx context.Context, tx db.Tx) error {
-			tag, err := tx.Exec(ctx, `DELETE FROM app.sessions WHERE id=$1`, idSession)
+			tag, err := tx.Exec(ctx, `DELETE FROM app.outbox_messages WHERE id=$1`, idMessage)
 			if err != nil {
 				return err
 			}
@@ -92,7 +89,7 @@ func TestPhase9PeriodicCancellationRollsBack(t *testing.T) {
 	d.tasks = []PeriodicTask{task}
 	d.runTasks(ctx)
 	var exists bool
-	if err := pgtest.SuperuserPool(t).QueryRow(context.Background(), `SELECT EXISTS(SELECT 1 FROM app.sessions WHERE id=$1)`, idSession).Scan(&exists); err != nil {
+	if err := pgtest.SuperuserPool(t).QueryRow(context.Background(), `SELECT EXISTS(SELECT 1 FROM app.outbox_messages WHERE id=$1)`, idMessage).Scan(&exists); err != nil {
 		t.Fatal(err)
 	}
 	if !exists {
