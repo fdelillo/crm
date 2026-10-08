@@ -295,6 +295,8 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
 
 - **Fase 9** (2026-10-08, en curso): trabajo sobre `feat/001-backend-phase-9` desde `3365e98`, sin rebase ni force-push. Paso 0.1 completo: centinelas menores de 8 bytes con ambos delimitadores fuera de `[A-Za-z0-9_-]`; sufijo real del fixture comprobado ≥ 8 bytes. Red: cinco falsos positivos (`ARS` en cookie, pegado a letras, `_` o `-`). Green y mutaciones restauradas: volver a `bytes.Contains` falla en esos cinco casos; quitar el delimitador derecho falla en `ARSx` y `ARS_`. `make check` completo en verde (127,115 s; lint 0 issues, generación, `-race`, integración PostgreSQL 18, queryrules y reporules).
 
+  Paso 0.2 completo: reporte separado `sentinel_checks`/`state_checks`, ambos exigidos mayores que cero. Red: no existía el reporte tipado. Mutaciones restauradas: contar todo como centinela → `state_checks=0`; omitir centinelas → `sentinel_checks=0`; ambas hacen fallar el caso del reporte. `make check` completo en verde (89,830 s).
+
   **Corrección del estado de Fase 8**: la afirmación anterior de que la spec permitía expresamente `go/ast` era incorrecta: pedía identificadores resueltos por su declaración. El paso 0.4 reemplaza `ast.Object` por `go/types` y elimina el `nolint`.
 
   **Desvíos locales**: acceso aprobado a caché Go y Docker; Ryuk falló durante el arranque (puerto `8080/tcp` desaparecido). `TESTCONTAINERS_RYUK_DISABLED=true` solo en el verificador local; no se cambia CI. Evidencia de corridas y mutaciones guardada temporalmente en `/tmp/crm-phase9-evidence`.
