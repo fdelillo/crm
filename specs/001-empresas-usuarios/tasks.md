@@ -303,6 +303,8 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
 
   **Supuesto del importer**: `source` resuelve correctamente bajo `-race`. Dentro de `make check` (232,044 s, en verde): guard 30,679 s unitario / 33,137 s integración; suite de mutaciones 46,57 s / 79,24 s. Se usa el respaldo autorizado `gc` con lookup de archivos de export de `go list -export -deps -json`, solo stdlib, por ese costo. Las reglas no cambian. Con `gc`: guard 154 ms, suite de mutaciones 1,15 s, `make check` completo 16,913 s (cachés reutilizadas), en verde.
 
+  **Checkpoint del paso 0 completo**: `make check` en verde después de restaurar el pool temporal (12,123 s). `Isolation` con `-race`, `pool_max_conns=4` solo local y sin aplicarlo al DSN de migración: `covered routes=21/21; cross-company accesses=0; sentinel_checks=17841; state_checks=399`. Binario real y proyecto Compose `crm-phase9`: métricas `/debug/vars` → 200 JSON; métricas `/api/v1/me` → 404; HTTP `/debug/vars` → SPA 503, sin memstats/cmdline; SIGTERM → código 0. Puertos PostgreSQL 15439, SMTP 11029/Mailpit 18029, S3 19009/consola 19019, HTTP 18089 y métricas 19099; modo backend HTTP con base URL HTTPS (DD-24).
+
   **Corrección del estado de Fase 8**: la afirmación anterior de que la spec permitía expresamente `go/ast` era incorrecta: pedía identificadores resueltos por su declaración. El paso 0.4 reemplazó `ast.Object` por `go/types` y eliminó el `nolint`.
 
   **Desvíos locales**: acceso aprobado a caché Go y Docker; Ryuk falló durante el arranque (puerto `8080/tcp` desaparecido). `TESTCONTAINERS_RYUK_DISABLED=true` solo en el verificador local; no se cambia CI. Evidencia de corridas y mutaciones guardada temporalmente en `/tmp/crm-phase9-evidence`.
