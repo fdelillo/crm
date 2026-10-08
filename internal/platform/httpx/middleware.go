@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,6 +29,8 @@ const hstsValue = "max-age=31536000"
 // unmatchedRoute labels requests that no route handled (chi 404/405, mux redirects). The raw URL
 // is never logged (DD-12).
 const unmatchedRoute = "unmatched"
+
+var requestsTotal = expvar.NewMap("http_requests_total")
 
 var clientCanceledTotal = expvar.NewInt("http_client_canceled_total")
 var csrfRejectedTotal = expvar.NewInt("csrf_rejected_total")
@@ -161,6 +164,7 @@ func Logging(logger *slog.Logger) func(http.Handler) http.Handler {
 				case holder.level != nil:
 					level = *holder.level
 				}
+				requestsTotal.Add(strconv.Itoa(status), 1)
 				logger.Log(r.Context(), level, "request",
 					"request_id", RequestIDFrom(r.Context()),
 					"method", r.Method,

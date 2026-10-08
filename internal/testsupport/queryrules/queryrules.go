@@ -52,11 +52,15 @@ var DefaultExceptions = []Exception{
 	}},
 	{Path: "internal/platform/outbox/store/worker.sql", Reason: "queue and cleanup queries as crm_worker: they see queue columns of every company",
 		Queries: map[string]string{
+			"PendingStats":           "crm_worker: sample global pending queue columns every 60 seconds",
 			"LockDueMessage":         "crm_worker locks one due routing row across tenants; recipient and payload are read only after AsTenant",
 			"DeleteTerminalMessages": "crm_worker: terminal messages older than 30 days",
 			"DeferMessage":           "crm_worker: aplazar un mensaje pendiente cuya fase de empresa falló (ADR-024 §6)",
 		}},
-	{Path: "internal/tenant/store/provisioning.sql", Reason: "crm_worker and crm_signup: list tenants.id (reprovisioning, tenant_roles_total) and call provision_tenant_role (registration)"},
+	{Path: "internal/tenant/store/provisioning.sql", Reason: "crm_worker and crm_signup: list tenants.id and provision company roles", Queries: map[string]string{
+		"CountTenants":            "crm_worker: sample tenants count",
+		"CountTenantsWithoutRole": "crm_worker: sample companies missing their derived role",
+	}},
 }
 
 var (

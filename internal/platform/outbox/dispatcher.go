@@ -218,6 +218,7 @@ func (d *Dispatcher) processOne(ctx context.Context) (bool, error) {
 	// (ADR-024 §4): it is read only after the transaction below has committed, so a stop never
 	// rolls back the mark that was just made.
 	stopCycle := false
+	var outcome deliveryMetric
 	err := d.runner.InSystemTx(context.WithoutCancel(ctx), db.RoleWorker, func(fnCtx context.Context, tx db.Tx) error {
 		q := store.New(tx)
 		row, lockErr := q.LockDueMessage(fnCtx, d.clock.Now())
@@ -253,7 +254,7 @@ func (d *Dispatcher) processOne(ctx context.Context) (bool, error) {
 		if jsonErr := json.Unmarshal(message.Payload, &payload); jsonErr != nil {
 			var resolveErr error
 			stopCycle, resolveErr = d.resolveDelivery(fnCtx, q, item, message.Attempts,
-				&DeliveryError{Cause: CauseBug, Phase: PhaseCompose, Detail: "invalid payload"}, true)
+				&DeliveryError{Cause: CauseBug, Phase: PhaseCompose, Detail: "invalid payload"}, true, &outcome)
 			return resolveErr
 		}
 
@@ -264,12 +265,13 @@ func (d *Dispatcher) processOne(ctx context.Context) (bool, error) {
 		cycleAlive := ctx.Err() == nil
 		cancel()
 		var resolveErr error
-		stopCycle, resolveErr = d.resolveDelivery(fnCtx, q, item, message.Attempts, handleErr, cycleAlive)
+		stopCycle, resolveErr = d.resolveDelivery(fnCtx, q, item, message.Attempts, handleErr, cycleAlive, &outcome)
 		return resolveErr
 	})
 
 	switch {
 	case err == nil:
+		outcome.publish()
 		if stopCycle {
 			return handled, errCycleStop
 		}
@@ -298,7 +300,7 @@ func (d *Dispatcher) processOne(ctx context.Context) (bool, error) {
 // connection-phase failure, and only once err is nil: the mark must still commit (ADR-024 §4 ends
 // the cycle only *after* the failure is recorded), so processOne reads stop once this transaction
 // has succeeded.
-func (d *Dispatcher) resolveDelivery(ctx context.Context, q *store.Queries, item store.LockDueMessageRow, attempts int32, handleErr error, cycleAlive bool) (stop bool, err error) {
+func (d *Dispatcher) resolveDelivery(ctx context.Context, q *store.Queries, item store.LockDueMessageRow, attempts int32, handleErr error, cycleAlive bool, outcome *deliveryMetric) (stop bool, err error) {
 	if handleErr == nil {
 		now := d.clock.Now()
 		markErr := q.MarkSent(ctx, store.MarkSentParams{TenantID: item.TenantID, ID: item.ID, SentAt: &now})
@@ -320,6 +322,7 @@ func (d *Dispatcher) resolveDelivery(ctx context.Context, q *store.Queries, item
 		return false, context.Canceled
 	}
 
+	outcome.cause = de.Cause
 	last := de.LastError()
 	fields := []any{"event", "outbox_delivery", "tenant_id", item.TenantID, "message_id", item.ID,
 		"error_cause", string(de.Cause), "smtp_phase", string(de.Phase), "last_error", last}
@@ -336,6 +339,7 @@ func (d *Dispatcher) resolveDelivery(ctx context.Context, q *store.Queries, item
 			FailedAt: &now, LastError: pgtype.Text{String: last, Valid: true}}); err != nil {
 			return false, &stepFailure{step: stepMark, err: db.MapError(err)}
 		}
+		outcome.failed = true
 		level := de.Cause.LogLevel()
 		outcome := []any{"outcome", "failed"}
 		if !de.Cause.Permanent() {
@@ -382,6 +386,7 @@ func (d *Dispatcher) deferMessage(ctx context.Context, item store.LockDueMessage
 	if affected == 0 {
 		return nil
 	}
+	deferredTotal.Add(1)
 	fields := []any{"event", "outbox_delivery", "outcome", "deferred", "step", string(step),
 		"message_id", item.ID, "tenant_id", item.TenantID, "defer_seconds", int(delay.Seconds()), "err", cause}
 	if errors.Is(cause, db.ErrPrivilege) {

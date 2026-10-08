@@ -80,3 +80,21 @@ func (q *Queries) LockDueMessage(ctx context.Context, now time.Time) (LockDueMes
 	)
 	return i, err
 }
+
+const pendingStats = `-- name: PendingStats :one
+SELECT count(*)::bigint AS pending,
+       coalesce(min(created_at), 'epoch'::timestamptz)::timestamptz AS oldest
+FROM app.outbox_messages WHERE status = 'pending'
+`
+
+type PendingStatsRow struct {
+	Pending int64
+	Oldest  time.Time
+}
+
+func (q *Queries) PendingStats(ctx context.Context) (PendingStatsRow, error) {
+	row := q.db.QueryRow(ctx, pendingStats)
+	var i PendingStatsRow
+	err := row.Scan(&i.Pending, &i.Oldest)
+	return i, err
+}

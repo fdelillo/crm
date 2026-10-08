@@ -83,6 +83,7 @@ func WithLogger(l *slog.Logger) Option { return func(r *runner) { r.logger = l }
 
 // NewTxRunner returns the TxRunner over a pool connected as crm_app.
 func NewTxRunner(pool *pgxpool.Pool, opts ...Option) TxRunner {
+	metricsPool.Store(pool)
 	r := &runner{pool: pool, logger: slog.Default()}
 	for _, o := range opts {
 		o(r)

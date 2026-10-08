@@ -8,6 +8,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/fdelillo/crm/db/migrations"
 	"github.com/fdelillo/crm/internal/app"
 	"github.com/fdelillo/crm/internal/identity"
 	"github.com/fdelillo/crm/internal/identity/emails"
@@ -41,6 +42,10 @@ func runServe(ctx context.Context, args []string, e env) error {
 	if err != nil {
 		return err
 	}
+	expected, err := migrations.ExpectedVersion(migrations.FS)
+	if err != nil {
+		return err
+	}
 	logger := slog.New(slog.NewJSONHandler(e.stdout, nil))
 	// Behind a proxy that is not listed here every client looks like the proxy (one shared rate limit
 	// bucket, useless IPs in logs and audit): the first line says what is trusted (DD-32).
@@ -55,6 +60,7 @@ func runServe(ctx context.Context, args []string, e env) error {
 	}
 	defer pool.Close()
 	runner := db.NewTxRunner(pool, db.WithLogger(logger))
+	app.LogServerVersion(ctx, runner, logger)
 	c := clock.Real{}
 	hasher := password.NewHasher(4)
 	recorder := audit.NewRecorder()
@@ -82,7 +88,7 @@ func runServe(ctx context.Context, args []string, e env) error {
 	root := app.NewRootHandler(app.RootDeps{
 		API:       api,
 		Liveness:  app.LivenessHandler(),
-		Readiness: app.ReadinessPlaceholder(),
+		Readiness: app.ReadinessHandler(runner, expected, logger),
 		// Until the web package embeds the built SPA (T-F008) the interface answers 503.
 		SPA: app.SPAUnavailableHandler(),
 	}, app.NewCommonMiddleware(logger, cfg.IsLocal(), cfg.TrustedProxies))

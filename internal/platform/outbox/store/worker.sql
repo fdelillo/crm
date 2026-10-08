@@ -22,3 +22,8 @@ WHERE id = @id AND status = 'pending' AND next_attempt_at = @expected_next_attem
 -- name: DeleteTerminalMessages :execrows
 DELETE FROM app.outbox_messages
 WHERE status <> 'pending' AND created_at < now() - interval '30 days';
+
+-- name: PendingStats :one
+SELECT count(*)::bigint AS pending,
+       coalesce(min(created_at), 'epoch'::timestamptz)::timestamptz AS oldest
+FROM app.outbox_messages WHERE status = 'pending';
