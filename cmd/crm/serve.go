@@ -76,7 +76,7 @@ func runServe(ctx context.Context, args []string, e env) error {
 	if err != nil {
 		return err
 	}
-	dispatcher := outbox.NewDispatcher(runner, emailHandler, c, logger)
+	dispatcher := outbox.NewDispatcher(runner, emailHandler, c, logger, app.PeriodicTasks(runner, c, logger)...)
 
 	api := app.BuildAPIRouter(users, companies, c, logger)
 	root := app.NewRootHandler(app.RootDeps{

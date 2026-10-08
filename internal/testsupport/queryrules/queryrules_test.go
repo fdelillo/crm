@@ -268,7 +268,11 @@ func TestDefaultExceptionsCheckUnlistedAndStaleQueries(t *testing.T) {
 		"internal/identity/store/auth_lookup.sql LookupTokenByHash",
 		"internal/identity/store/auth_lookup.sql LookupUserByEmail",
 		"internal/identity/store/auth_lookup.sql UserByEmail",
+		"internal/identity/store/cleanup.sql DeleteExpiredSessions",
+		"internal/identity/store/cleanup.sql DeleteExpiredUserTokens",
+		"internal/identity/store/cleanup.sql DeleteOldLoginThrottles",
 		"internal/platform/outbox/store/worker.sql DeferMessage",
+		"internal/platform/outbox/store/worker.sql DeleteTerminalMessages",
 		"internal/platform/outbox/store/worker.sql LockDueMessage",
 	}
 	if got := summarize(vs); !slices.Equal(got, want) {

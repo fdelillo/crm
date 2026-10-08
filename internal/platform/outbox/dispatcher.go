@@ -117,6 +117,7 @@ type Dispatcher struct {
 	clock   clock.Clock
 	logger  *slog.Logger
 	tasks   []PeriodicTask
+	lastRun map[string]time.Time
 
 	// Test hooks (same package only). Each runs after the real call it shadows succeeded, and may
 	// turn that success into a failure, so a test can simulate db.ErrUnavailable or any other
@@ -135,7 +136,8 @@ func NewDispatcher(runner db.TxRunner, handler Handler, c clock.Clock, logger *s
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Dispatcher{runner: runner, handler: handler, clock: c, logger: logger, tasks: tasks}
+	return &Dispatcher{runner: runner, handler: handler, clock: c, logger: logger,
+		tasks: append([]PeriodicTask{terminalCleanup{runner, logger}}, tasks...), lastRun: map[string]time.Time{}}
 }
 
 // Run polls immediately and then every two seconds until ctx is done. A cycle's own failures are
@@ -144,30 +146,39 @@ func NewDispatcher(runner db.TxRunner, handler Handler, c clock.Clock, logger *s
 func (d *Dispatcher) Run(ctx context.Context) error {
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
-	lastRun := map[string]time.Time{}
 	for {
 		if ctx.Err() != nil {
 			return nil
 		}
 		_ = d.RunOnce(ctx)
-		now := d.clock.Now()
-		for _, task := range d.tasks {
-			if now.Sub(lastRun[task.Name()]) < task.Every() {
-				continue
-			}
-			if ctx.Err() != nil {
-				return nil
-			}
-			if err := task.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-				d.logger.ErrorContext(ctx, "periodic task failed", "task", task.Name(), "err", err)
-			}
-			lastRun[task.Name()] = now
-		}
+		d.runTasks(ctx)
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
 		}
+	}
+}
+
+// runTasks shares Run's scheduler with deterministic clock-driven tests.
+func (d *Dispatcher) runTasks(ctx context.Context) {
+	now := d.clock.Now()
+	for _, task := range d.tasks {
+		if ctx.Err() != nil {
+			return
+		}
+		last, ran := d.lastRun[task.Name()]
+		if ran && now.Sub(last) < task.Every() {
+			continue
+		}
+		if err := task.Run(ctx); err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, db.ErrCanceled) || ctx.Err() != nil {
+				d.logger.InfoContext(ctx, "periodic task canceled", "task", task.Name(), "outcome", "canceled")
+			} else {
+				d.logger.ErrorContext(ctx, "periodic task failed", "task", task.Name(), "err", err)
+			}
+		}
+		d.lastRun[task.Name()] = now
 	}
 }
 

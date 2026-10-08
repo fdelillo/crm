@@ -39,6 +39,19 @@ func (q *Queries) DeferMessage(ctx context.Context, arg DeferMessageParams) (int
 	return result.RowsAffected(), nil
 }
 
+const deleteTerminalMessages = `-- name: DeleteTerminalMessages :execrows
+DELETE FROM app.outbox_messages
+WHERE status <> 'pending' AND created_at < now() - interval '30 days'
+`
+
+func (q *Queries) DeleteTerminalMessages(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteTerminalMessages)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const lockDueMessage = `-- name: LockDueMessage :one
 SELECT id, tenant_id, next_attempt_at, created_at FROM app.outbox_messages
 WHERE status = 'pending' AND next_attempt_at <= $1
