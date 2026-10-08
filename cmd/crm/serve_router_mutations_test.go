@@ -15,7 +15,7 @@ func TestRouterGuardMutations(t *testing.T) {
 	source := originals["serve.go"]
 	fset := token.NewFileSet()
 	imp := compositionImporter(t, fset)
-	addHTTP := func(s string) string { return strings.Replace(s, `"net"`, `"net"`+"\n\"net/http\"", 1) }
+	addHTTP := func(s string) string { return strings.Replace(s, `"fmt"`, `"fmt"`+"\n\"net/http\"", 1) }
 	wrap := func(s string) string { return addHTTP(s) + "\nfunc wrap(h http.Handler) http.Handler { return h }\n" }
 	deps := func(s, edit string) string {
 		s = strings.Replace(s, "root := app.NewRootHandler(app.RootDeps{", "deps := app.RootDeps{", 1)

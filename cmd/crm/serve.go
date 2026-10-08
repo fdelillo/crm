@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
-	"net"
 	"time"
 
 	"github.com/fdelillo/crm/db/migrations"
@@ -100,8 +99,7 @@ func runServe(ctx context.Context, args []string, e env) error {
 	}
 	serverCtx, stopServers := context.WithCancel(ctx)
 	defer stopServers()
-	var lc net.ListenConfig
-	ln, err := lc.Listen(serverCtx, "tcp", cfg.HTTPAddr)
+	ln, err := e.listen(serverCtx, "tcp", cfg.HTTPAddr)
 	if err != nil {
 		return fmt.Errorf("listening on HTTP_ADDR %s: %w", cfg.HTTPAddr, err)
 	}
@@ -113,7 +111,7 @@ func runServe(ctx context.Context, args []string, e env) error {
 		stopServers()
 	}()
 	metricsSrv := app.NewMetricsServer(cfg)
-	metricsLn, err := lc.Listen(serverCtx, "tcp", cfg.MetricsAddr)
+	metricsLn, err := e.listen(serverCtx, "tcp", cfg.MetricsAddr)
 	if err != nil {
 		stopServers()
 		if serveErr := <-apiDone; serveErr != nil {

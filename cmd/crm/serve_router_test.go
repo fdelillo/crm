@@ -138,6 +138,27 @@ func checkRouterComposition(fset *token.FileSet, imp types.Importer, sources map
 		c, ok := n.(*ast.CallExpr)
 		return ok && isFunc(c.Fun, compositionPackage, name)
 	}
+	// Starting from Uses closes indirect calls as well as forms we have never enumerated.
+	protected := map[string]int{"BuildAPIRouter": 1, "NewRootHandler": 3, "NewServer": 3, "NewMetricsServer": 4, "Serve": 4}
+	for id, obj := range info.Uses {
+		fn, ok := obj.(*types.Func)
+		if !ok || fn.Pkg() == nil || fn.Pkg().Path() != compositionPackage {
+			continue
+		}
+		rule, ok := protected[fn.Name()]
+		if !ok {
+			continue
+		}
+		var use ast.Node = id
+		if sel, ok := parents[id].(*ast.SelectorExpr); ok && sel.Sel == id {
+			use = sel
+		}
+		call, ok := parents[use].(*ast.CallExpr)
+		if !ok || call.Fun != use {
+			report(use, 5, "app."+fn.Name()+" is allowed only as a direct call")
+			report(use, rule, "indirect app."+fn.Name()+" use prevents verifying its composition")
+		}
+	}
 	argument := func(n ast.Node, name string, index int) bool {
 		call, ok := parents[n].(*ast.CallExpr)
 		return ok && isCall(call, name) && len(call.Args) > index && call.Args[index] == n
@@ -275,6 +296,16 @@ func checkRouterComposition(fset *token.FileSet, imp types.Importer, sources map
 		consumer(call, 3, true, func(n ast.Node) bool { return argument(n, "NewServer", 1) }, "NewServer handler")
 	}
 	approvedServers := map[ast.Expr]bool{}
+	approvedListens := map[ast.Expr]bool{}
+	commandPackage := "github.com/fdelillo/crm/cmd/crm"
+	isEnvListen := func(expr ast.Expr) bool {
+		sel, ok := expr.(*ast.SelectorExpr)
+		if !ok {
+			return false
+		}
+		selection := info.Selections[sel]
+		return selection != nil && named(selection.Recv(), commandPackage, "env") && selection.Obj().Name() == "listen"
+	}
 	for _, entry := range []struct {
 		name, addr string
 		rule       int
@@ -319,24 +350,15 @@ func checkRouterComposition(fset *token.FileSet, imp types.Importer, sources map
 			}
 			listen, ok := origin.(*ast.CallExpr)
 			if !ok {
-				report(origin, 4, "listener must come directly from net.Listen or ListenConfig.Listen")
+				report(origin, 4, "listener must come directly from env.listen")
 				continue
 			}
-			addrIndex := -1
-			if isFunc(listen.Fun, "net", "Listen") {
-				if sel, ok := listen.Fun.(*ast.SelectorExpr); ok && info.Selections[sel] != nil {
-					if named(info.Selections[sel].Recv(), "net", "ListenConfig") {
-						addrIndex = 2
-					}
-				} else {
-					addrIndex = 1
-				}
-			}
-			if addrIndex < 0 || len(listen.Args) <= addrIndex {
-				report(listen, 4, "listener must come directly from net.Listen or ListenConfig.Listen")
+			if !isEnvListen(listen.Fun) || len(listen.Args) != 3 {
+				report(listen, 4, "listener must come directly from env.listen")
 				continue
 			}
-			address, ok := listen.Args[addrIndex].(*ast.SelectorExpr)
+			approvedListens[listen.Fun] = true
+			address, ok := listen.Args[2].(*ast.SelectorExpr)
 			if !ok {
 				report(listen, 4, "Listen address must directly select config.Config."+entry.addr)
 				continue
@@ -351,6 +373,71 @@ func checkRouterComposition(fset *token.FileSet, imp types.Importer, sources map
 		if len(call.Args) != 4 || !approvedServers[call.Args[1]] {
 			report(call, 4, "Serve must receive the single-use result of its matching server factory")
 		}
+	}
+	initializations := 0
+	for _, file := range files {
+		ast.Inspect(file, func(n ast.Node) bool {
+			switch node := n.(type) {
+			case *ast.SelectorExpr:
+				if isEnvListen(node) && !approvedListens[node] {
+					report(node, 4, "env.listen has an extra read or assignment")
+				}
+			case *ast.CompositeLit:
+				if !named(info.TypeOf(node), commandPackage, "env") {
+					break
+				}
+				for _, element := range node.Elts {
+					kv, ok := element.(*ast.KeyValueExpr)
+					if !ok {
+						report(element, 4, "env must use keyed fields")
+						continue
+					}
+					key, ok := kv.Key.(*ast.Ident)
+					if !ok {
+						continue
+					}
+					field := info.Uses[key]
+					if field == nil || field.Name() != "listen" {
+						continue
+					}
+					initializations++
+					var function *ast.FuncDecl
+					for parent := parents[node]; parent != nil; parent = parents[parent] {
+						if f, ok := parent.(*ast.FuncDecl); ok {
+							function = f
+							break
+						}
+					}
+					valid := function != nil && function.Name.Name == "run"
+					method, ok := kv.Value.(*ast.SelectorExpr)
+					valid = valid && ok && isFunc(kv.Value, "net", "Listen")
+					if ok {
+						switch receiver := method.X.(type) {
+						case *ast.ParenExpr:
+							address, ok := receiver.X.(*ast.UnaryExpr)
+							if !ok || address.Op != token.AND {
+								valid = false
+								break
+							}
+							literal, ok := address.X.(*ast.CompositeLit)
+							valid = valid && ok && named(info.TypeOf(literal), "net", "ListenConfig") && len(literal.Elts) == 0
+						case *ast.CallExpr:
+							builtin, ok := object(receiver.Fun).(*types.Builtin)
+							valid = valid && ok && builtin.Name() == "new" && len(receiver.Args) == 1 && named(info.TypeOf(receiver), "net", "ListenConfig")
+						default:
+							valid = false
+						}
+					}
+					if !valid {
+						report(kv, 4, "env.listen must be initialized in run with (&net.ListenConfig{}).Listen or new(net.ListenConfig).Listen")
+					}
+				}
+			}
+			return true
+		})
+	}
+	if initializations != 1 {
+		report(files[0], 4, "env.listen requires exactly one initialization in run")
 	}
 	return violations, nil
 }
