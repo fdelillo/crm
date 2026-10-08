@@ -20,10 +20,8 @@ import (
 	"github.com/fdelillo/crm/internal/platform/objectstore"
 	"github.com/fdelillo/crm/internal/platform/outbox"
 	"github.com/fdelillo/crm/internal/platform/password"
-	"github.com/fdelillo/crm/internal/platform/ratelimit"
 	"github.com/fdelillo/crm/internal/tenant"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"golang.org/x/time/rate"
 )
 
 // runServe starts the HTTP server: HTTP by default, HTTPS with the local certificate when
@@ -68,7 +66,6 @@ func runServe(ctx context.Context, args []string, e env) error {
 		return err
 	}
 	companies := tenant.NewService(runner, users, industrytemplate.NoopSeeder{}, hasher, recorder, logger, tenant.WithObjectStorage(storage))
-	limiter := ratelimit.NewLimiter(rate.Every(12*time.Minute), 5, c, time.Hour)
 	smtp, err := mailer.NewSMTP(mailer.SMTPConfig{Host: cfg.SMTPHost, Port: cfg.SMTPPort,
 		Username: cfg.SMTPUsername, Password: cfg.SMTPPassword, From: cfg.SMTPFrom})
 	if err != nil {
@@ -81,15 +78,7 @@ func runServe(ctx context.Context, args []string, e env) error {
 	}
 	dispatcher := outbox.NewDispatcher(runner, emailHandler, c, logger)
 
-	api := app.NewAPIRouter()
-	industrytemplate.RegisterRoutes(api)
-	tenant.RegisterRoutes(api, companies, limiter, logger)
-	app.RegisterAuthRoutes(api, users, companies, ratelimit.NewLimiter(rate.Every(3*time.Second), 20, c, time.Minute), logger)
-	app.RegisterMeRoute(api, users, companies, logger)
-	app.RegisterRecoveryRoutes(api, users, ratelimit.NewLimiter(rate.Every(12*time.Minute), 5, c, time.Hour),
-		ratelimit.NewLimiter(rate.Every(3*time.Minute), 20, c, time.Hour), logger)
-	app.RegisterUserRoutes(api, users, companies, ratelimit.NewLimiter(rate.Every(3*time.Minute), 20, c, time.Hour), logger)
-	app.RegisterTenantRoutes(api, users, companies, logger)
+	api := app.BuildAPIRouter(users, companies, c, logger)
 	root := app.NewRootHandler(app.RootDeps{
 		API:       api,
 		Liveness:  app.LivenessHandler(),
