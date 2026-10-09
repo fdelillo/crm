@@ -13,6 +13,7 @@ ampliada (lock de `GRANT crm_tenant`, DD-33); R-25 (IP del cliente detrás de pr
 desde otra conexión, DD-34); R-04 y R-04c mencionan el hallazgo; supuesto 12 nuevo.
 **Quinta revisión 2026-10-05**: nota en R-16 (los locks de la empresa y del usuario pasan a `FOR NO KEY UPDATE`, DD-40). La evaluación original no se edita.
 **Sexta revisión 2026-10-08** (*Accepted*, aprobada por el usuario el 2026-10-08; decimotercera tanda del plan): nota en R-04c (la corrida 1 de T-B905 sumaba la espera en el lock a la retención; hipótesis H-1 sobre el costo con miles de roles), fuentes nuevas y supuesto 15. La evaluación original no se edita.
+**Séptima revisión 2026-10-08** (*Accepted*, aprobada por el usuario el 2026-10-08; decimocuarta tanda del plan): nota (b) en R-04c con el resultado de T-B910 y el techo de A; supuesto 15 confirmado en el comportamiento; supuesto 16 nuevo. La evaluación original no se edita.
 
 Alternativas evaluadas por decisión. Las marcadas **(usuario)** las tomó el usuario antes del
 plan: acá se documenta por qué son razonables y qué cuestan. Las demás son defaults del
@@ -128,6 +129,8 @@ aprovisionamiento abierta, la segunda cae por el `statement_timeout` de `crm_app
 Hipótesis **H-1** (supuesto 15): el registro HTTP sin contención (236 ms de p95, con ~40–50 ms de argon2) sugiere un costo fuera de la transacción medida. Cada registro cambia `pg_auth_members`: la membresía `ADMIN` que PostgreSQL 16+ le da a `crm_provisioner` sobre el rol que crea, y los dos `GRANT`. Después, cada conexión reconstruye la lista de roles de `crm_app` en su siguiente `SET ROLE`, con un costo proporcional a la cantidad de empresas. PostgreSQL 17 eliminó la parte cuadrática de ese cálculo (filtro de Bloom en `roles_is_member_of()`), no la lineal.
 
 Si T-B910 no cumple, las salidas de esta tabla se evalúan con las reglas de la decimotercera tanda: alternativa B recomendada, *pool* de roles pre-creados como alternativa. La evaluación original de la tabla no se edita.
+
+**Nota 2026-10-08 (b) (decimocuarta tanda del plan; *Accepted*, aprobada por el usuario el 2026-10-08)**: T-B910 cumplió con 10.000 roles en las dos corridas (retención p95 de 133,6 y 96,3 ms; 0 `503` con 10 y con 50), así que la opción elegida se mantiene. El costo es lineal en la cantidad de roles: cada registro paga dos `GRANT` y dos `SET ROLE`, de ~2,4–3,1 ms por cada 1.000 roles cada uno, y la retención sube 7,4–9,2 ms de p50 por cada 1.000. Con P = 8, el target deja de cumplirse alrededor de 10.500 roles (plan DD-33 R-f). Las salidas de esta tabla (alternativa B recomendada, *pool* de roles como alternativa) pasan a ser el plan para los disparadores de plan §12.4, no una respuesta a T-B910. Dos mejoras intermedias, sin verificar, se evalúan en ese momento: conceder `<rol> TO crm_app` antes del `GRANT crm_tenant` (sacaría del lock ~30 % de la retención) y bajar P (sube el target derivado).
 
 ## R-05 Migraciones **(usuario: goose embebido)** → ADR-004
 
@@ -757,7 +760,18 @@ Supuestos a validar durante la implementación (no verificados con documentació
     después de cada cambio de `pg_auth_members`; desde PostgreSQL 17 ese costo es lineal en la
     cantidad de roles. Es consistente con el reporte de PostgreSQL 16, con su arreglo y con la
     corrida 1 de T-B905, pero no está verificado en el código de PostgreSQL. Lo confirma o lo
-    descarta el desglose de T-B910 (M-1 a M-4).
+    descarta el desglose de T-B910 (M-1 a M-4). **Decimocuarta tanda**: confirmado en el
+    comportamiento. La retención crece linealmente (cociente de p50 entre 9.500 y 4.500 roles: 1,92
+    y 1,95), y el primer `SET ROLE` de otra conexión después de un registro cuesta 26 y 23 ms de
+    p50, contra 0,8 ms en caliente. Ampliación: los dos `GRANT` también son lineales (M-3: ~25–32 ms
+    de p50 cada uno con 10.000 roles), lo que es consistente con que `crm_provisioner` tiene `ADMIN`
+    sobre cada rol que creó. No se observó que las 10 muestras de calentamiento de `SET LOCAL ROLE`
+    mostraran la reconstrucción (p95 de 0,7–1,0 ms): no las precede un registro. El mecanismo sigue
+    sin verificarse en el código de PostgreSQL.
+16. (Decimocuarta tanda.) La pendiente de plan DD-33 R-f es trabajo de CPU del backend de
+    PostgreSQL, no de red, así que la de producción depende de la CPU de la instancia y puede ser
+    mayor que la medida en Docker Desktop con 8 CPU. Se verifica al cerrar P-1 (T-B910 M-1 y M-2
+    contra una instancia descartable de esa clase).
 
 ---
 

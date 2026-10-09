@@ -84,6 +84,26 @@
 > no la lineal. Es la consecuencia 1 de este ADR, ahora con números. Detalle en
 > `specs/001-empresas-usuarios/revision-13-t-b905.md`.
 
+> **Nota 2026-10-08 (d) (decimocuarta revisión del plan de 001; *Accepted*, aprobada por el usuario el 2026-10-08; no cambia la
+> decisión)**: T-B910 cumplió en las dos corridas (PostgreSQL 18.6, 10.000 empresas, pool de 8):
+> retención del lock con p95 de 133,6 y 96,3 ms, contra < 140; 0 `503` en ráfagas de 10 y de 50;
+> lecturas, login y registro dentro de sus targets. Es la medición que la consecuencia 1 pedía antes
+> de salir a producción (esa consecuencia nombra a T-B905; la que decidió fue T-B910).
+>
+> La hipótesis de la nota (c) se confirmó en el comportamiento: el costo crece **linealmente** con
+> la cantidad de empresas. Cada registro paga dos `GRANT` y dos `SET ROLE`, de ~2,4–3,1 ms por cada
+> 1.000 roles, y cada conexión paga una vez, después de un registro, la reconstrucción de su lista
+> de membresías. Por eso esta decisión tiene un **techo**: con un pool de 8, la retención deja de
+> cumplir su target alrededor de 10.500 empresas (estimación conservadora; rango 10.500–15.000), y
+> con dos instancias de 8, alrededor de 3.600–6.600.
+>
+> El punto (2) de la "Recomendación del arquitecto" pasa a tener disparadores sobre
+> `tenant_roles_total` (DD-33 R-f y §12.4 del plan). Al 50 % del techo (hoy 5.000) se escribe el ADR
+> que reemplaza a este, con la alternativa B recomendada. Al 75 % (hoy 8.000) ese ADR tiene que
+> estar en producción, o el usuario decide seguir con un ADR que lo registre. El techo se recalcula
+> con la pendiente medida en la clase de instancia de producción (P-1) y con cada cambio del pool o
+> de la cantidad de instancias. Detalle en `specs/001-empresas-usuarios/revision-14-t-b910.md`.
+
 ## Contexto
 
 La constitución (principio III) exige que todo dato de negocio pertenezca a una empresa, que toda
