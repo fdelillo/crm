@@ -53,6 +53,10 @@ ajustes antes de la Fase 6). La sección Frontend no cambia: el contrato no camb
 **Corrección 2026-10-05** (revisión del PR #12; plan §18, al final de la octava tanda): DD-9, DD-39 y R-7 corregidos en su descripción (cada cupo es ráfaga + reposición, no un máximo por hora; el pedido de reset tiene tres caminos, no dos). La decisión de DD-39 no cambia; T-B501 precisa el caso del 4.º pedido. El cupo por IP compartido entre pedido y confirmación (reset) y entre `confirm` y `resend` (verificación) queda registrado como deliberado. Contrato **v0.4.2**: solo el texto del rate limit de signup (*patch*; el frontend no cambia). Sin cambio de código.
 **Novena revisión 2026-10-05** (*Accepted*, aprobada por el usuario el 2026-10-05): locks de la empresa y del usuario en la Fase 6 (plan §18, novena tanda). La query de INV-10 y el lock del usuario pasan de `FOR UPDATE` a `FOR NO KEY UPDATE`, porque `FOR UPDATE` choca con el `FOR KEY SHARE` con que PostgreSQL verifica las FK y producía deadlocks con el reset, el login y el cierre de sesión (el de la empresa, confirmado en CI; DD-40, INV-10). La sesión de un login concurrente con la desactivación queda como riesgo aceptado (DD-41, INV-11). También: regresión que reemplaza al test diagnóstico (T-B604), fila de reinvitaciones concurrentes de T-B601 corregida, orden de escritura de la fila de `tenants` en la Fase 7 (T-B704) y caso de limpieza de T-B606 diferido a T-B901. Tareas afectadas: T-B503 (Fase 5, ajuste de `GetTokenFlowUser` dentro del PR de la Fase 6), T-B601, T-B604, T-B605, T-B606 (Fase 6, en curso), T-B704 (Fase 7), T-B901 (Fase 9). La sección Frontend no cambia: el contrato no cambia.
 **Décima revisión 2026-10-06** (*Accepted*, aprobada por el usuario el 2026-10-06): revisión del PR fdelillo/crm#15 (Fase 7; plan §18, décima tanda): `COMMIT` de resultado incierto al subir el logo y lectura con el objeto ausente (DD-42, INV-17 precisada), `LockTenant` en `PATCH /tenant` y en el logo con sus tests de concurrencia (DD-40 corregida, INV-34 nueva), semántica de `PATCH /tenant` y `Local` en el registro (DD-43, DD-27), defensas sin test de la subida y bucket de desarrollo. Tareas afectadas: T-B303 (Fase 3), T-B604 (Fase 6, regla R0), T-B701 a T-B706 y T-B707 nueva (Fase 7). Contrato **v0.4.3** (*patch*: solo descripciones). La sección Frontend no cambia.
+**Undécima revisión 2026-10-07** (*Accepted*): revisión del PR fdelillo/crm#16 (Fase 8; plan §18, undécima tanda): precisa lo que T-B801 a T-B803 verifican (cabeceras del `404` de un id ajeno, lecturas del operador, centinelas en cuerpo y cabeceras, sesiones sin revocar de los desactivados, aplazamiento como `crm_worker`, router de `crm serve`, conteo real). Tareas afectadas: fixture común, T-B801, T-B802, T-B803 y checkpoint de la Fase 8. La sección Frontend no cambia: el contrato no cambia. (Línea agregada en la duodécima revisión.)
+**Duodécima revisión 2026-10-08** (*Accepted*, aprobada por el usuario el 2026-10-08): pendientes de la revisión de cierre del PR fdelillo/crm#16, aplicados en el paso 0 de la Fase 9 (plan §18, duodécima tanda): guard del router de `crm serve` con `go/types` que cubre también el servidor de métricas, armado por `internal/app` (`app.NewMetricsServer`); centinelas cortos y conteo por tipo en T-B801. Cierres para la Fase 9: `/readyz` lee la versión de la base con `SELECT (version_id)` concedido solo a `crm_auth` (migración `00009`), las métricas que leen la base se muestrean cada 60 s y el inventario de roles suma `tenant_roles_missing` y `tenants_total`. Tareas afectadas: T-B801 (Fase 8) y T-B903, T-B904, T-B908 (Fase 9). La sección Frontend no cambia: el contrato no cambia.
+**Decimotercera revisión 2026-10-08** (*Accepted*, aprobada por el usuario el 2026-10-08): detención en T-B905 y pendientes de la revisión de código del PR fdelillo/crm#17 (plan §18, decimotercera tanda; [`revision-13-t-b905.md`](revision-13-t-b905.md)). Target de §13 redefinido (retención sin contención y ráfaga), DD-33 R-e, re-medición T-B910 con reglas de decisión, reglas (4) y (5) del guard de `crm serve` y tests de `runServe` (T-B911). Tareas afectadas: T-B801 (Fase 8, en la rama de la Fase 9), T-B905, T-B910 y T-B911 (nuevas), y la prueba independiente y el checkpoint de la Fase 9. La sección Frontend no cambia: el contrato no cambia.
+**Decimocuarta revisión 2026-10-08** (*Accepted*, aprobada por el usuario el 2026-10-08): resultado de T-B910 registrado (plan §18, decimocuarta tanda; [`revision-14-t-b910.md`](revision-14-t-b910.md)). Se mantiene ADR-005, y la condición de salida a producción está cumplida. En lugar de repetir T-B910 con 20.000 roles, rigen el techo de ADR-005 (plan DD-33 R-f) y los disparadores sobre `tenant_roles_total` (plan §12.4). Tareas afectadas: T-B910 (resultado y autocontrol del tracer) y la condición de salida a producción. Parte B (revisión de código del PR fdelillo/crm#17, *Accepted*, aprobada por el usuario el 2026-10-08): T-B801 (regla (4) ampliada, regla (6) nueva, mutaciones (j) a (q)), T-B903 y la fila 3 del paso 0 de la Fase 9 (mutaciones ratificadas). Sin tareas nuevas ni cambios de código de producción: la parte B cambia el guard y el tracer, que son código de test. La sección Frontend no cambia: el contrato no cambia.
 
 ---
 
@@ -60,7 +64,7 @@ ajustes antes de la Fase 6). La sección Frontend no cambia: el contrato no camb
 
 Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invocación**.
 
-### Estado de la implementación (2026-10-05)
+### Estado de la implementación (2026-10-08)
 
 - **Fase 0**: implementada y mergeada (PR fdelillo/crm#6).
 - **Fase 1**: implementada y mergeada.
@@ -280,6 +284,446 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
   | 5 | T-B801 (`TestServeUsesSharedAPIRouter`) | Las tres reglas sobre `cmd/crm` (Red: hoy un alias del router, o la variable con otro nombre que `api`, pasan) |
   | 6 | T-B801, checkpoint | Contador real de accesos cruzados y de verificaciones (mutación: forzar una detección → el reporte imprime 1 y el test falla) |
   | 7 | Checkpoint de la Fase 8 | `make check` en verde y la suite `Isolation` con el reporte de los conteos |
+
+- **Duodécima revisión (2026-10-08, *Accepted*: aprobada por el usuario el 2026-10-08)**: pendientes de la revisión de cierre del PR fdelillo/crm#16 (Fase 8, mergeado en `main` en `a06b8b8`; plan §18, duodécima tanda), llevados por el usuario al **paso 0 de la Fase 9**: se aplican en la rama de la Fase 9 antes de T-B901, en este orden y con `make check` en verde después de cada paso. Un hueco de diseño (el guard del router de `crm serve` se esquivaba de dos formas, y la Fase 9 agrega un segundo servidor HTTP) y dos precisiones de T-B801. El paso 3 adelanta de T-B903/T-B904 solo el armado del servidor de métricas, para que el guard nuevo cubra los dos servidores desde el principio. Los cierres de la misma revisión para la Fase 9 (versión de esquema de `/readyz` con la migración `00009`, métricas que leen la base muestreadas cada 60 s, inventario de roles) **no son pasos del paso 0**: son filas Red de T-B903 y trabajo de T-B904, en el orden normal de la fase, después de T-B901/T-B902 (las tareas de muestreo usan el registro de `PeriodicTask` de T-B902). Los casos marcados "Duodécima revisión" se escriben primero; cada uno dice si es Red o si caracteriza código correcto y se protege con una **mutación** (se aplica, el caso falla, se restaura). La entrada de estado de esta revisión corrige además lo que la de la Fase 8 dice del `nolint`: la spec no "permitía expresamente" `go/ast`, pedía identificadores "resueltos por su declaración"; con `go/types` el `nolint` desaparece.
+
+  | Orden | Tarea | Ajuste | Red / mutación |
+  |---|---|---|---|
+  | 1 | T-B801 (helper de centinelas) | Centinelas de menos de 8 bytes buscados como palabra completa (delimitadores fuera de `[A-Za-z0-9_-]`); sufijo del fixture de 8 bytes o más, comprobado por el test del helper | Red: el test del helper con `ARS` dentro de un token base64url de `Set-Cookie` hoy lo detecta (falso acceso cruzado). Mutaciones: volver a `bytes.Contains` para los cortos → falla esa fila; quitar el delimitador derecho → falla la fila de `ARS` pegado a letras |
+  | 2 | T-B801 (conteo) | Reporte con `sentinel_checks` y `state_checks` separados; el test falla si alguno es 0 | Red: hoy el reporte imprime un solo total. Mutaciones: contar toda verificación como de centinela → `state_checks=0`, falla; no contar las búsquedas de centinelas → `sentinel_checks=0`, falla |
+  | 3 | T-B903/T-B904 (solo el servidor de métricas) | `app.NewMetricsServer(cfg)`; `app.NewServer` con `root` nil → error; `serve.go` escucha `HTTP_ADDR` y `METRICS_ADDR` antes de arrancar el worker y llama a `app.Serve` una vez por servidor | Red: `NewMetricsServer` no existe; `NewServer(cfg, nil)` hoy devuelve un servidor. Mutaciones: **el handler de métricas monta un router de la API en `/api/`** (o registra `/healthz`) → falla la fila de rutas de T-B903; `Handler: nil` → falla el chequeo explícito `srv.Handler != nil` (fila `app.NewMetricsServer(cfg)` de T-B903); `NewRootHandler` registra `/debug/vars` → falla la fila del mux raíz. *(Corregido en `8ca9dfb` y ratificado en la decimocuarta revisión, parte B.)* |
+  | 4 | T-B801 (`TestServeUsesSharedAPIRouter`) | Reescrito con `go/types` y las reglas (1) a (4); sin `ast.Object` ni `nolint`; si el chequeo de tipos falla, el test falla | Red: los dos esquives de la revisión de cierre pasan hoy y tienen que fallar nombrando archivo, línea y regla: (a) `deps := app.RootDeps{API: app.BuildAPIRouter(...), …}` y `deps.API.(interface{ Get(string, http.HandlerFunc) }).Get("/api/v1/backdoor", h)` antes de `app.NewRootHandler(deps, …)`; (b) `_ = srv` y `app.Serve(ctx, &http.Server{Handler: otro}, ln, logger)`. Mutaciones: (a') `deps.Liveness = deps.API`, sin importar `net/http` → regla (1); (c) listeners intercambiados entre las dos llamadas a `app.Serve` → regla (4); (d) `metricsSrv.Handler = …` → reglas (3) y (4); las cinco mutaciones de la undécima revisión siguen fallando. Siguen en verde: renombrar variables, cambiar el alias del import de `app` y mover el cableado a otro archivo de `cmd/crm` |
+  | 5 | Checkpoint del paso 0 | `make check` en verde; suite `Isolation` con `covered routes=21/21`, `cross-company accesses=0` y `sentinel_checks` y `state_checks` mayores que 0; `crm serve` real: `GET /debug/vars` en `METRICS_ADDR` → `200` JSON, `GET /api/v1/me` en `METRICS_ADDR` → `404`, `GET /debug/vars` en `HTTP_ADDR` → respuesta sin `memstats` | — |
+
+- **Fase 9** (checkpoint completo en `893b0f27470bdf2f1e6ad677ba20ec4be2cd965e`, después de la revisión del PR fdelillo/crm#17): trabajo sobre `feat/001-backend-phase-9` desde `3365e98`, sin rebase ni force-push. Paso 0.1 completo: centinelas menores de 8 bytes con ambos delimitadores fuera de `[A-Za-z0-9_-]`; sufijo real del fixture comprobado ≥ 8 bytes. Red: cinco falsos positivos (`ARS` en cookie, pegado a letras, `_` o `-`). Green y mutaciones restauradas: volver a `bytes.Contains` falla en esos cinco casos; quitar el delimitador derecho falla en `ARSx` y `ARS_`. `make check` completo en verde (127,115 s; lint 0 issues, generación, `-race`, integración PostgreSQL 18, queryrules y reporules).
+
+  Paso 0.2 completo: reporte separado `sentinel_checks`/`state_checks`, ambos exigidos mayores que cero. Red: no existía el reporte tipado. Mutaciones restauradas: contar todo como centinela → `state_checks=0`; omitir centinelas → `sentinel_checks=0`; ambas hacen fallar el caso del reporte. `make check` completo en verde (89,830 s).
+
+  Paso 0.3 completo: `NewMetricsServer` con mux privado (solo `GET /debug/vars`), timeouts y sin TLS; `NewServer` rechaza nil. Dos listeners/servidores, ambos ligados al contexto común antes de iniciar worker; una falla cancela al otro. Red: factory ausente y `METRICS_ADDR` ocupado aceptado. Mutaciones API en métricas, `/healthz`, handler nil y vars en mux raíz fallaron; restauradas. Tests del comando en verde; `make check` completo en verde (98,758 s).
+
+  Paso 0.4 completo: guard con `go/types` (`Defs`, `Uses`, `Selections`, `Implicits`), sin `ast.Object` ni `nolint`, sobre todos los archivos de producción. Comprueba las cuatro reglas, variables de un solo uso, `RootDeps` (incluidos resultados sin nombre), fábricas de servidores y listeners por campo de `config.Config`. Un error de tipos detiene el análisis. Los dos esquives pasaron con el guard anterior; ambos fallan con el nuevo. Mutaciones ejecutadas sobre copias de las fuentes, con el mismo parser/chequeo de tipos/guard: alias de router y función local → regla 1; API envuelta → 1/2; chi en otro archivo → 2; root envuelto → 2/3; deps retenido con HTTP → 1/2, sin HTTP → 1; servidor ajeno → 2/3/4; listeners intercambiados → 4; campo Handler de métricas → 3/4. Cada fallo nombra archivo/línea/regla. En verde: renombrado, alias de import y cableado en otro archivo; error de tipos rechazado.
+
+  **Supuesto del importer**: `source` resuelve correctamente bajo `-race`. Dentro de `make check` (232,044 s, en verde): guard 30,679 s unitario / 33,137 s integración; suite de mutaciones 46,57 s / 79,24 s. Se usa el respaldo autorizado `gc` con lookup de archivos de export de `go list -export -deps -json`, solo stdlib, por ese costo. Las reglas no cambian. Con `gc`: guard 154 ms, suite de mutaciones 1,15 s, `make check` completo 16,913 s (cachés reutilizadas), en verde.
+
+  **Checkpoint del paso 0 completo**: `make check` en verde después de restaurar el pool temporal (12,123 s). `Isolation` con `-race`, `pool_max_conns=4` solo local y sin aplicarlo al DSN de migración: `covered routes=21/21; cross-company accesses=0; sentinel_checks=17841; state_checks=399`. Binario real y proyecto Compose `crm-phase9`: métricas `/debug/vars` → 200 JSON; métricas `/api/v1/me` → 404; HTTP `/debug/vars` → SPA 503, sin memstats/cmdline; SIGTERM → código 0. Puertos PostgreSQL 15439, SMTP 11029/Mailpit 18029, S3 19009/consola 19019, HTTP 18089 y métricas 19099; modo backend HTTP con base URL HTTPS (DD-24).
+
+  **T-B901/T-B902 completas**: limpieza horaria por dueño de tabla como `crm_worker`, con las cuatro queries por nombre en queryrules, transacción y políticas RLS que protegen filas activas e invitaciones abiertas. Dos empresas, fechas de 40 días, revocación/reinvitación/aceptación/desactivación, throttles de 24 horas y estado HTTP de invitados verificados. Tareas con reloj inyectado, envío entre períodos, repetición después de error y rollback ante cancelación (INFO). Mutaciones restauradas: contexto de empresa → falla la observación de rol y permisos; política que permite borrar invitaciones abiertas → fallan la sonda RLS y la fecha DD-25; query de tokens sin filtro adicional → sigue verde, RLS conserva la invitación; ejecución anticipada → falla el conteo por período; cancelación en ERROR → falla el log. `make check` completo en verde; se corrigió la lista esperada de excepciones de queryrules, sin cambiar sus reglas.
+
+  **T-B903/T-B904 completas**: `00009` concede solo USAGE de public y SELECT de version_id a crm_auth; SchemaVersion usa max como goose y ExpectedVersion valida los nombres embebidos. Readiness con plazo total de 1 s (pool incluido), no-store, estados JSON sin versiones, reasons unavailable/timeout/schema_mismatch/schema_unknown/privilege; INV-19 y cancelación durante la transacción → INFO/499. Snapshot T-B109 ampliado a public; no nueva función SECURITY DEFINER. PostgreSQL 18: public pertenece a pg_database_owner; Up/Down/Up reales como crm_owner pasan y Down revoca ambos permisos. Se corrigió el orden de cleanup del test (cerraba su conexión antes de restaurar).
+
+  Métricas completas de §12.1 publicadas por sus productores. Stats e inventario cada 60 s como crm_worker, snapshots atómicos, cinco gauges -1 sin muestra o tras fallo; edad calculada al scrape con reloj; ninguna consulta durante scrape. Rol eliminado y restablecido modifica missing/total, tenants_total cuenta filas; queries por nombre con las excepciones previstas. Contadores de entrega/deferral solo después de commit; rollback no cuenta. Mutaciones restauradas: `<` → falla base más nueva; sin deadline → falla lock y espera del pool (4 s con límite externo del test); 500 ante privilege → falla REVOKE; query durante scrape → falla sonda de llamadas y gauges iniciales; omitir publicación → fallan cinco causas; contar rollback → falla contador. `make check` completo verde (154,976 s). El primer arranque local del contenedor del snapshot falló por puerto desaparecido; repetición en verde.
+
+  **T-B906/T-B907 completas**: comando real con reporte JSON y error si hay empresas fallidas; listado como worker, provision como signup, una transacción confirmada por empresa. Lock de sesión no bloqueante, clave constante en tenant y conexión dedicada en db; nueva interfaz `SessionLocker.WithSessionLock` agregada únicamente a plan §11.1 (autorización de T-B907), sin cambiar TxRunner. Libera ante error, cancelación y panic. Falla intermedia de tres empresas: reporte 3/1, las otras dos confirmadas; idempotencia; segunda corrida rechazada; registro exitoso mientras se recorren 50 empresas. Pruebas en paquete aislado, sondas dedicadas, pico runtime ≤2 conexiones. Requests de A sin rol 500 y log con rol; B 200; acceso restaurado. Cambio en código anterior: el switch de rol inexistente (22023) ahora registra el rol y SQLSTATE sin datos de la query. Mutaciones restauradas: transacción única → empresa anterior invisible y 1 transacción en lugar de 3; sin advisory lock → segunda corrida termina sin error. Comando y liberación en verde; eliminado el test del placeholder. `make check` completo verde (151,487 s).
+
+  **T-B908/T-B909 completas**: presupuesto compartido `app.ShutdownTimeout = outbox.SendBudget + 5 s` (25 s), para HTTP y espera del worker; cierre de conexiones si Shutdown agota el plazo. Red: presupuesto previo 15 s; luego request cancelado internamente generaba ERROR al devolver 503. Ahora cancelación interna conserva 503 con log INFO; worker cancelado no registra ERROR por cancelación. Tests sin sleep, con barreras de request/envío/Shutdown, métricas cerrada antes de liberar un envío que todavía puede terminar con éxito. Mensaje canceled conserva status/attempts/next_attempt_at/last_error/payload; nil del envío después de la señal confirma sent. Mutaciones restauradas: quitar los 5 s → falla presupuesto; log interno ERROR → falla ausencia de ERROR; marcar intento al cancelar → falla snapshot pending. Regresiones previas del worker verdes. Se reemplazó la espera temporal del test de servidor anterior por RegisterOnShutdown. No cambia el arranque ni los pares Serve/listener: las cuatro reglas del guard siguen vigentes y sus mutaciones pasan. `make check` completo verde (116,313 s).
+
+  **Perfil local de cuatro conexiones**: Fase 9 completa y Isolation con `-race` y pool_max_conns=4 en todos los pools del harness, sin ese parámetro en ownerURL de migración; paquetes serializados localmente (`-p 1`), CI sin cambios. En verde (233,431 s): 21/21, 0, sentinel_checks=17841 y state_checks=399. Perfil restaurado; `make check` verde (17,330 s, cachés). Las sondas/bloqueos usan pgx.Connect dedicadas: readyz runtime 1 + blocker dedicado; pool exhaustivo 4 + sin blocker activo; reprovisión runtime máximo 2 + lock/supervisor dedicados; apagado runtime 1 + sonda dedicada. El test de rollback periódico usa una fila terminal de outbox, para no nombrar tablas de identity desde outbox ni siquiera en ese test.
+
+  **T-B905 ejecutado, falló; retorno al arquitecto por ADR-005**: test con build tag bench, fuera de make check. Corrida única sobre el código de `60adc85bfea57ec847fdb2dc734c0eaa75ad2c65`, duración del test 830,79 s (proceso 836,415 s). PostgreSQL exacta 18.6 (Debian 18.6-1.pgdg13+2), imagen postgres:18, digest `postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722`; Go 1.27.1, darwin/amd64, 8 CPU, Docker Desktop con 7937 MB, pool normal de 8 conexiones. Se verificaron 10.000 empresas antes de medir. Register real y hash precalculado para la carga y las tandas; login y signup HTTP medidos con argon2id real, router y cadena común reales, sin red HTTP. SET ROLE incluye lectura de catálogo en el mismo viaje; conexión crm_app fresca; revalidación 304 sin almacenamiento. La duración de las tandas mide el callback de transacción hasta su commit, sin adquisición/BEGIN ni hash, e incluye SetSignupLockTimeout anterior a provision: es la cota superior del intervalo provision → commit que pide T-B905, no una medida aislada de retención del lock. Pool y targets intactos.
+
+  | Operación | Muestras | p95 (ms) | Target §13 (ms) | Resultado / 503 |
+  |---|---:|---:|---:|---|
+  | Transacción de registro, 10 concurrentes | 10 | 672,822 | <250 y 0 respuestas 503 | **Falla p95; 0 respuestas 503** |
+  | Transacción de registro, 50 concurrentes | 50 | 730,195 | Reportar, sin target numérico | 0 respuestas 503 |
+  | SET LOCAL ROLE con catálogo | 190 | 1,087 | Sin target numérico propio | Reportado |
+  | Conexión fresca crm_app | 30 | 11,164 | Sin target numérico propio | Reportado |
+  | GET /api/v1/me | 200 | 10,241 | <50 | Cumple |
+  | GET /api/v1/tenant/logo, 304 | 200 | 8,285 | <50 | Cumple |
+  | POST /api/v1/auth/login | 80 | 53,735 | <400 | Cumple |
+  | POST /api/v1/auth/signup | 60 | 236,475 | <1000 | Cumple |
+
+  `set_role_retry_total`: recovered=0, failed=0, total=0. La falla del umbral concurrente detuvo el checkpoint; no se alteró el diseño, no se relajaron targets ni se repitió la corrida buscando aprobar. El contenedor del benchmark fue retirado por el harness. Log completo: `/tmp/crm-phase9-evidence/b905-benchmark.log`.
+
+  **Estado histórico al detener T-B905, antes de la decimotercera revisión**: se ejecutó y aprobó la prueba real de Compose del paso 0, descrita arriba. La prueba final de readyz con down/up, los dos ciclos de muestreo tras borrar/restaurar un rol y SIGTERM con request en curso no se ejecutó: T-B905 impide avanzar al paso 6. Los casos equivalentes de integración y las mutaciones están en verde, pero no sustituyen esa prueba independiente. Por tanto no hay reason de un migrate down observado en un serve real de cierre; el test de REVOKE verifica reason=privilege. El PR #17 se mantiene borrador. `docker compose -p crm-phase9 ... down -v` completado: retirados PostgreSQL, Mailpit y MinIO, sus dos volúmenes y la red de prueba.
+
+  **Verificación al detener**: `make check` completo volvió a pasar (10,911 s, cachés): lint 0 issues, generación sin diferencias, unitarios e integración PostgreSQL 18 con race, queryrules y reporules. El benchmark queda fuera de ese target y conserva su falla; este verde no aprueba T-B905 ni el checkpoint. CI del push anterior (`ac0225b`, run 37846934604) verde, 4 min 7 s; el trabajo de apagado, benchmark y este reporte se publica en el mismo PR borrador.
+
+  **Alcance sobre fases anteriores**: helper y contadores de Isolation (Fase 8); guard de composición y arranque de serve (dos servidores/listeners); snapshot de privilegios T-B109; runner db (log de rol ausente y publicación de retries), httpx (contador de requests y nivel de cancelación interna), Dispatcher (periodicidad, snapshots/contadores y cancelación), cierre HTTP (presupuesto y barrera del test) y excepciones por nombre de queryrules. Sin dependencias nuevas, cambios al contrato ni a data-model.md. En plan.md cambió únicamente §11.1 para SessionLocker. La afirmación incorrecta del estado de Fase 8 se corrige dentro de esta entrada autorizada, sin editar su entrada anterior.
+
+  **Corrección del estado de Fase 8**: la afirmación anterior de que la spec permitía expresamente `go/ast` era incorrecta: pedía identificadores resueltos por su declaración. El paso 0.4 reemplazó `ast.Object` por `go/types` y eliminó el `nolint`.
+
+  **Desvíos locales**: acceso aprobado a caché Go y Docker; Ryuk falló durante el arranque (puerto `8080/tcp` desaparecido). `TESTCONTAINERS_RYUK_DISABLED=true` solo en el verificador local; no se cambia CI. Evidencia de corridas y mutaciones guardada temporalmente en `/tmp/crm-phase9-evidence`.
+
+  **Reanudación desde 30bbb94, decimotercera revisión aprobada**: la corrida original de T-B905 y la detención anterior se conservan como historia; T-B910 decide la salida a producción y su resultado no bloquea el checkpoint de esta fase. Se omite el paso 0 opcional; la prueba independiente final se verifica sobre el HEAD final en el checkpoint de cierre.
+
+  **Paso 1 completo — T-B801 y env.listen**: Red observado antes del arreglo: usos adicionales por valor de función (e) NewMetricsServer y (f) Serve, bien tipados, dieron violations=0; las aserciones nuevas fallaron. Se prohíbe cualquier uso de las cinco funciones que no sea Fun directo de CallExpr, desde Info.Uses. La regla (4) exige los dos listeners desde env.listen y una sola inicialización de ese campo en run, exactamente (&net.ListenConfig{}).Listen o new(net.ListenConfig).Listen. Mutaciones en copias, restauradas automáticamente: (e) → reglas 5/4, (f)/(g) → 5, (h) net.Listen y ListenConfig.Listen directo → 4, (i) reasignación y otro valor en run → 4; todas nombran archivo/línea/regla. Las anteriores (a)–(d), las cinco de la undécima revisión y los positivos renombrado/import alias/mover archivo siguen pasando. Guard real gc 190,96 ms; make check completo verde (23,338 s, lint 0 issues). Único cambio de producción de este paso: costura env.listen autorizada, sin cambiar la orquestación.
+
+  **Paso 2 completo — T-B911**: antes de agregar los tests, quitar workerDone y stopServers de la API dejó la suite completa de cmd/crm verde (9,502 s y 9,222 s): Red por ausencia de detección. Cuatro filas nuevas contra PostgreSQL 18, listener real que inyecta Accept permanente, SMTP propio retenido y sondas pgx.Connect dedicadas. Cancelación durante SMTP comprobada por ≥500 ms; una segunda barrera en env.stdout, al log final del ciclo después de liberar la conexión, evita que defer pool.Close oculte la falta de espera por el Dispatcher. Al liberar, devuelve nil y pending intacto; cancelación idle nil. Fallas API/métricas envuelven el Accept, cierran ambas interfaces y terminan el worker. Mutaciones restauradas: sin stopServers API → fila 1 no vuelve, sin stopServers métricas → fila 2 no vuelve, sin workerDone → fila 3 devuelve antes de terminar Dispatcher, return nil → filas 1/2 pierden Accept. Runtime explícito 4, una conexión durante SMTP y supervisor dedicado. Sin cambios de producción adicionales. Lint pidió abreviar un selector del test; corregido. make check completo verde (22,420 s, 0 issues).
+
+  **Paso 3 completo — revisión del PR #17**: sonda única registrada en http.DefaultServeMux original, sin sustituir la variable global; delegar con mux.Handle("/", http.DefaultServeMux) → sonda 200, falla (restaurado). La nota de Handler nil se corrige: falla srv.Handler == nil, no la sonda. Dispatcher distingue el error devuelto de ctx.Err(): Red con deferral db.ErrUnavailable y contexto cancelado perdía el err y solo emitía INFO; tareas con error real cancelaban y también ocultaban el err. Green exige ERROR con err, y conserva INFO solo para context.Canceled/db.ErrCanceled. Mutaciones restauradas de ambas clasificaciones → esos mismos fallos. Bind de métricas conserva METRICS_ADDR y ambos errores con errors.Join: Red/mutación anterior → solo "serving HTTP: API Accept failed". Centinelas entre espacios y pegados a dígitos agregados; mutaciones restauradas de dígitos/espacio → fallan sus nuevas filas. Nits: outcomeFields ya no tapa el parámetro, build tag bench en lint (0 issues, no otros arreglos necesarios), test CLI usa tenant.ReprovisionLockKey. Regresiones de métricas, cancelación, T-B911 y reprovisión verdes. make check completo verde (116,409 s). Cambios de producción autorizados: clasificación de errores del Dispatcher y conservación del error de bind; sin cambios a presupuesto, pool, lock_timeout o diseño.
+
+  **Paso 4 completo — T-B910**: reemplazo del test T-B905 por instrumentación exclusiva del bench. Pool propio crm_app con pool_max_conns=8 explícito; QueryTracer y AcquireTracer, muestra/PID/etiqueta y tiempos monotónicos exportados a CSV. Autocontroles sintéticos y reales antes de medir: etiquetas, id, PID, exactamente un BEGIN/provision/COMMIT por éxito y no solapamiento en M-2. Mutaciones restauradas: omitir id → invalid trace event; omitir COMMIT → commit count=0. Los errores de registro conservan end_to_end/pool_wait/provision/callback y el 503; hold queda no medido si no existe COMMIT y se verifica un ROLLBACK. Ningún cambio de producción en este paso; pool runtime, lock_timeout y targets intactos. Dos corridas completas, cada una en un contenedor nuevo; ninguna corrida adicional para desempatar. M-3 es la aproximación explícita sin plpgsql ni SECURITY DEFINER. Todas las duraciones de las tablas están en ms, salvo duración del bloque en segundos. Los percentiles usan rango ceil.
+
+  **Corrida 1**: `run=1 digest=postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722 container=83d06f79837b server_version=18.6 (Debian 18.6-1.pgdg13+2) go=go1.27.1 os=darwin arch=amd64 cpus=8 docker_memory_bytes=8322789376 pool_max_conns=8 trace=/tmp/crm-phase13-evidence/run1/trace-83d06f79837b.csv`.
+
+  **M-1, corrida 1: curva de escala**. Cada celda de intervalos es p50 / p95; n=1.000 por bloque.
+
+  | Empresas | Duración s | hold | provision | SET tenant | pre_callback | callback |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | 1–1000 | 13,772 | 11,029 / 15,444 | 3,027 / 5,186 | 1,647 / 2,941 | 2,112 / 3,476 | 11,442 / 15,969 |
+  | 1001–2000 | 25,500 | 19,222 / 27,098 | 8,347 / 12,025 | 4,360 / 6,158 | 4,952 / 6,918 | 19,679 / 27,953 |
+  | 2001–3000 | 37,738 | 28,369 / 38,513 | 14,189 / 18,685 | 7,218 / 9,959 | 7,880 / 10,375 | 28,912 / 39,287 |
+  | 3001–4000 | 51,675 | 39,935 / 49,404 | 21,198 / 27,233 | 10,745 / 13,355 | 10,822 / 14,297 | 40,492 / 50,036 |
+  | 4001–5000 | 70,308 | 50,067 / 78,598 | 28,307 / 43,971 | 14,048 / 21,351 | 13,869 / 22,236 | 50,688 / 79,467 |
+  | 5001–6000 | 79,733 | 59,186 / 74,205 | 34,361 / 44,157 | 16,844 / 21,822 | 16,744 / 22,858 | 59,767 / 75,236 |
+  | 6001–7000 | 83,850 | 63,126 / 74,439 | 37,555 / 45,246 | 18,096 / 22,318 | 18,370 / 23,169 | 63,788 / 75,120 |
+  | 7001–8000 | 98,610 | 73,726 / 89,308 | 45,095 / 55,011 | 21,322 / 26,160 | 21,593 / 28,077 | 74,382 / 89,839 |
+  | 8001–9000 | 110,862 | 83,000 / 98,089 | 51,232 / 61,840 | 24,089 / 29,610 | 24,728 / 30,725 | 83,730 / 99,034 |
+  | 9001–10000 | 129,118 | 95,899 / 114,922 | 59,567 / 72,273 | 27,950 / 35,424 | 29,419 / 38,016 | 96,578 / 115,660 |
+
+  **M-2, corrida 1: 100 registros aislados, todos los intervalos y sentencias**. No se solapan los hold.
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | callback | 100 | 102,865 | 134,388 | 208,141 |
+  | end_to_end | 100 | 134,666 | 171,610 | 240,499 |
+  | hold | 100 | 101,980 | 133,597 | 207,495 |
+  | pool_wait | 100 | 0,002 | 0,006 | 0,016 |
+  | pre_callback | 100 | 31,627 | 42,022 | 51,415 |
+  | provision | 100 | 63,959 | 81,477 | 112,075 |
+  | statement:GetUserEmail | 100 | 0,829 | 1,479 | 1,927 |
+  | statement:InsertAudit | 100 | 0,967 | 2,016 | 2,662 |
+  | statement:InsertFirstAdmin | 100 | 1,126 | 1,992 | 2,764 |
+  | statement:InsertMessage | 100 | 1,030 | 1,933 | 2,410 |
+  | statement:InsertSession | 100 | 0,985 | 2,247 | 4,079 |
+  | statement:InsertTenant | 100 | 1,113 | 1,671 | 2,121 |
+  | statement:InsertVerificationToken | 100 | 1,082 | 1,997 | 3,570 |
+  | statement:ProvisionTenantRole | 100 | 63,959 | 81,477 | 112,075 |
+  | statement:SetSignupLockTimeout | 100 | 0,744 | 1,150 | 1,349 |
+  | statement:acquire | 100 | 0,002 | 0,006 | 0,016 |
+  | statement:begin | 100 | 2,076 | 3,244 | 6,689 |
+  | statement:commit | 100 | 0,611 | 1,085 | 1,420 |
+  | statement:set_role:crm_signup | 100 | 29,361 | 39,370 | 48,223 |
+  | statement:set_role:tenant | 100 | 29,699 | 37,466 | 112,783 |
+
+  **M-3, corrida 1: cuerpo DDL, 50 transacciones con ROLLBACK**.
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | CREATE_ROLE | 50 | 3,507 | 4,692 | 6,458 |
+  | GRANT_crm_app | 50 | 31,666 | 36,292 | 41,246 |
+  | GRANT_crm_tenant | 50 | 29,139 | 34,076 | 38,744 |
+
+  **M-4, corrida 1: otro backend después del registro**. Siete conexiones reservadas fuerzan Register a la octava; primera y caliente tienen 140 muestras cada una. Cada uno de los 20 GET /me se hace después de su propio registro.
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | first | 140 | 25,970 | 32,563 | 62,889 |
+  | hot | 140 | 0,821 | 1,170 | 2,351 |
+  | me_after_registration | 20 | 39,297 | 48,348 | 54,151 |
+
+  **M-5, corrida 1: cinco ráfagas por tamaño**. La espera estimada en el lock resta el p50 de provision aislado M-2; es una estimación, no una sonda del lock.
+
+  | Simultáneos | Muestras | 503 |
+  | --- | --- | --- |
+  | 10 | 50 | 0 |
+  | 50 | 250 | 0 |
+
+  Tamaño 10: intervalos (hold solo en registros confirmados).
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | callback | 50 | 436,299 | 588,564 | 640,181 |
+  | end_to_end | 50 | 498,044 | 776,776 | 825,045 |
+  | estimated_lock_wait | 50 | 329,865 | 484,288 | 534,805 |
+  | hold | 50 | 435,198 | 583,972 | 639,003 |
+  | pool_wait | 50 | 0,002 | 243,824 | 272,024 |
+  | provision | 50 | 393,824 | 548,247 | 598,764 |
+
+  Tamaño 50: intervalos (hold solo en registros confirmados).
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | callback | 250 | 565,502 | 638,787 | 712,581 |
+  | end_to_end | 250 | 2027,466 | 3776,802 | 4127,521 |
+  | estimated_lock_wait | 250 | 458,129 | 534,948 | 608,608 |
+  | hold | 250 | 564,552 | 637,980 | 711,476 |
+  | pool_wait | 250 | 1423,111 | 3159,150 | 3517,534 |
+  | provision | 250 | 522,087 | 598,907 | 672,567 |
+
+  GET /me durante las ráfagas de 50, corrida 1:
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | GET_me_during_50 | 202 | 8,032 | 43,635 | 3642,020 |
+
+  **M-6, corrida 1: los ocho valores originales conservados, sin target del callback concurrente**.
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | GET_logo_304 | 200 | 4,180 | 7,192 | 10,650 |
+  | GET_me | 200 | 6,063 | 10,149 | 12,481 |
+  | POST_login | 80 | 37,239 | 49,789 | 59,440 |
+  | POST_signup | 60 | 164,636 | 200,875 | 300,622 |
+  | crm_app_connect | 30 | 6,437 | 9,519 | 10,463 |
+  | registration_tx_10 | 10 | 378,519 | 659,217 | 659,217 |
+  | registration_tx_50 | 50 | 571,123 | 608,722 | 677,433 |
+  | set_local_role_with_catalog | 190 | 0,418 | 0,910 | 1,217 |
+
+  Calentamiento de SET LOCAL ROLE separado:
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | SET_role_warm | 10 | 0,591 | 1,001 | 1,001 |
+
+  | Tanda original M-6 | 503 |
+  | --- | --- |
+  | 10 | 0 |
+  | 50 | 0 |
+
+  set_role_retry_total: `{"failed": 0, "recovered": 0, "total": 0}`.
+
+  **Veredicto por target, corrida 1**.
+
+  | Target | Valor p95 / conteo | Umbral | Veredicto |
+  | --- | --- | --- | --- |
+  | T-1 | 133,597 | <140 ms | Cumple |
+  | T-2 | 0 / 50 | 0 respuestas 503 | Cumple |
+  | T-3 / GET_me | 10,149 | <50 ms | Cumple |
+  | T-3 / GET_logo_304 | 7,192 | <50 ms | Cumple |
+  | T-3 / POST_login | 49,789 | <400 ms | Cumple |
+  | T-3 / POST_signup | 200,875 | <1000 ms | Cumple |
+  | Retry | 0 | 0 | Cumple |
+
+  **Veredicto por regla, corrida 1**.
+
+  | Regla | Valor (ms, conteo o ratio) | Se dispara | Consecuencia |
+  | --- | --- | --- | --- |
+  | D-a | 0,000 | No | Solo reportar |
+  | D-b | 43,635 | No | Proponer semáforo si se dispara |
+  | D-c | 32,563 | No | Decisión del arquitecto si se dispara |
+  | D-d | 1,462 | No | Decisión del arquitecto si se dispara |
+
+  **Corrida 2**: `run=2 digest=postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722 container=9fbdd6e54396 server_version=18.6 (Debian 18.6-1.pgdg13+2) go=go1.27.1 os=darwin arch=amd64 cpus=8 docker_memory_bytes=8322789376 pool_max_conns=8 trace=/tmp/crm-phase13-evidence/run2/trace-9fbdd6e54396.csv`.
+
+  **M-1, corrida 2: curva de escala**. Cada celda de intervalos es p50 / p95; n=1.000 por bloque.
+
+  | Empresas | Duración s | hold | provision | SET tenant | pre_callback | callback |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | 1–1000 | 15,802 | 12,143 / 20,052 | 3,085 / 6,192 | 1,753 / 3,502 | 2,294 / 4,238 | 12,693 / 20,778 |
+  | 1001–2000 | 27,220 | 20,747 / 28,772 | 8,522 / 13,133 | 4,523 / 6,923 | 5,094 / 7,915 | 21,341 / 29,359 |
+  | 2001–3000 | 39,835 | 30,006 / 40,590 | 14,120 / 20,485 | 7,302 / 11,184 | 7,993 / 11,257 | 30,665 / 41,233 |
+  | 3001–4000 | 47,575 | 35,586 / 44,229 | 17,889 / 24,221 | 9,287 / 12,349 | 10,116 / 13,611 | 36,284 / 44,739 |
+  | 4001–5000 | 54,579 | 41,415 / 48,688 | 22,410 / 27,947 | 11,121 / 13,674 | 11,918 / 14,518 | 42,140 / 49,412 |
+  | 5001–6000 | 65,285 | 48,480 / 59,243 | 27,567 / 34,483 | 13,452 / 16,262 | 14,473 / 17,900 | 49,180 / 60,093 |
+  | 6001–7000 | 78,286 | 57,997 / 75,229 | 33,767 / 44,775 | 16,202 / 22,012 | 17,403 / 22,049 | 58,745 / 76,106 |
+  | 7001–8000 | 87,810 | 64,536 / 82,839 | 38,612 / 49,072 | 18,316 / 24,519 | 19,768 / 25,189 | 65,267 / 83,839 |
+  | 8001–9000 | 98,055 | 72,841 / 85,497 | 44,090 / 52,140 | 20,938 / 25,036 | 22,545 / 26,375 | 73,574 / 86,312 |
+  | 9001–10000 | 109,692 | 80,649 / 99,110 | 49,684 / 62,361 | 23,411 / 29,170 | 25,118 / 31,621 | 81,376 / 99,980 |
+
+  **M-2, corrida 2: 100 registros aislados, todos los intervalos y sentencias**. No se solapan los hold.
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | callback | 100 | 86,370 | 96,994 | 130,626 |
+  | end_to_end | 100 | 113,156 | 132,918 | 156,974 |
+  | hold | 100 | 85,404 | 96,262 | 129,878 |
+  | pool_wait | 100 | 0,002 | 0,003 | 0,007 |
+  | pre_callback | 100 | 26,415 | 34,023 | 43,067 |
+  | provision | 100 | 52,860 | 62,446 | 74,866 |
+  | statement:GetUserEmail | 100 | 0,832 | 1,164 | 1,286 |
+  | statement:InsertAudit | 100 | 0,923 | 1,485 | 1,839 |
+  | statement:InsertFirstAdmin | 100 | 1,076 | 1,431 | 1,828 |
+  | statement:InsertMessage | 100 | 0,931 | 1,374 | 1,721 |
+  | statement:InsertSession | 100 | 0,974 | 1,411 | 1,755 |
+  | statement:InsertTenant | 100 | 1,092 | 1,308 | 1,531 |
+  | statement:InsertVerificationToken | 100 | 1,019 | 1,481 | 1,716 |
+  | statement:ProvisionTenantRole | 100 | 52,860 | 62,446 | 74,866 |
+  | statement:SetSignupLockTimeout | 100 | 0,736 | 0,953 | 1,769 |
+  | statement:acquire | 100 | 0,002 | 0,003 | 0,007 |
+  | statement:begin | 100 | 2,012 | 2,423 | 2,755 |
+  | statement:commit | 100 | 0,621 | 0,887 | 1,073 |
+  | statement:set_role:crm_signup | 100 | 24,400 | 31,399 | 40,458 |
+  | statement:set_role:tenant | 100 | 24,767 | 27,149 | 43,546 |
+
+  **M-3, corrida 2: cuerpo DDL, 50 transacciones con ROLLBACK**.
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | CREATE_ROLE | 50 | 3,167 | 5,120 | 5,175 |
+  | GRANT_crm_app | 50 | 27,138 | 43,371 | 56,164 |
+  | GRANT_crm_tenant | 50 | 25,320 | 30,849 | 39,499 |
+
+  **M-4, corrida 2: otro backend después del registro**. Siete conexiones reservadas fuerzan Register a la octava; primera y caliente tienen 140 muestras cada una. Cada uno de los 20 GET /me se hace después de su propio registro.
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | first | 140 | 22,628 | 27,655 | 36,703 |
+  | hot | 140 | 0,818 | 0,972 | 1,114 |
+  | me_after_registration | 20 | 34,622 | 41,605 | 41,614 |
+
+  **M-5, corrida 2: cinco ráfagas por tamaño**. La espera estimada en el lock resta el p50 de provision aislado M-2; es una estimación, no una sonda del lock.
+
+  | Simultáneos | Muestras | 503 |
+  | --- | --- | --- |
+  | 10 | 50 | 0 |
+  | 50 | 250 | 0 |
+
+  Tamaño 10: intervalos (hold solo en registros confirmados).
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | callback | 50 | 384,881 | 568,378 | 625,108 |
+  | end_to_end | 50 | 437,466 | 731,953 | 788,356 |
+  | estimated_lock_wait | 50 | 297,623 | 479,986 | 531,312 |
+  | hold | 50 | 383,947 | 567,630 | 622,796 |
+  | pool_wait | 50 | 0,002 | 223,316 | 252,424 |
+  | provision | 50 | 350,483 | 532,846 | 584,171 |
+
+  Tamaño 50: intervalos (hold solo en registros confirmados).
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | callback | 250 | 490,427 | 555,175 | 636,684 |
+  | end_to_end | 250 | 1759,577 | 3288,703 | 3549,918 |
+  | estimated_lock_wait | 250 | 400,614 | 465,828 | 539,308 |
+  | hold | 250 | 489,603 | 553,800 | 635,784 |
+  | pool_wait | 250 | 1243,866 | 2736,773 | 3005,153 |
+  | provision | 250 | 453,474 | 518,687 | 592,168 |
+
+  GET /me durante las ráfagas de 50, corrida 2:
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | GET_me_during_50 | 198 | 8,527 | 42,631 | 3103,737 |
+
+  **M-6, corrida 2: los ocho valores originales conservados, sin target del callback concurrente**.
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | GET_logo_304 | 200 | 3,067 | 5,950 | 9,951 |
+  | GET_me | 200 | 5,097 | 8,194 | 11,582 |
+  | POST_login | 80 | 33,328 | 38,032 | 51,032 |
+  | POST_signup | 60 | 142,854 | 157,771 | 187,982 |
+  | crm_app_connect | 30 | 6,049 | 7,532 | 7,948 |
+  | registration_tx_10 | 10 | 330,973 | 524,373 | 524,373 |
+  | registration_tx_50 | 50 | 506,059 | 541,529 | 594,687 |
+  | set_local_role_with_catalog | 190 | 0,375 | 0,606 | 0,835 |
+
+  Calentamiento de SET LOCAL ROLE separado:
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | SET_role_warm | 10 | 0,358 | 0,748 | 0,748 |
+
+  | Tanda original M-6 | 503 |
+  | --- | --- |
+  | 10 | 0 |
+  | 50 | 0 |
+
+  set_role_retry_total: `{"failed": 0, "recovered": 0, "total": 0}`.
+
+  **Veredicto por target, corrida 2**.
+
+  | Target | Valor p95 / conteo | Umbral | Veredicto |
+  | --- | --- | --- | --- |
+  | T-1 | 96,262 | <140 ms | Cumple |
+  | T-2 | 0 / 50 | 0 respuestas 503 | Cumple |
+  | T-3 / GET_me | 8,194 | <50 ms | Cumple |
+  | T-3 / GET_logo_304 | 5,950 | <50 ms | Cumple |
+  | T-3 / POST_login | 38,032 | <400 ms | Cumple |
+  | T-3 / POST_signup | 157,771 | <1000 ms | Cumple |
+  | Retry | 0 | 0 | Cumple |
+
+  **Veredicto por regla, corrida 2**.
+
+  | Regla | Valor (ms, conteo o ratio) | Se dispara | Consecuencia |
+  | --- | --- | --- | --- |
+  | D-a | 0,000 | No | Solo reportar |
+  | D-b | 42,631 | No | Proponer semáforo si se dispara |
+  | D-c | 27,655 | No | Decisión del arquitecto si se dispara |
+  | D-d | 2,036 | No | Decisión del arquitecto si se dispara |
+
+  **Veredicto conjunto / salida a producción**: T-1, T-2 y T-3 cumplen en ambas corridas; retries=0 en ambas. Ninguna regla D-a a D-d se dispara. Se cumple la condición de T-B910 para salir a producción con ADR-005 tal como está; no se requiere un ADR de reemplazo ni se propone el semáforo de D-b. Esto no despliega el servicio. La corrida 1 de T-B905 sigue conservada arriba y no se repitió. Las dos corridas T-B910 son las únicas corridas completas de la re-medición (procesos 780,113 s y 698,089 s). Los tres archivos del bench quedaron idénticos entre ambas corridas y el commit del paso. Logs y CSV: `/tmp/crm-phase13-evidence/step4-run{1,2}.log` y `/tmp/crm-phase13-evidence/run{1,2}/trace-*.csv`.
+
+  make check del paso 4 completo en verde (129,528 s, lint 0 issues), después de las dos corridas.
+
+
+  **Paso 5 completo — checkpoint de cierre**: make check completo en verde sobre el código terminado (paso 4: 129,528 s; lint 0 issues, generación, -race, integración PostgreSQL 18, queryrules y reporules); El make check de cierre para este reporte también pasó completo: 13,613 s, lint 0 issues. CI del código ea40ad3 verde, 3 min 21 s, run 37864537941 / job 113608009748. El CI del push de cierre y el SHA definitivo se registran en el PR #17 antes de retirarlo de borrador. Un commit por paso, sin rebase ni force-push: b05d321 (guard/costura), 7182c35 (T-B911), 8ca9dfb (revisión del PR), ea40ad3 (T-B910) y el commit de este checkpoint.
+
+  Perfil local final de cuatro conexiones: suite Fase 9/Isolation con -race, -p 1, pool_max_conns=4 solo en el DSN de pgtest; DSN de migración intacto y cambio local restaurado. Resultado 14,803 s: covered routes=21/21; cross-company accesses=0; sentinel_checks=17841; state_checks=399. Las filas nuevas de runServe usan una conexión runtime durante SMTP más un supervisor pgx.Connect dedicado; la sonda del bind tampoco toma conexiones del pool. Los cálculos de readyz, reprovisión y apagado de la ejecución original siguen vigentes, descritos arriba.
+
+  Prueba independiente con crm serve real y Compose: /readyz migrada 200, migrate down de 00009 → 503 con reason=privilege (Down revoca USAGE de public y SELECT por columna), migrate up → 200. JSON sin versiones y no-store. GET /debug/vars en METRICS_ADDR devuelve 200 JSON con las 17 métricas de §12.1; GET /api/v1/me allí da 404; /debug/vars en HTTP_ADDR no contiene memstats ni cmdline. Con dos empresas, DROP ROLE de A como superusuario → A=500, B=200, siguiente ciclo tenant_roles_missing=1; crm tenants reprovision-roles informa tenants=2 y failed=[] → A/B=200 y siguiente ciclo missing=0. B se consulta durante toda la espera y durante el comando (10 requests concurrentes, todos 200 en la prueba preparatoria). Son los dos ciclos de muestreo requeridos: uno tras borrar el rol y otro tras restaurarlo.
+
+  SIGTERM: proceso nuevo para separar los ERROR provocados por las sondas de privilegios del log de apagado. Request real /me detenido por LOCK TABLE con conexión de superusuario dedicada; pg_stat_activity confirma la espera. La misma señal cierra métricas, se libera el lock y el request termina 200; serve sale con código 0 y no hay logs ERROR en ese proceso. La prueba preparatoria midió 0,038 s después de SIGTERM. Se repite la prueba completa sobre el HEAD final del cierre; stdout y logs en /tmp/crm-phase13-evidence/checkpoint-compose-final.log y /tmp/crm-phase9-evidence/independent-{serve,shutdown}.log. Cada ejecución termina con down -v: PostgreSQL, Mailpit, MinIO, los dos volúmenes y la red retirados.
+
+  **Supuestos confirmados**: PostgreSQL 18.6, public pertenece a pg_database_owner; Up/Down/Up de 00009 como crm_owner pasan y Down deja los permisos anteriores, confirmado por las pruebas de migración y el reason=privilege real. No hay SECURITY DEFINER nueva. Importer source medido bajo -race en el paso 0 (30,679/33,137 s para el guard; mutaciones 46,57/79,24 s; make check 232,044 s). Se mantiene el respaldo autorizado gc con go list -export -deps -json; guard real de la revisión 13: 190,96 ms. T-B905 original conservada, T-B910 cumplida en ambas corridas, sin descartar ni repetir corridas para aprobar.
+
+  **Desvíos de esta reanudación**: el primer perfil de cuatro conexiones duró 219,141 s y falló únicamente al arrancar el contenedor del test anterior TestRecordTransactionIsolationAndPrivileges: Docker agotó el plazo consultando el puerto; Fase 9 e Isolation pasaron en esa ejecución. Repetición tras terminar Compose: verde 14,803 s, sin arreglos a auditoría ni aumento de plazos. Log inicial preservado en /tmp/crm-phase13-evidence/checkpoint-pool4-first.log. TESTCONTAINERS_RYUK_DISABLED=true solo local, CI intacto. Puertos locales de Compose: PostgreSQL 15439, SMTP 11029, Mailpit 18029, S3 19009/19019, HTTP 18089 y métricas 19099. HTTP de desarrollo con las cookies enviadas explícitamente por el verificador; no se cambia el contrato de TLS. No se tocan producción, pool runtime, lock_timeout ni targets durante T-B910. La falta de COMMIT en un registro rechazado se informa como hold no medido; en estas dos corridas todos confirmaron (0 respuestas 503), por lo que todos los hold se midieron.
+
+  Cambios autorizados a código anterior en esta reanudación: guard de Fase 8 y costura env.listen, dos filas del helper de centinelas, sonda del mux global original, clasificación de cancelaciones del Dispatcher, nombre outcomeFields, conservación de METRICS_ADDR en error de bind, constante del lock en el test CLI y build tag bench en lint. Cada arreglo de comportamiento tiene su mutación restaurada descrita en los pasos 1–4; los cambios de nombres/configuración son los nits solicitados. Fuera de esta entrada de estado solo se corrigió la nota Handler nil de T-B903 y del paso 0, autorizada expresamente por el usuario. Sin dependencias nuevas ni cambios al contrato, data-model.md o plan.md en los pasos retomados. La única edición de implementación previa a plan.md fue SessionLocker en §11.1, autorizada por T-B907; la revisión documental 30bbb94 pertenece al arquitecto.
+
+  **Decimocuarta revisión, parte B — paso 1 completo (T-B801, regla 4)**: retomado por fast-forward desde 6054b72. Red en fuentes copiadas bien tipadas: j, k, l, m, n y o dieron violations=0; ninguna se caracterizó como detectada previamente. Green: el campo listen es el *types.Var de Underlying(env), comparado por identidad con Info.Selections.Obj y las claves de literales en Info.Uses. Conversiones de env/*env y tipos con su forma se rechazan; new exige IsType en su argumento. Cada mutación da archivo/línea/regla. Regresiones a–i y las cinco anteriores siguen detectadas; renombrado/import alias/mover cableado y new(net.ListenConfig).Listen válidos siguen verdes. Controles adicionales de alias, struct detrás de puntero y restricción de tipo: regla 4. Fuentes originales intactas; las mutaciones solo existen en copias. make check completo verde (21,219 s, lint 0 issues). Sin cambios de producción ni texto de diseño. Evidencia: /tmp/crm-phase14-evidence/step1-{red,green,check}.log.
+
+  | Mutación | Red: violaciones | Green: violaciones | Regla |
+  |---|---:|---:|---:|
+  | j, campo promovido | 0 | 1 | 4 |
+  | k, tipo definido | 0 | 4 | 4 |
+  | l, conversión desde struct anónimo | 0 | 2 | 4 |
+  | m, new con expresión | 0 | 1 | 4 |
+  | n, asignación sin conversión | 0 | 1 | 4 |
+  | o, conversión de puntero | 0 | 2 | 4 |
+
+
+  **Decimocuarta revisión, parte B — paso 2 completo (T-B801, regla 6)**: p/q contra el guard original de 6054b72 dieron violations=0, bien tipadas. Caracterización después del paso 1: p ya tiene una violación de regla 4 (conversión desde *env a unsafe.Pointer), mientras q sigue en 0; no se oculta ese solapamiento. Green: p importa unsafe y q reflect → una violación de regla 6 cada una, con archivo/línea; control adicional import C → cgo.go:2, regla 6. Los imports prohibidos se rechazan antes del chequeo de tipos para que C no dependa del importer. Las restantes mutaciones y positivos del guard siguen verdes. Mutaciones en copias, guard original temporalmente restaurado solo para caracterizar el Red y luego restablecido al del paso 1. make check completo verde (20,797 s, lint 0 issues). Sin código de producción ni texto de diseño. Evidencia: /tmp/crm-phase14-evidence/step2-{baseline-red,red,green,check}.log.
+
+
+  **Decimocuarta revisión, parte B — paso 3 completo (T-B910, autocontrol)**: Red: el control anterior aceptaba omitir o duplicar set_role:tenant y las ocho sentencias no ancla, y aceptaba tenant en una muestra rechazada. Green: éxito exige exactamente las 14 etiquetas de Register, una vez cada una; 503 exige las cinco ancla hasta ProvisionTenantRole y un rollback, sin commit ni etiquetas posteriores. Muestras con errores distintos de ErrUnavailable se rechazan. Mutación solicitada aplicada a la muestra sintética (no a la lista esperada): quitar set_role:tenant → falla por event count=13, required=14; restaurada. Log de measurements_test.go ahora acota la afirmación a las muestras trazadas de Register y declara el conjunto completo, en vez de afirmar cobertura de todas las sentencias a partir de las ancla. Autocontroles sintéticos y reales verdes; no se ejecutó TestPhase9Measurements ni se repitió T-B910.
+
+  | CSV conservado de la corrida | Muestras confirmadas | Rechazadas | Eventos | M-2 | Resultado |
+  |---|---:|---:|---:|---:|---|
+  | 1, trace-83d06f79837b.csv | 10500 | 0 | 147000 | 100 | Exactamente 14 etiquetas, id/PID válidos, M-2 no solapado |
+  | 2, trace-9fbdd6e54396.csv | 10500 | 0 | 147000 | 100 | Exactamente 14 etiquetas, id/PID válidos, M-2 no solapado |
+
+  Autocontrol CSV ejecutado con -race sobre /tmp/crm-phase13-evidence/run{1,2}/trace-*.csv. El CSV no contiene los límites de Register/callback: se reconstruyen solo límites suficientes para verificar eventos e intervalos, sin recalcular los targets ni sus números. make check completo verde (11,609 s, lint 0 issues). Primer intento rojo solo por errorlint en la comparación de EOF, corregida a errors.Is; log inicial conservado. Evidencia: /tmp/crm-phase14-evidence/step3-{red,green,missing-tenant,csv,check,check-final}.log. Sin cambios de producción ni texto de diseño.
+
+
+  **Decimocuarta revisión, parte B — paso 4 completo (T-B911)**: las cuatro filas usan ahora la misma sonda de pg_stat_activity con ticker de 20 ms y contexto de 3 s, en la conexión pgx.ConnectConfig dedicada de superusuario que ya existía. La ausencia de una fila de backend se espera hasta el plazo, en lugar de asumir que pgconn.Close espera a que el backend salga. No hay sleep fijo ni cambios al pool runtime explícito de cuatro conexiones. La retención SMTP de al menos 500 ms y la segunda barrera del log que detecta la falta de workerDone no cambian.
+
+  Verificación exacta: go test -race -tags=integration -run TestPhase9RunServe -count=40 ./cmd/crm, con -v solo para registrar las filas: 40/40 iteraciones y 160/160 filas, exit=0, proceso 85,909 s. Desde antes de la primera iteración y hasta después de la última corrió en paralelo go test -race -tags=integration -count=1 ./...: exit=0, 120,007 s. Por tanto hubo carga durante todo el loop, sin recurrir al caché del fondo. Una corrida del fondo alcanzó para cubrirlo completo; no se agregaron repeticiones innecesarias. make check completo del paso 4 verde (19,997 s, lint 0 issues).
+
+  | Mutación repetida, restaurada | Caso que falla | Evidencia |
+  |---|---|---|
+  | Quitar stopServers después de Serve API | api-fails | No vuelve dentro del plazo del test |
+  | Quitar stopServers después de Serve métricas | metrics-fails | No vuelve dentro del plazo del test |
+  | Quitar la espera de workerDone | cancel-sending | returned before Dispatcher finished, detectado por la barrera del log antes de la sonda |
+  | Devolver nil por serveErr | api-fails y metrics-fails | Accept error lost |
+
+  Hallazgo documental para el arquitecto, sin editar diseño: revisión-14-t-b910.md §B-5 vincula la lectura única de pg_stat_activity con el requisito de 500 ms. Son verificaciones distintas: esa lectura sucede después de volver runServe y comprueba el cierre de backends; los 500 ms se verifican mientras SMTP retiene y siguen cubiertos por sus barreras. Se aplicó el arreglo solicitado a la primera. Evidencia: /tmp/crm-phase14-evidence/step4-{loaded-40,load-1,no-api-stop,no-metrics-stop,no-worker-wait,return-nil,check}.log.
+
+
+  **Decimocuarta revisión, parte B — paso 5 completo (cierre)**: checkpoint del código de tests en `893b0f27470bdf2f1e6ad677ba20ec4be2cd965e`, después de la revisión del PR fdelillo/crm#17. El commit siguiente agrega exclusivamente este cierre documental; su SHA final y el resultado del CI se entregan en el reporte del PR. La entrada no afirma aprobación: corresponde al merge. Se conserva la prueba independiente y las mediciones anteriores; no se repiten Compose ni T-B905/T-B910 porque esta parte B no cambia producción y ordena no repetir el bench.
+
+  Un commit por paso: `ba93793` (regla 4), `e5f24b5` (regla 6), `65d454b` (tracer y CSV), `893b0f2` (sonda de apagado) y el commit documental de cierre. Diff contra `6054b72`: únicamente seis archivos de tests y esta entrada de Estado de la implementación. Mutaciones restauradas, sin dependencias nuevas, cambios de producción, pool, targets, contrato, data-model.md, plan, research o ADR. Se mantiene el importer gc autorizado, sin cambios al respaldo. TESTCONTAINERS_RYUK_DISABLED=true solo local; CI intacto. Desvíos/hallazgos limitados a la caracterización p ya detectada por regla 4 después del paso 1, el errorlint local corregido durante el paso 3 y la precisión documental sobre §B-5 descrita en el paso 4.
+
+  Verificaciones finales: `make check` completo en verde sobre este cierre (4,823 s, lint 0 issues, generación, -race, integración PostgreSQL 18, queryrules y reporules; cachés de los pasos anteriores); push normal, sin rebase ni force-push. El SHA final y el CI del push quedan en el reporte entregado al usuario.
+
+
+- **Decimotercera revisión (2026-10-08, *Accepted*, aprobada por el usuario el 2026-10-08)**: respuesta del arquitecto a la detención en T-B905 y a los pendientes de diseño de la revisión de código del PR fdelillo/crm#17 (plan §18, decimotercera tanda; detalle en [`revision-13-t-b905.md`](revision-13-t-b905.md)). La corrida 1 de T-B905 no se descarta ni se repite: queda como dato. Su target sumaba la espera en el lock a la retención (con P = 8, lo medido es ≈ 8 × la retención), así que no decide si ADR-005 cumple. Orden sobre `feat/001-backend-phase-9`, con `make check` en verde después de cada paso:
+
+  | Orden | Tarea | Qué | Red / mutación |
+  |---|---|---|---|
+  | 0 | Prueba independiente (opcional, ya) | La de Compose descrita en la entrada de la Fase 9, como señal temprana. No reemplaza la del checkpoint | — |
+  | 1 | T-B801 (reglas (4) y (5)) + costura `env.listen` | Regla (5): las cinco funciones del guard solo como llamada directa. Regla (4): listeners desde `e.listen`, con `(&net.ListenConfig{}).Listen` como único valor en `run` | Red: (e) y (f) dan hoy 0 violaciones. Las mutaciones (e) a (i) de T-B801 fallan nombrando archivo, línea y regla; las anteriores siguen fallando |
+  | 2 | T-B911 | Tests de `runServe` | Red: hoy sobreviven quitar la espera de `workerDone` y quitar `stopServers()`. Se aplican las mutaciones de T-B911 |
+  | 3 | T-B910 | Re-medición con desglose, dos corridas | Autocontroles del tracer; targets T-1 a T-3; reglas D-a a D-d reportadas |
+  | 4 | Checkpoint de la Fase 9 | El texto nuevo, debajo de T-B911 | El veredicto de T-B910 no bloquea el cierre |
+
+  El plan documenta en §11.1 la API exportada de la Fase 9, sin cambio de código. Si T-B910 cumple, DD-33 registra los números. Si no, el arquitecto escribe el ADR que reemplaza a ADR-005, y 001 no sale a producción hasta implementarlo.
+
+- **Decimocuarta revisión (2026-10-08, *Accepted*, aprobada por el usuario el 2026-10-08)**: el arquitecto verificó las tablas de T-B910 (plan §18, decimocuarta tanda; detalle en [`revision-14-t-b910.md`](revision-14-t-b910.md)). Se aplica la primera regla de decisión: ADR-005 se mantiene y DD-33 registra los números. La retención crece linealmente con la cantidad de roles (7,4–9,2 ms de p50 por cada 1.000), así que DD-33 suma R-f: con P = 8, T-1 deja de cumplirse alrededor de 10.500 roles. En lugar de repetir T-B910 con 20.000 roles, rigen dos disparadores sobre `tenant_roles_total` (plan §12.4). La parte A no tiene tareas para el desarrollador y no bloquea el merge del PR fdelillo/crm#17. Los cambios de documentos van en la misma rama antes del merge.
+
+  **Parte B** (*Accepted*, aprobada por el usuario el 2026-10-08; revisión de código del PR fdelillo/crm#17, HEAD `371b6b1`; detalle en [`revision-14-t-b910.md`](revision-14-t-b910.md), parte B). Se hace en la misma rama, antes del merge, con `make check` en verde después de cada paso:
+
+  | Orden | Tarea | Qué | Red / mutación |
+  |---|---|---|---|
+  | 1 | T-B801, regla (4) | El campo `listen` por su objeto (`*types.Var` del `Underlying()` de `env`); sin conversiones de `env`; ningún otro tipo con su mismo subyacente; argumento de `new` como tipo | Red: hoy (j) a (o) dan 0 violaciones; si alguna ya falla, se reporta como caracterización. Las anteriores, de (a) a (i), siguen fallando |
+  | 2 | T-B801, regla (6) | Sin `unsafe`, `reflect` ni `C` en los archivos no-test de `cmd/crm` | Red: hoy (p) y (q) dan 0 violaciones |
+  | 3 | T-B910, autocontrol del tracer | Cada muestra confirmada tiene exactamente las etiquetas de `Register` | No se repite el bench. Si los CSV de las dos corridas siguen disponibles, el autocontrol nuevo se corre sobre ellos y se reporta; si no, se dice. Mutación: quitar `set_role:tenant` de una muestra sintética → falla |
+  | 4 | T-B911, fila de cancelación con el SMTP retenido | Hallazgo de implementación: la condición se observa con reintentos hasta un plazo, no con una sola lectura de `pg_stat_activity` | La tarea no cambia: T-B911 ya pide verificarlo "durante al menos 500 ms" |
+  | 5 | Cierre | `make check` en verde; paréntesis de la entrada de la Fase 9 con el SHA final | — |
+
+  El desarrollador no edita texto de diseño (descripciones de tareas, reglas, mutaciones). Si encuentra uno incorrecto, lo reporta en su entrada de estado y lo corrige el arquitecto. La corrección de T-B903 de `8ca9dfb` queda ratificada en la parte B.
 
 ### Convenciones de esta sección
 
@@ -1751,9 +2195,16 @@ de cada empresa.
     | Públicas con token (`/auth/*`) | token de `B` usado junto con la cookie de `A` | la operación afecta solo a `B` (la cookie no cambia la empresa del token); ninguna fila de `A` cambia |
     | `POST /auth/signup` con el email de un usuario de `B` | — | `409 email_already_registered` sin ningún dato de `B` (INV-20) |
     | Revisión del PR #16: lectura como **operador** de `A` (toda ruta `GET` que la tabla de T-B802 declara con éxito para el operador; hoy `/me`, `/tenant`, `/tenant/logo` y el catálogo) | el logo, también con `If-None-Match` = `ETag` de `B` | lo mismo que las filas de lectura de admin: solo datos de `A` y ningún centinela de `B` en cuerpo ni cabeceras (con la excepción del catálogo); el logo, `200` con los bytes y el `ETag` de `A` (nunca `304`). El conjunto se **deriva** de la tabla de T-B802, no de una lista aparte (una lectura nueva del operador queda cubierta sin editar esta fila), y el test falla si sale vacío |
-  - **Centinelas de "ningún dato de la empresa ajena"** (Revisión del PR #16). La empresa ajena de cada fila es la que la operación no debe tocar ni mostrar: `B` en las filas autenticadas como `A` y en el registro con el email de `B`; `A` en las públicas con token o credenciales de `B` (incluido el login de un usuario de `B`), que viajan con la cookie de `A`. Centinelas de una empresa: su id; nombre, zona horaria, moneda, plantilla, fechas y datos de contacto; ids, emails y nombres no nulos de sus usuarios; la clave del logo, su `ETag` y el uuid del logo **sin comillas**; sus tokens crudos de reset, verificación e invitación; el valor de la cookie de cada uno de sus usuarios; y el sufijo común que el fixture agrega a todos sus textos (el fixture lo expone). Se buscan en bytes crudos en el cuerpo **y** en los nombres y valores de todas las cabeceras (incluidas `Set-Cookie`, `Location` y `ETag`) de **toda** respuesta de T-B801, también las `202` y `204` sin cuerpo y los `404` de ids ajenos. Única excepción: la respuesta del catálogo de plantillas (`/industry-templates`, pública y sin datos de empresa) contiene por construcción el código de plantilla de `B`; ahí se buscan todos los centinelas menos ese. El helper tiene su propio test con respuestas armadas: un centinela en una cabecera, otro en el cuerpo, el uuid del logo sin comillas y el sufijo, cada uno detectado.
-  - **Conteo de accesos cruzados** (Revisión del PR #16): cada verificación de aislamiento de T-B801 (centinela encontrado, empresa ajena modificada, `404` distinto del de un id inexistente, sesión creada en otra empresa, logo o `ETag` de la otra empresa) suma 1 a un contador **cuando detecta**. El reporte imprime ese contador y la cantidad de verificaciones ejecutadas siempre, también si el test falla; el test falla si el contador no es 0 o si no se ejecutó ninguna verificación. Ningún número del reporte es un texto fijo.
-  - **El router de `chi.Walk` es el que sirve `crm serve`** (Revisión del PR #16). Test estático sobre **todos** los `.go` no-test de `cmd/crm` (no solo `serve.go`), con los identificadores resueltos por su declaración y no por su nombre: (1) `app.BuildAPIRouter` se llama exactamente una vez, y su resultado es directamente el valor del campo `API` de `app.RootDeps`, o se asigna a una variable local que no se reasigna y cuyo único uso es ese campo; (2) ningún archivo no-test de `cmd/crm` importa `github.com/go-chi/chi/v5` ni sus subpaquetes, ni llama a `http.NewServeMux`, `http.Handle` o `http.HandleFunc`; (3) el resultado de `app.NewRootHandler` llega a `app.NewServer` con la misma regla de un solo uso, sin envolverlo, y nada asigna el campo `Handler` del servidor. Mutaciones que tienen que hacerlo fallar, cada una nombrando archivo y línea: alias (`r := api` y `r.Get(...)`), función local que recibe el router, `API: wrap(app.BuildAPIRouter(...))`, un router chi nuevo en otro archivo de `cmd/crm`, y `app.NewServer(cfg, wrap(root))`.
+  - **Centinelas de "ningún dato de la empresa ajena"** (Revisión del PR #16). La empresa ajena de cada fila es la que la operación no debe tocar ni mostrar: `B` en las filas autenticadas como `A` y en el registro con el email de `B`; `A` en las públicas con token o credenciales de `B` (incluido el login de un usuario de `B`), que viajan con la cookie de `A`. Centinelas de una empresa: su id; nombre, zona horaria, moneda, plantilla, fechas y datos de contacto; ids, emails y nombres no nulos de sus usuarios; la clave del logo, su `ETag` y el uuid del logo **sin comillas**; sus tokens crudos de reset, verificación e invitación; el valor de la cookie de cada uno de sus usuarios; y el sufijo común que el fixture agrega a todos sus textos (el fixture lo expone). Se buscan en bytes crudos en el cuerpo **y** en los nombres y valores de todas las cabeceras (incluidas `Set-Cookie`, `Location` y `ETag`) de **toda** respuesta de T-B801, también las `202` y `204` sin cuerpo y los `404` de ids ajenos. Única excepción: la respuesta del catálogo de plantillas (`/industry-templates`, pública y sin datos de empresa) contiene por construcción el código de plantilla de `B`; ahí se buscan todos los centinelas menos ese. **Centinelas cortos** (duodécima revisión): un valor de menos de 8 bytes (hoy la moneda, p. ej. `ARS`, y el código de plantilla `generic`; cualquier otro que el fixture agregue con menos de 8 bytes entra en la misma regla) se busca solo como palabra completa: el byte anterior y el siguiente están fuera de `[A-Za-z0-9_-]` (el alfabeto de base64url y de los UUID), o son el principio o el fin de la parte buscada (el cuerpo, un nombre de cabecera o un valor de cabecera, cada uno por separado). Los de 8 bytes o más se siguen buscando como subcadena. Motivo: un valor de 3 bytes aparece por azar dentro de los tokens aleatorios de `Set-Cookie` (falso acceso cruzado en alrededor de 1 de cada 3 200 corridas); uno de 8 bytes de base64url, en la práctica nunca. El sufijo común del fixture es el centinela que se busca **dentro** de otros textos: tiene al menos 8 bytes (el fixture ya lo cumple) y el test del helper lo comprueba. El helper tiene su propio test con respuestas armadas: un centinela en una cabecera, otro en el cuerpo, el uuid del logo sin comillas y el sufijo, cada uno detectado; y, para un centinela corto, detectado como valor JSON (`"ARS"`), como valor completo de una cabecera, como elemento de una lista (`ARS, USD`) y entre espacios en un texto, y **no** detectado dentro de un token base64url (`…xARSy…`, `…-ARS_…`) ni pegado a letras o dígitos.
+  - **Conteo de accesos cruzados** (Revisión del PR #16): cada verificación de aislamiento de T-B801 (centinela encontrado, empresa ajena modificada, `404` distinto del de un id inexistente, sesión creada en otra empresa, logo o `ETag` de la otra empresa) suma 1 a un contador **cuando detecta**. El reporte imprime ese contador y las verificaciones ejecutadas **separadas por tipo** (duodécima revisión): `sentinel_checks` (cada búsqueda de un centinela en el cuerpo o en una cabecera) y `state_checks` (snapshots de la empresa ajena, comparaciones de los `404`, empresa de las sesiones creadas, logo y `ETag` propios, prefijo de la clave del logo), con el formato `Isolation: covered routes=N/M; cross-company accesses=D; sentinel_checks=S; state_checks=E`. Se imprime siempre, también si el test falla; el test falla si el contador no es 0, o si `sentinel_checks` o `state_checks` es 0 (un total alto, dominado por búsquedas de texto, no prueba que se haya verificado algún estado). Ningún número del reporte es un texto fijo.
+  - **El router de `chi.Walk` es el que sirve `crm serve`, y solo en `HTTP_ADDR`** (Revisión del PR #16; reglas reescritas en la duodécima revisión). Test estático sobre **todos** los `.go` no-test de `cmd/crm` (no solo `serve.go`), con el paquete verificado por `go/types` (`types.Config.Check` con `importer.ForCompiler(fset, "source", nil)`; solo librería estándar): cada identificador se resuelve a su `types.Object` (`Info.Defs`, `Info.Uses`, `Info.Selections`), nunca por su nombre ni con `ast.Object` (deprecado; el test no lleva `nolint`). Si el chequeo de tipos devuelve cualquier error, el test falla: nunca decide sobre un paquete a medio resolver. *Variable de un solo uso*: variable local (declarada con `:=` o `var` dentro de una función; en una asignación de dos valores, la primera) cuyo objeto aparece exactamente una vez fuera de su declaración (una reasignación, un `_ = x`, un alias o una captura extra cuentan como apariciones), y esa aparición está en la posición que la regla permite. Reglas:
+    (1) `app.BuildAPIRouter` se llama exactamente una vez; su resultado es directamente el valor de la clave `API` de un literal `app.RootDeps`, o una variable de un solo uso que aparece en esa clave. Todo literal de tipo `app.RootDeps` es **directamente** el primer argumento de `app.NewRootHandler` (sin variable intermedia), y ningún objeto declarado en `cmd/crm` (variable, parámetro, resultado o campo) tiene tipo `app.RootDeps` ni `*app.RootDeps`: nadie conserva una referencia al router después de entregarlo.
+    (2) Ningún archivo no-test de `cmd/crm` importa `net/http` ni sus subpaquetes (`net/http/pprof`, `net/http/httptest`, `net/http/httputil`, …), `expvar`, ni `github.com/go-chi/chi/v5` ni sus subpaquetes. Ninguno los necesita: handlers y servidores los arma `internal/app`, y las métricas se publican en el paquete que las produce. Reemplaza la lista anterior (`http.NewServeMux`, `http.Handle`, `http.HandleFunc`) y además impide `http.ListenAndServe`, `http.Serve`, `http.DefaultServeMux` y handlers propios.
+    (3) `app.NewRootHandler` se llama exactamente una vez y su resultado llega al segundo argumento de `app.NewServer`, directo o en una variable de un solo uso, sin envolverlo. `app.NewServer` se llama exactamente una vez y su `*http.Server` es una variable de un solo uso que aparece como argumento `srv` de una llamada a `app.Serve`. En `cmd/crm` no hay ningún literal compuesto de tipo `net/http.Server` (tampoco a través de un alias) ni ninguna selección del campo `net/http.Server.Handler`, de lectura o de escritura.
+    (4) Servidor de métricas (T-B903, T-B904, plan §12.1): `app.NewMetricsServer` se llama exactamente una vez y su resultado es una variable de un solo uso que aparece como argumento `srv` de otra llamada a `app.Serve`. Hay exactamente dos llamadas a `app.Serve` y cada una recibe un par coherente: (servidor de `app.NewServer`, listener de `HTTP_ADDR`) o (servidor de `app.NewMetricsServer`, listener de `METRICS_ADDR`). El listener es una variable de un solo uso asignada desde una llamada al campo `listen` de un valor de tipo `env` (decimotercera revisión; antes, desde `(*net.ListenConfig).Listen` o `net.Listen`), cuyo argumento de dirección es directamente la selección del campo `HTTPAddr` o `MetricsAddr` de `config.Config`, respectivamente. Fuera de esas dos llamadas, el campo `env.listen` aparece una sola vez en los archivos no-test de `cmd/crm`: en el literal de `env` de `run`, con valor exactamente `(&net.ListenConfig{}).Listen` o `new(net.ListenConfig).Listen`, sin ninguna otra asignación ni lectura. Es la costura de T-B911: los tests de `runServe` arman su propio `env`. (Decimocuarta revisión, parte B, *Accepted*, aprobada por el usuario el 2026-10-08.) El campo se reconoce por su objeto, no por el nombre del tipo receptor: el guard toma el `*types.Var` del campo `listen` del `Underlying()` de `env` y lo compara con `info.Selections[sel].Obj()` en cada selección y con `info.Uses[clave]` en cada clave de un literal compuesto. Así cuentan también los accesos por un campo promovido (`struct{ env }`) y por un tipo definido a partir de `env`, que comparten ese objeto. Además, en los archivos no-test de `cmd/crm`: no hay conversiones a `env` ni a `*env`, ni desde ellos; la declaración de `env` es la única declaración de tipo, y su `struct` el único tipo `struct` escrito en el código (incluidos los anónimos, los que están detrás de un puntero y los de una restricción de tipo), cuyo subyacente es idéntico (`types.Identical`) al de `env`, de modo que no existe otro tipo, con nombre o anónimo, desde el cual asignarle un valor; y el argumento de `new` en el literal de `run` tiene que ser un tipo (`info.Types[arg].IsType()`), no una expresión (Go 1.27, la versión del proyecto, acepta una expresión en `new`).
+    (5) (decimotercera revisión) Las cinco funciones que nombran las reglas (1), (3) y (4) (`app.BuildAPIRouter`, `app.NewRootHandler`, `app.NewServer`, `app.NewMetricsServer` y `app.Serve`) solo se usan como llamada directa: cada aparición de su `types.Func` en `Info.Uses` es exactamente el `Fun` de un `ast.CallExpr` (la selección `app.X`, o el identificador si el import es con punto), sin paréntesis de por medio. Cualquier otro uso es una violación (asignarla a una variable, pasarla como argumento, guardarla en un campo o en un literal, `reflect`), aunque las reglas (1) a (4) no vean ninguna llamada fuera de lugar. `go app.Serve(…)` y `defer app.Serve(…)` son llamadas directas.
+    (6) (decimocuarta revisión, parte B, *Accepted*, aprobada por el usuario el 2026-10-08) Ningún archivo no-test de `cmd/crm` importa `unsafe`, `reflect` ni `C` (cgo). Las reglas (1) a (5) suponen que todo acceso a un valor pasa por el sistema de tipos. Con aritmética de punteros (`unsafe`, que además habilita `//go:linkname`), memoria de C, o `reflect` combinado con `unsafe`, el campo `env.listen` o una función protegida se alcanzan sin ninguna selección ni uso que el guard vea. `cmd/crm` no necesita ninguno de los tres. Alcance del guard: protege el invariante de accidentes y de refactors plausibles, no de código escrito para esquivarlo (ensamblador, editar el propio guard), que cubre la revisión de código. Un escape nuevo recibe una regla si puede aparecer en código plausible.
+    Cada violación nombra archivo, línea y número de regla. Mutaciones que tienen que hacerlo fallar: las cinco de la undécima revisión (alias `r := api` y `r.Get(...)`, función local que recibe el router, `API: wrap(app.BuildAPIRouter(...))`, un router chi nuevo en otro archivo de `cmd/crm`, `app.NewServer(cfg, wrap(root))`); y, de la duodécima: (a) `deps := app.RootDeps{API: app.BuildAPIRouter(...), …}` con `deps.API.(interface{ Get(string, http.HandlerFunc) }).Get("/api/v1/backdoor", h)` antes de `app.NewRootHandler(deps, …)` (reglas (1) y (2)); (a') la misma idea sin `net/http`, `deps.Liveness = deps.API` (solo regla (1)); (b) `_ = srv` y `app.Serve(ctx, &http.Server{Handler: otro}, ln, logger)` (reglas (2), (3) y (4)); (c) los listeners intercambiados entre las dos llamadas a `app.Serve` (regla (4)); (d) `metricsSrv.Handler = …` (reglas (3) y (4)); y, de la decimotercera: (e) `mk := app.NewMetricsServer` y `mk(cfg)` (reglas (5) y (4)); (f) `serve := app.Serve` y `serve(serverCtx, srv, ln, logger)` (regla (5)); (g) `(app.Serve)(…)` (regla (5)); (h) un listener de `net.Listen` o de `(*net.ListenConfig).Listen` directo en `runServe` (regla (4)); (i) `e.listen = otro` en `serve.go`, o un valor distinto de `(&net.ListenConfig{}).Listen` en el literal de `env` de `run` (regla (4)); y, de la decimocuarta (parte B): (j) campo promovido: `w := struct{ env }{e}`, `w.listen = otro`, `e = w.env` (regla (4)); (k) tipo definido: `type env2 env`, `e2 := env2(e)`, `e2.listen = otro`, `e = env(e2)` (regla (4)); (l) conversión desde un literal anónimo: `e = env(struct{ …; listen func(context.Context, string, string) (net.Listener, error) }{…, listen: otro})` (regla (4)); (m) `new(net.ListenConfig{Control: c}).Listen` en el literal de `env` de `run` (regla (4)); (n) asignación sin conversión: `var s struct{ … }` con los campos de `env`, `s.listen = otro` y `e = s` (regla (4)); (o) `p := (*struct{ … })(&e)` y `p.listen = otro` (regla (4)); (p) `import "unsafe"` y una escritura del campo por `unsafe.Add(unsafe.Pointer(&e), off)` (regla (6)); (q) `import "reflect"` y `reflect.ValueOf(&e).Elem().FieldByName("listen")` (regla (6)). Siguen en verde: renombrar variables, cambiar el alias del import de `app`, mover el cableado a otro archivo de `cmd/crm` y armar otro `env` en un archivo `_test.go` (el guard no analiza los tests). Si el importer `"source"` no resuelve algún paquete (p. ej. con cgo bajo `-race`) o su duración no es aceptable en `make check`, se usa el importer `"gc"` con un `lookup` que abre los archivos de export de `go list -export -deps -json` (también solo librería estándar); las reglas no cambian. Si una fase posterior cambia cómo arranca `crm serve` (p. ej. T-B909), estas reglas se actualizan en el mismo PR.
   - **Nota para las specs siguientes** (H3, Revisión del PR #16): los casos con id de esta tabla son de **usuarios** (`{userId}`). Cuando la spec 002 sume rutas con id de otro recurso, cada recurso necesita su propio caso (ids de `B` en cada estado del recurso → `404` idéntico en cuerpo y cabeceras, `B` sin cambios), no reusar el de usuarios: la cobertura de rutas obliga a declarar una fila, no a que el caso elegido corresponda al recurso. Un caso de id ajeno que falle si la ruta no tiene el parámetro que espera lo haría verificable.
 - **Green**: todas las filas pasan y la cobertura de rutas es total.
 
@@ -1785,7 +2236,7 @@ de cada empresa.
 III): se corrige antes de cerrar la fase, con su test de regresión.
 
 **Checkpoint Fase 8**: `make check` en verde; el test T-B801 imprime el conteo de rutas cubiertas
-(= total de rutas) y 0 accesos cruzados, los dos como conteos reales junto con la cantidad de verificaciones ejecutadas (Revisión del PR #16, ver T-B801).
+(= total de rutas) y 0 accesos cruzados, los dos como conteos reales junto con las verificaciones ejecutadas por tipo, `sentinel_checks` y `state_checks`, ambas mayores que 0 (Revisión del PR #16 y duodécima revisión, ver T-B801).
 
 ---
 
@@ -1795,8 +2246,11 @@ III): se corrige antes de cerrar la fase, con su test de regresión.
 restaura sin perder los roles, y su rendimiento con muchas empresas (y con registros
 concurrentes) está medido.
 
-**Prueba independiente**: con 10.000 empresas cargadas, los targets de `plan.md` §13 se cumplen;
-borrar un rol de empresa y correr `crm tenants reprovision-roles` restablece el acceso.
+**Prueba independiente**: con 10.000 empresas cargadas, T-B910 reporta los targets de `plan.md`
+§13 (decimotercera revisión) con su veredicto; borrar un rol de empresa y correr
+`crm tenants reprovision-roles` restablece el acceso. Decimotercera revisión: antes decía "los
+targets de §13 se cumplen"; cumplirlos pasa a ser condición para salir a producción, no para
+cerrar la fase.
 
 **T-B901 [T] — Limpieza periódica** · `data-model.md` §3.4, DD-25, ADR-001, plan §4.4
 - **Red** (integración): sesiones y tokens vencidos hace > 30 días, mensajes terminales de > 30
@@ -1836,10 +2290,56 @@ registra las tareas. Las cuatro rutas de sistema ya están en `queryrules.Defaul
   métricas de §12.1 (incluidas `signup_email_exists_total`, `csrf_rejected_total`,
   `signup_lock_timeout_total`, `http_client_canceled_total`, `set_role_retry_total` y, desde la
   quinta revisión, `outbox_delivery_errors_total{cause}` y `outbox_deferred_total`, ADR-024);
-  `tenant_roles_total` = cantidad de empresas, leída como `crm_worker` con la query de
-  `internal/tenant/store/provisioning.sql`.
+  `tenants_total`, `tenant_roles_total` (roles `crm_t_*` del clúster) y `tenant_roles_missing`
+  (empresas sin rol), muestreadas como `crm_worker` con las queries de
+  `internal/tenant/store/provisioning.sql` (duodécima revisión: antes `tenant_roles_total` era la
+  cantidad de empresas, y un rol faltante no se veía; plan §12.4).
+  - **`/readyz`** (duodécima revisión, plan §12.2). Integración contra PostgreSQL 18; los casos que bloquean o revocan algo son secuenciales (sin `t.Parallel()`) y restauran en `t.Cleanup`:
 
-**T-B904 — Implementar `/readyz` y `expvar`**.
+    | Caso | Esperado |
+    |---|---|
+    | Base migrada; `expected` = `migrations.ExpectedVersion(migrations.FS)` | `200 {"status":"ok"}` con `no-store` |
+    | `expected` = versión real + 1 (binario más nuevo que la base) y real − 1 (base más nueva) | `503 {"status":"unavailable"}`; log `WARN` `event=readiness_failed`, `reason=schema_mismatch`, `db_version`, `expected_version`; ninguna versión en la respuesta |
+    | Base caída (runner contra un puerto cerrado) | `503`, `reason=unavailable` |
+    | `public.goose_db_version` con `LOCK TABLE … IN ACCESS EXCLUSIVE MODE` en otra transacción del test | `503`, `reason=timeout`, antes de 3 s (el plazo es 1 s, incluida la espera de una conexión del pool) |
+    | `REVOKE SELECT (version_id) ON public.goose_db_version FROM crm_auth` (el estado de una base sin la migración `00009`) | `503`, nunca `500`; log `ERROR` `reason=privilege` con `security_event=rls_violation` (INV-19 precisada) |
+    | El cliente corta la conexión durante el chequeo | como §9.2: `499`, `INFO` `client_canceled`; sin `WARN` ni `ERROR` |
+    | `db.SchemaVersion` como `crm_auth` | igual a `GetDBVersion` del provider de goose como `crm_owner` |
+    | `db.SchemaVersion` con la tabla vacía (en una transacción del test: `DELETE` como `crm_owner`, `SET LOCAL ROLE crm_auth`, llamada, `ROLLBACK`) | `ok=false`; el handler lo responde como `503` `reason=schema_unknown` |
+    | `SELECT max(version_id) FROM public.goose_db_version` como `crm_app` sin `SET ROLE`, `crm_worker`, `crm_signup` y un `crm_t_*` | `42501` en los cuatro |
+    | Privilegios de los roles de sistema (T-B109 ampliado al esquema `public`; Red: hoy el snapshot solo mira `app`) | `crm_auth`: además de lo de `data-model.md` §3.4, `USAGE` en `public` y `public.goose_db_version.version_id:SELECT`; `crm_worker`, `crm_signup`, `crm_app` y `PUBLIC`: nada en `public`. Las funciones `SECURITY DEFINER` siguen siendo solo `provisioning.provision_tenant_role` (T-B107 sin cambios, INV-08) |
+    | `migrations.ExpectedVersion` | con `migrations.FS`, igual a la versión que registra el `Up` del harness; con un `fstest.MapFS` sin `.sql` o con un nombre sin número, error |
+
+    Mutaciones: comparar con `<` en lugar de `≠` → falla la fila de base más nueva; quitar el plazo de 1 s → falla la fila del `LOCK`; responder `500` ante `db.ErrPrivilege` → falla la fila del `REVOKE`.
+  - **Métricas que leen la base** (duodécima revisión, plan §12.1): nunca se consultan durante un scrape.
+
+    | Caso | Esperado |
+    |---|---|
+    | `outbox.Stats.Run` con pendientes de `A` y `B` y mensajes terminales, reloj falso | `outbox_pending` = cantidad de pendientes; `outbox_oldest_pending_seconds` = reloj − `created_at` del pendiente más viejo, **calculado al leer** `/debug/vars` (avanzar el reloj sin correr la tarea lo aumenta); 0 sin pendientes |
+    | `tenant.RoleInventory.Run`, test secuencial: se borra (como superusuario) el rol de una empresa del fixture, se corre la tarea, se vuelve a llamar a `provision_tenant_role` y se corre otra vez | `tenant_roles_missing` sube en 1 y `tenant_roles_total` baja en 1; después, los dos vuelven a su valor; `tenants_total` = filas de `tenants` de la base del paquete |
+    | Antes de la primera muestra, o cuando la última falló (base caída) | los cinco gauges valen `-1`; log `ERROR` `task=<Name()>` (T-B901); `GET /debug/vars` responde sin esperar a la base (el test lo acota en 1 s) |
+    | `Every()` de las dos tareas | 60 s |
+    | Queries nuevas | `PendingStats`, `CountTenants` y `CountTenantsWithoutRole` figuran por nombre en `queryrules.DefaultExceptions` (T-B112 falla si falta una); `CountTenantRoles` solo lee `pg_catalog` y no necesita excepción |
+  - **Servidor de métricas** (duodécima revisión; se adelanta al paso 0 de esta fase, ver "Estado de la implementación"). Tests de `internal/app` sobre el handler real, sin red:
+
+    | Caso | Esperado |
+    |---|---|
+    | `app.NewMetricsServer(cfg)` | `Addr` = `cfg.MetricsAddr`; `Handler` no nil y distinto de `http.DefaultServeMux`; los timeouts de `NewServer` (plan §10.3); sin `TLSConfig` |
+    | `GET /debug/vars` en su handler | `200` JSON con las variables publicadas (al menos `cmdline`, `memstats` y las de plan §12.1 que ya existan) |
+    | Cada ruta de `chi.Walk` sobre `app.BuildAPIRouter` (parámetros reemplazados por un UUID) con su método; `GET /healthz`, `GET /readyz`, `GET /` | `404` del mux de métricas (`Content-Type` distinto de `application/problem+json`), nunca la respuesta de la API, de ops ni de la SPA |
+    | `POST /debug/vars` | `405` |
+    | Una ruta que el test registra en `http.DefaultServeMux` (sonda) | `404`: el handler de métricas no delega en el mux global (donde el `init` de `expvar` registra `/debug/vars` y donde caería `net/http/pprof`) |
+    | `GET /debug/vars` en el mux raíz (`NewRootHandler` con el router real y la SPA *stub*) | llega a la SPA (el *stub* lo registra); la respuesta no contiene `"memstats"` ni `"cmdline"` |
+    | `app.NewServer(cfg, nil)` | error, antes de escuchar (con `Handler` nil, `net/http` usaría `http.DefaultServeMux`, que en este binario ya expone `/debug/vars`) |
+    | `crm serve` (función `run`) con `METRICS_ADDR` ocupado por un listener del test y `HTTP_ADDR` libre | no arranca: error que nombra `METRICS_ADDR` |
+
+    Mutaciones (se aplican, el caso falla, se restauran): el handler de métricas monta un router de la API en `/api/` o registra `/healthz` → falla la fila de rutas; `Handler: nil` en `NewMetricsServer` → falla la fila de `app.NewMetricsServer(cfg)` (chequeo explícito `srv.Handler != nil`); el mux privado delega en `http.DefaultServeMux` (p. ej. `mux.Handle("/", http.DefaultServeMux)`) → falla la fila de la sonda registrada en el `http.DefaultServeMux` original; `NewRootHandler` registra `/debug/vars` → falla la fila del mux raíz; en `serve.go`, los listeners intercambiados entre las dos llamadas a `app.Serve` → falla la regla (4) de T-B801. *(Corregido por el desarrollador en `8ca9dfb` y ratificado en la decimocuarta revisión, parte B: la sonda detecta la delegación en el mux global, no un `Handler` nil.)*
+  - `/readyz` sigue en el mux raíz (`HTTP_ADDR`, plan §12.2), nunca en el servidor de métricas: `app.ReadinessHandler` reemplaza a `app.ReadinessPlaceholder()` en `RootDeps.Readiness` sin cambiar ninguna regla del guard de T-B801.
+
+**T-B904 — Implementar `/readyz` y `expvar`**. Duodécima revisión:
+- **Servidor de métricas**: lo arma `internal/app` (plan §11.1, §12.1): `app.NewMetricsServer(cfg)` con un `http.ServeMux` propio que solo registra `GET /debug/vars` → `expvar.Handler()`, sin la cadena común; `app.NewServer` rechaza un handler nil. `serve.go` solo lo invoca: escucha `HTTP_ADDR` y después `METRICS_ADDR` antes de arrancar el worker (el error nombra la variable) y llama a `app.Serve` una vez por servidor, con el par de la regla (4) de T-B801. Si una de las dos llamadas a `app.Serve` termina con error mientras la otra corre, `crm serve` cancela el contexto común (se apagan el otro servidor y el worker) y devuelve ese error. Las métricas se publican en el paquete que las produce (como `login_failed_total` en `identity`): `cmd/crm` no importa `expvar` ni `net/http` (regla (2) de T-B801).
+- **`/readyz`**: migración `00009_readiness_schema_version.sql` (`GRANT USAGE ON SCHEMA public` y `GRANT SELECT (version_id) ON public.goose_db_version` a `crm_auth`; el `Down` los revoca; `data-model.md` §3.5, §6); `migrations.ExpectedVersion`, `db.SchemaVersion` y `app.ReadinessHandler` (plan §11.1, §12.2), que reemplaza a `app.ReadinessPlaceholder()` en `RootDeps.Readiness`. `serve.go` calcula la versión esperada al arrancar con `migrations.ExpectedVersion(migrations.FS)`; si falla, no arranca.
+- **Métricas que leen la base**: `outbox.Stats` (query `PendingStats` en `internal/platform/outbox/store/worker.sql`) y `tenant.RoleInventory` (`CountTenants`, `CountTenantsWithoutRole` y `CountTenantRoles` en `internal/tenant/store/provisioning.sql`; el nombre del rol se deriva igual que en `provision_tenant_role`, y la fila de T-B903 que borra un rol lo verifica), registradas por `internal/app` como tareas del `Dispatcher` (T-B902). Los nombres nuevos sobre `outbox_messages` y `tenants` se agregan a `queryrules.DefaultExceptions` en el mismo cambio (plan §4.4). No hace falta ninguna regla nueva de `queryrules` ni de `reporules`: la lectura de la versión es SQL constante de `platform/db` y no toca tablas de empresa; lo que la acota es el test de privilegios de T-B109 ampliado al esquema `public`.
 
 **T-B905 — Benchmark con 10.000 empresas** · R-2, R-3, R-15, R-17, ADR-005, DD-33, DD-34, INV-26
 - Script de carga (test con build tag `bench`, fuera de `make check`) que aprovisiona 10.000
@@ -1856,6 +2356,10 @@ registra las tareas. Las cuatro rutas de sistema ya están en `queryrules.Defaul
   analiza con el runbook de plan §12.3).
 - Comparar con `plan.md` §13. **Si algún target no se cumple, frenar y volver al arquitecto** (se
   reabre ADR-005; opciones ya analizadas en research R-04c y R-28).
+- **Decimotercera revisión**: ejecutada el 2026-10-08 (corrida 1; ver "Estado de la
+  implementación"). El target de registros concurrentes medía la espera en el lock más la
+  retención, no la retención: queda como dato reportado, sin target. Los targets nuevos y el
+  desglose los mide T-B910, que reemplaza este test y quita su `t.Fatal` por `registration_tx_10`.
 
 **T-B906 [T] — Reaprovisionamiento de roles** · plan §12.4, DD-33 (R-d)
 - **Red** (integración):
@@ -1885,11 +2389,91 @@ de la fase y se agrega a plan §11.1 en el mismo cambio (matriz §16).
   request cuyo contexto cancela el propio servidor (no el cliente) recibe `503`; en todo el
   apagado no hay logs `ERROR` por cancelaciones. Quinta revisión (DD-35): si el envío termina con
   éxito durante el apagado, el mensaje queda `sent` (no se reenvía al volver a arrancar), y el
-  proceso espera un envío en curso hasta `outbox.SendBudget` antes de salir.
+  proceso espera un envío en curso hasta `outbox.SendBudget` antes de salir. Duodécima revisión: la
+  misma señal apaga también el servidor de métricas (deja de atender al empezar el apagado y no
+  espera al worker), sin logs `ERROR` por su cierre, y el proceso sale con código 0.
 
 **T-B909 — Implementar el apagado ordenado del servidor y del worker**. Quinta revisión (DD-35): el timeout de apagado es ≥ 25 s (`outbox.SendBudget` + 5 s), porque go-mail no corta una conversación SMTP en curso al cancelarse el contexto.
 
-**Checkpoint Fase 9**: `make check` en verde + resultado de T-B905 reportado con los números.
+**T-B910 — Re-medición con 10.000 empresas: retención del lock, ráfagas y desglose** · R-2, R-3, R-15, R-17, ADR-005, DD-33 (R-b, R-e), DD-34, INV-26 · decimotercera revisión
+- **Alcance**: solo código de test en `internal/testsupport/phase9bench/` (build tag `bench`, fuera de `make check`). Reemplaza a `TestPhase9Benchmark` de T-B905 y conserva sus mediciones: `registration_tx_10` y `registration_tx_50` se siguen reportando, sin target. No cambia el código de producción, `lock_timeout`, el pool de runtime, los targets ni el diseño. Si algo no se puede medir sin tocar producción, se reporta "no medido" y se sigue.
+- **Entorno**:
+  - El de la corrida 1: imagen por digest, `server_version` 18.6 verificada, 10.000 empresas con `Register` real, hash precalculado salvo en login y signup HTTP.
+  - La medición usa un pool propio del bench como `crm_app`, con `pool_max_conns=8` **explícito** en el DSN.
+  - En `ConnConfig.Tracer` va un tracer del bench que implementa `pgx.QueryTracer` y `pgxpool.AcquireTracer`. En pgx v5.11, `BEGIN` y `COMMIT` pasan por `Conn.Exec` y también se trazan; pgxpool usa el `AcquireTracer` si el tracer de la conexión lo implementa.
+  - El log registra digest, `server_version`, Go, SO/arquitectura, CPU, memoria de Docker y `pool_max_conns`.
+- **Instrumentación**:
+  - Id de muestra: el bench lo pone en el contexto antes de llamar a `Register`. El tracer registra por evento el id de muestra, el PID del backend, una etiqueta y tiempos monotónicos.
+  - Etiquetas: el nombre de sqlc (`-- name: X`); `set_role:crm_signup`, `set_role:crm_auth` y `set_role:tenant`, por el texto de `setRole`; `begin`, `commit` y `acquire`.
+  - Intervalos por muestra:
+    - `pool_wait`: lo que tarda el `acquire`;
+    - `pre_callback`: del fin del `acquire` al fin de `set_role:crm_signup`;
+    - `provision`: la sentencia `ProvisionTenantRole`, que con contención incluye la espera por el lock;
+    - **`hold`**: del inicio de `ProvisionTenantRole` al fin del `commit`. Es la cota superior de la retención, porque incluye el `CREATE ROLE` que va antes del `GRANT`;
+    - `callback`: como en la corrida 1;
+    - `end_to_end`: de la llamada a `Register` a su retorno.
+  - Autocontroles (el test falla si no se cumplen): toda sentencia de una muestra tiene etiqueta conocida y el id de muestra; cada muestra tiene exactamente un `begin`, un `ProvisionTenantRole` y un `commit`; en M-2, los `hold` de muestras distintas no se solapan. (Decimocuarta revisión, parte B, *Accepted*, aprobada por el usuario el 2026-10-08.) Además, cada muestra confirmada tiene exactamente las 14 etiquetas de la tabla M-2 de las corridas reportadas (`acquire`, `begin`, `set_role:crm_signup`, `SetSignupLockTimeout`, `ProvisionTenantRole`, `set_role:tenant`, `GetUserEmail`, `InsertTenant`, `InsertFirstAdmin`, `InsertVerificationToken`, `InsertMessage`, `InsertSession`, `InsertAudit` y `commit`), una vez cada una. Una muestra rechazada (`503`) tiene las etiquetas hasta `ProvisionTenantRole` y un `ROLLBACK`, sin `commit`. En las corridas reportadas, M-2 tiene n = 100 en cada una de las 14, así que sus resultados no cambian.
+- **Mediciones**:
+
+  | Id | Qué | Cómo | Se reporta |
+  |---|---|---|---|
+  | M-1 | Curva de escala | Durante la carga de las 10.000, por bloque de 1.000 registros | p50/p95 de `hold`, `provision`, `set_role:tenant`, `pre_callback` y `callback` por bloque; duración de cada bloque |
+  | M-2 | Registro aislado con 10.000 roles | 100 `Register` secuenciales después de la carga, sin otra actividad | p50/p95/máx de cada intervalo y de cada sentencia etiquetada |
+  | M-3 | Cuerpo de `provision_tenant_role` | 50 transacciones por el pool de superusuario: `SET LOCAL ROLE crm_provisioner`; luego `CREATE ROLE`, `GRANT crm_tenant … WITH INHERIT TRUE, SET FALSE` y `GRANT <rol> TO crm_app WITH INHERIT FALSE, SET TRUE`, con los mismos atributos que la función y cada uno medido; `ROLLBACK` | p50/p95 por sentencia (aproximación: sin plpgsql ni `SECURITY DEFINER`) |
+  | M-4 | Primer uso en otra conexión después de un registro | 20 veces: el bench toma 7 conexiones del pool de medición con `Acquire` y corre un `Register` (usa la 8.ª). En cada una de las 7 abre una transacción, mide dos veces seguidas el `setRole` de `crm_auth` (mismo texto que `platform/db`): la primera y la "caliente". Hace `ROLLBACK` y la libera. Además, 20 `GET /api/v1/me` por el router real, cada uno inmediatamente después de un registro | p50/p95/máx de la primera y de la caliente (140 muestras cada una); p95 del `GET /me` posterior a un registro |
+  | M-5 | Ráfagas | 10 y 50 `Register` simultáneos (barrera como en la corrida 1), **5 repeticiones** de cada una. Entre repeticiones se espera a que el pool no tenga conexiones tomadas. Durante cada ráfaga de 50, una goroutine hace `GET /api/v1/me` secuenciales por el router real (mismo pool) desde la barrera hasta que vuelve el último `Register` | Por tamaño: muestras, cantidad de `503` y p50/p95/máx de `end_to_end`, `pool_wait`, `provision`, `hold` y `callback`. Espera estimada en el lock = `provision` − p50 de `provision` en M-2. `GET /me` durante la ráfaga: muestras y p50/p95/máx |
+  | M-6 | Lo de la corrida 1 | Mismo método que T-B905 | Los mismos ocho valores; para `SET LOCAL ROLE`, además, las 10 muestras de calentamiento por separado; `set_role_retry_total` |
+
+- **Corridas**: dos completas, cada una con un contenedor nuevo. Cada target se evalúa en las dos. No se agregan corridas para desempatar ni se repite una buscando aprobar.
+- **Targets** (`plan.md` §13, decimotercera revisión). El test falla si alguno no se cumple en alguna de las dos corridas:
+
+  | Id | Target |
+  |---|---|
+  | T-1 | `hold` de M-2: p95 < 140 ms |
+  | T-2 | Ráfaga de 10 (M-5): 0 `503` en las 50 muestras |
+  | T-3 | M-6, p95: `GET /me` < 50 ms, logo `304` < 50 ms, login < 400 ms, signup < 1000 ms |
+  | — | `set_role_retry_total` = 0 (si no, runbook de plan §12.3) |
+
+- **Reglas que se reportan sin hacer fallar el test** (línea `BENCH rule <id> triggered=<bool>`):
+
+  | Id | Condición | Consecuencia (plan §18, decimotercera tanda) |
+  |---|---|---|
+  | D-a | Algún `503` con 50 simultáneos | Solo se reporta (DD-33 R-a) |
+  | D-b | `GET /me` durante la ráfaga de 50: p95 > 1 s | Se le propone al usuario un semáforo de registros en el proceso |
+  | D-c | M-4: primer `setRole` después de un registro con p95 > 250 ms | Volver al arquitecto |
+  | D-d | M-1: el p95 de `hold` del bloque 9.001–10.000 dividido el del bloque 4.001–5.000 da > 2,5 | Volver al arquitecto (crecimiento más que lineal) |
+
+- **Reporte**: va en la entrada de la Fase 9 de "Estado de la implementación": una tabla por medición y por corrida, y el veredicto por target y por regla. El desarrollador no decide ni cambia el diseño. Si T-1, T-2 o T-3 no se cumplen, o se dispara D-c o D-d, completa igual el checkpoint de la fase y lo reporta.
+- **Resultado** (decimocuarta revisión, *Accepted*, aprobada por el usuario el 2026-10-08): T-1, T-2, T-3 y `set_role_retry_total` = 0 en las dos corridas; D-a a D-d sin disparar. Los números están en "Estado de la implementación" (entrada de la Fase 9) y en plan DD-33. **Si se repite** (al cerrar P-1, contra una instancia descartable de la clase de producción; plan §12.4):
+  - alcanzan M-1 y M-2;
+  - el bench tiene que aceptar un DSN externo (código de test, build tag `bench`);
+  - sin superusuario, M-3 queda "no medido";
+  - además del D-d con p95, se reportan el cociente de p50 de los mismos bloques y la pendiente de M-1 por mínimos cuadrados, que salen del CSV del tracer. En la corrida 1, el D-d con p95 dio 1,46 por un denominador atípico; el de p50, 1,92.
+
+**T-B911 [T] — Tests de `runServe`: falla de un servidor y espera del worker** · T-B904, T-B908, T-B909, DD-35, plan §9.4 · decimotercera revisión
+- **Costura**: `env` (`cmd/crm/main.go`) suma `listen func(ctx context.Context, network, address string) (net.Listener, error)`. `run` lo inicializa con `(&net.ListenConfig{}).Listen`, y `runServe` escucha `HTTP_ADDR` y `METRICS_ADDR` solo con `e.listen` (regla (4) de T-B801). Nada más cambia en `runServe`.
+- **Red** (integración en `cmd/crm`, contra el PostgreSQL del harness, con un SMTP de prueba propio del test y sin `t.Parallel()`):
+
+  | Caso | Esperado |
+  |---|---|
+  | El `listen` del test envuelve listeners reales. Con los dos servidores atendiendo, el `Accept` de `HTTP_ADDR` pasa a devolver un error permanente | `runServe` vuelve antes de `app.ShutdownTimeout` con un error que envuelve el del `Accept` (`errors.Is`). Después, `METRICS_ADDR` no acepta conexiones y el `Dispatcher` terminó |
+  | Lo mismo con el `Accept` de `METRICS_ADDR` | Simétrico: `HTTP_ADDR` deja de aceptar, el worker terminó y `runServe` devuelve el error |
+  | Se cancela el contexto (equivalente a SIGTERM) con un mensaje del outbox en envío, contra un SMTP de prueba que acepta la conexión y retiene la conversación hasta que el test lo libera (menos que los 5 s por etapa de DD-35) | `runServe` **no** vuelve mientras el SMTP retiene (se verifica durante al menos 500 ms). Al liberarlo, vuelve con `nil` antes de `app.ShutdownTimeout`. El mensaje queda `sent` o `pending`, nunca a medio actualizar (T-B908) |
+  | Se cancela el contexto sin trabajo en curso | `nil` |
+
+- **Mutaciones** (se aplican, el caso falla y se restauran):
+  - quitar el `stopServers()` después del `app.Serve` de la API → falla la fila 1 (el test acota la espera);
+  - lo mismo con el de métricas → falla la fila 2;
+  - quitar la espera de `workerDone` → falla la fila 3;
+  - devolver `nil` en lugar de `serveErr` → fallan las filas 1 y 2.
+- **Green**: las cuatro filas pasan. El guard de T-B801, con las reglas (4) y (5) nuevas, pasa sobre el código real y falla con sus mutaciones (e) a (i). `make check` en verde.
+
+**Checkpoint Fase 9** (decimotercera revisión; antes decía "`make check` en verde + resultado de T-B905 reportado con los números"):
+- `make check` en verde.
+- La prueba independiente con `crm serve` real **sobre el HEAD final**: `/readyz` con migrate down/up, dos ciclos de muestreo después de borrar y restaurar un rol, y SIGTERM con un request en curso.
+- T-B905 (corrida 1, ya reportada) y T-B910 reportada con su veredicto. El veredicto de T-B910 **no** bloquea el cierre de la fase: decide si 001 puede salir a producción con ADR-005 tal como está.
+
+**Condición de salida a producción** (no es una condición de la fase; viene de ADR-005, consecuencia 1): T-1, T-2 y T-3 de T-B910 cumplidos en las dos corridas, sin que se disparen D-c ni D-d. Si no, tiene que estar implementado el ADR que reemplace a ADR-005, o una decisión del usuario que lo evite. **Cumplida** el 2026-10-08 (T-B910, dos corridas; decimocuarta revisión, *Accepted*, aprobada por el usuario el 2026-10-08). Desde entonces rigen el techo y los disparadores de plan DD-33 R-f y §12.4.
 
 ---
 
@@ -1910,7 +2494,7 @@ de la fase y se agrega a plan §11.1 en el mismo cambio (matriz §16).
 | US-3 (1, 2, 3, 4) | T-B601 (1), T-B602 (2), T-B604 (3), T-B603/T-B604 (4) |
 | US-4 (1) | T-B702, T-B703, T-B705 |
 | Casos borde (404 de otra empresa, 403 de operador) | T-B606, T-B801, T-B802 |
-| SC-001 Panel en < 3 min | T-B305 (un request), T-B905 (latencia de signup, también con registros concurrentes) |
+| SC-001 Panel en < 3 min | T-B305 (un request), T-B905 (latencia de signup, también con registros concurrentes), T-B910 (de punta a punta en ráfagas) |
 | SC-002 0 accesos cruzados | T-B110, T-B801..T-B804 |
 | P-2 Verificación no bloqueante | T-B309, T-B504 |
 | P-3 Reactivación | T-B604, T-B605, T-B606, T-B801 |
@@ -1934,8 +2518,9 @@ de la fase y se agrega a plan §11.1 en el mismo cambio (matriz §16).
 | `405` con `method_not_allowed` y `Allow` (contrato v0.4.0, research R-26) | T-B004, T-B005, T-B201, T-B203; T-F004, T-F101 (frontend) |
 | DD-32 / INV-25 IP del cliente detrás de proxies (research R-25) | T-B002, T-B004, T-B011, T-B014, T-B203, T-B204, T-B217, T-B218, T-B219, T-B220 |
 | Cancelaciones: `db.ErrCanceled`, `499` en el log, worker sin intento (research R-27) | T-B103, T-B105, T-B106, T-B202, T-B203, T-B211, T-B901, T-B908 |
-| DD-33 / INV-26 Lock de `GRANT crm_tenant` (R-a..R-d; research R-04c; nota en ADR-005) | T-B105 (`55P03`), T-B201, T-B303, T-B304, T-B305, T-B306, T-B903, T-B905, T-B906, T-B907 |
-| DD-34 / INV-27 / R-17 Primer `SET ROLE` desde otra conexión: lectura de catálogo y reintento único (research R-28; nota (b) en ADR-005) | T-B103, T-B104, T-B903, T-B905 |
+| DD-33 / INV-26 Lock de `GRANT crm_tenant` (R-a..R-e; research R-04c; notas en ADR-005) | T-B105 (`55P03`), T-B201, T-B303, T-B304, T-B305, T-B306, T-B903, T-B905, T-B906, T-B907, T-B910 |
+| DD-34 / INV-27 / R-17 Primer `SET ROLE` desde otra conexión: lectura de catálogo y reintento único (research R-28; nota (b) en ADR-005) | T-B103, T-B104, T-B903, T-B905, T-B910 |
+| Arranque y apagado de `crm serve`: dos servidores, listeners, worker, guard de composición (decimotercera revisión) | T-B801, T-B903, T-B904, T-B908, T-B909, T-B911 |
 | Rutas exactas de las queries de sistema (plan §4.4, INV-04, ADR-001) | T-B112, T-B212, T-B304, T-B902, T-B903, T-B907 |
 | FK `tenant_id → tenants(id)` de `sessions` y `user_tokens` (`data-model.md` §2.3/§2.4) | T-B108, T-B111 |
 | ADR-024 / INV-28 / INV-30 Clasificación de fallos de entrega y `last_error` saneado (research R-29) | T-B211, T-B212, T-B213, T-B214, T-B903 |

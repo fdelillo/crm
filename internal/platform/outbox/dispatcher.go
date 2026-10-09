@@ -117,6 +117,7 @@ type Dispatcher struct {
 	clock   clock.Clock
 	logger  *slog.Logger
 	tasks   []PeriodicTask
+	lastRun map[string]time.Time
 
 	// Test hooks (same package only). Each runs after the real call it shadows succeeded, and may
 	// turn that success into a failure, so a test can simulate db.ErrUnavailable or any other
@@ -135,7 +136,8 @@ func NewDispatcher(runner db.TxRunner, handler Handler, c clock.Clock, logger *s
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Dispatcher{runner: runner, handler: handler, clock: c, logger: logger, tasks: tasks}
+	return &Dispatcher{runner: runner, handler: handler, clock: c, logger: logger,
+		tasks: append([]PeriodicTask{terminalCleanup{runner, logger}}, tasks...), lastRun: map[string]time.Time{}}
 }
 
 // Run polls immediately and then every two seconds until ctx is done. A cycle's own failures are
@@ -144,30 +146,39 @@ func NewDispatcher(runner db.TxRunner, handler Handler, c clock.Clock, logger *s
 func (d *Dispatcher) Run(ctx context.Context) error {
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
-	lastRun := map[string]time.Time{}
 	for {
 		if ctx.Err() != nil {
 			return nil
 		}
 		_ = d.RunOnce(ctx)
-		now := d.clock.Now()
-		for _, task := range d.tasks {
-			if now.Sub(lastRun[task.Name()]) < task.Every() {
-				continue
-			}
-			if ctx.Err() != nil {
-				return nil
-			}
-			if err := task.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-				d.logger.ErrorContext(ctx, "periodic task failed", "task", task.Name(), "err", err)
-			}
-			lastRun[task.Name()] = now
-		}
+		d.runTasks(ctx)
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
 		}
+	}
+}
+
+// runTasks shares Run's scheduler with deterministic clock-driven tests.
+func (d *Dispatcher) runTasks(ctx context.Context) {
+	now := d.clock.Now()
+	for _, task := range d.tasks {
+		if ctx.Err() != nil {
+			return
+		}
+		last, ran := d.lastRun[task.Name()]
+		if ran && now.Sub(last) < task.Every() {
+			continue
+		}
+		if err := task.Run(ctx); err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, db.ErrCanceled) {
+				d.logger.InfoContext(ctx, "periodic task canceled", "task", task.Name(), "outcome", "canceled")
+			} else {
+				d.logger.ErrorContext(ctx, "periodic task failed", "task", task.Name(), "err", err)
+			}
+		}
+		d.lastRun[task.Name()] = now
 	}
 }
 
@@ -182,7 +193,11 @@ func (d *Dispatcher) RunOnce(ctx context.Context) error {
 		}
 		handled, err := d.processOne(ctx)
 		if err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(err, errCycleStop) {
+			if errors.Is(err, context.Canceled) || errors.Is(err, db.ErrCanceled) {
+				d.logger.InfoContext(ctx, "outbox cycle canceled", "event", "outbox_delivery", "outcome", "canceled")
+				return nil
+			}
+			if errors.Is(err, errCycleStop) {
 				return nil
 			}
 			d.logger.ErrorContext(ctx, "outbox cycle failed", "event", "outbox_cycle_failed", "err", err)
@@ -207,6 +222,7 @@ func (d *Dispatcher) processOne(ctx context.Context) (bool, error) {
 	// (ADR-024 §4): it is read only after the transaction below has committed, so a stop never
 	// rolls back the mark that was just made.
 	stopCycle := false
+	var outcome deliveryMetric
 	err := d.runner.InSystemTx(context.WithoutCancel(ctx), db.RoleWorker, func(fnCtx context.Context, tx db.Tx) error {
 		q := store.New(tx)
 		row, lockErr := q.LockDueMessage(fnCtx, d.clock.Now())
@@ -242,7 +258,7 @@ func (d *Dispatcher) processOne(ctx context.Context) (bool, error) {
 		if jsonErr := json.Unmarshal(message.Payload, &payload); jsonErr != nil {
 			var resolveErr error
 			stopCycle, resolveErr = d.resolveDelivery(fnCtx, q, item, message.Attempts,
-				&DeliveryError{Cause: CauseBug, Phase: PhaseCompose, Detail: "invalid payload"}, true)
+				&DeliveryError{Cause: CauseBug, Phase: PhaseCompose, Detail: "invalid payload"}, true, &outcome)
 			return resolveErr
 		}
 
@@ -253,12 +269,13 @@ func (d *Dispatcher) processOne(ctx context.Context) (bool, error) {
 		cycleAlive := ctx.Err() == nil
 		cancel()
 		var resolveErr error
-		stopCycle, resolveErr = d.resolveDelivery(fnCtx, q, item, message.Attempts, handleErr, cycleAlive)
+		stopCycle, resolveErr = d.resolveDelivery(fnCtx, q, item, message.Attempts, handleErr, cycleAlive, &outcome)
 		return resolveErr
 	})
 
 	switch {
 	case err == nil:
+		outcome.publish()
 		if stopCycle {
 			return handled, errCycleStop
 		}
@@ -287,7 +304,7 @@ func (d *Dispatcher) processOne(ctx context.Context) (bool, error) {
 // connection-phase failure, and only once err is nil: the mark must still commit (ADR-024 §4 ends
 // the cycle only *after* the failure is recorded), so processOne reads stop once this transaction
 // has succeeded.
-func (d *Dispatcher) resolveDelivery(ctx context.Context, q *store.Queries, item store.LockDueMessageRow, attempts int32, handleErr error, cycleAlive bool) (stop bool, err error) {
+func (d *Dispatcher) resolveDelivery(ctx context.Context, q *store.Queries, item store.LockDueMessageRow, attempts int32, handleErr error, cycleAlive bool, outcome *deliveryMetric) (stop bool, err error) {
 	if handleErr == nil {
 		now := d.clock.Now()
 		markErr := q.MarkSent(ctx, store.MarkSentParams{TenantID: item.TenantID, ID: item.ID, SentAt: &now})
@@ -309,6 +326,7 @@ func (d *Dispatcher) resolveDelivery(ctx context.Context, q *store.Queries, item
 		return false, context.Canceled
 	}
 
+	outcome.cause = de.Cause
 	last := de.LastError()
 	fields := []any{"event", "outbox_delivery", "tenant_id", item.TenantID, "message_id", item.ID,
 		"error_cause", string(de.Cause), "smtp_phase", string(de.Phase), "last_error", last}
@@ -325,13 +343,14 @@ func (d *Dispatcher) resolveDelivery(ctx context.Context, q *store.Queries, item
 			FailedAt: &now, LastError: pgtype.Text{String: last, Valid: true}}); err != nil {
 			return false, &stepFailure{step: stepMark, err: db.MapError(err)}
 		}
+		outcome.failed = true
 		level := de.Cause.LogLevel()
-		outcome := []any{"outcome", "failed"}
+		outcomeFields := []any{"outcome", "failed"}
 		if !de.Cause.Permanent() {
-			outcome = append(outcome, "reason", "max_attempts")
+			outcomeFields = append(outcomeFields, "reason", "max_attempts")
 			level = slog.LevelError
 		}
-		d.logger.Log(ctx, level, "outbox delivery failed", append(fields, outcome...)...)
+		d.logger.Log(ctx, level, "outbox delivery failed", append(fields, outcomeFields...)...)
 	} else {
 		next := now.Add(retryDelay(int(attempts) + 1))
 		if err := q.MarkRecoverable(ctx, store.MarkRecoverableParams{TenantID: item.TenantID, ID: item.ID,
@@ -371,6 +390,7 @@ func (d *Dispatcher) deferMessage(ctx context.Context, item store.LockDueMessage
 	if affected == 0 {
 		return nil
 	}
+	deferredTotal.Add(1)
 	fields := []any{"event", "outbox_delivery", "outcome", "deferred", "step", string(step),
 		"message_id", item.ID, "tenant_id", item.TenantID, "defer_seconds", int(delay.Seconds()), "err", cause}
 	if errors.Is(cause, db.ErrPrivilege) {

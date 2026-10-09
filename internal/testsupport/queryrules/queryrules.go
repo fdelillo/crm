@@ -45,13 +45,23 @@ var DefaultExceptions = []Exception{
 			"LookupUserByEmail":   "crm_auth sees only user routing columns to find the tenant of an email",
 			"LookupTokenByHash":   "crm_auth sees only token routing columns to find its tenant",
 		}},
-	{Path: "internal/identity/store/cleanup.sql", Reason: "periodic cleanup as crm_worker: DELETE of expired rows of sessions, user_tokens and login_throttles; the policies of data-model §3.4 bound which rows"},
+	{Path: "internal/identity/store/cleanup.sql", Reason: "periodic cleanup as crm_worker: DELETE of expired rows of sessions, user_tokens and login_throttles; the policies of data-model §3.4 bound which rows", Queries: map[string]string{
+		"DeleteExpiredSessions":   "crm_worker: old expired or revoked sessions",
+		"DeleteExpiredUserTokens": "crm_worker: old tokens, preserving open invitations (DD-25)",
+		"DeleteOldLoginThrottles": "crm_worker: old throttles without a live lock",
+	}},
 	{Path: "internal/platform/outbox/store/worker.sql", Reason: "queue and cleanup queries as crm_worker: they see queue columns of every company",
 		Queries: map[string]string{
-			"LockDueMessage": "crm_worker locks one due routing row across tenants; recipient and payload are read only after AsTenant",
-			"DeferMessage":   "crm_worker: aplazar un mensaje pendiente cuya fase de empresa falló (ADR-024 §6)",
+			"PendingStats":           "crm_worker: sample global pending queue columns every 60 seconds",
+			"LockDueMessage":         "crm_worker locks one due routing row across tenants; recipient and payload are read only after AsTenant",
+			"DeleteTerminalMessages": "crm_worker: terminal messages older than 30 days",
+			"DeferMessage":           "crm_worker: aplazar un mensaje pendiente cuya fase de empresa falló (ADR-024 §6)",
 		}},
-	{Path: "internal/tenant/store/provisioning.sql", Reason: "crm_worker and crm_signup: list tenants.id (reprovisioning, tenant_roles_total) and call provision_tenant_role (registration)"},
+	{Path: "internal/tenant/store/provisioning.sql", Reason: "crm_worker and crm_signup: list tenants.id and provision company roles", Queries: map[string]string{
+		"ListTenantIDs":           "crm_worker: operational reprovisioning of every company",
+		"CountTenants":            "crm_worker: sample tenants count",
+		"CountTenantsWithoutRole": "crm_worker: sample companies missing their derived role",
+	}},
 }
 
 var (

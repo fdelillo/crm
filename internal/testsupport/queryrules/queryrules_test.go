@@ -231,6 +231,9 @@ func TestCleanupAndProvisioningNamesAreExemptOnlyAtTheirPath(t *testing.T) {
 	want := []string{
 		"internal/orders/store/cleanup.sql ",
 		"internal/orders/store/provisioning.sql ",
+		"internal/tenant/store/provisioning.sql CountTenants",
+		"internal/tenant/store/provisioning.sql CountTenantsWithoutRole",
+		"internal/tenant/store/provisioning.sql ListTenantIDs",
 	}
 	if got := summarize(vs); !slices.Equal(got, want) {
 		t.Errorf("violations = %v, want %v", got, want)
@@ -268,8 +271,16 @@ func TestDefaultExceptionsCheckUnlistedAndStaleQueries(t *testing.T) {
 		"internal/identity/store/auth_lookup.sql LookupTokenByHash",
 		"internal/identity/store/auth_lookup.sql LookupUserByEmail",
 		"internal/identity/store/auth_lookup.sql UserByEmail",
+		"internal/identity/store/cleanup.sql DeleteExpiredSessions",
+		"internal/identity/store/cleanup.sql DeleteExpiredUserTokens",
+		"internal/identity/store/cleanup.sql DeleteOldLoginThrottles",
 		"internal/platform/outbox/store/worker.sql DeferMessage",
+		"internal/platform/outbox/store/worker.sql DeleteTerminalMessages",
 		"internal/platform/outbox/store/worker.sql LockDueMessage",
+		"internal/platform/outbox/store/worker.sql PendingStats",
+		"internal/tenant/store/provisioning.sql CountTenants",
+		"internal/tenant/store/provisioning.sql CountTenantsWithoutRole",
+		"internal/tenant/store/provisioning.sql ListTenantIDs",
 	}
 	if got := summarize(vs); !slices.Equal(got, want) {
 		t.Errorf("violations:\n got %v\nwant %v", got, want)

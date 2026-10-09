@@ -18,13 +18,12 @@ func LivenessHandler() http.Handler {
 	})
 }
 
-// ReadinessPlaceholder answers GET /readyz with 503 until T-B903 implements the real check
-// (database reachable and migrations up to date). It exists so /readyz is never served by the SPA.
+// ReadinessPlaceholder is the unavailable handler used by composition tests without a database.
 func ReadinessPlaceholder() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
-		httpx.SetLogLevel(r, slog.LevelWarn) // expected until T-B903
+		httpx.SetLogLevel(r, slog.LevelWarn)
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = io.WriteString(w, `{"status":"unavailable"}`)
 	})

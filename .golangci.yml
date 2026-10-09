@@ -6,6 +6,7 @@ run:
   # Lint the integration tests too (they carry the `integration` build tag).
   build-tags:
     - integration
+    - bench
 
 linters:
   default: standard # errcheck, govet, ineffassign, staticcheck, unused

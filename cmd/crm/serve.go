@@ -2,12 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
-	"net"
 	"time"
 
+	"github.com/fdelillo/crm/db/migrations"
 	"github.com/fdelillo/crm/internal/app"
 	"github.com/fdelillo/crm/internal/identity"
 	"github.com/fdelillo/crm/internal/identity/emails"
@@ -41,6 +42,10 @@ func runServe(ctx context.Context, args []string, e env) error {
 	if err != nil {
 		return err
 	}
+	expected, err := migrations.ExpectedVersion(migrations.FS)
+	if err != nil {
+		return err
+	}
 	logger := slog.New(slog.NewJSONHandler(e.stdout, nil))
 	// Behind a proxy that is not listed here every client looks like the proxy (one shared rate limit
 	// bucket, useless IPs in logs and audit): the first line says what is trusted (DD-32).
@@ -55,6 +60,7 @@ func runServe(ctx context.Context, args []string, e env) error {
 	}
 	defer pool.Close()
 	runner := db.NewTxRunner(pool, db.WithLogger(logger))
+	app.LogServerVersion(ctx, runner, logger)
 	c := clock.Real{}
 	hasher := password.NewHasher(4)
 	recorder := audit.NewRecorder()
@@ -76,13 +82,13 @@ func runServe(ctx context.Context, args []string, e env) error {
 	if err != nil {
 		return err
 	}
-	dispatcher := outbox.NewDispatcher(runner, emailHandler, c, logger)
+	dispatcher := outbox.NewDispatcher(runner, emailHandler, c, logger, app.PeriodicTasks(runner, c, logger)...)
 
 	api := app.BuildAPIRouter(users, companies, c, logger)
 	root := app.NewRootHandler(app.RootDeps{
 		API:       api,
 		Liveness:  app.LivenessHandler(),
-		Readiness: app.ReadinessPlaceholder(),
+		Readiness: app.ReadinessHandler(runner, expected, logger),
 		// Until the web package embeds the built SPA (T-F008) the interface answers 503.
 		SPA: app.SPAUnavailableHandler(),
 	}, app.NewCommonMiddleware(logger, cfg.IsLocal(), cfg.TrustedProxies))
@@ -92,24 +98,47 @@ func runServe(ctx context.Context, args []string, e env) error {
 	if err != nil {
 		return err
 	}
-	var lc net.ListenConfig
-	ln, err := lc.Listen(ctx, "tcp", cfg.HTTPAddr)
+	serverCtx, stopServers := context.WithCancel(ctx)
+	defer stopServers()
+	ln, err := e.listen(serverCtx, "tcp", cfg.HTTPAddr)
 	if err != nil {
 		return fmt.Errorf("listening on HTTP_ADDR %s: %w", cfg.HTTPAddr, err)
 	}
-	workerCtx, stopWorker := context.WithCancel(ctx)
+	// Serve owns each listener. Starting this goroutine here also releases HTTP_ADDR
+	// if the second bind fails, without retaining or reusing the listener.
+	apiDone := make(chan error, 1)
+	go func() {
+		apiDone <- app.Serve(serverCtx, srv, ln, logger)
+		stopServers()
+	}()
+	metricsSrv := app.NewMetricsServer(cfg)
+	metricsLn, err := e.listen(serverCtx, "tcp", cfg.MetricsAddr)
+	if err != nil {
+		stopServers()
+		return errors.Join(fmt.Errorf("listening on METRICS_ADDR %s: %w", cfg.MetricsAddr, err), <-apiDone)
+	}
+	metricsDone := make(chan error, 1)
+	go func() {
+		metricsDone <- app.Serve(serverCtx, metricsSrv, metricsLn, logger.With("interface", "metrics"))
+		stopServers()
+	}()
+	workerCtx, stopWorker := context.WithCancel(serverCtx)
 	defer stopWorker()
 	workerDone := make(chan error, 1)
 	go func() { workerDone <- dispatcher.Run(workerCtx) }()
-	serveErr := app.Serve(ctx, srv, ln, logger)
+	serveErr := <-apiDone
+	metricsErr := <-metricsDone
+	if serveErr == nil {
+		serveErr = metricsErr
+	}
 	stopWorker()
 	select {
 	case workerErr := <-workerDone:
 		if serveErr == nil && workerErr != nil {
 			return workerErr
 		}
-	case <-time.After(25 * time.Second):
-		return fmt.Errorf("outbox worker did not stop within 25 seconds")
+	case <-time.After(app.ShutdownTimeout):
+		return fmt.Errorf("outbox worker did not stop within %s", app.ShutdownTimeout)
 	}
 	return serveErr
 }

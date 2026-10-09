@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -169,7 +170,7 @@ func jsonBody(v any) []byte {
 
 // Only T-B801 supplies a counter. Other phases retain the same assertions without
 // contributing to its report; no global state or extra connection is involved.
-type isolationCount struct{ detections, verifications int }
+type isolationCount struct{ detections, sentinelChecks, stateChecks int }
 
 func counterFor(counters []*isolationCount) *isolationCount {
 	if len(counters) == 0 {
@@ -180,14 +181,28 @@ func counterFor(counters []*isolationCount) *isolationCount {
 func (c *isolationCount) verify(t *testing.T, isolated bool, format string, args ...any) {
 	t.Helper()
 	if c != nil {
-		c.verifications++
-		if !isolated {
+		c.stateChecks++
+	}
+	c.check(t, isolated, format, args...)
+}
+func (c *isolationCount) verifySentinel(t *testing.T, isolated bool, format string, args ...any) {
+	t.Helper()
+	if c != nil {
+		c.sentinelChecks++
+	}
+	c.check(t, isolated, format, args...)
+}
+func (c *isolationCount) check(t *testing.T, isolated bool, format string, args ...any) {
+	t.Helper()
+	if !isolated {
+		if c != nil {
 			c.detections++
 		}
-	}
-	if !isolated {
 		t.Errorf(format, args...)
 	}
+}
+func (c *isolationCount) report(covered, total int) string {
+	return fmt.Sprintf("Isolation: covered routes=%d/%d; cross-company accesses=%d; sentinel_checks=%d; state_checks=%d", covered, total, c.detections, c.sentinelChecks, c.stateChecks)
 }
 
 func assertUnchanged(t *testing.T, f *e2e.Scenario, id uuid.UUID, before map[string]string, counters ...*isolationCount) {
@@ -246,6 +261,29 @@ type sentinelCheck struct {
 	found           bool
 }
 
+// Values shorter than eight bytes require both base64url/UUID word boundaries.
+func containsSentinel(data, value []byte) bool {
+	if len(value) >= 8 {
+		return bytes.Contains(data, value)
+	}
+	word := func(b byte) bool {
+		return b >= 'A' && b <= 'Z' || b >= 'a' && b <= 'z' || b >= '0' && b <= '9' || b == '_' || b == '-'
+	}
+	for start := 0; start <= len(data)-len(value); {
+		i := bytes.Index(data[start:], value)
+		if i < 0 {
+			return false
+		}
+		i += start
+		end := i + len(value)
+		if (i == 0 || !word(data[i-1])) && (end == len(data) || !word(data[end])) {
+			return true
+		}
+		start = i + 1
+	}
+	return false
+}
+
 func responseSentinelChecks(rec *httptest.ResponseRecorder, c e2e.Company, catalog bool) []sentinelCheck {
 	type part struct {
 		location string
@@ -266,7 +304,7 @@ func responseSentinelChecks(rec *httptest.ResponseRecorder, c e2e.Company, catal
 	var checks []sentinelCheck
 	for _, value := range companySentinels(c, catalog) {
 		for _, p := range parts {
-			checks = append(checks, sentinelCheck{p.location, value, bytes.Contains(p.data, []byte(value))})
+			checks = append(checks, sentinelCheck{p.location, value, containsSentinel(p.data, []byte(value))})
 		}
 	}
 	return checks
@@ -275,7 +313,7 @@ func responseSentinelChecks(rec *httptest.ResponseRecorder, c e2e.Company, catal
 func assertNoCompanyResponseData(t *testing.T, rec *httptest.ResponseRecorder, c e2e.Company, catalog bool, counters ...*isolationCount) {
 	t.Helper()
 	for _, check := range responseSentinelChecks(rec, c, catalog) {
-		counterFor(counters).verify(t, !check.found, "cross-company data in %s: %q", check.location, check.value)
+		counterFor(counters).verifySentinel(t, !check.found, "cross-company data in %s: %q", check.location, check.value)
 	}
 }
 
@@ -317,6 +355,47 @@ func TestIsolationResponseSentinels(t *testing.T) {
 			}
 		})
 	}
+	if len(c.Suffix) < 8 {
+		t.Fatal("fixture suffix must contain at least 8 bytes")
+	}
+	fixture := e2e.New(t, pgtest.AppPool(t))
+	if len(fixture.A.Suffix) < 8 || len(fixture.B.Suffix) < 8 {
+		t.Fatal("real fixture suffix must contain at least 8 bytes")
+	}
+	c.Details.BaseCurrency = "ARS"
+	for _, tc := range []struct {
+		name, header, value string
+		want                bool
+	}{
+		{"short-json", "", `{"currency":"ARS"}`, true},
+		{"short-header", "X-Currency", "ARS", true},
+		{"short-list", "X-Currency", "ARS, USD", true},
+		{"short-spaces", "", "texto ARS texto", true},
+		{"short-cookie", "Set-Cookie", "token=Z0_ARS-zzz", false},
+		{"short-left", "", "xARS", false},
+		{"short-right", "", "ARSx", false},
+		{"short-left-digit", "", "1ARS", false},
+		{"short-right-digit", "", "ARS2", false},
+		{"short-underscore", "", "ARS_", false},
+		{"short-dash", "", "-ARS", false},
+		{"suffix-in-text", "", "prefix" + c.Suffix + "tail", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			if tc.header == "" {
+				rec.Body.WriteString(tc.value)
+			} else {
+				rec.Header().Set(tc.header, tc.value)
+			}
+			found := false
+			for _, check := range responseSentinelChecks(rec, c, false) {
+				found = found || check.found
+			}
+			if found != tc.want {
+				t.Fatalf("found=%v want=%v", found, tc.want)
+			}
+		})
+	}
 	rec := httptest.NewRecorder()
 	rec.Body.WriteString(c.Details.IndustryTemplateCode)
 	for _, check := range responseSentinelChecks(rec, c, true) {
@@ -338,12 +417,12 @@ func TestIsolationHTTPMatrix(t *testing.T) {
 	counts := &isolationCount{}
 	covered, total := 0, 0
 	t.Cleanup(func() {
-		t.Logf("Isolation: covered routes=%d/%d; cross-company accesses=%d; verifications=%d", covered, total, counts.detections, counts.verifications)
+		t.Log(counts.report(covered, total))
 		if counts.detections != 0 {
 			t.Errorf("detected %d cross-company isolation violations", counts.detections)
 		}
-		if counts.verifications == 0 {
-			t.Error("no isolation verifications executed")
+		if counts.sentinelChecks == 0 || counts.stateChecks == 0 {
+			t.Error("sentinel_checks and state_checks must both be positive")
 		}
 	})
 	total = routeCoverage(t, app.BuildAPIRouter(nil, nil, clock.Real{}, slog.New(slog.NewTextHandler(io.Discard, nil))))
@@ -615,3 +694,15 @@ func assertOtherUsersUnchanged(t *testing.T, before, after string, changed uuid.
 }
 
 func discardLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
+
+func TestIsolationCounterTypes(t *testing.T) {
+	counts := &isolationCount{}
+	counts.verify(t, true, "state check")
+	rec := httptest.NewRecorder()
+	company := e2e.Company{Suffix: "foreign-suffix"}
+	assertNoCompanyResponseData(t, rec, company, false, counts)
+	report := counts.report(1, 1)
+	if !strings.Contains(report, fmt.Sprintf("sentinel_checks=%d; state_checks=1", len(responseSentinelChecks(rec, company, false)))) || !strings.Contains(report, "cross-company accesses=0") {
+		t.Fatalf("wrong typed report: %s", report)
+	}
+}

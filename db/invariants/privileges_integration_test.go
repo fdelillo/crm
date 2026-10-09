@@ -11,22 +11,24 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// privilegeSnapshot lists the privileges a grantee holds on the tables of schema app, from the ACLs
+// privilegeSnapshot lists the privileges a grantee holds on app/public tables and the public schema, from the ACLs
 // (not from has_*_privilege, which would fold table-level grants into every column):
 // "table:PRIV" for table-level ones and "table.column:PRIV" for column-level ones.
 func privilegeSnapshot(t *testing.T, grantee string) []string {
 	t.Helper()
 	return queryStrings(t, pgtest.SuperuserPool(t), `
-		SELECT c.relname || ':' || a.privilege_type
+		SELECT CASE WHEN n.nspname='public' THEN 'public.' ELSE '' END || c.relname || ':' || a.privilege_type
 		FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace,
 		     LATERAL aclexplode(c.relacl) a
-		WHERE n.nspname = 'app' AND c.relkind IN ('r', 'p') AND a.grantee = CASE WHEN $1 = 'PUBLIC' THEN 0 ELSE $1::regrole::oid END
+		WHERE n.nspname IN ('app','public') AND c.relkind IN ('r', 'p') AND a.grantee = CASE WHEN $1 = 'PUBLIC' THEN 0 ELSE $1::regrole::oid END
 		UNION ALL
-		SELECT c.relname || '.' || att.attname || ':' || a.privilege_type
+		SELECT CASE WHEN n.nspname='public' THEN 'public.' ELSE '' END || c.relname || '.' || att.attname || ':' || a.privilege_type
 		FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
 		     JOIN pg_attribute att ON att.attrelid = c.oid AND NOT att.attisdropped,
 		     LATERAL aclexplode(att.attacl) a
-		WHERE n.nspname = 'app' AND c.relkind IN ('r', 'p') AND a.grantee = CASE WHEN $1 = 'PUBLIC' THEN 0 ELSE $1::regrole::oid END`, grantee)
+		WHERE n.nspname IN ('app','public') AND c.relkind IN ('r', 'p') AND a.grantee = CASE WHEN $1 = 'PUBLIC' THEN 0 ELSE $1::regrole::oid END
+ UNION ALL SELECT 'public:' || a.privilege_type FROM pg_namespace n, LATERAL aclexplode(n.nspacl) a
+ WHERE n.nspname='public' AND a.grantee=CASE WHEN $1='PUBLIC' THEN 0 ELSE $1::regrole::oid END`, grantee)
 }
 
 // T-B109, INV-05: the privileges of the system roles are exactly those of data-model.md §3.4. A
@@ -35,6 +37,7 @@ func TestCatalog_SystemRolePrivilegesAreExactlyTheDocumentedOnes(t *testing.T) {
 	t.Parallel()
 	want := map[string][]string{
 		"crm_auth": {
+			"public:USAGE", "public.goose_db_version.version_id:SELECT",
 			"users.id:SELECT", "users.tenant_id:SELECT", "users.email:SELECT",
 			"sessions.id:SELECT", "sessions.tenant_id:SELECT", "sessions.token_hash:SELECT",
 			"user_tokens.id:SELECT", "user_tokens.tenant_id:SELECT", "user_tokens.token_hash:SELECT", "user_tokens.purpose:SELECT",

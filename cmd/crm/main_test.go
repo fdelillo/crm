@@ -41,6 +41,7 @@ func validEnv() map[string]string {
 		"AUTH_HMAC_KEY": "a2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2s=", // 32 bytes of 'k'
 		"APP_BASE_URL":  "https://localhost:8443",
 		"HTTP_ADDR":     "127.0.0.1:0",
+		"METRICS_ADDR":  "127.0.0.1:0",
 	}
 }
 
@@ -86,19 +87,14 @@ func TestRun_MigrateRequiresMigrationURL(t *testing.T) {
 	}
 }
 
-// reprovision-roles is only a placeholder until Phase 9 (T-B906).
-func TestRun_ReprovisionRolesIsNotImplementedYet(t *testing.T) {
-	err := run(context.Background(), []string{"tenants", "reprovision-roles"}, mapEnv(validEnv()), io.Discard, io.Discard)
-	if err == nil || !strings.Contains(err.Error(), "not implemented") {
-		t.Fatalf("run(tenants reprovision-roles) = %v, want a \"not implemented\" error", err)
-	}
+func TestRun_ReprovisionRolesRejectsExtraArguments(t *testing.T) {
+	err := run(context.Background(), []string{"tenants", "reprovision-roles", "extra"}, mapEnv(validEnv()), io.Discard, io.Discard)
 	var ue *usageError
-	if errors.As(err, &ue) {
-		t.Error("a not-implemented command is not a usage error")
+	if !errors.As(err, &ue) {
+		t.Fatalf("expected usage error, got %v", err)
 	}
 }
 
-// `crm serve` starts, answers /healthz and shuts down cleanly when its context ends.
 func TestRun_ServeAnswersHealthzAndStopsOnCancel(t *testing.T) {
 	stdout := &safeBuffer{}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -156,7 +152,7 @@ func waitForListenAddr(t *testing.T, out *safeBuffer, done <-chan error) string 
 	for {
 		for _, l := range strings.Split(out.String(), "\n") {
 			var m map[string]any
-			if json.Unmarshal([]byte(l), &m) == nil && m["msg"] == "server listening" {
+			if json.Unmarshal([]byte(l), &m) == nil && m["msg"] == "server listening" && m["interface"] != "metrics" {
 				if m["listen"] != "http" {
 					t.Fatalf("listen = %v, want http (no TLS_* configured)", m["listen"])
 				}

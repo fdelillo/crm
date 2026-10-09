@@ -174,3 +174,47 @@ func TestMigrations_VersionTableInPublic(t *testing.T) {
 		t.Error("crm_app can read the goose version table")
 	}
 }
+
+// The ninth migration is applied and reverted as the actual owner login, without a privileged helper.
+func TestMigration00009OwnerAndDown(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.OwnerPool(t)
+	var user string
+	if err := pool.QueryRow(ctx, "SELECT current_user").Scan(&user); err != nil {
+		t.Fatal(err)
+	}
+	if user != "crm_owner" || schemaOwner(t, pool, "public") != "pg_database_owner" {
+		t.Fatalf("owner=%s public=%s", user, schemaOwner(t, pool, "public"))
+	}
+	migrationDB, err := sql.Open("pgx", pgtest.OwnerURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = migrationDB.Close() })
+	provider, err := goose.NewProvider(goose.DialectPostgres, migrationDB, migrations.FS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert := func(want bool) {
+		t.Helper()
+		for _, query := range []string{"SELECT has_schema_privilege('crm_auth','public','USAGE')", "SELECT has_column_privilege('crm_auth','public.goose_db_version','version_id','SELECT')"} {
+			if got := queryBool(t, pool, query); got != want {
+				t.Errorf("%s=%v want=%v", query, got, want)
+			}
+		}
+	}
+	assert(true)
+	if _, err = provider.Down(ctx); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if _, err := provider.Up(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
+	assert(false)
+	if _, err = provider.Up(ctx); err != nil {
+		t.Fatal(err)
+	}
+	assert(true)
+}

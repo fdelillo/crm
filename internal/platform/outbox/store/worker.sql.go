@@ -39,6 +39,19 @@ func (q *Queries) DeferMessage(ctx context.Context, arg DeferMessageParams) (int
 	return result.RowsAffected(), nil
 }
 
+const deleteTerminalMessages = `-- name: DeleteTerminalMessages :execrows
+DELETE FROM app.outbox_messages
+WHERE status <> 'pending' AND created_at < now() - interval '30 days'
+`
+
+func (q *Queries) DeleteTerminalMessages(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteTerminalMessages)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const lockDueMessage = `-- name: LockDueMessage :one
 SELECT id, tenant_id, next_attempt_at, created_at FROM app.outbox_messages
 WHERE status = 'pending' AND next_attempt_at <= $1
@@ -65,5 +78,23 @@ func (q *Queries) LockDueMessage(ctx context.Context, now time.Time) (LockDueMes
 		&i.NextAttemptAt,
 		&i.CreatedAt,
 	)
+	return i, err
+}
+
+const pendingStats = `-- name: PendingStats :one
+SELECT count(*)::bigint AS pending,
+       coalesce(min(created_at), 'epoch'::timestamptz)::timestamptz AS oldest
+FROM app.outbox_messages WHERE status = 'pending'
+`
+
+type PendingStatsRow struct {
+	Pending int64
+	Oldest  time.Time
+}
+
+func (q *Queries) PendingStats(ctx context.Context) (PendingStatsRow, error) {
+	row := q.db.QueryRow(ctx, pendingStats)
+	var i PendingStatsRow
+	err := row.Scan(&i.Pending, &i.Oldest)
 	return i, err
 }

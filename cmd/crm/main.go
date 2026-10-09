@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
@@ -55,6 +56,7 @@ type env struct {
 	getenv func(string) string
 	stdout io.Writer
 	stderr io.Writer
+	listen func(context.Context, string, string) (net.Listener, error)
 }
 
 // run dispatches the subcommand. It is separate from main so tests can call it.
@@ -62,7 +64,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	if len(args) == 0 {
 		return usagef("missing command")
 	}
-	e := env{getenv: getenv, stdout: stdout, stderr: stderr}
+	e := env{getenv: getenv, stdout: stdout, stderr: stderr, listen: (&net.ListenConfig{}).Listen}
 	switch args[0] {
 	case "serve":
 		return runServe(ctx, args[1:], e)
