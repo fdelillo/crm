@@ -307,7 +307,7 @@ func TestPhase9Measurements(t *testing.T) {
 	}{{"D-a", unavailable[50] > 0, float64(unavailable[50])}, {"D-b", meBurst.P95MS > 1000, meBurst.P95MS}, {"D-c", m4["first"].P95MS > 250, m4["first"].P95MS}, {"D-d", ratio > 2.5, ratio}} {
 		t.Logf("BENCH rule %s triggered=%t value=%.6f", rule.id, rule.triggered, rule.value)
 	}
-	t.Log("BENCH self-controls: all registration statements have sample/PID/known label; exactly one BEGIN/provision/COMMIT per success; M-2 non-overlap")
+	t.Log("BENCH self-controls: traced Register samples have sample ID/PID/known labels, exactly 14 required events once each per success or five anchors + ROLLBACK per 503; M-2 non-overlap")
 }
 
 func pick(values map[string]distribution, labels ...string) map[string]distribution {

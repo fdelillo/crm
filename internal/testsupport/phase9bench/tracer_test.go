@@ -5,6 +5,7 @@ package phase9bench_test
 import (
 	"context"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -199,7 +200,19 @@ func sampleIntervals(s *sample) (map[string]time.Duration, error) {
 		}
 		byLabel[e.Label] = append(byLabel[e.Label], e)
 	}
-	for _, label := range []string{"acquire", "begin", "set_role:crm_signup", "SetSignupLockTimeout", "ProvisionTenantRole"} {
+	required := []string{"acquire", "begin", "set_role:crm_signup", "SetSignupLockTimeout", "ProvisionTenantRole"}
+	if s.Err == nil {
+		required = append(required, "set_role:tenant", "GetUserEmail", "InsertTenant", "InsertFirstAdmin", "InsertVerificationToken", "InsertMessage", "InsertSession", "InsertAudit", "commit")
+	} else {
+		if !errors.Is(s.Err, db.ErrUnavailable) {
+			return nil, fmt.Errorf("sample %s is not a 503 rejection: %w", s.ID, s.Err)
+		}
+		required = append(required, "rollback")
+	}
+	if len(events) != len(required) {
+		return nil, fmt.Errorf("sample %s: event count=%d, required=%d", s.ID, len(events), len(required))
+	}
+	for _, label := range required {
 		if len(byLabel[label]) != 1 {
 			return nil, fmt.Errorf("sample %s: %s count=%d", s.ID, label, len(byLabel[label]))
 		}
@@ -287,7 +300,7 @@ func TestBenchTracerSyntheticControls(t *testing.T) {
 	now := time.Now()
 	valid := func() *sample {
 		s := &sample{ID: "control", Start: now, End: now.Add(20 * time.Millisecond), CallbackStart: now.Add(5 * time.Millisecond), CallbackEnd: now.Add(19 * time.Millisecond)}
-		for i, label := range []string{"acquire", "begin", "set_role:crm_signup", "SetSignupLockTimeout", "ProvisionTenantRole", "set_role:tenant", "InsertTenant", "commit"} {
+		for i, label := range []string{"acquire", "begin", "set_role:crm_signup", "SetSignupLockTimeout", "ProvisionTenantRole", "set_role:tenant", "GetUserEmail", "InsertTenant", "InsertFirstAdmin", "InsertVerificationToken", "InsertMessage", "InsertSession", "InsertAudit", "commit"} {
 			s.Events = append(s.Events, event{ID: s.ID, PID: 42, Label: label, Start: now.Add(time.Duration(i) * time.Millisecond), End: now.Add(time.Duration(i+1) * time.Millisecond)})
 		}
 		return s
