@@ -96,6 +96,20 @@ func checkRouterComposition(fset *token.FileSet, imp types.Importer, sources map
 	if len(files) == 0 {
 		return nil, fmt.Errorf("cmd/crm has no production sources")
 	}
+	// Reject memory escapes before type checking: import C gets rule (6) even when
+	// the export importer cannot resolve cgo's synthetic package.
+	var forbidden []routerViolation
+	for _, file := range files {
+		for _, spec := range file.Imports {
+			path, _ := strconv.Unquote(spec.Path.Value)
+			if path == "unsafe" || path == "reflect" || path == "C" {
+				forbidden = append(forbidden, routerViolation{fset.Position(spec.Pos()), 6, "cmd/crm cannot import " + path})
+			}
+		}
+	}
+	if len(forbidden) != 0 {
+		return forbidden, nil
+	}
 	info := &types.Info{Defs: map[*ast.Ident]types.Object{}, Uses: map[*ast.Ident]types.Object{}, Types: map[ast.Expr]types.TypeAndValue{}, Selections: map[*ast.SelectorExpr]*types.Selection{}, Implicits: map[ast.Node]types.Object{}}
 	cfg := types.Config{Importer: imp}
 	pkg, err := cfg.Check("github.com/fdelillo/crm/cmd/crm", fset, files, info)

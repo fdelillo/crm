@@ -665,6 +665,9 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
   | o, conversión de puntero | 0 | 2 | 4 |
 
 
+  **Decimocuarta revisión, parte B — paso 2 completo (T-B801, regla 6)**: p/q contra el guard original de 6054b72 dieron violations=0, bien tipadas. Caracterización después del paso 1: p ya tiene una violación de regla 4 (conversión desde *env a unsafe.Pointer), mientras q sigue en 0; no se oculta ese solapamiento. Green: p importa unsafe y q reflect → una violación de regla 6 cada una, con archivo/línea; control adicional import C → cgo.go:2, regla 6. Los imports prohibidos se rechazan antes del chequeo de tipos para que C no dependa del importer. Las restantes mutaciones y positivos del guard siguen verdes. Mutaciones en copias, guard original temporalmente restaurado solo para caracterizar el Red y luego restablecido al del paso 1. make check completo verde (20,797 s, lint 0 issues). Sin código de producción ni texto de diseño. Evidencia: /tmp/crm-phase14-evidence/step2-{baseline-red,red,green,check}.log.
+
+
 - **Decimotercera revisión (2026-10-08, *Accepted*, aprobada por el usuario el 2026-10-08)**: respuesta del arquitecto a la detención en T-B905 y a los pendientes de diseño de la revisión de código del PR fdelillo/crm#17 (plan §18, decimotercera tanda; detalle en [`revision-13-t-b905.md`](revision-13-t-b905.md)). La corrida 1 de T-B905 no se descarta ni se repite: queda como dato. Su target sumaba la espera en el lock a la retención (con P = 8, lo medido es ≈ 8 × la retención), así que no decide si ADR-005 cumple. Orden sobre `feat/001-backend-phase-9`, con `make check` en verde después de cada paso:
 
   | Orden | Tarea | Qué | Red / mutación |

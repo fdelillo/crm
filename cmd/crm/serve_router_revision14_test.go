@@ -70,3 +70,50 @@ func TestRouterRevision14Rule4Mutations(t *testing.T) {
 		})
 	}
 }
+
+func TestRouterRevision14Rule6Mutations(t *testing.T) {
+	fset := token.NewFileSet()
+	imp := compositionImporter(t, fset)
+	for _, tc := range []struct{ name, path, statement string }{
+		{"p-unsafe-write", "unsafe", "off := unsafe.Sizeof(env{}) - unsafe.Sizeof((func(context.Context,string,string)(net.Listener,error))(nil))\n*(*func(context.Context,string,string)(net.Listener,error))(unsafe.Add(unsafe.Pointer(&e),off)) = (&net.ListenConfig{}).Listen"},
+		{"q-reflect-field", "reflect", "_ = reflect.ValueOf(&e).Elem().FieldByName(\"listen\")"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sources := compositionSources(t)
+			s := sources["serve.go"]
+			s = strings.Replace(s, "fs := flag.NewFlagSet", tc.statement+"\nfs := flag.NewFlagSet", 1)
+			s = strings.Replace(s, `"fmt"`, "\"fmt\"\n\""+tc.path+"\"", 1)
+			if tc.path == "unsafe" {
+				s = strings.Replace(s, `"fmt"`, "\"fmt\"\n\"net\"", 1)
+			}
+			sources["serve.go"] = s
+			vs, err := checkRouterComposition(fset, imp, sources)
+			if err != nil {
+				t.Fatalf("mutation must type check: %v", err)
+			}
+			t.Logf("violations=%d", len(vs))
+			found := false
+			for _, v := range vs {
+				if v.rule == 6 {
+					if v.position.Filename == "" || v.position.Line == 0 {
+						t.Fatal("missing file/line")
+					}
+					t.Log(v.String())
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("mutation escaped rule (6): %v", vs)
+			}
+		})
+	}
+	t.Run("cgo-import", func(t *testing.T) {
+		sources := compositionSources(t)
+		sources["cgo.go"] = "package main\nimport \"C\"\n"
+		vs, err := checkRouterComposition(fset, imp, sources)
+		if err != nil || len(vs) != 1 || vs[0].rule != 6 || vs[0].position.Filename != "cgo.go" || vs[0].position.Line != 2 {
+			t.Fatalf("cgo import lacks rule/file/line: %v, %v", vs, err)
+		}
+		t.Log(vs[0].String())
+	})
+}
