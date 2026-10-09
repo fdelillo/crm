@@ -239,11 +239,22 @@ func TestPhase9RunServe(t *testing.T) {
 				}
 			}
 			var active int
-			if err := probe.QueryRow(context.Background(), "SELECT count(*) FROM pg_stat_activity WHERE application_name=$1", application).Scan(&active); err != nil {
-				t.Fatal(err)
-			}
-			if active != 0 {
-				t.Fatalf("runtime connections remain after worker completion: %d", active)
+			probeCtx, stopProbe := context.WithTimeout(context.Background(), 3*time.Second)
+			defer stopProbe()
+			poll := time.NewTicker(20 * time.Millisecond)
+			defer poll.Stop()
+			for {
+				if err := probe.QueryRow(probeCtx, "SELECT count(*) FROM pg_stat_activity WHERE application_name=$1", application).Scan(&active); err != nil {
+					t.Fatalf("runtime connection probe: %v", err)
+				}
+				if active == 0 {
+					break
+				}
+				select {
+				case <-probeCtx.Done():
+					t.Fatalf("runtime connections remain after worker completion: %d", active)
+				case <-poll.C:
+				}
 			}
 			if scenario != "cancel-idle" {
 				var status, last string

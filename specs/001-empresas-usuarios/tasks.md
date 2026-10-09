@@ -678,6 +678,20 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
   Autocontrol CSV ejecutado con -race sobre /tmp/crm-phase13-evidence/run{1,2}/trace-*.csv. El CSV no contiene los límites de Register/callback: se reconstruyen solo límites suficientes para verificar eventos e intervalos, sin recalcular los targets ni sus números. make check completo verde (11,609 s, lint 0 issues). Primer intento rojo solo por errorlint en la comparación de EOF, corregida a errors.Is; log inicial conservado. Evidencia: /tmp/crm-phase14-evidence/step3-{red,green,missing-tenant,csv,check,check-final}.log. Sin cambios de producción ni texto de diseño.
 
 
+  **Decimocuarta revisión, parte B — paso 4 completo (T-B911)**: las cuatro filas usan ahora la misma sonda de pg_stat_activity con ticker de 20 ms y contexto de 3 s, en la conexión pgx.ConnectConfig dedicada de superusuario que ya existía. La ausencia de una fila de backend se espera hasta el plazo, en lugar de asumir que pgconn.Close espera a que el backend salga. No hay sleep fijo ni cambios al pool runtime explícito de cuatro conexiones. La retención SMTP de al menos 500 ms y la segunda barrera del log que detecta la falta de workerDone no cambian.
+
+  Verificación exacta: go test -race -tags=integration -run TestPhase9RunServe -count=40 ./cmd/crm, con -v solo para registrar las filas: 40/40 iteraciones y 160/160 filas, exit=0, proceso 85,909 s. Desde antes de la primera iteración y hasta después de la última corrió en paralelo go test -race -tags=integration -count=1 ./...: exit=0, 120,007 s. Por tanto hubo carga durante todo el loop, sin recurrir al caché del fondo. Una corrida del fondo alcanzó para cubrirlo completo; no se agregaron repeticiones innecesarias. make check completo del paso 4 verde (19,997 s, lint 0 issues).
+
+  | Mutación repetida, restaurada | Caso que falla | Evidencia |
+  |---|---|---|
+  | Quitar stopServers después de Serve API | api-fails | No vuelve dentro del plazo del test |
+  | Quitar stopServers después de Serve métricas | metrics-fails | No vuelve dentro del plazo del test |
+  | Quitar la espera de workerDone | cancel-sending | returned before Dispatcher finished, detectado por la barrera del log antes de la sonda |
+  | Devolver nil por serveErr | api-fails y metrics-fails | Accept error lost |
+
+  Hallazgo documental para el arquitecto, sin editar diseño: revisión-14-t-b910.md §B-5 vincula la lectura única de pg_stat_activity con el requisito de 500 ms. Son verificaciones distintas: esa lectura sucede después de volver runServe y comprueba el cierre de backends; los 500 ms se verifican mientras SMTP retiene y siguen cubiertos por sus barreras. Se aplicó el arreglo solicitado a la primera. Evidencia: /tmp/crm-phase14-evidence/step4-{loaded-40,load-1,no-api-stop,no-metrics-stop,no-worker-wait,return-nil,check}.log.
+
+
 - **Decimotercera revisión (2026-10-08, *Accepted*, aprobada por el usuario el 2026-10-08)**: respuesta del arquitecto a la detención en T-B905 y a los pendientes de diseño de la revisión de código del PR fdelillo/crm#17 (plan §18, decimotercera tanda; detalle en [`revision-13-t-b905.md`](revision-13-t-b905.md)). La corrida 1 de T-B905 no se descarta ni se repite: queda como dato. Su target sumaba la espera en el lock a la retención (con P = 8, lo medido es ≈ 8 × la retención), así que no decide si ADR-005 cumple. Orden sobre `feat/001-backend-phase-9`, con `make check` en verde después de cada paso:
 
   | Orden | Tarea | Qué | Red / mutación |
