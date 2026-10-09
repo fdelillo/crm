@@ -351,6 +351,292 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
 
   **Paso 3 completo — revisión del PR #17**: sonda única registrada en http.DefaultServeMux original, sin sustituir la variable global; delegar con mux.Handle("/", http.DefaultServeMux) → sonda 200, falla (restaurado). La nota de Handler nil se corrige: falla srv.Handler == nil, no la sonda. Dispatcher distingue el error devuelto de ctx.Err(): Red con deferral db.ErrUnavailable y contexto cancelado perdía el err y solo emitía INFO; tareas con error real cancelaban y también ocultaban el err. Green exige ERROR con err, y conserva INFO solo para context.Canceled/db.ErrCanceled. Mutaciones restauradas de ambas clasificaciones → esos mismos fallos. Bind de métricas conserva METRICS_ADDR y ambos errores con errors.Join: Red/mutación anterior → solo "serving HTTP: API Accept failed". Centinelas entre espacios y pegados a dígitos agregados; mutaciones restauradas de dígitos/espacio → fallan sus nuevas filas. Nits: outcomeFields ya no tapa el parámetro, build tag bench en lint (0 issues, no otros arreglos necesarios), test CLI usa tenant.ReprovisionLockKey. Regresiones de métricas, cancelación, T-B911 y reprovisión verdes. make check completo verde (116,409 s). Cambios de producción autorizados: clasificación de errores del Dispatcher y conservación del error de bind; sin cambios a presupuesto, pool, lock_timeout o diseño.
 
+  **Paso 4 completo — T-B910**: reemplazo del test T-B905 por instrumentación exclusiva del bench. Pool propio crm_app con pool_max_conns=8 explícito; QueryTracer y AcquireTracer, muestra/PID/etiqueta y tiempos monotónicos exportados a CSV. Autocontroles sintéticos y reales antes de medir: etiquetas, id, PID, exactamente un BEGIN/provision/COMMIT por éxito y no solapamiento en M-2. Mutaciones restauradas: omitir id → invalid trace event; omitir COMMIT → commit count=0. Los errores de registro conservan end_to_end/pool_wait/provision/callback y el 503; hold queda no medido si no existe COMMIT y se verifica un ROLLBACK. Ningún cambio de producción en este paso; pool runtime, lock_timeout y targets intactos. Dos corridas completas, cada una en un contenedor nuevo; ninguna corrida adicional para desempatar. M-3 es la aproximación explícita sin plpgsql ni SECURITY DEFINER. Todas las duraciones de las tablas están en ms, salvo duración del bloque en segundos. Los percentiles usan rango ceil.
+
+  **Corrida 1**: `run=1 digest=postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722 container=83d06f79837b server_version=18.6 (Debian 18.6-1.pgdg13+2) go=go1.27.1 os=darwin arch=amd64 cpus=8 docker_memory_bytes=8322789376 pool_max_conns=8 trace=/tmp/crm-phase13-evidence/run1/trace-83d06f79837b.csv`.
+
+  **M-1, corrida 1: curva de escala**. Cada celda de intervalos es p50 / p95; n=1.000 por bloque.
+
+  | Empresas | Duración s | hold | provision | SET tenant | pre_callback | callback |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | 1–1000 | 13,772 | 11,029 / 15,444 | 3,027 / 5,186 | 1,647 / 2,941 | 2,112 / 3,476 | 11,442 / 15,969 |
+  | 1001–2000 | 25,500 | 19,222 / 27,098 | 8,347 / 12,025 | 4,360 / 6,158 | 4,952 / 6,918 | 19,679 / 27,953 |
+  | 2001–3000 | 37,738 | 28,369 / 38,513 | 14,189 / 18,685 | 7,218 / 9,959 | 7,880 / 10,375 | 28,912 / 39,287 |
+  | 3001–4000 | 51,675 | 39,935 / 49,404 | 21,198 / 27,233 | 10,745 / 13,355 | 10,822 / 14,297 | 40,492 / 50,036 |
+  | 4001–5000 | 70,308 | 50,067 / 78,598 | 28,307 / 43,971 | 14,048 / 21,351 | 13,869 / 22,236 | 50,688 / 79,467 |
+  | 5001–6000 | 79,733 | 59,186 / 74,205 | 34,361 / 44,157 | 16,844 / 21,822 | 16,744 / 22,858 | 59,767 / 75,236 |
+  | 6001–7000 | 83,850 | 63,126 / 74,439 | 37,555 / 45,246 | 18,096 / 22,318 | 18,370 / 23,169 | 63,788 / 75,120 |
+  | 7001–8000 | 98,610 | 73,726 / 89,308 | 45,095 / 55,011 | 21,322 / 26,160 | 21,593 / 28,077 | 74,382 / 89,839 |
+  | 8001–9000 | 110,862 | 83,000 / 98,089 | 51,232 / 61,840 | 24,089 / 29,610 | 24,728 / 30,725 | 83,730 / 99,034 |
+  | 9001–10000 | 129,118 | 95,899 / 114,922 | 59,567 / 72,273 | 27,950 / 35,424 | 29,419 / 38,016 | 96,578 / 115,660 |
+
+  **M-2, corrida 1: 100 registros aislados, todos los intervalos y sentencias**. No se solapan los hold.
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | callback | 100 | 102,865 | 134,388 | 208,141 |
+  | end_to_end | 100 | 134,666 | 171,610 | 240,499 |
+  | hold | 100 | 101,980 | 133,597 | 207,495 |
+  | pool_wait | 100 | 0,002 | 0,006 | 0,016 |
+  | pre_callback | 100 | 31,627 | 42,022 | 51,415 |
+  | provision | 100 | 63,959 | 81,477 | 112,075 |
+  | statement:GetUserEmail | 100 | 0,829 | 1,479 | 1,927 |
+  | statement:InsertAudit | 100 | 0,967 | 2,016 | 2,662 |
+  | statement:InsertFirstAdmin | 100 | 1,126 | 1,992 | 2,764 |
+  | statement:InsertMessage | 100 | 1,030 | 1,933 | 2,410 |
+  | statement:InsertSession | 100 | 0,985 | 2,247 | 4,079 |
+  | statement:InsertTenant | 100 | 1,113 | 1,671 | 2,121 |
+  | statement:InsertVerificationToken | 100 | 1,082 | 1,997 | 3,570 |
+  | statement:ProvisionTenantRole | 100 | 63,959 | 81,477 | 112,075 |
+  | statement:SetSignupLockTimeout | 100 | 0,744 | 1,150 | 1,349 |
+  | statement:acquire | 100 | 0,002 | 0,006 | 0,016 |
+  | statement:begin | 100 | 2,076 | 3,244 | 6,689 |
+  | statement:commit | 100 | 0,611 | 1,085 | 1,420 |
+  | statement:set_role:crm_signup | 100 | 29,361 | 39,370 | 48,223 |
+  | statement:set_role:tenant | 100 | 29,699 | 37,466 | 112,783 |
+
+  **M-3, corrida 1: cuerpo DDL, 50 transacciones con ROLLBACK**.
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | CREATE_ROLE | 50 | 3,507 | 4,692 | 6,458 |
+  | GRANT_crm_app | 50 | 31,666 | 36,292 | 41,246 |
+  | GRANT_crm_tenant | 50 | 29,139 | 34,076 | 38,744 |
+
+  **M-4, corrida 1: otro backend después del registro**. Siete conexiones reservadas fuerzan Register a la octava; primera y caliente tienen 140 muestras cada una. Cada uno de los 20 GET /me se hace después de su propio registro.
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | first | 140 | 25,970 | 32,563 | 62,889 |
+  | hot | 140 | 0,821 | 1,170 | 2,351 |
+  | me_after_registration | 20 | 39,297 | 48,348 | 54,151 |
+
+  **M-5, corrida 1: cinco ráfagas por tamaño**. La espera estimada en el lock resta el p50 de provision aislado M-2; es una estimación, no una sonda del lock.
+
+  | Simultáneos | Muestras | 503 |
+  | --- | --- | --- |
+  | 10 | 50 | 0 |
+  | 50 | 250 | 0 |
+
+  Tamaño 10: intervalos (hold solo en registros confirmados).
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | callback | 50 | 436,299 | 588,564 | 640,181 |
+  | end_to_end | 50 | 498,044 | 776,776 | 825,045 |
+  | estimated_lock_wait | 50 | 329,865 | 484,288 | 534,805 |
+  | hold | 50 | 435,198 | 583,972 | 639,003 |
+  | pool_wait | 50 | 0,002 | 243,824 | 272,024 |
+  | provision | 50 | 393,824 | 548,247 | 598,764 |
+
+  Tamaño 50: intervalos (hold solo en registros confirmados).
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | callback | 250 | 565,502 | 638,787 | 712,581 |
+  | end_to_end | 250 | 2027,466 | 3776,802 | 4127,521 |
+  | estimated_lock_wait | 250 | 458,129 | 534,948 | 608,608 |
+  | hold | 250 | 564,552 | 637,980 | 711,476 |
+  | pool_wait | 250 | 1423,111 | 3159,150 | 3517,534 |
+  | provision | 250 | 522,087 | 598,907 | 672,567 |
+
+  GET /me durante las ráfagas de 50, corrida 1:
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | GET_me_during_50 | 202 | 8,032 | 43,635 | 3642,020 |
+
+  **M-6, corrida 1: los ocho valores originales conservados, sin target del callback concurrente**.
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | GET_logo_304 | 200 | 4,180 | 7,192 | 10,650 |
+  | GET_me | 200 | 6,063 | 10,149 | 12,481 |
+  | POST_login | 80 | 37,239 | 49,789 | 59,440 |
+  | POST_signup | 60 | 164,636 | 200,875 | 300,622 |
+  | crm_app_connect | 30 | 6,437 | 9,519 | 10,463 |
+  | registration_tx_10 | 10 | 378,519 | 659,217 | 659,217 |
+  | registration_tx_50 | 50 | 571,123 | 608,722 | 677,433 |
+  | set_local_role_with_catalog | 190 | 0,418 | 0,910 | 1,217 |
+
+  Calentamiento de SET LOCAL ROLE separado:
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | SET_role_warm | 10 | 0,591 | 1,001 | 1,001 |
+
+  | Tanda original M-6 | 503 |
+  | --- | --- |
+  | 10 | 0 |
+  | 50 | 0 |
+
+  set_role_retry_total: `{"failed": 0, "recovered": 0, "total": 0}`.
+
+  **Veredicto por target, corrida 1**.
+
+  | Target | Valor p95 / conteo | Umbral | Veredicto |
+  | --- | --- | --- | --- |
+  | T-1 | 133,597 | <140 ms | Cumple |
+  | T-2 | 0 / 50 | 0 respuestas 503 | Cumple |
+  | T-3 / GET_me | 10,149 | <50 ms | Cumple |
+  | T-3 / GET_logo_304 | 7,192 | <50 ms | Cumple |
+  | T-3 / POST_login | 49,789 | <400 ms | Cumple |
+  | T-3 / POST_signup | 200,875 | <1000 ms | Cumple |
+  | Retry | 0 | 0 | Cumple |
+
+  **Veredicto por regla, corrida 1**.
+
+  | Regla | Valor (ms, conteo o ratio) | Se dispara | Consecuencia |
+  | --- | --- | --- | --- |
+  | D-a | 0,000 | No | Solo reportar |
+  | D-b | 43,635 | No | Proponer semáforo si se dispara |
+  | D-c | 32,563 | No | Decisión del arquitecto si se dispara |
+  | D-d | 1,462 | No | Decisión del arquitecto si se dispara |
+
+  **Corrida 2**: `run=2 digest=postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722 container=9fbdd6e54396 server_version=18.6 (Debian 18.6-1.pgdg13+2) go=go1.27.1 os=darwin arch=amd64 cpus=8 docker_memory_bytes=8322789376 pool_max_conns=8 trace=/tmp/crm-phase13-evidence/run2/trace-9fbdd6e54396.csv`.
+
+  **M-1, corrida 2: curva de escala**. Cada celda de intervalos es p50 / p95; n=1.000 por bloque.
+
+  | Empresas | Duración s | hold | provision | SET tenant | pre_callback | callback |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | 1–1000 | 15,802 | 12,143 / 20,052 | 3,085 / 6,192 | 1,753 / 3,502 | 2,294 / 4,238 | 12,693 / 20,778 |
+  | 1001–2000 | 27,220 | 20,747 / 28,772 | 8,522 / 13,133 | 4,523 / 6,923 | 5,094 / 7,915 | 21,341 / 29,359 |
+  | 2001–3000 | 39,835 | 30,006 / 40,590 | 14,120 / 20,485 | 7,302 / 11,184 | 7,993 / 11,257 | 30,665 / 41,233 |
+  | 3001–4000 | 47,575 | 35,586 / 44,229 | 17,889 / 24,221 | 9,287 / 12,349 | 10,116 / 13,611 | 36,284 / 44,739 |
+  | 4001–5000 | 54,579 | 41,415 / 48,688 | 22,410 / 27,947 | 11,121 / 13,674 | 11,918 / 14,518 | 42,140 / 49,412 |
+  | 5001–6000 | 65,285 | 48,480 / 59,243 | 27,567 / 34,483 | 13,452 / 16,262 | 14,473 / 17,900 | 49,180 / 60,093 |
+  | 6001–7000 | 78,286 | 57,997 / 75,229 | 33,767 / 44,775 | 16,202 / 22,012 | 17,403 / 22,049 | 58,745 / 76,106 |
+  | 7001–8000 | 87,810 | 64,536 / 82,839 | 38,612 / 49,072 | 18,316 / 24,519 | 19,768 / 25,189 | 65,267 / 83,839 |
+  | 8001–9000 | 98,055 | 72,841 / 85,497 | 44,090 / 52,140 | 20,938 / 25,036 | 22,545 / 26,375 | 73,574 / 86,312 |
+  | 9001–10000 | 109,692 | 80,649 / 99,110 | 49,684 / 62,361 | 23,411 / 29,170 | 25,118 / 31,621 | 81,376 / 99,980 |
+
+  **M-2, corrida 2: 100 registros aislados, todos los intervalos y sentencias**. No se solapan los hold.
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | callback | 100 | 86,370 | 96,994 | 130,626 |
+  | end_to_end | 100 | 113,156 | 132,918 | 156,974 |
+  | hold | 100 | 85,404 | 96,262 | 129,878 |
+  | pool_wait | 100 | 0,002 | 0,003 | 0,007 |
+  | pre_callback | 100 | 26,415 | 34,023 | 43,067 |
+  | provision | 100 | 52,860 | 62,446 | 74,866 |
+  | statement:GetUserEmail | 100 | 0,832 | 1,164 | 1,286 |
+  | statement:InsertAudit | 100 | 0,923 | 1,485 | 1,839 |
+  | statement:InsertFirstAdmin | 100 | 1,076 | 1,431 | 1,828 |
+  | statement:InsertMessage | 100 | 0,931 | 1,374 | 1,721 |
+  | statement:InsertSession | 100 | 0,974 | 1,411 | 1,755 |
+  | statement:InsertTenant | 100 | 1,092 | 1,308 | 1,531 |
+  | statement:InsertVerificationToken | 100 | 1,019 | 1,481 | 1,716 |
+  | statement:ProvisionTenantRole | 100 | 52,860 | 62,446 | 74,866 |
+  | statement:SetSignupLockTimeout | 100 | 0,736 | 0,953 | 1,769 |
+  | statement:acquire | 100 | 0,002 | 0,003 | 0,007 |
+  | statement:begin | 100 | 2,012 | 2,423 | 2,755 |
+  | statement:commit | 100 | 0,621 | 0,887 | 1,073 |
+  | statement:set_role:crm_signup | 100 | 24,400 | 31,399 | 40,458 |
+  | statement:set_role:tenant | 100 | 24,767 | 27,149 | 43,546 |
+
+  **M-3, corrida 2: cuerpo DDL, 50 transacciones con ROLLBACK**.
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | CREATE_ROLE | 50 | 3,167 | 5,120 | 5,175 |
+  | GRANT_crm_app | 50 | 27,138 | 43,371 | 56,164 |
+  | GRANT_crm_tenant | 50 | 25,320 | 30,849 | 39,499 |
+
+  **M-4, corrida 2: otro backend después del registro**. Siete conexiones reservadas fuerzan Register a la octava; primera y caliente tienen 140 muestras cada una. Cada uno de los 20 GET /me se hace después de su propio registro.
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | first | 140 | 22,628 | 27,655 | 36,703 |
+  | hot | 140 | 0,818 | 0,972 | 1,114 |
+  | me_after_registration | 20 | 34,622 | 41,605 | 41,614 |
+
+  **M-5, corrida 2: cinco ráfagas por tamaño**. La espera estimada en el lock resta el p50 de provision aislado M-2; es una estimación, no una sonda del lock.
+
+  | Simultáneos | Muestras | 503 |
+  | --- | --- | --- |
+  | 10 | 50 | 0 |
+  | 50 | 250 | 0 |
+
+  Tamaño 10: intervalos (hold solo en registros confirmados).
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | callback | 50 | 384,881 | 568,378 | 625,108 |
+  | end_to_end | 50 | 437,466 | 731,953 | 788,356 |
+  | estimated_lock_wait | 50 | 297,623 | 479,986 | 531,312 |
+  | hold | 50 | 383,947 | 567,630 | 622,796 |
+  | pool_wait | 50 | 0,002 | 223,316 | 252,424 |
+  | provision | 50 | 350,483 | 532,846 | 584,171 |
+
+  Tamaño 50: intervalos (hold solo en registros confirmados).
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | callback | 250 | 490,427 | 555,175 | 636,684 |
+  | end_to_end | 250 | 1759,577 | 3288,703 | 3549,918 |
+  | estimated_lock_wait | 250 | 400,614 | 465,828 | 539,308 |
+  | hold | 250 | 489,603 | 553,800 | 635,784 |
+  | pool_wait | 250 | 1243,866 | 2736,773 | 3005,153 |
+  | provision | 250 | 453,474 | 518,687 | 592,168 |
+
+  GET /me durante las ráfagas de 50, corrida 2:
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | GET_me_during_50 | 198 | 8,527 | 42,631 | 3103,737 |
+
+  **M-6, corrida 2: los ocho valores originales conservados, sin target del callback concurrente**.
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | GET_logo_304 | 200 | 3,067 | 5,950 | 9,951 |
+  | GET_me | 200 | 5,097 | 8,194 | 11,582 |
+  | POST_login | 80 | 33,328 | 38,032 | 51,032 |
+  | POST_signup | 60 | 142,854 | 157,771 | 187,982 |
+  | crm_app_connect | 30 | 6,049 | 7,532 | 7,948 |
+  | registration_tx_10 | 10 | 330,973 | 524,373 | 524,373 |
+  | registration_tx_50 | 50 | 506,059 | 541,529 | 594,687 |
+  | set_local_role_with_catalog | 190 | 0,375 | 0,606 | 0,835 |
+
+  Calentamiento de SET LOCAL ROLE separado:
+
+  | Intervalo / sentencia | n | p50 ms | p95 ms | máx ms |
+  | --- | --- | --- | --- | --- |
+  | SET_role_warm | 10 | 0,358 | 0,748 | 0,748 |
+
+  | Tanda original M-6 | 503 |
+  | --- | --- |
+  | 10 | 0 |
+  | 50 | 0 |
+
+  set_role_retry_total: `{"failed": 0, "recovered": 0, "total": 0}`.
+
+  **Veredicto por target, corrida 2**.
+
+  | Target | Valor p95 / conteo | Umbral | Veredicto |
+  | --- | --- | --- | --- |
+  | T-1 | 96,262 | <140 ms | Cumple |
+  | T-2 | 0 / 50 | 0 respuestas 503 | Cumple |
+  | T-3 / GET_me | 8,194 | <50 ms | Cumple |
+  | T-3 / GET_logo_304 | 5,950 | <50 ms | Cumple |
+  | T-3 / POST_login | 38,032 | <400 ms | Cumple |
+  | T-3 / POST_signup | 157,771 | <1000 ms | Cumple |
+  | Retry | 0 | 0 | Cumple |
+
+  **Veredicto por regla, corrida 2**.
+
+  | Regla | Valor (ms, conteo o ratio) | Se dispara | Consecuencia |
+  | --- | --- | --- | --- |
+  | D-a | 0,000 | No | Solo reportar |
+  | D-b | 42,631 | No | Proponer semáforo si se dispara |
+  | D-c | 27,655 | No | Decisión del arquitecto si se dispara |
+  | D-d | 2,036 | No | Decisión del arquitecto si se dispara |
+
+  **Veredicto conjunto / salida a producción**: T-1, T-2 y T-3 cumplen en ambas corridas; retries=0 en ambas. Ninguna regla D-a a D-d se dispara. Se cumple la condición de T-B910 para salir a producción con ADR-005 tal como está; no se requiere un ADR de reemplazo ni se propone el semáforo de D-b. Esto no despliega el servicio. La corrida 1 de T-B905 sigue conservada arriba y no se repitió. Las dos corridas T-B910 son las únicas corridas completas de la re-medición (procesos 780,113 s y 698,089 s). Los tres archivos del bench quedaron idénticos entre ambas corridas y el commit del paso. Logs y CSV: `/tmp/crm-phase13-evidence/step4-run{1,2}.log` y `/tmp/crm-phase13-evidence/run{1,2}/trace-*.csv`.
+
+  make check del paso 4 completo en verde (129,528 s, lint 0 issues), después de las dos corridas.
+
 - **Decimotercera revisión (2026-10-08, *Accepted*, aprobada por el usuario el 2026-10-08)**: respuesta del arquitecto a la detención en T-B905 y a los pendientes de diseño de la revisión de código del PR fdelillo/crm#17 (plan §18, decimotercera tanda; detalle en [`revision-13-t-b905.md`](revision-13-t-b905.md)). La corrida 1 de T-B905 no se descarta ni se repite: queda como dato. Su target sumaba la espera en el lock a la retención (con P = 8, lo medido es ≈ 8 × la retención), así que no decide si ADR-005 cumple. Orden sobre `feat/001-backend-phase-9`, con `make check` en verde después de cada paso:
 
   | Orden | Tarea | Qué | Red / mutación |
