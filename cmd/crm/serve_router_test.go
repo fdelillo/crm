@@ -98,8 +98,37 @@ func checkRouterComposition(fset *token.FileSet, imp types.Importer, sources map
 	}
 	info := &types.Info{Defs: map[*ast.Ident]types.Object{}, Uses: map[*ast.Ident]types.Object{}, Types: map[ast.Expr]types.TypeAndValue{}, Selections: map[*ast.SelectorExpr]*types.Selection{}, Implicits: map[ast.Node]types.Object{}}
 	cfg := types.Config{Importer: imp}
-	if _, err := cfg.Check("github.com/fdelillo/crm/cmd/crm", fset, files, info); err != nil {
+	pkg, err := cfg.Check("github.com/fdelillo/crm/cmd/crm", fset, files, info)
+	if err != nil {
 		return nil, fmt.Errorf("router guard type check: %w", err)
+	}
+	envObject, ok := pkg.Scope().Lookup("env").(*types.TypeName)
+	if !ok {
+		return nil, fmt.Errorf("router guard: env type missing")
+	}
+	envType := envObject.Type()
+	envStruct, ok := envType.Underlying().(*types.Struct)
+	if !ok {
+		return nil, fmt.Errorf("router guard: env must be a struct")
+	}
+	var listenField *types.Var
+	for i := 0; i < envStruct.NumFields(); i++ {
+		if field := envStruct.Field(i); field.Name() == "listen" {
+			listenField = field
+		}
+	}
+	if listenField == nil {
+		return nil, fmt.Errorf("router guard: env.listen missing")
+	}
+	isEnv := func(typ types.Type) bool {
+		if typ == nil {
+			return false
+		}
+		typ = types.Unalias(typ)
+		if ptr, ok := typ.(*types.Pointer); ok {
+			typ = types.Unalias(ptr.Elem())
+		}
+		return types.Identical(typ, envType)
 	}
 	refs := map[types.Object][]*ast.Ident{}
 	for id, obj := range info.Uses {
@@ -297,14 +326,13 @@ func checkRouterComposition(fset *token.FileSet, imp types.Importer, sources map
 	}
 	approvedServers := map[ast.Expr]bool{}
 	approvedListens := map[ast.Expr]bool{}
-	commandPackage := "github.com/fdelillo/crm/cmd/crm"
 	isEnvListen := func(expr ast.Expr) bool {
 		sel, ok := expr.(*ast.SelectorExpr)
 		if !ok {
 			return false
 		}
 		selection := info.Selections[sel]
-		return selection != nil && named(selection.Recv(), commandPackage, "env") && selection.Obj().Name() == "listen"
+		return selection != nil && selection.Obj() == listenField
 	}
 	for _, entry := range []struct {
 		name, addr string
@@ -378,18 +406,32 @@ func checkRouterComposition(fset *token.FileSet, imp types.Importer, sources map
 	for _, file := range files {
 		ast.Inspect(file, func(n ast.Node) bool {
 			switch node := n.(type) {
+			case *ast.TypeSpec:
+				obj := info.Defs[node.Name]
+				if obj != nil && obj != envObject && types.Identical(obj.Type().Underlying(), envStruct) {
+					report(node, 4, "env is the only type declaration with its underlying struct")
+				}
+			case *ast.StructType:
+				parent, original := parents[node].(*ast.TypeSpec)
+				original = original && info.Defs[parent.Name] == envObject && parent.Type == node
+				if !original && types.Identical(info.TypeOf(node), envStruct) {
+					report(node, 4, "another struct has the same underlying type as env")
+				}
+			case *ast.CallExpr:
+				if info.Types[node.Fun].IsType() && len(node.Args) == 1 && (isEnv(info.TypeOf(node.Fun)) || isEnv(info.TypeOf(node.Args[0]))) {
+					report(node, 4, "conversions to or from env or *env are forbidden")
+				}
 			case *ast.SelectorExpr:
 				if isEnvListen(node) && !approvedListens[node] {
 					report(node, 4, "env.listen has an extra read or assignment")
 				}
 			case *ast.CompositeLit:
-				if !named(info.TypeOf(node), commandPackage, "env") {
-					break
-				}
 				for _, element := range node.Elts {
 					kv, ok := element.(*ast.KeyValueExpr)
 					if !ok {
-						report(element, 4, "env must use keyed fields")
+						if isEnv(info.TypeOf(node)) {
+							report(element, 4, "env must use keyed fields")
+						}
 						continue
 					}
 					key, ok := kv.Key.(*ast.Ident)
@@ -397,7 +439,7 @@ func checkRouterComposition(fset *token.FileSet, imp types.Importer, sources map
 						continue
 					}
 					field := info.Uses[key]
-					if field == nil || field.Name() != "listen" {
+					if field != listenField {
 						continue
 					}
 					initializations++
@@ -423,7 +465,7 @@ func checkRouterComposition(fset *token.FileSet, imp types.Importer, sources map
 							valid = valid && ok && named(info.TypeOf(literal), "net", "ListenConfig") && len(literal.Elts) == 0
 						case *ast.CallExpr:
 							builtin, ok := object(receiver.Fun).(*types.Builtin)
-							valid = valid && ok && builtin.Name() == "new" && len(receiver.Args) == 1 && named(info.TypeOf(receiver), "net", "ListenConfig")
+							valid = valid && ok && builtin.Name() == "new" && len(receiver.Args) == 1 && info.Types[receiver.Args[0]].IsType() && named(info.TypeOf(receiver), "net", "ListenConfig")
 						default:
 							valid = false
 						}

@@ -653,6 +653,18 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
 
   Cambios autorizados a código anterior en esta reanudación: guard de Fase 8 y costura env.listen, dos filas del helper de centinelas, sonda del mux global original, clasificación de cancelaciones del Dispatcher, nombre outcomeFields, conservación de METRICS_ADDR en error de bind, constante del lock en el test CLI y build tag bench en lint. Cada arreglo de comportamiento tiene su mutación restaurada descrita en los pasos 1–4; los cambios de nombres/configuración son los nits solicitados. Fuera de esta entrada de estado solo se corrigió la nota Handler nil de T-B903 y del paso 0, autorizada expresamente por el usuario. Sin dependencias nuevas ni cambios al contrato, data-model.md o plan.md en los pasos retomados. La única edición de implementación previa a plan.md fue SessionLocker en §11.1, autorizada por T-B907; la revisión documental 30bbb94 pertenece al arquitecto.
 
+  **Decimocuarta revisión, parte B — paso 1 completo (T-B801, regla 4)**: retomado por fast-forward desde 6054b72. Red en fuentes copiadas bien tipadas: j, k, l, m, n y o dieron violations=0; ninguna se caracterizó como detectada previamente. Green: el campo listen es el *types.Var de Underlying(env), comparado por identidad con Info.Selections.Obj y las claves de literales en Info.Uses. Conversiones de env/*env y tipos con su forma se rechazan; new exige IsType en su argumento. Cada mutación da archivo/línea/regla. Regresiones a–i y las cinco anteriores siguen detectadas; renombrado/import alias/mover cableado y new(net.ListenConfig).Listen válidos siguen verdes. Controles adicionales de alias, struct detrás de puntero y restricción de tipo: regla 4. Fuentes originales intactas; las mutaciones solo existen en copias. make check completo verde (21,219 s, lint 0 issues). Sin cambios de producción ni texto de diseño. Evidencia: /tmp/crm-phase14-evidence/step1-{red,green,check}.log.
+
+  | Mutación | Red: violaciones | Green: violaciones | Regla |
+  |---|---:|---:|---:|
+  | j, campo promovido | 0 | 1 | 4 |
+  | k, tipo definido | 0 | 4 | 4 |
+  | l, conversión desde struct anónimo | 0 | 2 | 4 |
+  | m, new con expresión | 0 | 1 | 4 |
+  | n, asignación sin conversión | 0 | 1 | 4 |
+  | o, conversión de puntero | 0 | 2 | 4 |
+
+
 - **Decimotercera revisión (2026-10-08, *Accepted*, aprobada por el usuario el 2026-10-08)**: respuesta del arquitecto a la detención en T-B905 y a los pendientes de diseño de la revisión de código del PR fdelillo/crm#17 (plan §18, decimotercera tanda; detalle en [`revision-13-t-b905.md`](revision-13-t-b905.md)). La corrida 1 de T-B905 no se descarta ni se repite: queda como dato. Su target sumaba la espera en el lock a la retención (con P = 8, lo medido es ≈ 8 × la retención), así que no decide si ADR-005 cumple. Orden sobre `feat/001-backend-phase-9`, con `make check` en verde después de cada paso:
 
   | Orden | Tarea | Qué | Red / mutación |
