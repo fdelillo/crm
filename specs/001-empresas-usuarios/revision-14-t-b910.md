@@ -387,6 +387,15 @@ Se adopta la propuesta del revisor y se generaliza su segunda mitad para cerrar 
 4. **El argumento de `new` tiene que ser un tipo** (`info.Types[arg].IsType()`), no una expresión.
    Cierra (m).
 
+> **Nota (decimoquinta revisión, 2026-10-10, *Accepted*).** El punto 3 no alcanza con genéricos. Un
+> parámetro de tipo restringido a `env` (`func D[T env]`) admite el literal posicional `T{…, otro}` y
+> la conversión `T(x)` desde un `struct` que solo difiere de `env` en una etiqueta, sin nombrar a
+> `env` ni escribir un `struct` idéntico. Un alias genérico (`type shape[F any] = struct{ …; listen F }`)
+> no es idéntico a `env`, pero su instanciación sí, y se asigna a `env` sin conversión. Por eso
+> `tasks.md` (regla (4)) afirmaba en falso que no existía otro tipo "desde el cual asignarle un valor".
+> La decimoquinta tanda (`plan.md` §18) suma a la regla (4) la prohibición de declarar parámetros de
+> tipo en `cmd/crm`, con las mutaciones (r) a (t). El texto de arriba no se reescribe.
+
 ### Alternativas descartadas
 
 - **Enumerar los receptores** que se aceptan (`struct{ env }`, tipos definidos…). Una lista se
@@ -487,10 +496,17 @@ aprobación es el merge del PR por el usuario.
 ## B-5. Los otros dos hallazgos (de implementación)
 
 - **`TestPhase9RunServe/cancel-sending` intermitente** (lee `pg_stat_activity` una sola vez).
-  - T-B911 ya pide que el test verifique que `runServe` no vuelve "durante al menos 500 ms" mientras
-    el SMTP retiene. Una lectura única no cumple ese "durante".
-  - El arreglo (observar la condición con reintentos hasta un plazo, sin `sleep` fijo) es de
-    implementación. La tarea no cambia.
+  - *Texto corregido en la decimoquinta revisión (`plan.md` §18): la versión anterior justificaba el
+    arreglo con los 500 ms del SMTP, que son otra verificación.*
+  - En esa fila, T-B911 hace dos verificaciones distintas:
+    - **Los 500 ms**: mientras el SMTP retiene la conversación, `runServe` no vuelve. Se comprueba
+      antes de liberar el SMTP, sin leer `pg_stat_activity`. No es la parte intermitente y no cambia.
+    - **La sonda de `pg_stat_activity`**: después de que `runServe` vuelve, no queda ninguna conexión
+      del pool de runtime. `pgconn.Close` no espera a que termine el backend, que sale de
+      `pg_stat_activity` un instante después, así que una lectura única puede verlo todavía. Es la
+      lectura intermitente.
+  - El arreglo de la sonda (observar la condición con reintentos hasta un plazo, sin `sleep` fijo) es
+    de implementación. La tarea no cambia. La decimoquinta revisión le suma un control positivo.
 - **El tracer no exige el conjunto completo de etiquetas por muestra.**
   - No cambia los resultados de T-B910: en las dos corridas, M-2 tiene n = 100 en cada una de las
     14 etiquetas, así que las muestras reportadas estaban completas.

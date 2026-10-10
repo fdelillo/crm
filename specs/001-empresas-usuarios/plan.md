@@ -43,6 +43,7 @@ DD-36 que quedó sin aplicar en la Fase 2. Detalle en §18.
 **Duodécima revisión 2026-10-08 (*Accepted*, aprobada por el usuario el 2026-10-08)**: pendientes de la revisión de cierre del PR fdelillo/crm#16 (Fase 8), aplicados en el paso 0 de la Fase 9 y en T-B903/T-B904. Servidor de métricas armado por `internal/app` (`app.NewMetricsServer`, mux propio, nunca `http.DefaultServeMux`) y `NewServer` sin handler nil (§11.1, §12.1); guard del router de `crm serve` con `go/types`, que cierra dos formas verificadas de esquivarlo y cubre los dos servidores; centinelas cortos y conteo por tipo en T-B801. `/readyz` lee la versión con `SELECT (version_id)` concedido solo a `crm_auth` (migración `00009`, `data-model.md` §3.5; INV-08 se preserva, INV-19 se precisa); las métricas que leen la base se muestrean cada 60 s y el inventario de roles suma `tenant_roles_missing` y `tenants_total` (§12.1, §12.4). Sin cambios de contrato, DD-22, ADR-002 ni INV-12. Detalle en §18.
 **Decimotercera revisión 2026-10-08 (*Accepted*, aprobada por el usuario el 2026-10-08)**: T-B905 se detuvo porque su target medía la transacción de registro con la espera por el lock incluida (≈ 8 × la retención con un pool de 8). Se redefine §13 (retención sin contención con p95 < 140 ms; ráfaga de 10 con 0 `503`), DD-33 suma R-e (pool explícito en producción) y la re-medición T-B910 fija antes de medir qué se decide con cada resultado. Cumplir §13 pasa a ser condición para salir a producción, no para cerrar la Fase 9. Pendientes del PR fdelillo/crm#17: API exportada de la Fase 9 en §11.1, regla (5) del guard de T-B801 y costura `env.listen` con tests de `runServe` (T-B911). Detalle en §18 y en [`revision-13-t-b905.md`](revision-13-t-b905.md).
 **Decimocuarta revisión 2026-10-08 (*Accepted*, aprobada por el usuario el 2026-10-08)**: resultado de T-B910 (cumple en las dos corridas) registrado en DD-33, §13, R-2 y R-15. La retención crece linealmente con la cantidad de roles: DD-33 suma R-f (techo de ~10.500 roles con P = 8), y los disparadores de §12.4 pasan a ser fracciones de ese techo sobre `tenant_roles_total` (ya no se repite T-B910 con 20.000 roles). Sin cambios de código de producción. Parte B (*Accepted*, aprobada por el usuario el 2026-10-08; revisión de código del PR fdelillo/crm#17): la regla (4) del guard de T-B801 reconoce el campo `env.listen` por su objeto y prohíbe otros tipos con la forma de `env`; regla (6) nueva (sin `unsafe`, `reflect` ni cgo en `cmd/crm`); mutaciones de T-B903 ratificadas. Detalle en §18 y en [`revision-14-t-b910.md`](revision-14-t-b910.md).
+**Decimoquinta revisión 2026-10-10 (*Accepted*, aprobada por el usuario el 2026-10-10)**: pendientes no bloqueantes de la revisión final de código del PR fdelillo/crm#17 (Fase 9, mergeado en `main` en `b945373`), en un PR solo de tests y texto. La regla (4) del guard de T-B801 prohíbe declarar parámetros de tipo en `cmd/crm`: un parámetro restringido a `env` o un alias genérico le daban a `env` un valor sin pasar por la regla. La sonda de `pg_stat_activity` de T-B911 suma un control positivo, y el autocontrol del tracer de T-B910 suma casos sintéticos. Sin cambios de decisiones, contrato, invariantes ni código de producción. Detalle en §18.
 
 Artefactos de esta spec:
 
@@ -2087,6 +2088,7 @@ La actualización de la documentación va **en el mismo cambio** que el código.
 | La semántica de `PATCH /tenant` (`null`, texto vacío, sin cambios, zona horaria) o la validación de la zona en el registro | DD-43 + DD-27 + contrato (`updateTenant`, `TenantUpdate`) + `data-model.md` §2.1 y §2.6 + T-B303/T-B701/T-B702/T-B705 + `ui.md` §13.11 si cambia lo que manda la SPA |
 | El bucket de desarrollo o el *healthcheck* de `minio` en `compose.yaml` | §10.5.1 + T-B707 + README (Levantar todo) + `.env.example` |
 | Cómo arranca o se apaga `crm serve` (servidores, listeners, worker, `env`) | Reglas (1) a (6) de T-B801 en el mismo PR + T-B911 + §11.1 (`internal/app`) + §9.4 |
+| La versión de Go en `go.mod` | Antes de subirla, revisar si la versión nueva agrega formas de construir, convertir o asignar un valor, o de seleccionar un campo, que el guard de T-B801 no ve (la decimocuarta revisión encontró `new` con una expresión; la decimoquinta, los genéricos). Reglas (4) y (6) de T-B801 y sus mutaciones, en el mismo PR |
 | Una función, tipo o constante exportada de `internal/` que usa otro paquete | §11.1 en el mismo PR |
 | `tenant_roles_total` llega a un disparador de DD-33 R-f (hoy 5.000 y 8.000) | §12.4: ADR que reemplaza a ADR-005 (al 50 %) o su fase en producción (al 75 %) |
 | La clase de instancia de PostgreSQL de producción o su versión | Medir la pendiente (T-B910 M-1 y M-2 contra una instancia descartable) + techo y disparadores de DD-33 R-f + §12.4 + la alerta |
@@ -2111,10 +2113,11 @@ La actualización de la documentación va **en el mismo cambio** que el código.
 
 ---
 
-## 18. Cambios posteriores a la aprobación (2026-09-29 a 2026-10-08)
+## 18. Cambios posteriores a la aprobación (2026-09-29 a 2026-10-10)
 
-### Estado de la implementación (2026-10-08)
+### Estado de la implementación (2026-10-10)
 
+- **2026-10-10**: las Fases 0 a 9 del backend están en `main` (la 9 con el PR fdelillo/crm#17, `b945373`). Los pendientes no bloqueantes de la revisión final de ese PR van en un PR solo de tests y texto (decimoquinta tanda, abajo).
 - **2026-10-08 (cierre de la Fase 9)**: la Fase 9 está completa en `feat/001-backend-phase-9` (PR fdelillo/crm#17), con T-B910 cumplido en las dos corridas. La decimocuarta tanda (abajo) registra los números y el techo de ADR-005. El detalle está en `tasks.md` (Estado de la implementación).
 - **2026-10-08**: las Fases 0 a 8 del backend están en `main` (`a06b8b8`). La Fase 9 está en `feat/001-backend-phase-9` (PR fdelillo/crm#17, borrador), detenida en T-B905; la decimotercera tanda (abajo) define cómo sigue. El detalle está en `tasks.md` (Estado de la implementación).
 - **2026-10-05**: la Fase 6 está en curso en `feat/001-backend-phase-6` (PR fdelillo/crm#13, borrador), detenida antes del checkpoint por el deadlock de la novena tanda (abajo); se reanuda con esa tanda. El detalle está en `tasks.md` (Estado de la implementación).
@@ -2635,5 +2638,49 @@ Estado: la Fase 9 está completa en `feat/001-backend-phase-9` (PR fdelillo/crm#
 La parte B solo cambia código de test (el guard y el tracer), en el PR #17 y antes del merge. Se preservan INV-22 y DD-22.
 
 **Hallazgos de documentación**: (1) S-3 ponía el umbral para revisar DD-33 en "decenas de miles de empresas"; corregido. (2) §12.4 y §16 usaban `tenants_total` como variable del crecimiento, pero el costo depende de `tenant_roles_total`. (3) El "Estado de la implementación" de esta sección decía que la Fase 9 seguía detenida en T-B905; actualizado. (4) En `tasks.md`, el título "Estado de la implementación (2026-10-05)" tenía la fecha vieja; actualizado.
+
+Esta tanda no le pide nada al frontend: no cambia el contrato.
+
+### Decimoquinta tanda (2026-10-10): pendientes no bloqueantes de la revisión final del PR #17 — *Accepted* (aprobada por el usuario el 2026-10-10)
+
+Estado: las Fases 0 a 9 del backend están en `main` (PR fdelillo/crm#17, `b945373`). La revisión final de código de ese PR dejó pendientes no bloqueantes que el usuario decidió cerrar en un PR chico, solo de tests y texto. Verificado contra `cmd/crm/serve_router_test.go` (`checkRouterComposition`), `cmd/crm/serve_router_revision14_test.go`, `cmd/crm/main.go` (`env`, `run`), `cmd/crm/serve.go`, `cmd/crm/phase9_serve_integration_test.go` (`TestPhase9RunServe`), `internal/testsupport/phase9bench/tracer_test.go` (`sampleIntervals`) y `tracer_integrity_test.go`, y contra la entrada de la Fase 9 de `tasks.md`.
+
+| Tema | Qué pasaba | Qué se decide | Dónde |
+|---|---|---|---|
+| Guard: genéricos (regla (4)) | Las cláusulas de la decimocuarta tanda comparan tipos concretos. Un parámetro restringido a `env` (`func D[T env]`) admite el literal posicional `T{…, otro}` (r) y la conversión `T(x)` desde un `struct` que solo difiere de `env` en una etiqueta (s). Un alias genérico `type shape[F any] = struct{ …; listen F }` no es idéntico a `env`, pero su instanciación sí, y se asigna sin conversión (t). `tasks.md` afirmaba que no existía otro tipo "desde el cual asignarle un valor" | Los archivos no-test de `cmd/crm` no declaran parámetros de tipo (funciones, tipos ni alias genéricos). Instanciar genéricos de otros paquetes sigue permitido. Mutaciones (r), (s) y (t). Se corrige la frase de la regla (4), y `revision-14-t-b910.md` §B-1 recibe una nota | `tasks.md` T-B801, regla (4); `revision-14-t-b910.md` §B-1; §16 |
+| Sonda de T-B911 | Las cuatro filas esperan `count = 0` en `pg_stat_activity` después de que `runServe` vuelve, pero nada prueba que la sonda vea alguna vez una conexión del proceso: si el `application_name` no llegara al servidor, pasaría en vacío | Control positivo: `count ≥ 1` antes del disparador, observado con reintentos hasta un plazo, después de un `GET /readyz` → `200` en el arranque | `tasks.md` T-B911 |
+| Autocontrol del tracer de T-B910 | El código ya rechaza una muestra rechazada sin `rollback` y un error distinto de `db.ErrUnavailable`, pero ningún caso sintético lo fija | Casos sintéticos: rechazada sin `rollback`, con `commit` en lugar de `rollback`, con tres errores distintos de `503`, y el error envuelto aceptado | `tasks.md` T-B910 |
+| Textos | `revision-14-t-b910.md` §B-5, y la fila 4 de la entrada de la decimocuarta parte B en `tasks.md`, justificaban el arreglo de la sonda con los 500 ms del SMTP, que son otra verificación. El paréntesis de la Fase 9 en `tasks.md` perdió la fecha | Se separan las dos verificaciones (marcado como corrección). Se restituye la fecha y se registra el merge | `revision-14-t-b910.md` §B-5; `tasks.md` |
+
+**Por qué prohibir los parámetros de tipo:**
+
+- **La propuesta del revisor no alcanza.** Revisar las restricciones con `types.IdenticalIgnoreTags` (recorrer `info.Defs` y tomar `TypeParam.Constraint()`; unas 25 líneas) cierra (r) y (s), pero no (t). El parámetro del alias es `F any`, su restricción no menciona `env`, y la instanciación se asigna sin conversión. Además, depende de recorrer el conjunto de tipos de cada restricción (uniones, interfaces embebidas, restricciones con nombre), un razonamiento que nadie va a volver a verificar. Es el mismo argumento con el que la regla (6) prohíbe `reflect`.
+- **Restringir solo una parte enumera formas.** Restringir solo los parámetros con términos de tipo (`(*types.Interface).IsMethodSet()`) y prohibir los tipos y alias genéricos permitiría un `must[T any]` en `cmd/crm`. Pero son dos cláusulas que enumeran formas, y "una lista se esquiva con la próxima forma que nadie listó" (decimocuarta tanda, B-1).
+- **Aceptar el riesgo era posible, pero no conviene.** Ninguna de las tres formas es plausible en un refactor de buena fe, así que el criterio del modelo de amenaza ("un escape nuevo recibe una regla si puede aparecer en código plausible") permitía dejarlo. Se descarta por tres razones:
+  - cerrarlo cuesta unas 5 líneas y tres mutaciones;
+  - `cmd/crm` hoy no declara ningún genérico, tampoco en los tests;
+  - así la regla (4) puede afirmar sin salvedades que no hay otro tipo desde el cual darle un valor a `env`.
+
+  Además, la prohibición cubre sin otra revisión lo que una versión futura de Go habilite para los parámetros de tipo. Por ejemplo, seleccionar un campo común a su conjunto de tipos (propuesta golang/go#48522), que hoy no está permitido.
+- **Por qué dentro de la regla (4) y no como una (7).** Solo la regla (4) compara formas de tipos. Las reglas (1), (3) y (5) siguen objetos y llamadas que un parámetro de tipo no reproduce: el literal de `RootDeps` tiene que ser directamente el argumento de `NewRootHandler`, y las funciones protegidas solo se usan como llamada directa.
+- **Trade-off aceptado.** Un helper genérico no puede vivir en `cmd/crm`: va a un paquete de `internal/` o se escribe sin genéricos. Fuera de `cmd/crm`, un genérico no alcanza a `env`, porque su campo `listen` no es exportado, y dos `struct` con campos no exportados de paquetes distintos nunca son idénticos.
+
+**Por qué el control positivo va antes del disparador:** después de que `runServe` vuelve, `count = 0` es el resultado correcto, así que una primera lectura en 0 no distingue "se cerró" de "nunca se vio". Antes del disparador, el proceso tiene conexiones por construcción: el `GET /readyz` toma una del pool de runtime, y en las filas con SMTP el worker tiene una transacción abierta.
+
+**Invariantes**: se preservan todas. INV-22 y DD-22 no cambian: el guard queda más estricto sin cambiar lo que garantiza. Ninguna firma de §11.1 cambia.
+
+**Código**: ninguno de producción. Cambia código de test: el guard de T-B801, `TestPhase9RunServe` (T-B911) y el test sintético del tracer (T-B910, build tag `bench`).
+
+**Hallazgos de documentación**: (1) la frase de la regla (4) de T-B801 era falsa con genéricos. (2) §B-5 de `revision-14-t-b910.md` y la fila 4 de la entrada de la decimocuarta parte B mezclaban la sonda de `pg_stat_activity` con los 500 ms del SMTP. (3) El paréntesis de la Fase 9 en `tasks.md` perdió la fecha y no registraba el merge. (4) El "Estado de la implementación" de este plan y el de `tasks.md` no registraban el merge de la Fase 9; actualizados.
+
+**Lo que aprobó el usuario (2026-10-10; las cinco con el default):**
+
+| # | Pregunta | Decisión |
+|---|---|---|
+| 1 | ¿Se cierra el escape por genéricos prohibiendo declarar parámetros de tipo en los no-test de `cmd/crm` (regla (4)), con las mutaciones (r) a (t)? Las alternativas eran la propuesta del revisor (deja abierta (t)) o aceptar el riesgo corrigiendo solo la frase | Sí, prohibir |
+| 2 | ¿Control positivo de la sonda de T-B911 (`count ≥ 1` antes del disparador) con `GET /readyz` → `200` en el arranque? | Sí |
+| 3 | ¿Casos sintéticos del tracer: sin `rollback`, `commit` en lugar de `rollback`, tres errores distintos de `503` y el error envuelto aceptado? | Sí |
+| 4 | ¿Se corrigen con una marca visible §B-5 de `revision-14-t-b910.md` y la fila 4 de la entrada de la decimocuarta parte B, y §B-1 recibe una nota en lugar de reescribirse? | Sí |
+| 5 | ¿Un PR solo de tests y texto, en una rama nueva desde `main` (`test/001-phase-9-followups`)? | Sí |
 
 Esta tanda no le pide nada al frontend: no cambia el contrato.
