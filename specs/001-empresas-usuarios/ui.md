@@ -1,8 +1,8 @@
 # UI (frontend): Empresas, usuarios y roles
 
 **Spec**: [`spec.md`](spec.md) · **Rama**: `001-empresas-usuarios` · **Fecha**: 2026-09-29
-**Autor**: `frontend-architect` · **Estado**: Propuesto (pendiente de aprobación del usuario)
-**Contrato consumido**: [`contracts/openapi.yaml`](contracts/openapi.yaml) v0.3.1 (**canónico**)
+**Autor**: `frontend-architect` · **Estado**: Revisión 3 aprobada por el usuario el 2026-10-12
+**Contrato consumido**: [`contracts/openapi.yaml`](contracts/openapi.yaml) **v0.4.3** (**canónico**; el diseño original se hizo contra v0.3.1)
 **Revisión 1 (2026-09-29)**: respuestas del usuario a P-F1 a P-F5 (§26) y resolución de los
 hallazgos H-1 a H-9 por el backend (`plan.md` §18, DD-22 a DD-30, §10.7, contrato v0.3.0). Cambios:
 el logo grande se achica en el navegador (§13.11.1, DD-F11, DD-F20, DD-F21); el registro ya no
@@ -20,6 +20,17 @@ recomendar un navegador (§17, §21.3, DD-F23); sin HSTS en modo local (§21.2);
 logo por campo `file` (§12.2, §12.3); DD-F21 confirmada (§24); S-F3, P-F6, H-10 y H-11 cerrados
 (§25–§27). **Hallazgo nuevo** H-12 (la prueba en un celular real necesita un origen HTTPS accesible
 desde el teléfono), en §27.2.
+**Revisión 3 (2026-10-12)**: realineación con el backend implementado (Fases 0 a 9 en `main`,
+`b945373`; plan §18, tandas 3 a 15; contrato **v0.4.3**). Análisis completo en
+[`ui-revision-3.md`](ui-revision-3.md). Ninguna operación ni esquema cambió de forma. Cambios:
+`method_not_allowed` en el mapa de errores (§12.1, §12.2); `Retry-After` en el `503` del registro y
+esperas cortas en segundos (§12.2, §13.1, DD-F25); tabla de límites de tasa con sus cupos
+compartidos (§11.1); semántica de `PATCH /tenant` de DD-43 (§11.1, §13.11, INV-F15); `COMMIT`
+incierto del logo de DD-42 resuelto releyendo la empresa (§10.3, §13.11, §14.4, DD-F26); mensajes
+de campo según los códigos que el servidor emite de verdad (§12.3, DD-F24); zona guardada siempre
+en el selector (DD-F27, S-F11). Sistema visual sin cambios. H-12 sigue abierto; nuevos H-13 a H-15
+(§27.2). Preguntas P-F7 a P-F9 y lista de pantallas **dependientes de la revisión 16 del backend**
+en §26.
 
 | Archivo | Contenido |
 |---|---|
@@ -32,9 +43,10 @@ desde el teléfono), en §27.2.
 
 ## 0. Contexto y validación del stack
 
-**Greenfield en frontend**: no hay código ni `package.json`. El backend de 001 está diseñado y
-aprobado (`plan.md`, ADR-001 a ADR-014, más los cambios del §18 del plan) y su contrato OpenAPI es
-la restricción más dura de este diseño.
+**Greenfield en frontend**: no hay código ni `package.json`. El backend de 001 está
+**implementado** (Fases 0 a 9 en `main`, `b945373`; ADR-001 a ADR-014, ADR-024 y ADR-025, y las
+quince tandas del §18 del plan) y su contrato OpenAPI (v0.4.3) es la restricción más dura de este
+diseño.
 
 Diseño sobre este stack (decisiones del usuario marcadas con **(u)**; el resto son defaults
 propuestos, cada uno con su ADR):
@@ -274,7 +286,7 @@ después de 24 h), se trata igual que el `401` global (§12.4): caché vacía y 
 | BR-F02 | Si el usuario es el **único Administrador activo** (se cuenta en la lista: `role=admin` y `status=active`; los invitados no cuentan), "Cambiar a Operador" y "Desactivar" aparecen **deshabilitadas** con el motivo visible ("Tiene que quedar al menos un administrador activo"). Es UX: el servidor responde `409 last_admin` igual. | US-3.4, INV-10 |
 | BR-F03 | La fila del usuario actual dice "(vos)". Bajarse a Operador o desactivarse a uno mismo pide una confirmación con advertencia explícita ("Vas a perder el acceso a Ajustes" / "Se va a cerrar tu sesión"). | US-3.3 |
 | BR-F04 | La navegación muestra solo lo que el rol puede usar (`session.permissions`). En Ajustes, el Operador ve su nombre, email y rol, y "Cerrar sesión". | FR-007, ADR-013 |
-| BR-F05 | Con `user.email_verified = false` se muestra el aviso C-01 en todas las pantallas con sesión; no bloquea nada; se puede ocultar hasta cerrar el navegador. | P-2, DD-4 |
+| BR-F05 | Con `user.email_verified = false` se muestra el aviso C-01 en todas las pantallas con sesión; no bloquea nada; se puede ocultar hasta cerrar el navegador. **Dependiente de la revisión 16**: si el backend pasa a exigir el email verificado para invitar, ver P-F8 (§26). | P-2, DD-4 |
 | BR-F06 | Tras registrarse o aceptar una invitación se entra directo al panel (la sesión viene en la respuesta). Tras restablecer la contraseña se va al login con aviso (el backend no inicia sesión y cierra las demás). | DD-4, plan §4.5 |
 | BR-F07 | `next` solo acepta rutas internas (§6.3). | INV-F07 |
 | BR-F08 | Invitar un email que ya estaba invitado en la empresa (respuesta `200`) muestra "Ya estaba invitado: le reenviamos la invitación"; si el rol elegido era otro, el mensaje lo dice ("…como Administrador"), porque el backend también cambia el rol. | DD-5, DD-26 |
@@ -382,6 +394,7 @@ Propiedades que se rompen **sin que falle la compilación**. Cada una tiene un t
 | INV-F12 | Ningún componente formatea fechas o dinero por su cuenta: usa `lib/format` con la zona horaria de la empresa (ADR-023). | Revisión + T-F501 |
 | INV-F13 | Lo que la UI sube como logo es PNG o JPEG, ≤ 2000 px por lado y ≤ `LOGO_TARGET_MAX_BYTES` (2 097 152 bytes, el límite exacto del archivo en el servidor, DD-31); un JPEG subido nunca conserva metadatos EXIF (se vuelve a codificar). El cliente usa los mismos límites que el servidor, que igual decide (INV-24 del plan). | T-F604, T-F706 |
 | INV-F14 | El logo se muestra siempre con la URL versionada `/api/v1/tenant/logo?v={id}-{updated_at}` (parámetro `v` del contrato, ignorado por el servidor): al cambiar el logo o la empresa, cambia la URL. | T-F603 |
+| INV-F15 | *(Revisión 3)* El body de `PATCH /tenant` solo lleva claves de `TenantUpdate` que cambiaron; `name` y `timezone` nunca van como `null`; `base_currency` nunca va (DD-43; el servidor responde `400` ante una clave desconocida o un `null` en esos campos). | T-F602 |
 
 ---
 
@@ -452,17 +465,19 @@ export const queryKeys = {
 | Confirmar email | `POST /auth/email-verification/confirm` | `invalidateQueries(session)` |
 | Reenviar verificación | `POST /auth/email-verification/resend` | — |
 | Pedir restablecimiento | `POST /auth/password-reset` | — |
-| Editar empresa | `PATCH /tenant` | `setQueryData(tenant, respuesta)` + `invalidateQueries(session)` (nombre en `TenantSummary`) |
+| Editar empresa | `PATCH /tenant` | `setQueryData(tenant, respuesta)` + `invalidateQueries(session)` (nombre en `TenantSummary`). Si nada cambió de verdad, la respuesta trae el mismo `updated_at` (DD-43 (4)) y la URL del logo no cambia |
 | Subir / quitar logo | `PUT` / `DELETE /tenant/logo` | `PUT`: `setQueryData(tenant, respuesta)` (nuevo `updated_at` → nueva URL del logo); `DELETE`: `invalidateQueries(tenant)`; ambos `invalidateQueries(session)` (`has_logo`) |
 | Invitar / reenviar | `POST /users/invitations` | Reemplaza o agrega el `User` devuelto en `['users']` + `invalidateQueries(users)` |
 | Cambiar rol / desactivar / reactivar | `PUT …/role`, `POST …/deactivate`, `POST …/reactivate` | Reemplaza el `User` devuelto en `['users']` + `invalidateQueries(users)`; si el afectado es el usuario actual, `invalidateQueries(session)` |
 | Cualquier `404`/`409 invalid_state` en acciones de usuario | — | `invalidateQueries(users)` (la lista estaba vieja) |
+| `5xx` o error de red en `PUT`/`DELETE /tenant/logo` (revisión 3) | — | `invalidateQueries(tenant)` + `invalidateQueries(session)`, y la pantalla decide por lo que lee (DD-42, DD-F26) |
 
 ---
 
 ## 11. Contrato de consumo del API
 
-**Canónico**: `specs/001-empresas-usuarios/contracts/openapi.yaml` **v0.3.1**. Los tipos del
+**Canónico**: `specs/001-empresas-usuarios/contracts/openapi.yaml` **v0.4.3** (el diseño original se
+hizo contra v0.3.1; diferencias en [`ui-revision-3.md`](ui-revision-3.md) §2). Los tipos del
 cliente se **generan** de él (ADR-018); si este documento y el YAML difieren, manda el YAML y este
 documento quedó desactualizado. Convención de los ejemplos: el valor es el tipo.
 
@@ -494,14 +509,37 @@ documento quedó desactualizado. Convención de los ejemplos: el valor es el tip
 
 No se consumen `/healthz` ni `/readyz`.
 
-**Logo y caché** (contrato v0.3.1, DD-23): `GET /tenant/logo` responde `Cache-Control: private,
+**Límites de tasa** (plan DD-9, verificados en `internal/app/api.go` el 2026-10-12; son constantes
+del backend, no configuración). Cada cupo es una ráfaga más una reposición; excedido →
+`429 rate_limited` con `Retry-After` en segundos. Los cupos compartidos limitan un **flujo**: un
+pedido en una pantalla gasta cupo de la otra.
+
+| Cupo (por IP; /64 en IPv6) | Ráfaga y reposición | Rutas que lo comparten | `Retry-After` típico | Qué ve la UI |
+|---|---|---|---|---|
+| Registro | 5, 1 cada 12 min (cuenta éxitos y rechazos) | `POST /auth/signup` | hasta 720 s | "Esperá {n} minutos…" (§12.2) |
+| Ingreso | 20, 1 cada 3 s | `POST /auth/login` | hasta 3 s | "Esperá unos segundos…" (DD-F25). Distinto de `login_locked` (15 min por email) |
+| Contraseña | 5, 1 cada 12 min | `POST /auth/password-reset` y `…/confirm` (S-03 y S-04) | hasta 720 s | Minutos |
+| Contraseña, por email | 3, 1 cada 20 min | `POST /auth/password-reset` | — (no hay `429`: responde `202` igual y no envía; DD-9, DD-39) | El texto neutro de S-03 (P-F7) |
+| Verificación | 20, 1 cada 3 min | `…/email-verification/confirm` y `…/resend` (S-05 y C-01) | hasta 180 s | Minutos |
+| Invitación (lado invitado) | 20, 1 cada 3 min | `POST /auth/invitations/preview` y `…/accept` (S-06: una aceptación gasta 2) | hasta 180 s | Minutos |
+| Sin cupo | — | `GET /industry-templates` (el contrato declara `429`; el código no limita, H-14), `/me`, `/tenant*`, `/users*`, `POST /users/invitations`, `POST /auth/logout` | — | Un `429` igual se maneja (puede aparecer con la revisión 16) |
+
+Cambios de contrato posteriores a v0.3.1 que el cliente consume: `method_not_allowed` en
+`ErrorCode` (v0.4.0; `405` con `Allow`, regla global); `Retry-After` opcional en los `5XX` (v0.4.0;
+el registro lo manda con `2`, DD-33); `413 payload_too_large` declarado en toda operación con body
+JSON de más de 65 536 bytes (v0.4.1; la SPA no llega a ese tamaño); texto del cupo del registro
+(v0.4.2); semántica de `PATCH /tenant` (v0.4.3, abajo).
+
+**Logo y caché** (contrato v0.4.3, sin cambios desde v0.3.1; DD-23, DD-42): `GET /tenant/logo` responde `Cache-Control: private,
 no-cache` con un `ETag` distinto por objeto (y por empresa); el navegador revalida en cada uso y
 recibe `304` sin cuerpo si no cambió. El parámetro de query `v` (string, máx. 100 caracteres) lo
 ignora el servidor: la UI lo arma como `encodeURIComponent(`${tenant.id}-${tenant.updated_at}`)`
 (≈ 64 caracteres) para que el `<img>` cambie de URL apenas cambia el logo. `If-None-Match` lo
-maneja el navegador solo; la UI no lo envía a mano.
+maneja el navegador solo; la UI no lo envía a mano. Si el objeto del logo falta, el servidor
+responde `404` (DD-42 (6)); si el almacenamiento está caído, `503`: en los dos casos el `<img>`
+falla y se muestran las iniciales, sin mensaje de error (§13.11).
 
-**Subida del logo** (contrato v0.3.1, plan DD-31): `PUT /tenant/logo` con `multipart/form-data`
+**Subida del logo** (contrato v0.4.3, sin cambios desde v0.3.1; plan DD-31): `PUT /tenant/logo` con `multipart/form-data`
 y **una sola parte** `file`. El archivo puede pesar hasta **2 097 152 bytes** (2 MiB, medidos
 sobre el contenido de la parte `file`) y medir hasta 2000×2000 px; el cuerpo completo, hasta
 2 162 688 bytes (el margen de 64 KiB es para el *boundary* y los encabezados de la parte). Errores:
@@ -510,6 +548,22 @@ si no es PNG ni JPEG; `422 validation_failed` con `field: file` y `code: require
 o está vacía) o `code: invalid_value` (la imagen no se puede leer o supera 2000×2000);
 `400 malformed_request` si el multipart está mal formado o trae partes extra. El servidor guarda
 los bytes sin modificarlos y **no** quita EXIF (INV-24 del plan): eso lo hace la SPA (DD-F21).
+
+**Resultado incierto de la subida** (plan DD-42, revisión 3): si la confirmación en la base queda en
+duda (se cortó la conexión esperando el `COMMIT`), el servidor relee la empresa y responde `200` si
+el logo quedó guardado; si no puede saberlo, devuelve el error original (`5xx`) aunque el logo
+pueda haber quedado guardado. Por eso, ante un `5xx` o un error de red en `PUT` o
+`DELETE /tenant/logo`, la UI vuelve a pedir `GET /tenant` y decide por lo que lee (DD-F26).
+`DELETE` sin logo responde `204` sin escribir nada (idempotente).
+
+**Edición de la empresa** (contrato v0.4.3, plan DD-43, revisión 3): solo se modifican los campos
+presentes; en los opcionales, `null` o un texto vacío borran el dato; `name` y `timezone` **no**
+admiten `null` (`400 malformed_request`); una clave que no está en `TenantUpdate` (por ejemplo
+`base_currency`) también da `400`, porque el servidor rechaza campos desconocidos; los textos se
+guardan sin los espacios de los extremos; una zona vacía o `Local` responde
+`422 invalid_timezone`; si nada cambia, la respuesta es `200` con la empresa tal cual y **sin**
+tocar `updated_at` (la URL del logo no cambia). Para la UI: reintentar un `PATCH` es seguro
+(INV-F15, §13.11).
 
 **¿El API manda algo que el cliente no debería ver?** Revisado: `User` no incluye hashes, tokens
 ni sesiones; `InvitationPreview` muestra nombre de empresa, email y rol solo a quien tiene el token
@@ -547,6 +601,8 @@ export type PasswordResetRequest = S['PasswordResetRequest'];
 export type PasswordResetConfirmRequest = S['PasswordResetConfirmRequest'];
 export type InvitationAcceptRequest = S['InvitationAcceptRequest'];
 export type InvitationRequest = S['InvitationRequest'];
+export type TokenRequest = S['TokenRequest'];             // revisión 3: confirmar email (antes escrito a mano)
+export type RoleChangeRequest = S['RoleChangeRequest'];
 ```
 
 Ejemplo de forma (el valor es el tipo):
@@ -580,7 +636,7 @@ export interface ApiError extends Error {
   readonly problem: Problem | null;
   readonly fieldErrors: FieldError[];   // [] salvo validation_failed
   readonly suggestedAction: SuggestedAction | null;
-  readonly retryAfterSeconds: number | null; // cabecera Retry-After (legible: mismo origen)
+  readonly retryAfterSeconds: number | null; // cabecera Retry-After (legible: mismo origen): 429 y, desde v0.4.0, algunos 503 (registro, DD-33)
   readonly requestId: string | null;    // problem.instance, para soporte
 }
 
@@ -634,9 +690,10 @@ Agregar una spec = una entrada en `redocly.yaml` + un `&` en `schema.ts`.
 | `401 unauthenticated` | Manejador global | Login con "Tu sesión se cerró. Ingresá de nuevo para seguir." | No |
 | `403 forbidden` | Manejador global + pantalla | Mensaje de permiso; se refresca la sesión (el rol pudo cambiar). También lo usa el backend para rechazar un request de origen cruzado (CSRF, DD-30); con la SPA en el mismo origen no debería ocurrir | No |
 | `404` | Por pantalla | Recurso de lista: "Ese usuario ya no está en tu empresa" + refresco. Ruta: S-12 | No |
+| `405` | `method_not_allowed` (contrato v0.4.0) | Como `malformed_request`: "No pudimos procesar el pedido." + `requestId`. Es un bug del cliente (método equivocado); con los tipos generados no debería ocurrir | No |
 | `409` | Por `code` | Mensaje específico (§12.2) | No |
 | `429` | `login_locked` / `rate_limited` + `Retry-After` | Hora a partir de la cual se puede reintentar | No (el usuario decide) |
-| `503` | `service_unavailable` | "El servicio no está disponible…" + "Reintentar" | Queries: hasta 2 veces con *backoff* |
+| `503` | `service_unavailable` | "El servicio no está disponible…" + "Reintentar"; con `Retry-After` corto (registro con muchos pedidos simultáneos, DD-33), "Probá de nuevo en unos segundos" (DD-F25) | Queries: hasta 2 veces con *backoff*. Mutaciones: no (tampoco el registro, DD-F25) |
 | `500` | `internal` | "Algo salió mal de nuestro lado…" + código de referencia (`requestId`) | No |
 | Respuesta no problem+json | `kind: 'unexpected'` | Mensaje genérico según status (5xx como `503`, 4xx como `internal`) | Según status |
 | Error del cliente al preparar el logo | `prepareLogo` devuelve `{ ok: false, reason }` | Mensaje en el control del logo (§13.11.1); no hay request | No |
@@ -650,23 +707,24 @@ pantalla cuando hace falta; la tabla muestra el texto por defecto y las variante
 
 | `code` | HTTP | Título (y descripción) | Comportamiento |
 |---|---|---|---|
-| `malformed_request` | 400 | "No pudimos procesar el pedido." / "Recargá la página y probá de nuevo." · Logo: "No pudimos subir el logo." / "Recargá la página y probá de nuevo." | Error general del formulario (logo: en el control del logo). Es un bug del cliente (en el logo, un multipart mal armado o con partes extra, DD-31): muestra `requestId` |
+| `malformed_request` | 400 | "No pudimos procesar el pedido." / "Recargá la página y probá de nuevo." · Logo: "No pudimos subir el logo." / "Recargá la página y probá de nuevo." | Error general del formulario (logo: en el control del logo). Es un bug del cliente (en el logo, un multipart mal armado o con partes extra, DD-31; en `PATCH /tenant`, un `null` en `name`/`timezone` o una clave fuera de `TenantUpdate`, DD-43 e INV-F15): muestra `requestId` |
 | `validation_failed` | 422 | "Revisá los datos marcados." | `fieldErrors` → `setError` por campo (nombres = propiedades del contrato, `snake_case`) + foco en el primero. Campos desconocidos → error general. Logo: el error de `field: file` va al control del logo con el texto de §12.3 |
 | `unsupported_media_type` | 415 | Logo: "El logo tiene que ser una imagen PNG o JPG." · Resto: como `malformed_request` | Logo: error en el control de archivo |
-| `payload_too_large` | 413 | Logo: "La imagen sigue pesando más de lo permitido. Probá con otra imagen del logo." · Resto: como `malformed_request` | Idem. No debería pasar: el cliente nunca sube más de 2 097 152 bytes (DD-F22); si pasa, los límites del cliente y del servidor se desalinearon (RF-6) |
+| `payload_too_large` | 413 | Logo: "La imagen sigue pesando más de lo permitido. Probá con otra imagen del logo." · Resto (body JSON de más de 65 536 bytes, declarado en toda operación desde el contrato v0.4.1; ningún formulario de 001 llega a ese tamaño): como `malformed_request` | Idem. No debería pasar: el cliente nunca sube más de 2 097 152 bytes (DD-F22); si pasa, los límites del cliente y del servidor se desalinearon (RF-6) |
 | `unauthenticated` | 401 | En el login: "Tu sesión se cerró. Ingresá de nuevo para seguir." + ayuda "Las sesiones se cierran solas después de 24 horas sin uso o a los 7 días." | **Global** (§12.4) |
 | `invalid_credentials` | 401 | "El email o la contraseña no son correctos." | En S-02: se conserva el email, se vacía la contraseña y se enfoca. **No** dispara el manejador global |
 | `account_disabled` | 403 | "Tu usuario está desactivado." / "Pedile a un administrador de tu empresa que lo reactive." | En S-02: aviso persistente; no es "sin permiso" (no invalida sesión: no hay) |
 | `forbidden` | 403 | "No tenés permiso para hacer esto." / "Si lo necesitás, pedíselo a un administrador." | Global: `invalidateQueries(session)`; la pantalla muestra el mensaje o el guard pasa a "Sin permiso". Mismo tratamiento si el origen fue el rechazo de CSRF (DD-30): la UI no los distingue y no hace falta (§27, H-9 resuelto) |
 | `not_found` | 404 | Acciones de usuario: "Ese usuario ya no está en tu empresa. Actualizamos la lista." · Logo (`GET`): sin mensaje (se muestran iniciales) · Resto: "No encontramos lo que buscás." | Refresca la lista afectada |
+| `method_not_allowed` | 405 | "No pudimos procesar el pedido." / "Recargá la página y probá de nuevo." | Error general del formulario o de la sección, con `requestId`. Es un bug del cliente (la ruta existe con otro método; la respuesta trae `Allow`). Agregado en la revisión 3 (contrato v0.4.0) |
 | `email_already_registered` | 409 | "Ya existe un usuario con ese email." / "¿Querés recuperar la contraseña?" | Si `suggested_action = password_reset`: botón **"Recuperar contraseña"** → `/forgot-password` con el email en `location.state` (DD-F18). Botón secundario "Usar otro email" enfoca el campo email |
 | `email_taken` | 409 | "Ese email ya tiene un usuario en el sistema." / "Usá otro email." | Error en el campo email de S-10; BR-F11 si es un desactivado de la empresa |
 | `last_admin` | 409 | "Tiene que quedar al menos un administrador activo." / "Nombrá a otra persona como administrador antes de hacer este cambio." | Cierra el diálogo, toast de error, refresca la lista |
 | `invalid_state` | 409 | "El estado de este usuario cambió mientras tanto. Actualizamos la lista." | Refresca la lista |
 | `token_invalid` | 400 | Reset: "Este enlace ya no sirve." / "Vence a la hora o ya se usó. Pedí uno nuevo." · Verificación: "Este enlace de confirmación ya no sirve." / "Vence a las 48 horas o ya se usó." · Invitación: "Esta invitación ya no es válida." / "Venció, ya se usó o la reemplazó una más nueva." | Estado de "enlace inválido" de la pantalla con su salida (§13) |
 | `login_locked` | 429 | "Por seguridad, pausamos el ingreso con este email." / "Hubo varios intentos fallidos. Podés volver a intentar a las {HH:MM} (en {n} minutos) o restablecer tu contraseña ahora." | S-02 pasa al estado Bloqueado (DD-F17) |
-| `rate_limited` | 429 | "Hiciste muchos intentos seguidos." / "Esperá {n} minutos y probá de nuevo." | Error general; `n` = `ceil(Retry-After / 60)`, mínimo 1 |
-| `service_unavailable` | 503 | "El servicio no está disponible en este momento." / "Probá de nuevo en unos minutos." | Botón "Reintentar"; conserva lo cargado en el formulario |
+| `rate_limited` | 429 | "Hiciste muchos intentos seguidos." / "Esperá {espera} y probá de nuevo." | Error general. `{espera}` según `Retry-After` (DD-F25): menos de 60 s → "unos segundos"; 60 s → "1 minuto"; más → "{n} minutos" con `n = ceil(s / 60)`; sin cabecera → "unos minutos". Los cupos (algunos compartidos entre pantallas) están en §11.1 |
+| `service_unavailable` | 503 | "El servicio no está disponible en este momento." / "Probá de nuevo en unos minutos." · Con `Retry-After` menor de 60 s: "Probá de nuevo en unos segundos." (en el registro, además: "No se creó nada: podés reintentar con los mismos datos.") | Botón "Reintentar"; conserva lo cargado en el formulario; sin reintento automático de mutaciones (DD-F25) |
 | `internal` | 500 | "Algo salió mal de nuestro lado." / "Probá de nuevo. Si sigue pasando, avisanos con este código: {requestId}." | Botón "Reintentar"; conserva lo cargado |
 | (sin respuesta) | — | "No hay conexión." / "Revisá tu internet y probá de nuevo." | Botón "Reintentar"; conserva lo cargado |
 
@@ -677,12 +735,22 @@ pantalla cuando hace falta; la tabla muestra el texto por defecto y las variante
 | `required` | "Completá este campo." | `industry_template_code`: "Elegí el rubro de tu empresa." · `base_currency`: "Elegí la moneda base." · `file` (logo): "Elegí una imagen para el logo." (no debería pasar: la UI nunca sube un archivo vacío) |
 | `invalid_format` | "El formato no es válido." | `email`: "Ingresá un email válido, por ejemplo nombre@empresa.com" · `tax_id`: "El CUIT tiene 11 números (podés escribirlo con o sin guiones)." |
 | `too_short` | "Es demasiado corto." | `password`: "La contraseña tiene que tener al menos 10 caracteres." |
-| `too_long` | "Es demasiado largo (máximo {n} caracteres)." | `n` sale de las constantes del contrato por campo (`name`/`company_name` 120, `legal_name` 200, `address` 300, `phone` 50, `email` 254, `password` 128) |
-| `invalid_value` | "Elegí una opción de la lista." | `file` (logo): "No pudimos leer la imagen o mide más de 2000 × 2000 px. Probá con otra imagen del logo." |
+| `too_long` | "Es demasiado largo (máximo {n} caracteres)." | `n` sale de las constantes del contrato por campo (`name`/`company_name` 120, `legal_name` 200, `address` 300, `phone` 50, `email` 254, `password` 128). `password`: "La contraseña puede tener hasta 128 caracteres." El servidor solo lo emite para `password` (en los textos usa `invalid_value`, abajo); el cliente lo usa en todos (Zod) |
+| `invalid_value` | "Revisá este dato." (revisión 3; antes "Elegí una opción de la lista.") | DD-F24, según el campo: `name`, `company_name` → "Tiene que tener entre 1 y {n} caracteres." (el servidor usa este código para vacío y para largo) · `legal_name`, `address`, `phone` → "Es demasiado largo (máximo {n} caracteres)." · `base_currency` → "Elegí la moneda base." · `role` → "Elegí un rol." · `password` (solo Ingresar) → "Ingresá tu contraseña (hasta 128 caracteres)." · `file` (logo) → "No pudimos leer la imagen o mide más de 2000 × 2000 px. Probá con otra imagen del logo." |
 | `invalid_tax_id` | "El CUIT no es válido. Revisá los números." | |
 | `same_as_email` | "La contraseña no puede ser igual a tu email." | |
 | `unknown_template` | "Elegí un rubro de la lista." | Además se refresca `['industry-templates']` |
-| `invalid_timezone` | "Elegí una zona horaria de la lista." | Solo en S-11 (`PATCH /tenant`). En el registro no existe: una zona desconocida se reemplaza por la default sin error (DD-27 del plan) |
+| `invalid_timezone` | "Elegí una zona horaria de la lista." | Solo en S-11 (`PATCH /tenant`), también para una zona vacía o `Local` (DD-43). En el registro no existe: una zona desconocida se reemplaza por la default sin error (DD-27 del plan) |
+
+**Qué código emite el servidor por campo** (verificado en el código el 2026-10-12; el contrato no lo
+documenta, H-13): `name` y `company_name` del registro y `name` de la aceptación → `invalid_value`
+si están vacíos, pasan el máximo o tienen `NUL`; `base_currency` faltante → `invalid_value`;
+`industry_template_code` faltante → `unknown_template`; `password` →
+`too_short`/`too_long`/`same_as_email` (en Ingresar, `invalid_value`); emails → `invalid_format`;
+`role` → `invalid_value`; en `PATCH /tenant`, `name` vacío → `required` y largo → `invalid_value`,
+opcionales largos → `invalid_value`, CUIT → `invalid_format`/`invalid_tax_id`. Tabla completa en
+[`ui-revision-3.md`](ui-revision-3.md) §4.1. El cliente valida antes de enviar, así que estos `422`
+solo aparecen si cliente y servidor se desalinean (RF-6).
 
 ### 12.4 Sesión vencida (`401`) y permisos (`403`) globales
 
@@ -807,7 +875,7 @@ A: ícono de la app. B: `<h1>` y bajada. C y D: `<fieldset>` con `<legend>`. E: 
 |---|---|
 | Carga | Formulario visible de inmediato; el grupo "Rubro" muestra 2 *skeletons* de opción mientras llega `/industry-templates`; "Crear cuenta" deshabilitado hasta que carguen |
 | Vacío | `items` vacío (no debería pasar): en el grupo Rubro "No pudimos cargar los rubros." + "Reintentar" |
-| Error | Rubros: error en línea en el grupo con "Reintentar" (el resto del formulario sigue usable). Envío: §12.2 (`409` con "Recuperar contraseña", `422` por campo, `429` con minutos, `503`/`500`/red con "Reintentar" conservando lo cargado) |
+| Error | Rubros: error en línea en el grupo con "Reintentar" (el resto del formulario sigue usable). Envío: §12.2 (`409` con "Recuperar contraseña", `422` por campo (§12.3: el servidor usa `invalid_value` en nombre y empresa), `429` con minutos (cupo de 5 y 1 cada 12 min por IP, §11.1), `503` con `Retry-After` (registros simultáneos, DD-33) con "Probá de nuevo en unos segundos. No se creó nada: podés reintentar con los mismos datos." (DD-F25), `503`/`500`/red con "Reintentar" conservando lo cargado). **Dependiente de la revisión 16** (§26) |
 | Enviando | Botón "Creando cuenta…" deshabilitado; campos `readOnly` |
 | Éxito | `201` → caché con la sesión → `replace` a `/` + toast "¡Listo! Tu empresa quedó creada." + aviso C-01 de verificación |
 | Sin permiso | N/A |
@@ -884,9 +952,9 @@ stateDiagram-v2
 | Estado | Qué ve el usuario |
 |---|---|
 | Carga / Vacío | N/A (el email puede venir prellenado desde `location.state`) |
-| Error | `422` email inválido en el campo; `429` "Hiciste muchos intentos…"; `503`/`500`/red con "Reintentar" |
+| Error | `422` email inválido en el campo; `429` "Hiciste muchos intentos…" (el cupo por IP es el mismo que el de S-04: 5 y 1 cada 12 min, §11.1); `503`/`500`/red con "Reintentar". **Dependiente de la revisión 16** (§26) |
 | Enviando | "Enviando…" |
-| Éxito | Siempre el mismo texto neutro ante `202` (el backend responde igual exista o no el email, INV-13); el foco va al título "Revisá tu email". "Pedilo de nuevo" vuelve al formulario con el email cargado |
+| Éxito | Siempre el mismo texto neutro ante `202` (el backend responde igual exista o no el email, INV-13); el foco va al título "Revisá tu email". "Pedilo de nuevo" vuelve al formulario con el email cargado. La respuesta puede tardar distinto según la cuenta (DD-39): la UI no mide ni muestra ese tiempo, y nada de lo que muestra depende de él. Después de 3 pedidos del mismo email el backend sigue respondiendo `202` pero no envía hasta pasados 20 min (DD-9): si se acepta P-F7, el estado Enviado suma "Si ya lo pediste varias veces, esperá unos 20 minutos antes de pedirlo de nuevo." |
 | Sin permiso / Sesión vencida | N/A |
 
 ### 13.4 S-04 Restablecer contraseña (`/reset-password#token=`) · US-2.3
@@ -911,7 +979,7 @@ Sin campo "repetir contraseña": el control de mostrar/ocultar cumple esa funci�
 |---|---|
 | Sin token en la URL ni en `history.state` | "Este enlace está incompleto." / "Abrilo de nuevo desde el email o pedí uno nuevo." + "Pedir un enlace nuevo" (→ S-03) |
 | Carga | N/A (no hay vista previa: el token se valida al enviar) |
-| Error | `token_invalid` → estado Enlace inválido: "Este enlace ya no sirve. Vence a la hora o ya se usó." + "Pedir un enlace nuevo". `422` (`too_short`, `same_as_email`) en el campo; `429`, `503`, `500`, red |
+| Error | `token_invalid` → estado Enlace inválido: "Este enlace ya no sirve. Vence a la hora o ya se usó." + "Pedir un enlace nuevo". `422` (`too_short`, `too_long`, `same_as_email`) en el campo; `429` (mismo cupo por IP que S-03, §11.1), `503`, `500`, red |
 | Enviando | "Guardando…" |
 | Éxito | `204` → `clear()` → `replace` a `/login?reason=password_changed` |
 | Sin permiso / Sesión vencida | N/A (si había una sesión del mismo usuario, el backend la cerró; por eso `clear()`) |
@@ -960,8 +1028,8 @@ Confirmación con **botón** y no automática al abrir (DD-F3).
 |---|---|
 | Sin token | "Este enlace está incompleto." / "Abrilo de nuevo desde el email." |
 | Carga | *Skeleton* de la zona A y del formulario (`POST /auth/invitations/preview`) |
-| Error de vista previa | `token_invalid`: "Esta invitación ya no es válida. Venció, ya se usó o la reemplazó una más nueva." + "Si todavía no la aceptaste, pedí una nueva con tu email" (→ S-03: el backend reemite la invitación, DD-20) + "¿Ya tenés usuario? Ingresá". `429`, `503`/red con "Reintentar" |
-| Error al aceptar | `token_invalid` (venció entre la vista previa y el envío) → mismo estado inválido. `422` por campo (`same_as_email` se valida también en el cliente con el email de la vista previa) |
+| Error de vista previa | `token_invalid`: "Esta invitación ya no es válida. Venció, ya se usó o la reemplazó una más nueva." + "Si todavía no la aceptaste, pedí una nueva con tu email" (→ S-03: el backend reemite la invitación, DD-20) + "¿Ya tenés usuario? Ingresá". `429` (cupo por IP compartido con la aceptación, §11.1; sin formulario hasta reintentar), `503`/red con "Reintentar". **Dependiente de la revisión 16** (§26) |
+| Error al aceptar | `token_invalid` (venció entre la vista previa y el envío) → mismo estado inválido. `422` por campo: `name` llega como `invalid_value` y `password` como `too_short`/`too_long`/`same_as_email` (§12.3; `same_as_email` se valida también en el cliente con el email de la vista previa). `429` (una aceptación gasta 2 pedidos del cupo compartido, §11.1) |
 | Enviando | "Aceptando…" |
 | Éxito | `201` → `clear()` → sesión en caché → `replace` a `/` + toast "¡Bienvenido/a a {empresa}!" |
 | Sin permiso / Sesión vencida | N/A |
@@ -1123,7 +1191,7 @@ Para un invitado, {nombre} es su email (`name` es `null` hasta que acepta).
 | Estado | Qué ve el usuario |
 |---|---|
 | Carga / Vacío | N/A (formulario; `['users']` se usa solo para BR-F11 si ya está en caché) |
-| Error | `409 email_taken` en el campo email (+ BR-F11); `422` por campo; `503`/`500`/red con "Reintentar" |
+| Error | `409 email_taken` en el campo email (+ BR-F11); `422` por campo (`email`: `invalid_format`; `role`: `invalid_value`, "Elegí un rol."); `429` (hoy esta ruta no tiene cupo; se maneja por si la revisión 16 lo agrega); `503`/`500`/red con "Reintentar". **Dependiente de la revisión 16** (§26, P-F8) |
 | Enviando | "Enviando…" |
 | Éxito | `201`: vuelve a Usuarios + toast "Invitación enviada a {email}. Vence el {fecha}." · `200` con el mismo rol que tenía: "{email} ya estaba invitado: le reenviamos la invitación." · `200` con otro rol (se compara con `['users']` en caché; si no está, se usa el texto neutro anterior): "{email} ya estaba invitado: le reenviamos la invitación como {Rol}." |
 | Sin permiso / Sesión vencida | Guard / §12.4 |
@@ -1169,21 +1237,27 @@ Para un invitado, {nombre} es su email (`name` es `null` hasta que acepta).
 - La imagen se muestra con `src` = `logoUrl(tenant)` = `/api/v1/tenant/logo?v={id}-{updated_at}`
   (INV-F14, DD-F12) y `alt="Logo de {empresa}"`; si falla, iniciales de la empresa.
 - `PATCH` envía **solo los campos modificados** (`dirtyFields`); un campo opcional vaciado se
-  envía como `null` (borra el dato, contrato). CUIT: se valida formato y dígito verificador en el
-  cliente (`isValidCuit`, mismo algoritmo y casos que T-B701) y se envía como se escribió (el
-  backend normaliza).
-- Zona horaria: `Select` con las zonas `America/Argentina/*` primero y luego el resto de
-  `Intl.supportedValuesOf('timeZone')`. Una zona desconocida para el backend da `422
-  invalid_timezone` en el campo.
+  envía como `null` (borra el dato, contrato). `name` y `timezone` nunca se envían como `null` (el
+  nombre vacío lo frena la validación del cliente; la zona es un selector) y `base_currency` nunca
+  se envía: cualquiera de los dos casos es un `400` (DD-43, INV-F15). Si nada cambió de verdad, el
+  servidor responde `200` sin tocar `updated_at` (DD-43 (4)); por eso **reintentar es seguro**.
+  CUIT: se valida formato y dígito verificador en el cliente (`isValidCuit`, mismo algoritmo y
+  casos que T-B701) y se envía como se escribió, sin espacios en los extremos (el backend
+  normaliza). Las formas válidas son las del servidor: 11 dígitos o `NN-NNNNNNNN-N`; guiones en
+  otra posición → error de formato.
+- Zona horaria: `Select` con las zonas `America/Argentina/*` (y sus alias, si el navegador los
+  devuelve) primero y luego el resto de `Intl.supportedValuesOf('timeZone')`; la zona guardada de
+  la empresa está **siempre** en la lista, aunque `Intl` no la devuelva (DD-F27, S-F11). Una zona
+  desconocida para el backend da `422 invalid_timezone` en el campo.
 
 | Estado | Qué ve el usuario |
 |---|---|
 | Carga | *Skeleton* de logo y campos |
 | Vacío | Campos opcionales vacíos con su ayuda; logo con iniciales y "Todavía no subiste un logo" |
 | Error de carga | `ErrorState` "No pudimos cargar los datos de tu empresa." + "Reintentar" |
-| Error al guardar | `422` por campo (`invalid_tax_id`, `invalid_format`, `too_long`, `invalid_timezone`); `503`/`500`/red con "Reintentar" y lo cargado intacto |
+| Error al guardar | `422` por campo (`invalid_tax_id`, `invalid_format`, `required` e `invalid_value` en el nombre, `invalid_value` en los opcionales largos, `invalid_timezone`; §12.3); `400` (bug del cliente, con `requestId`; INV-F15 lo evita); `503`/`500`/red con "Reintentar" y lo cargado intacto (reintentar es seguro, DD-43) |
 | Preparando el logo | "Preparando la imagen…" (`aria-live="polite"`); "Cambiar logo" y "Quitar" deshabilitados |
-| Error de logo | Del cliente (§13.11.1, sin request) · Del servidor (en el control del logo, §12.2–12.3): `413`, `415`, `422` con `field: file` (`invalid_value`: "No pudimos leer la imagen o mide más de 2000 × 2000 px…"; `required`), `400` (con `requestId`), `503`/`500`/red con "Reintentar" |
+| Error de logo | Del cliente (§13.11.1, sin request) · Del servidor (en el control del logo, §12.2–12.3): `413`, `415`, `422` con `field: file` (`invalid_value`: "No pudimos leer la imagen o mide más de 2000 × 2000 px…"; `required`), `400` (con `requestId`), `503`/`500`/red: primero se vuelve a pedir `GET /tenant`; si muestra que el logo se guardó (o se quitó), es éxito; si no, mensaje con "Reintentar" (DD-42, DD-F26) |
 | Enviando | "Guardando…" / "Subiendo logo…" / "Quitando logo…" |
 | Éxito | Toast "Guardamos los datos de la empresa." / "Logo actualizado." (si se achicó: "Logo actualizado. Lo achicamos para que pese menos.") / "Quitamos el logo."; el encabezado se actualiza sin recargar (nueva URL con `v`) |
 | Cambios sin guardar | Al salir: "Tenés cambios sin guardar. ¿Salir igual?" (`useBlocker`); también mientras se prepara o sube el logo |
@@ -1442,6 +1516,10 @@ sequenceDiagram
             P-->>A: toast Logo actualizado, lo achicamos; img con nueva URL v
         else 413, 415, 422 file o 400
             P-->>A: mensaje en el control del logo
+        else 5xx o sin red
+            P->>API: GET /tenant
+            API-->>P: Tenant vigente
+            P-->>A: Logo actualizado si updated_at cambio, si no mensaje con Reintentar
         end
     else ninguno entra o no se puede leer
         L-->>P: ok false con el motivo
@@ -1638,7 +1716,7 @@ export function useLogin(): UseMutationResult<SessionInfo, ApiError, LoginReques
 export function useLogout(): UseMutationResult<void, ApiError, void>;
 export function useRequestPasswordReset(): UseMutationResult<void, ApiError, PasswordResetRequest>;
 export function useConfirmPasswordReset(): UseMutationResult<void, ApiError, PasswordResetConfirmRequest>;
-export function useConfirmEmailVerification(): UseMutationResult<void, ApiError, { token: string }>;
+export function useConfirmEmailVerification(): UseMutationResult<void, ApiError, TokenRequest>;
 export function useResendEmailVerification(): UseMutationResult<void, ApiError, void>;
 export function useInvitationPreview(token: string | null): UseQueryResult<InvitationPreview, ApiError>; // deshabilitada si token = null
 export function useAcceptInvitation(): UseMutationResult<SessionInfo, ApiError, InvitationAcceptRequest>;
@@ -1757,7 +1835,7 @@ export function formatRetryAt(retryAfterSeconds: number, now: Date): { time: str
 | Restablecer | Contraseña 10–128 | Token; `same_as_email` (el cliente no conoce el email) |
 | Aceptar invitación | Nombre 1–120; contraseña 10–128 y ≠ email de la vista previa | Token |
 | Invitar | Email; rol | Email en uso (`409`) |
-| Datos de la empresa | Nombre 1–120; longitudes; email de contacto; CUIT (formato + dígito verificador) | Zona horaria válida; todo lo anterior otra vez |
+| Datos de la empresa | Nombre 1–120; longitudes; email de contacto; CUIT (formato: 11 dígitos o `NN-NNNNNNNN-N`, + dígito verificador); nunca `null` en nombre ni zona y nunca `base_currency` (INV-F15) | Zona horaria válida (tampoco vacía ni `Local`); todo lo anterior otra vez |
 | Logo | Formato por firma, dimensiones y peso (§13.11.1), con los mismos límites exactos que el servidor (≤ 2000 px, ≤ 2 097 152 bytes) | Tipo real, peso, dimensiones y forma del multipart (DD-11, DD-31) |
 
 ---
@@ -1917,7 +1995,7 @@ viewport-fit=cover">` (sin bloquear el zoom), `<meta name="theme-color" content=
 - **Montaje** (DD-22, INV-22): `internal/app` arma un `http.ServeMux` raíz: `/api/` → router chi
   (con su `NotFound`/`MethodNotAllowed` en problem+json y `Cache-Control: no-store`), `GET
   /healthz` y `GET /readyz` → ops, `/` → `RootDeps.SPA`. Hasta T-F008, `RootDeps.SPA` es un stub
-  que responde `503` con el mismo texto; T-F008 lo reemplaza por `web.NewHandler(web.DistFS())`.
+  que responde `503` con el mismo texto (hoy `app.SPAUnavailableHandler()`, en `cmd/crm/serve.go`); T-F008 lo reemplaza por `web.NewHandler(web.DistFS())` dentro del mismo literal `RootDeps`, con el guard de `crm serve` de T-B801 en verde y el ajuste de `cmd/crm/main_test.go` (H-15).
   Los middlewares comunes (request id, recover, logging, cabeceras de seguridad y
   `CrossOriginProtection`) envuelven al mux raíz, así que aplican también a la SPA. `/api` sin barra
   lo redirige el `ServeMux` a `/api/`. `chi.Walk` ve solo la API.
@@ -1937,7 +2015,7 @@ viewport-fit=cover">` (sin bloquear el zoom), `<meta name="theme-color" content=
 ### 21.2 Cabeceras
 
 **Fuente única**: la tabla de `plan.md` §10.7 (la verifican los tests Go de T-B203 y T-F007). La
-de abajo es la parte de la SPA, idéntica a §10.7 al 2026-09-29 (segunda tanda del plan incluida);
+de abajo es la parte de la SPA, idéntica a §10.7 al 2026-09-29 (segunda tanda del plan incluida) y verificada de nuevo el 2026-10-12 (revisión 3: §10.7 solo sumó filas de la API, el `405` con `Allow` y el `503` del registro con `Retry-After: 2`);
 si alguna vez difieren, **manda §10.7** (es lo que el servidor implementa y prueba) y este
 documento se actualiza en el mismo cambio.
 
@@ -2122,6 +2200,10 @@ La preparación de imágenes vive en `features/tenant/logo/` porque solo la usa 
 | **DD-F21** | Todo JPEG se vuelve a codificar aunque ya cumpla los límites. **Confirmada por el usuario (P-F6).** | Aplica la orientación EXIF a los píxeles (el logo nunca queda de costado en el PDF de 005, que puede ignorar EXIF) y quita la ubicación GPS y los datos del celular de una imagen que termina en documentos enviados a clientes; el servidor no lo hace (INV-24 del plan) | Una re-codificación con calidad 0,90 (pérdida mínima) aun cuando no hacía falta achicar |
 | **DD-F22** | *(Nueva, revisión 2)* `LOGO_TARGET_MAX_BYTES` = **2 097 152 bytes**, el límite exacto del archivo en el servidor (DD-31), sin margen; se compara con `≤` | El servidor mide el contenido de la parte `file`, que es el `size` exacto del archivo preparado; los encabezados multipart tienen su propio margen de 64 KiB en el límite del cuerpo. Un margen extra solo bajaría la calidad o re-codificaría un PNG que el servidor acepta | Si el backend cambia el límite, el cliente tiene que cambiar la constante en el mismo PR (matriz §29); si no, un `413` lo delata (RF-6) |
 | **DD-F23** | *(Nueva, revisión 2)* Desarrollo con Vite sobre HTTPS con el mismo certificado de mkcert que `crm serve`; *proxy* a `https://localhost:8443` sin `changeOrigin` y **con** verificación de certificado (Node confía por `NODE_EXTRA_CA_CERTS`); `strictPort` | Es la receta del plan (§10.5.1) llevada a la configuración de Vite; verificar el certificado hace visible una configuración rota en vez de esconderla | Un paso más por equipo (exportar la variable) |
+| **DD-F24** | *(Nueva, revisión 3)* Variantes de `invalid_value` y `too_long` por campo en `fieldErrorMessage` (§12.3); texto por defecto de `invalid_value`: "Revisá este dato." | El servidor usa `invalid_value` para vacíos y largos en campos de texto (H-13); "Elegí una opción de la lista" era incorrecto ahí. Descartado: pedir al backend que cambie a `required`/`too_long` (cambia comportamiento probado; queda como alternativa de H-13) | Más filas en el mapa; en nombre y empresa el texto cubre vacío y largo a la vez |
+| **DD-F25** | *(Nueva, revisión 3)* Esperas cortas en segundos: `Retry-After` < 60 → "unos segundos"; 60 → "1 minuto"; más → `ceil(s/60)` minutos; sin cabecera → "unos minutos". El `503` del registro con `Retry-After` no se reintenta solo | El login por IP (1 cada 3 s) y el `503` del registro (`Retry-After: 2`, DD-33) daban "Esperá 1 minutos". Sin reintento automático, como el resto de las mutaciones (§10.2). Descartado: reintentar solo tras `Retry-After` (seguro según el contrato, pero otro camino que solo aparece con registros simultáneos) | Un toque más en un caso raro |
+| **DD-F26** | *(Nueva, revisión 3)* Ante `5xx` o error de red en `PUT`/`DELETE /tenant/logo`, se vuelve a pedir `GET /tenant`; si `has_logo` y `updated_at` muestran la operación hecha, es éxito; si no, error con "Reintentar" | DD-42: el servidor puede devolver el error original aunque el `COMMIT` haya confirmado. Descartado: solo invalidar (mensaje de error con el logo nuevo en pantalla) | Un `GET /tenant` más en el camino de error |
+| **DD-F27** | *(Nueva, revisión 3)* El selector de zona horaria incluye siempre la zona guardada de la empresa y agrupa en "Argentina" también los alias que devuelva `Intl` | S-F11: algún navegador puede devolver `America/Buenos_Aires` en lugar del nombre IANA. Descartado: una tabla propia de alias (otra lista que mantener) | La lista puede mostrar dos nombres para la misma zona |
 
 ---
 
@@ -2140,6 +2222,7 @@ La preparación de imágenes vive en `features/tenant/logo/` porque solo la usa 
 | S-F9 | `canvas.toBlob('image/png')` conserva la transparencia y `toBlob('image/jpeg', q)` respeta la calidad pedida en los navegadores de NFR-F02 | Abierto | T-F706 | Ajustar la escalera |
 | S-12 (plan) | Tras `mkcert -install`, Chrome, Firefox y Safari en desarrollo, y Chromium y WebKit de Playwright en CI, confían en el certificado de `localhost` | Abierto | Primera corrida de T-F701 (y spike de T-F006 en desarrollo) | Respaldo en CI: `ignoreHTTPSErrors` solo si el service worker se registra igual (T-F703); si no, volver al arquitecto |
 | S-F10 | En Android, el reenvío de puertos de Chrome (`chrome://inspect`) a `localhost:8443` más la CA de mkcert instalada en el teléfono permiten probar el binario local con sesión (respaldo de H-12) | Abierto (no verificado) | Checkpoint F6, si no hay otro origen | Probar en el celular solo contra un entorno con dominio y HTTPS real |
+| S-F11 | *(Revisión 3)* `Intl.supportedValuesOf('timeZone')` y `resolvedOptions().timeZone` devuelven nombres IANA canónicos (`America/Argentina/Buenos_Aires`) en los navegadores de NFR-F02. Un reporte de WebKit (bug 218542) muestra que Safari devolvía el alias `America/Buenos_Aires` | Abierto (no verificado) | T-F602 (selector de DD-F27) y a mano en Chrome, Firefox y Safari (T-F705) | DD-F27 ya cubre la zona guardada; el registro funciona igual (el backend conoce los alias por `time/tzdata`) |
 
 ## 26. Preguntas
 
@@ -2152,7 +2235,18 @@ La preparación de imágenes vive en `features/tenant/logo/` porque solo la usa 
 | P-F5 | ¿E2E en cada PR? | **Resuelta** | Playwright con Chromium en cada PR; WebKit antes de liberar |
 | P-F6 | ¿Volvemos a codificar **todo** JPEG de logo (aunque cumpla los límites) para enderezarlo y quitarle la ubicación GPS y los datos del celular? | **Resuelta** | Sí (default aceptado): DD-F21. El backend no cambia y guarda los bytes tal cual (INV-24 del plan) |
 
-No quedan preguntas abiertas del frontend.
+Preguntas de la revisión 3 (detalle en [`ui-revision-3.md`](ui-revision-3.md) §8):
+
+| ID | Pregunta | Estado | Default propuesto |
+|---|---|---|---|
+| P-F7 | ¿Agregamos en "Revisá tu email" (S-03) la línea "Si ya lo pediste varias veces, esperá unos 20 minutos antes de pedirlo de nuevo"? (el backend responde igual pero no envía después de 3 pedidos del mismo email, DD-9) | **Cerrada 2026-10-12**: sí (default) | Sí, con ese texto; el número sigue al cupo de DD-9 |
+| P-F8 | *Si la revisión 16 exige el email verificado para invitar*: ¿cómo se muestra? | **Cerrada 2026-10-12**: la revisión 16 lo exige (DD-46, opción B); se aplica el default | Deshabilitar "Invitar", "Invitá a tu equipo", "Reenviar invitación" y "Reactivar" de un invitado con el motivo visible y "Reenviar email de confirmación" al lado (patrón de BR-F02); el servidor decide igual |
+| P-F9 | *Si la revisión 16 propone una prueba anti-bots en registro o ingreso*: ¿se agrega? | **Cerrada 2026-10-12**: la revisión 16 no la propone (usa un cupo global, DD-49); no | No en 001 (§18 promete "sin CAPTCHA" y la CSP solo admite scripts propios); si se decide igual, es un ADR |
+
+**Dependiente de la revisión 16 del backend** (auditoría de seguridad en curso): S-01 Registro y
+§14.2; S-05 Confirmar email y C-01 (BR-F05); S-10 Invitar y las acciones de invitado de S-09; S-03
+y S-04; S-06; posiblemente S-02. Todo lo demás se puede implementar ya. Detalle y fases en
+[`ui-revision-3.md`](ui-revision-3.md) §9.
 
 ## 27. Hallazgos para el backend-architect
 
@@ -2177,13 +2271,23 @@ de ADR-019 coinciden con `plan.md` §10.7 (incluido HSTS solo fuera del modo loc
 (`v`, `ETag`, `304`, `private, no-cache`) y los límites y errores de `PUT /tenant/logo` coinciden
 con el contrato v0.3.1; los modos y puertos de §21.3 coinciden con plan §10.5.1.
 
+Verificación de la revisión 3 (2026-10-12): el contrato v0.4.3 no cambia operaciones ni esquemas
+respecto de lo que este documento asume (diferencias en [`ui-revision-3.md`](ui-revision-3.md) §2);
+`plan.md` §10.7 sigue coincidiendo con §21.2 en la parte de la SPA; el código del backend
+(`internal/app`, `internal/tenant`, `internal/identity`, `internal/platform/httpx`) confirma los
+cupos de §11.1 y los códigos de campo de §12.3. No se pudo correr `git log -p` sobre el contrato
+(sin shell): la lista de cambios sale del historial del propio contrato y de plan §18.
+
 ### 27.2 Nuevos
 
 | ID | Hallazgo | Propuesta | Impacto en el frontend |
 |---|---|---|---|
-| **H-12** (no bloquea) | La prueba en un **celular real** (checkpoint F6: subir una foto de la galería, S-F8 en iPhone, NFR-F13 en un Android de gama media; y NFR-F11, instalar la PWA) necesita un origen **HTTPS en el que confíe el teléfono y al que el teléfono llegue**. `localhost` no es accesible desde el celular, la CA de mkcert no está en el teléfono, y DD-24 solo permite TLS propio con `localhost`/`127.0.0.1` (con `https://192.168.x.x:8443` el backend sirve HTTP plano, T-B002). Hoy no hay ningún entorno donde hacer esa prueba | (a) **Recomendada**: un entorno de *staging* con dominio y HTTPS del hosting (el modo normal de producción; depende de P-1, S-6 del plan ya prevé *staging*). (b) Respaldo sin tocar DD-24, solo Android: reenvío de puertos de Chrome (`chrome://inspect` → *Port forwarding* `8443` → `localhost:8443`) y la CA de mkcert instalada en el teléfono, que mkcert documenta para Android e iOS (supuesto S-F10, no verificado). (c) Ampliar el modo local a IPs de la red local: **no la recomiendo** (más reglas en `platform/config`, certificados por IP, y abre el binario de desarrollo a la red); la decisión sería del backend | Checkpoint F6: la prueba en celular se hace con (a) o (b) si están disponibles; si no, queda pendiente y se reporta sin bloquear la fase (S-F8 y NFR-F13 siguen abiertos). T-F705 (TalkBack/VoiceOver) y NFR-F11 tienen la misma dependencia |
+| **H-12** (no bloquea; **sigue abierto** al 2026-10-12: no hay *staging* y plan P-1 sigue abierta) | La prueba en un **celular real** (checkpoint F6: subir una foto de la galería, S-F8 en iPhone, NFR-F13 en un Android de gama media; y NFR-F11, instalar la PWA) necesita un origen **HTTPS en el que confíe el teléfono y al que el teléfono llegue**. `localhost` no es accesible desde el celular, la CA de mkcert no está en el teléfono, y DD-24 solo permite TLS propio con `localhost`/`127.0.0.1` (con `https://192.168.x.x:8443` el backend sirve HTTP plano, T-B002). Hoy no hay ningún entorno donde hacer esa prueba | (a) **Recomendada**: un entorno de *staging* con dominio y HTTPS del hosting (el modo normal de producción; depende de P-1, S-6 del plan ya prevé *staging*). (b) Respaldo sin tocar DD-24, solo Android: reenvío de puertos de Chrome (`chrome://inspect` → *Port forwarding* `8443` → `localhost:8443`) y la CA de mkcert instalada en el teléfono, que mkcert documenta para Android e iOS (supuesto S-F10, no verificado). (c) Ampliar el modo local a IPs de la red local: **no la recomiendo** (más reglas en `platform/config`, certificados por IP, y abre el binario de desarrollo a la red); la decisión sería del backend | Checkpoint F6: la prueba en celular se hace con (a) o (b) si están disponibles; si no, queda pendiente y se reporta sin bloquear la fase (S-F8 y NFR-F13 siguen abiertos). T-F705 (TalkBack/VoiceOver) y NFR-F11 tienen la misma dependencia |
+| **H-13** (no bloquea; revisión 3) | El contrato no dice qué `FieldError.code` usa cada campo, y el servidor usa `invalid_value` para textos vacíos o largos (registro, aceptación, opcionales de `PATCH /tenant`) y para `password` en el login | (a) **Recomendada**: documentarlo en la descripción de cada operación (contrato *patch*). (b) Alinear el servidor a `required`/`too_long`: cambia comportamiento probado | DD-F24 cubre los dos casos; con (b), T-F101 suma filas |
+| **H-14** (documental; revisión 3) | `GET /industry-templates` declara `429` en el contrato, pero el código no le aplica limitador | Quitar el `429` del contrato o agregar el cupo | Ninguno: la UI trata el `429` igual en cualquier query |
+| **H-15** (coordinación con T-F008; revisión 3) | `cmd/crm/main_test.go` exige `503` en `GET /login`. Con la SPA embebida, el resultado depende de si `web/dist` tiene `index.html` al correr `go test` | T-F008 ajusta el test: `503` sin `index.html`, `200` `text/html` con él | T-F008 |
 
-Otros puntos menores, fuera de mi alcance de escritura:
+Otros puntos menores (los dos **resueltos** al 2026-10-12, revisión 3: el índice de ADR ya muestra ADR-019 *Accepted* y el encabezado de `tasks.md` ya dice que la sección Frontend se actualizó en la segunda revisión):
 
 - El índice `docs/adr/README.md` todavía muestra ADR-019 como "detalles Proposed"; sus detalles son
   `Accepted` desde la revisión 1 (nota fechada en el ADR).
@@ -2208,6 +2312,8 @@ Otros puntos menores, fuera de mi alcance de escritura:
 | RF-11 | Chromium o WebKit de Playwright no confían en la CA de mkcert en CI (S-12) | Media | Medio | Se ve en la primera corrida de T-F701; respaldo `ignoreHTTPSErrors` solo si T-F703 pasa |
 | RF-12 | Se filtra la clave de la CA local (`rootCA-key.pem`) de un desarrollador | Baja | Medio | No se comparte ni se copia al repo; `.certs/` ignorado por git; en CI la CA es efímera (R-14 del plan) |
 | RF-13 | La prueba en un celular real no se puede hacer por falta de un origen HTTPS accesible (H-12) | Alta hasta tener *staging* | Medio (S-F8 y NFR-F13 sin validar) | H-12: *staging* o reenvío de puertos en Android; se reporta como pendiente sin bloquear F6 |
+| RF-14 | *(Revisión 3)* La revisión 16 del backend cambia registro, verificación, invitación o recuperación después de implementar F2, F4 o F5 | Media | Medio | Lista "Dependiente de la revisión 16" (§26); el mapa exhaustivo de `ErrorCode` no compila ante un código nuevo (INV-F05); implementar esas fases después de aprobada la revisión 16 |
+| RF-15 | *(Revisión 3)* El selector de zona no muestra la zona guardada porque el navegador usa un alias (S-F11) | Baja | Bajo | DD-F27; T-F602 |
 
 ---
 
@@ -2220,6 +2326,7 @@ La actualización va **en el mismo cambio** que el código.
 | El contrato (`openapi.yaml`) de cualquier spec | `npm run gen:api` (archivos generados en el mismo PR) + §11.1 si cambia un endpoint consumido + la matriz de estados de la pantalla afectada |
 | Un `code` de error o `suggested_action` | `api/errorMessages.ts` (no compila sin él) + §12.2 |
 | Un `FieldError.code` o una longitud del contrato | §12.3 + esquema Zod del formulario + su test |
+| Un cupo de DD-9, o el código de error de campo que usa un endpoint (revisión 3) | §11.1 (tabla de cupos) + §12.3 (variantes) + `api/errorMessages.ts` + el test de la pantalla |
 | Una pantalla o su ruta | §4 inventario + §5 mapa + §6.1 árbol + guards |
 | Un *path* de enlace de email | §6.2 + `APP_LINK_*` del backend (plan §10.5, DD-14) + E2E |
 | Props de un componente compartido | §15 + sus usos |

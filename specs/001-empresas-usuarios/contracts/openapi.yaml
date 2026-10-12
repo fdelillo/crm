@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CRM - API 001 Empresas, usuarios y roles
-  version: 0.4.3
+  version: 0.5.0
   summary: Registro de empresas, autenticación, sesiones, invitaciones, usuarios y datos de la empresa.
   description: |
     Contrato **canónico** de la spec 001 (`specs/001-empresas-usuarios/spec.md`).
@@ -64,6 +64,12 @@ info:
       campo opcional equivale a `null`; `null` en `name` o `timezone` responde `400`; `Local` es
       una zona inválida; un `PATCH` sin cambios no modifica `updated_at`. Es *patch*: solo cambian
       descripciones, no esquemas ni enums.
+    - 0.5.0: decimosexta revisión del plan (auditoría de seguridad). `email_not_verified` agregado
+      a `ErrorCode`: un Administrador sin el email verificado no puede invitar (`403`, DD-46).
+      `429 rate_limited` en `POST /users/invitations` y `POST /users/{userId}/reactivate` (cupos por
+      empresa y por IP, DD-48). Descripciones: cupo global del registro (DD-49), el reset confirmado
+      verifica el email y el reenvío de la verificación tiene un cupo por usuario. Es *minor*
+      porque agrega un valor a un enum (como 0.4.0).
 servers:
   - url: /api/v1
 tags:
@@ -128,7 +134,9 @@ paths:
         nada: se puede reintentar con los mismos datos.
 
         Rate limit por IP, contando éxitos y rechazos (DD-9): 5 intentos de una vez y después uno
-        cada 12 minutos (unos 5 por hora sostenidos; en una hora pueden entrar hasta 10).
+        cada 12 minutos (unos 5 por hora sostenidos; en una hora pueden entrar hasta 10). Además
+        hay un cupo global para todas las IPs (DD-49): 30 de una vez y después uno por minuto.
+        Excedido, responde 429 `rate_limited` con `Retry-After` aunque la IP tenga cupo.
       security: []
       requestBody:
         required: true
@@ -296,7 +304,8 @@ paths:
       summary: Definir una nueva contraseña con el token recibido por email
       description: |
         Consume el token, cambia la contraseña, cierra todas las sesiones del usuario y levanta el
-        bloqueo por intentos. No inicia sesión.
+        bloqueo por intentos. Si el email no estaba verificado, queda verificado (el enlace llegó a
+        esa dirección, DD-46). No inicia sesión.
       security: []
       requestBody:
         required: true
@@ -327,7 +336,9 @@ paths:
       tags: [auth]
       operationId: confirmEmailVerification
       summary: Verificar el email con el token recibido (Historia 1.3)
-      description: La verificación no bloquea ninguna funcionalidad (P-2); solo quita el aviso de la UI.
+      description: |
+        Verificar el email habilita invitar usuarios (DD-46); el resto de la aplicación no depende
+        de la verificación (P-2). También quita el aviso de la UI.
       security: []
       requestBody:
         required: true
@@ -356,7 +367,10 @@ paths:
       tags: [auth]
       operationId: resendEmailVerification
       summary: Reenviar el email de verificación al usuario de la sesión
-      description: Si el email ya está verificado no envía nada. Siempre 202.
+      description: |
+        Si el email ya está verificado no envía nada. Por usuario, 3 envíos de una vez y después
+        uno cada 20 minutos (DD-46): sin cupo, responde igual y no envía nada. Siempre 202 si el
+        pedido pasa el cupo por IP.
       security:
         - sessionCookie: []
       responses:
@@ -450,7 +464,8 @@ paths:
       description: |
         `permissions` es la lista de FR-007 que corresponde al rol. El frontend la usa solo para
         mostrar u ocultar opciones (UX); la autorización real la hace el servidor en cada endpoint.
-        `user.email_verified` = false indica a la UI que muestre el aviso de verificación (P-2).
+        `user.email_verified` = false indica a la UI que muestre el aviso de verificación (P-2) y
+        que invitar está deshabilitado hasta verificar (DD-46).
       security:
         - sessionCookie: []
       responses:
@@ -723,6 +738,14 @@ paths:
         pertenece a un usuario activo o desactivado de cualquier empresa, responde 409
         `email_taken` (sin `suggested_action`: el Administrador no puede recuperar la cuenta de
         otra persona, DD-21).
+
+        El Administrador tiene que tener el email verificado: si no, responde 403
+        `email_not_verified` sin buscar el email ni crear nada (DD-46). La UI ofrece reenviar la
+        verificación (`POST /auth/email-verification/resend`).
+
+        Comparte el cupo con `POST /users/{userId}/reactivate` (DD-48) y cuenta éxitos y rechazos:
+        por empresa, 10 de una vez y después una cada 6 minutos; por IP, 20 de una vez y después
+        una cada 3 minutos. Excedido: 429 `rate_limited` con `Retry-After`.
       security:
         - sessionCookie: []
       requestBody:
@@ -749,7 +772,14 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthenticated'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          description: |
+            El rol no tiene `settings.manage`, o la protección CSRF rechazó un método no seguro de
+            otro origen (`code` = `forbidden`, DD-30); o el Administrador todavía no verificó su
+            email (`code` = `email_not_verified`, DD-46)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
         '409':
           description: El email ya está en uso (`code` = `email_taken`)
           content:
@@ -762,6 +792,8 @@ paths:
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
           $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/RateLimited'
         5XX:
           $ref: '#/components/responses/ServerError'
 
@@ -858,6 +890,8 @@ paths:
         invitación vuelve a `invited` con una invitación nueva de 7 días.
         Reactivar un usuario que no está `disabled` responde 409 `invalid_state`.
         Auditado en la misma transacción (`user.reactivated`, con `data.to_status`).
+        Comparte con `POST /users/invitations` el cupo por empresa y por IP (DD-48): excedido, 429
+        `rate_limited` con `Retry-After`.
       security:
         - sessionCookie: []
       responses:
@@ -875,6 +909,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/RateLimited'
         5XX:
           $ref: '#/components/responses/ServerError'
 
@@ -1072,6 +1108,7 @@ components:
         - method_not_allowed
         - email_already_registered
         - email_taken
+        - email_not_verified
         - last_admin
         - invalid_state
         - token_invalid
@@ -1382,7 +1419,7 @@ components:
           $ref: '#/components/schemas/UserStatus'
         email_verified:
           type: boolean
-          description: Si es false, la UI muestra un aviso para verificar; no bloquea nada (P-2)
+          description: Si es false, la UI muestra un aviso para verificar; solo impide invitar (DD-46, P-2)
 
     TenantSummary:
       type: object

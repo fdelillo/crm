@@ -15,6 +15,10 @@ email y contraseña.
 - P: ¿Un usuario puede pertenecer a varias empresas? → R: No, a una sola en el MVP.
 - P: ¿La anulación tiene límite de antigüedad? → R: No. Solo un Administrador anula, siempre con motivo y auditoría; no hay fecha de cierre.
 
+### Sesión 2026-10-12
+
+- P: ¿Un Administrador puede invitar antes de verificar su email? → R: No. Primero verifica su email (con el enlace del registro o con uno reenviado); el resto de la aplicación no depende de la verificación. Confirmar una recuperación de contraseña también verifica el email.
+
 ## Escenarios de usuario y pruebas
 
 ### Historia 1: Registrar una empresa (Prioridad: P1)

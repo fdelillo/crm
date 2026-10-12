@@ -22,7 +22,7 @@ Reglas:
 | [004](004-migraciones-goose-y-bootstrap.md) | Migraciones con goose embebidas y bootstrap de roles fuera de goose | Accepted | 001 |
 | [005](005-aislamiento-tenant-rol-por-empresa-rls.md) | Aislamiento con un rol de PostgreSQL por empresa y RLS forzada | Accepted | 001 |
 | [006](006-autenticacion-sesiones-csrf.md) | Sesiones en PostgreSQL, cookie `__Host-` y protección CSRF | Accepted | 001 |
-| [007](007-hashing-contrasenas-argon2id.md) | Hashing de contraseñas con argon2id | Accepted | 001 |
+| [007](007-hashing-contrasenas-argon2id.md) | Hashing de contraseñas con argon2id | Accepted (nota 2026-10-12 sobre el orden semáforo → conexión: Accepted) | 001 |
 | [008](008-identificadores-uuidv7.md) | Identificadores UUIDv7 | Accepted | 001 |
 | [009](009-formato-errores-rfc9457.md) | Errores HTTP RFC 9457 con código estable | Accepted | 001 |
 | [010](010-email-outbox-transaccional.md) | Emails con outbox transaccional, worker en el binario y puerto `Mailer` SMTP | Accepted (la clasificación de errores de "Reintentos" la reemplaza ADR-024; nota 2026-10-01) | 001 |

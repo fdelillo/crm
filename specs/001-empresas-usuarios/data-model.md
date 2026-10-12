@@ -216,7 +216,7 @@ validados: el servidor no quita metadatos ni aplica la orientación EXIF (ver §
 | `password_hash` | `text` | sí | `<= 255` | 🔒 Secreto. PHC argon2id. `NULL` si nunca aceptó la invitación |
 | `role` | `text` | no | `IN ('admin','operator')` | `authz.Role`. Editable en `invited` y `active`; no en `disabled` (DD-26) |
 | `status` | `text` | no | `IN ('invited','active','disabled')` | |
-| `email_verified_at` | `timestamptz` | sí | | `NULL` = sin verificar; no bloquea nada (P-2) |
+| `email_verified_at` | `timestamptz` | sí | | `NULL` = sin verificar; solo impide invitar (DD-46, decimosexta tanda; antes no bloqueaba nada, P-2). Se completa al confirmar la verificación, al aceptar una invitación (DD-13) o al confirmar un reset si estaba en `NULL` (DD-46) |
 | `status_changed_at` | `timestamptz` | no | default `now()` | |
 | `created_at` | `timestamptz` | no | default `now()` | |
 | `updated_at` | `timestamptz` | no | default `now()` | |

@@ -49,3 +49,13 @@ ráfagas.
   latencia al login (mitigado por el rate limit por IP). Un mínimo de 10 caracteres está por
   debajo de lo que algunas guías recientes piden para contraseñas de un solo factor: se prioriza
   la carga desde el celular y se puede subir sin cambiar el esquema.
+
+> **Nota 2026-10-12 (consecuencia descubierta en la auditoría de seguridad; no cambia la decisión;
+> *Accepted* el 2026-10-12, plan de 001, DD-45)**: la consecuencia aceptada se quedaba corta. El login, la
+> aceptación de invitación y la confirmación de reset esperaban el semáforo **con una conexión del
+> pool tomada**. Con un pool de 8 y 4 cupos, una ráfaga de logins ocupaba el pool entero, y la
+> latencia no se limitaba al login: alcanzaba a todo request autenticado de cualquier empresa.
+> Regla desde DD-45: el cupo del semáforo se toma **antes** que la conexión (`Hasher.Acquire` →
+> `Slot`), y quien deriva dentro de una transacción solo usa el `Slot`. Así, las conexiones
+> retenidas por derivaciones son como mucho tantas como cupos, y el pool tiene que ser más grande
+> que el semáforo (plan, INV-36).
