@@ -282,6 +282,11 @@ func checkRouterComposition(fset *token.FileSet, imp types.Importer, sources map
 		if obj == nil {
 			continue
 		}
+		if typeName, ok := obj.(*types.TypeName); ok {
+			if _, ok := typeName.Type().(*types.TypeParam); ok {
+				report(id, 4, "cmd/crm cannot declare type parameters")
+			}
+		}
 		if _, ok := obj.(*types.Var); ok && named(obj.Type(), compositionPackage, "RootDeps") {
 			report(id, 1, "cmd/crm cannot retain app.RootDeps or *app.RootDeps")
 		}
