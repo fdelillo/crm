@@ -13,19 +13,31 @@ func TestRouterRevision15TypeParameterMutations(t *testing.T) {
 	listenType := "func(context.Context, string, string) (net.Listener, error)"
 	tagged := strings.Replace(envStruct, listenType, listenType+` "x"`, 1)
 	shape := strings.Replace(envStruct, listenType, "F", 1)
-	for _, tc := range []struct{ name, declaration, statement string }{
-		{"r-type-parameter-literal", "func relisten[T env](e env) T { return T{e.getenv, e.stdout, e.stderr, (&net.ListenConfig{}).Listen} }", "e = relisten[env](e)"},
-		{"s-type-parameter-conversion", "func conv[D env](s " + tagged + ") D { return D(s) }", "var s " + tagged + "\ns.listen = (&net.ListenConfig{}).Listen\ne = conv[env](s)"},
-		{"t-generic-alias", "type shape[F any] = " + shape, "var s shape[" + listenType + "]\ns.listen = (&net.ListenConfig{}).Listen\ne = s"},
+	for _, tc := range []struct {
+		name, declaration, statement, structMutation string
+		imports                                      []string
+	}{
+		{"r-type-parameter-literal", "func relisten[T env](e env) T { return T{e.getenv, e.stdout, e.stderr, (&net.ListenConfig{}).Listen} }", "e = relisten[env](e)", "", []string{"net"}},
+		{"s-type-parameter-conversion", "func conv[D env](s " + tagged + ") D { return D(s) }", "var s " + tagged + "\ns.listen = (&net.ListenConfig{}).Listen\ne = conv[env](s)", tagged, []string{"net", "io"}},
+		{"t-generic-alias", "type shape[F any] = " + shape, "var s shape[" + listenType + "]\ns.listen = (&net.ListenConfig{}).Listen\ne = s", shape, []string{"net", "io"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			sources := compositionSources(t)
-			source := sources["serve.go"]
-			source = strings.Replace(source, `"fmt"`, "\"fmt\"\n\"net\"", 1)
-			if tc.name != "r-type-parameter-literal" {
-				source = strings.Replace(source, `"fmt"`, "\"fmt\"\n\"io\"", 1)
+			if tc.structMutation != "" && tc.structMutation == envStruct {
+				t.Fatal("mutation did not change sources: listenType in env struct")
 			}
-			source = strings.Replace(source, "fs := flag.NewFlagSet", tc.statement+"\nfs := flag.NewFlagSet", 1)
+			sources := compositionSources(t)
+			original := sources["serve.go"]
+			source := strings.Replace(original, "fs := flag.NewFlagSet", tc.statement+"\nfs := flag.NewFlagSet", 1)
+			if original == source {
+				t.Fatal("mutation did not change sources: fs := flag.NewFlagSet")
+			}
+			for _, path := range tc.imports {
+				original := source
+				source = strings.Replace(source, `"fmt"`, "\"fmt\"\n\""+path+"\"", 1)
+				if original == source {
+					t.Fatal("mutation did not change sources: import anchor")
+				}
+			}
 			sources["serve.go"] = source + "\n" + tc.declaration + "\n"
 			vs, err := checkRouterComposition(fset, imp, sources)
 			if err != nil {
@@ -34,7 +46,7 @@ func TestRouterRevision15TypeParameterMutations(t *testing.T) {
 			t.Logf("violations=%d", len(vs))
 			found := false
 			for _, v := range vs {
-				if v.rule == 4 {
+				if v.rule == 4 && v.message == "cmd/crm cannot declare type parameters" {
 					if v.position.Filename != "serve.go" || v.position.Line <= 0 {
 						t.Fatalf("missing mutation file/line: %v", v)
 					}
@@ -43,7 +55,7 @@ func TestRouterRevision15TypeParameterMutations(t *testing.T) {
 				}
 			}
 			if !found {
-				t.Errorf("mutation escaped rule (4): %v", vs)
+				t.Errorf("mutation escaped type-parameter clause of rule (4): %v", vs)
 			}
 		})
 	}

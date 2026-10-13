@@ -196,9 +196,14 @@ func TestPhase9RunServe(t *testing.T) {
 				defer poll.Stop()
 				var active int
 				for {
-					if err := probe.QueryRow(probeCtx, "SELECT count(*) FROM pg_stat_activity WHERE application_name=$1", application).Scan(&active); err != nil {
-						t.Fatalf("%s: %v", phase, err)
+					var count int
+					if err := probe.QueryRow(probeCtx, "SELECT count(*) FROM pg_stat_activity WHERE application_name=$1", application).Scan(&count); err != nil {
+						if probeCtx.Err() != nil {
+							t.Fatalf("%s: count=%d", phase, active)
+						}
+						t.Fatalf("%s: count=%d: %v", phase, active, err)
 					}
+					active = count
 					if (present && active >= 1) || (!present && active == 0) {
 						return
 					}
