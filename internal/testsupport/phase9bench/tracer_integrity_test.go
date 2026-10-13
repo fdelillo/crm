@@ -67,6 +67,46 @@ func TestBenchTracerFullSetControls(t *testing.T) {
 			}
 		})
 	}
+	copyRejected := func() *sample {
+		return &sample{ID: failed.ID, Start: failed.Start, End: failed.End, CallbackStart: failed.CallbackStart, CallbackEnd: failed.CallbackEnd, Err: failed.Err, Events: append([]event(nil), failed.Events...)}
+	}
+	t.Run("rejected-without-rollback", func(t *testing.T) {
+		bad := copyRejected()
+		bad.Events = bad.Events[:len(bad.Events)-1]
+		if _, err := sampleIntervals(bad); err == nil {
+			t.Fatal("rejected sample accepted without rollback")
+		}
+	})
+	t.Run("rejected-commit-instead-of-rollback", func(t *testing.T) {
+		bad := copyRejected()
+		bad.Events[len(bad.Events)-1].Label = "commit"
+		if _, err := sampleIntervals(bad); err == nil {
+			t.Fatal("rejected sample accepted commit instead of rollback")
+		}
+	})
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{"canceled", db.ErrCanceled},
+		{"privilege", db.ErrPrivilege},
+		{"plain", errors.New("unrelated rejection")},
+	} {
+		t.Run("rejected-error/"+tc.name, func(t *testing.T) {
+			bad := copyRejected()
+			bad.Err = tc.err
+			if _, err := sampleIntervals(bad); err == nil {
+				t.Fatal("rejected sample accepted non-503 error: " + tc.name)
+			}
+		})
+	}
+	t.Run("wrapped-unavailable", func(t *testing.T) {
+		wrapped := copyRejected()
+		wrapped.Err = fmt.Errorf("registration: %w", db.ErrUnavailable)
+		if _, err := sampleIntervals(wrapped); err != nil {
+			t.Fatalf("control rejected wrapped 503 error: %v", err)
+		}
+	})
 }
 
 // Recheck preserved traces without creating a container or remeasuring performance.
