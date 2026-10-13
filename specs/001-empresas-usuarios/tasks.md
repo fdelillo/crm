@@ -58,7 +58,7 @@ ajustes antes de la Fase 6). La sección Frontend no cambia: el contrato no camb
 **Decimotercera revisión 2026-10-08** (*Accepted*, aprobada por el usuario el 2026-10-08): detención en T-B905 y pendientes de la revisión de código del PR fdelillo/crm#17 (plan §18, decimotercera tanda; [`revision-13-t-b905.md`](revision-13-t-b905.md)). Target de §13 redefinido (retención sin contención y ráfaga), DD-33 R-e, re-medición T-B910 con reglas de decisión, reglas (4) y (5) del guard de `crm serve` y tests de `runServe` (T-B911). Tareas afectadas: T-B801 (Fase 8, en la rama de la Fase 9), T-B905, T-B910 y T-B911 (nuevas), y la prueba independiente y el checkpoint de la Fase 9. La sección Frontend no cambia: el contrato no cambia.
 **Decimocuarta revisión 2026-10-08** (*Accepted*, aprobada por el usuario el 2026-10-08): resultado de T-B910 registrado (plan §18, decimocuarta tanda; [`revision-14-t-b910.md`](revision-14-t-b910.md)). Se mantiene ADR-005, y la condición de salida a producción está cumplida. En lugar de repetir T-B910 con 20.000 roles, rigen el techo de ADR-005 (plan DD-33 R-f) y los disparadores sobre `tenant_roles_total` (plan §12.4). Tareas afectadas: T-B910 (resultado y autocontrol del tracer) y la condición de salida a producción. Parte B (revisión de código del PR fdelillo/crm#17, *Accepted*, aprobada por el usuario el 2026-10-08): T-B801 (regla (4) ampliada, regla (6) nueva, mutaciones (j) a (q)), T-B903 y la fila 3 del paso 0 de la Fase 9 (mutaciones ratificadas). Sin tareas nuevas ni cambios de código de producción: la parte B cambia el guard y el tracer, que son código de test. La sección Frontend no cambia: el contrato no cambia.
 **Decimoquinta revisión 2026-10-10** (*Accepted*, aprobada por el usuario el 2026-10-10): pendientes no bloqueantes de la revisión final de código del PR fdelillo/crm#17 (Fase 9, mergeado en `main` en `b945373`; plan §18, decimoquinta tanda), en un PR solo de tests y texto. T-B801: la regla (4) prohíbe declarar parámetros de tipo en `cmd/crm` (mutaciones (r) a (t)), y se corrige su frase sobre "otro tipo", que era falsa con genéricos. T-B911: control positivo de la sonda de `pg_stat_activity`. T-B910: casos sintéticos del autocontrol del tracer. Textos: §B-5 de `revision-14-t-b910.md`, fila 4 de la entrada de la decimocuarta parte B y fecha de la entrada de la Fase 9. Sin tareas nuevas ni cambios de código de producción. La sección Frontend no cambia: el contrato no cambia.
-**Decimosexta revisión 2026-10-12** (*Accepted*, aprobada por el usuario el 2026-10-12): auditoría de seguridad de `b945373` (plan §18, decimosexta tanda; [`revision-16-auditoria.md`](revision-16-auditoria.md)). Fase 10 nueva (T-B1001 a T-B1010): revalidación del actor bajo el lock de la empresa (DD-44), cupo del hasher antes de la conexión (DD-45), cupos de invitación (DD-48), cupo global de registros (DD-49) e invitar con email verificado (DD-46, si se aprueba). Cambia un test existente (`TestRoleChangesAndLastAdmin`), y se adaptan los hashers instrumentados de T-B503 y T-B604. Contrato **v0.5.0** (v0.4.4 sin DD-46): ver "Coordinación con la sección Frontend".
+**Decimosexta revisión 2026-10-12** (*Accepted*, aprobada por el usuario el 2026-10-12): auditoría de seguridad de `b945373` (plan §18, decimosexta tanda; [`revision-16-auditoria.md`](revision-16-auditoria.md)). Fase 10 nueva (T-B1001 a T-B1010): revalidación del actor bajo el lock de la empresa (DD-44), cupo del hasher antes de la conexión (DD-45), cupos de invitación (DD-48), cupo global de registros (DD-49) e invitar con email verificado (DD-46, opción B). Cambia un test existente (`TestRoleChangesAndLastAdmin`), y se adaptan los hashers instrumentados de T-B503 y T-B604. Contrato **v0.5.0**: ver "Coordinación con la sección Frontend".
 
 ---
 
@@ -746,7 +746,7 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
   | 2 | T-B1003, T-B1004 | Cupo del hasher antes de la conexión (DD-45) | Hoy H1 da `AcquiredConns() == 2`; se adaptan los hashers instrumentados |
   | 3 | T-B1005, T-B1006 | Cupos de invitación (DD-48) y `ratelimit.MiddlewareBy` | Hoy Q2 y Q6 dan `201` |
   | 4 | T-B1007, T-B1008 | Cupo global de registros (DD-49) | Hoy G2 da `422` |
-  | 5 | T-B1009, T-B1010 | Invitar con email verificado (DD-46), **solo si el usuario aprueba la opción B** | Hoy V1 da `201` |
+  | 5 | T-B1009, T-B1010 | Invitar con email verificado (DD-46, opción B) y enmienda H-16 | Hoy V1 da `201` |
   | 6 | Cierre | Checkpoint de la Fase 10 | — |
 
   El paso 5 va último para poder sacarlo sin rehacer nada. El desarrollador no edita texto de diseño; la aprobación es el merge del PR.
@@ -2515,7 +2515,7 @@ de la fase y se agrega a plan §11.1 en el mismo cambio (matriz §16).
 
 ### Fase 10 — Endurecimiento tras la auditoría de seguridad (decimosexta revisión, *Accepted*)
 
-**Objetivo**: cerrar los candidatos de la auditoría de `b945373` que se arreglan ([`revision-16-auditoria.md`](revision-16-auditoria.md)): revalidación del actor bajo el lock de la empresa (DD-44), cupo del hasher antes de la conexión del pool (DD-45), cupos de invitación (DD-48), cupo global de registros (DD-49) y, si el usuario aprueba la opción B, invitar con el email verificado (DD-46). DD-47 (reserva de un email por invitación) es riesgo aceptado y no tiene tareas.
+**Objetivo**: cerrar los candidatos de la auditoría de `b945373` que se arreglan ([`revision-16-auditoria.md`](revision-16-auditoria.md)): revalidación del actor bajo el lock de la empresa (DD-44), cupo del hasher antes de la conexión del pool (DD-45), cupos de invitación (DD-48), cupo global de registros (DD-49) e invitar con el email verificado (DD-46, opción B). DD-47 (reserva de un email por invitación) es riesgo aceptado y no tiene tareas.
 
 **Prueba independiente** (`crm serve` real con Compose y `TRUSTED_PROXIES=127.0.0.1/32`, para elegir la IP con `X-Forwarded-For` de documentación):
 - un admin recién registrado invita y recibe `403 email_not_verified`; pide el reenvío de la verificación 3 veces (`202`, 3 emails nuevos en Mailpit) y el 4.º da `429 rate_limited` con `Retry-After`, sin email nuevo; confirma su email con el último enlace, invita y recibe `201` (solo con DD-46);
@@ -2609,7 +2609,7 @@ La concurrencia de DD-44 y DD-45 la prueban T-B1001 y T-B1003; no se reproduce a
 
 **T-B1008 — Implementar DD-49**. Segundo limiter en `tenant.RegisterRoutes`, con clave constante, después del de IP (`MiddlewareBy` de T-B1006). Constantes en `BuildAPIRouter`. Métrica `signup_global_limited_total` (`expvar`) y el evento. El runbook y la alerta de ritmo ya están en el plan (§12.3 y §12.4).
 
-**T-B1009 [T] — Invitar exige email verificado** *(solo si el usuario aprueba la opción B de DD-46)* · US-3.1, FR-005, DD-4, DD-9, DD-13, DD-46 (con la enmienda H-16), INV-37
+**T-B1009 [T] — Invitar exige email verificado** *(DD-46, opción B)* · US-3.1, FR-005, DD-4, DD-9, DD-13, DD-46 (con la enmienda H-16), INV-37
 - **Red** (integración de servicio y HTTP + contrato; V7 sigue el `validation_plan.local` de la auditoría):
 
   | Caso | Esperado |
@@ -2699,7 +2699,7 @@ La concurrencia de DD-44 y DD-45 la prueban T-B1001 y T-B1003; no se reproduce a
 | Contrato v0.4.1: `413 payload_too_large` en las operaciones con body JSON (séptima revisión) | T-B201, T-B305, T-B311; T-F004 (tipos regenerados, frontend) |
 | DD-44 / INV-35 Revalidación del actor bajo el lock de la empresa (decimosexta revisión) | T-B1001, T-B1002 |
 | DD-45 / INV-36 Cupo del hasher antes de la conexión del pool (nota en ADR-007) | T-B1003, T-B1004, T-B604 (hashers instrumentados) |
-| DD-46 / INV-37 Invitar con email verificado; enmienda H-16 (`429` con `Retry-After` del cupo por usuario del reenvío) (si se aprueba; contrato v0.5.0) | T-B1009, T-B1010 |
+| DD-46 / INV-37 Invitar con email verificado; enmienda H-16 (`429` con `Retry-After` del cupo por usuario del reenvío) (contrato v0.5.0) | T-B1009, T-B1010 |
 | DD-47 / R-20 Reserva de un email por invitación (riesgo aceptado) | T-B601 (fija el `409` de un desactivado) |
 | DD-48 Cupos de invitación por empresa y por IP | T-B1005, T-B1006 |
 | DD-49 / R-21 Cupo global de registros y alerta de ritmo | T-B1007, T-B1008 |
