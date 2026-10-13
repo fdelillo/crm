@@ -751,6 +751,8 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
 
   El paso 5 va último para poder sacarlo sin rehacer nada. El desarrollador no edita texto de diseño; la aprobación es el merge del PR.
 
+  **Enmienda H-16 (2026-10-13, *Accepted*: decisión del usuario)**: sin cupo por usuario, el reenvío de la verificación responde `429 rate_limited` con `Retry-After` en lugar de `202` sin enviar (plan DD-46 (3); [`revision-16-auditoria.md`](revision-16-auditoria.md) §3.7; `ui.md` §27.2). Cambian V8 y las mutaciones de T-B1009, T-B1010 y la prueba independiente de la Fase 10. El orden de los pasos no cambia y el contrato sigue en v0.5.0. Hoy V8b da `202` y encola (Red).
+
 ### Convenciones de esta sección
 
 - `[T]` = tarea de test. Va **antes** de la tarea de código que la hace pasar, y el test debe
@@ -2516,7 +2518,7 @@ de la fase y se agrega a plan §11.1 en el mismo cambio (matriz §16).
 **Objetivo**: cerrar los candidatos de la auditoría de `b945373` que se arreglan ([`revision-16-auditoria.md`](revision-16-auditoria.md)): revalidación del actor bajo el lock de la empresa (DD-44), cupo del hasher antes de la conexión del pool (DD-45), cupos de invitación (DD-48), cupo global de registros (DD-49) y, si el usuario aprueba la opción B, invitar con el email verificado (DD-46). DD-47 (reserva de un email por invitación) es riesgo aceptado y no tiene tareas.
 
 **Prueba independiente** (`crm serve` real con Compose y `TRUSTED_PROXIES=127.0.0.1/32`, para elegir la IP con `X-Forwarded-For` de documentación):
-- un admin recién registrado invita y recibe `403 email_not_verified`; confirma su email desde Mailpit, invita y recibe `201` (solo con DD-46);
+- un admin recién registrado invita y recibe `403 email_not_verified`; pide el reenvío de la verificación 3 veces (`202`, 3 emails nuevos en Mailpit) y el 4.º da `429 rate_limited` con `Retry-After`, sin email nuevo; confirma su email con el último enlace, invita y recibe `201` (solo con DD-46);
 - el mismo admin invita 10 veces más y la 11.ª da `429 rate_limited` con `Retry-After`;
 - 31 registros con body inválido desde 31 IPs distintas: el 31.º da `429` y `signup_global_limited_total` = 1 en `/debug/vars`;
 - con dos admins A y B, B baja a A y el siguiente request de A a `/users` da `403`.
@@ -2607,7 +2609,7 @@ La concurrencia de DD-44 y DD-45 la prueban T-B1001 y T-B1003; no se reproduce a
 
 **T-B1008 — Implementar DD-49**. Segundo limiter en `tenant.RegisterRoutes`, con clave constante, después del de IP (`MiddlewareBy` de T-B1006). Constantes en `BuildAPIRouter`. Métrica `signup_global_limited_total` (`expvar`) y el evento. El runbook y la alerta de ritmo ya están en el plan (§12.3 y §12.4).
 
-**T-B1009 [T] — Invitar exige email verificado** *(solo si el usuario aprueba la opción B de DD-46)* · US-3.1, FR-005, DD-4, DD-13, DD-46, INV-37
+**T-B1009 [T] — Invitar exige email verificado** *(solo si el usuario aprueba la opción B de DD-46)* · US-3.1, FR-005, DD-4, DD-9, DD-13, DD-46 (con la enmienda H-16), INV-37
 - **Red** (integración de servicio y HTTP + contrato; V7 sigue el `validation_plan.local` de la auditoría):
 
   | Caso | Esperado |
@@ -2619,13 +2621,21 @@ La concurrencia de DD-44 y DD-45 la prueban T-B1001 y T-B1003; no se reproduce a
   | V5 `ConfirmPasswordReset` de un usuario sin verificar | `email_verified_at` = reloj; `/me` con `email_verified: true`; `auth.password_reset_completed` con las mismas claves de `data` que antes |
   | V6 `ConfirmPasswordReset` de un usuario ya verificado | `email_verified_at` sin cambios |
   | V7 (escenario de la auditoría) A registra `v@example.test` y no verifica; intenta invitar a `x@example.test` como admin → `403`; un registro de `v@` → `409 email_already_registered`; `RequestPasswordReset(v)` encola el reset; `ConfirmPasswordReset` | la sesión de A ya no resuelve (`ResolveSession` → no autenticado); `ListUsers` de esa empresa solo tiene a `v`; `v` invita → `201` |
-  | V8 `ResendEmailVerification` del mismo usuario 4 veces seguidas; otro usuario, una vez | 3 mensajes encolados; el 4.º devuelve `202` sin encolar mensaje; el del otro usuario se encola; reloj + 20 min → se encola uno más |
+  | V8a (HTTP + contrato, router de `BuildAPIRouter` con reloj falso, IPs elegidas como en T-B1005) U1 (admin de `fixture.NewCompany`, sin verificar, sesión real) manda 3 `POST /auth/email-verification/resend`, cada uno desde una IP distinta | `202` cada uno; 3 mensajes `email_verification` encolados para U1 |
+  | V8b el 4.º, desde una IP nueva | `429 rate_limited` con `Retry-After: 1200`, validado contra el contrato; ningún mensaje ni token nuevos, y el token del 3.º sigue abierto (`revoked_at` nulo) |
+  | V8c reloj + 5 min; U1 desde otra IP nueva | `429` con `Retry-After: 900` |
+  | V8d inmediatamente después, U2 (otro usuario `active` de la **misma** empresa, sin verificar, del fixture de `identity`) desde la IP de V8c | `202` y un mensaje para U2 (la clave es el usuario, no la empresa ni la IP) |
+  | V8e reloj + 15 min más (20 desde V8a); U1 | `202` y un mensaje más; el siguiente, `429` con `Retry-After: 1200` |
+  | V8f (router nuevo, limiters vacíos) la IP X gasta su cupo con 20 `POST /auth/email-verification/confirm` con un token inválido (`400`); U3 (fundador de otra empresa, sin verificar) manda el reenvío desde X | `429` con `Retry-After: 180` (el del cupo por IP) y ningún mensaje. Después, U3 manda 3 desde la IP Y: `202` cada uno y 3 mensajes (el `429` por IP no gastó el cupo por usuario); el 4.º desde Y da `429` con `Retry-After: 1200` |
+  | V8g los dos cupos agotados: U3 desde X, con el reloj de V8f | `429` con `Retry-After: 180` (manda el de IP, que corre antes de autenticar). Reloj + 3 min, U3 desde X: `429` con `Retry-After: 1020` (ahora el del usuario) |
+  | V8h U4 (usuario `active` con `email_verified_at` no nulo) manda 4 | los 3 primeros dan `202` sin encolar; el 4.º da `429` (el cupo cuenta todo pedido autenticado, no solo los envíos; contrato) |
+  | V8i U1 confirma con el token del último `202` de V8e | `204` (ningún `429` revocó un enlace) |
   | V9 caracterización: un admin sin verificar no tiene a nadie que reactivar | en una empresa recién registrada, `ListUsers` solo lo tiene a él, y `Reactivate` de cualquier id da `404` |
-- **Mutaciones**: sin el gate → V1, V7; el gate después de `FindInvitedEmail` o del `INSERT` → V2; el reset no verifica → V5, V7; el reset pisa un `email_verified_at` existente → V6; sin el cupo por usuario del reenvío, o con un cupo global → V8.
+- **Mutaciones**: sin el gate → V1, V7; el gate después de `FindInvitedEmail` o del `INSERT` → V2; el reset no verifica → V5, V7; el reset pisa un `email_verified_at` existente → V6; sin el cupo por usuario del reenvío → V8b (`202`); el cupo responde `202` sin enviar (versión del 2026-10-12) → V8b; clave por IP (`ratelimit.Middleware` en lugar de `MiddlewareBy` con `userKey`) → V8b (el 4.º llega desde una IP nueva); clave por empresa o constante → V8d; `Retry-After` fijo de 20 min → V8c (espera `900`); orden `Authenticate` → cupo por usuario → cupo por IP → V8f (el `429` por IP gasta el cupo de U3 y el 3.º desde Y da `429`) y V8g (`1200` en lugar de `180`); el cupo dentro de `ResendEmailVerification` después de mirar `email_verified_at` (cuenta solo los envíos) → V8h; el `429` después de llamar al servicio (encola, o revoca el enlace vigente) → V8b, V8i.
 - **Fixtures**: todo test que invita con el admin de `fixture.NewCompany` o con el de un registro nuevo tiene que verificar antes su email (`usersFixture`, los tests HTTP de la Fase 6, los fixtures de la Fase 8 y `fixture/e2e`). Los mismos tests lo muestran como Red.
 - **Green**: pasa la tabla.
 
-**T-B1010 — Implementar DD-46** *(solo con la opción B)*. `ErrEmailNotVerified` y el gate en `Invite`, con la fila de `requireActor`, mapeado a `403 email_not_verified`. `SetResetPassword` también completa `email_verified_at` si era nulo. Cupo por usuario de `ResendEmailVerification`, en memoria y como el del reset por email (3 de ráfaga y 1 cada 20 min). Texto nuevo de `email_verification.txt` y `.html`: «Si no creaste una cuenta con este email, no abras el enlace: confirmarlo le daría acceso a quien la creó. Podés ignorar este mensaje.» Contrato v0.5.0.
+**T-B1010 — Implementar DD-46** *(solo con la opción B)*. `ErrEmailNotVerified` y el gate en `Invite`, con la fila de `requireActor`, mapeado a `403 email_not_verified`. `SetResetPassword` también completa `email_verified_at` si era nulo. Cupo por usuario del reenvío de la verificación (DD-46 (3) con la enmienda H-16): un `ratelimit.Limiter` de 3 de ráfaga y 1 cada 20 min, construido en `BuildAPIRouter` con los demás y pasado a `RegisterRecoveryRoutes`. Esa función lo aplica con `ratelimit.MiddlewareBy(limiter, userKey)` en `POST /auth/email-verification/resend`, **después** de `ratelimit.Middleware(verificationLimiter)` y de `identity.Authenticate`. `userKey` (`internal/app`, no exportada, como `tenantKey`) devuelve `Principal.UserID`; sin `Principal`, `ok == false` → `500` (bug de cableado). Sin cupo, el middleware responde `429 rate_limited` con `Retry-After` y el handler no corre: `ResendEmailVerification` no cambia. Depende de `MiddlewareBy` (T-B1006, paso 3). En el contrato cambia solo la descripción de `resendEmailVerification`: el `429` ya estaba declarado. Texto nuevo de `email_verification.txt` y `.html`: «Si no creaste una cuenta con este email, no abras el enlace: confirmarlo le daría acceso a quien la creó. Podés ignorar este mensaje.» Contrato v0.5.0.
 
 **Checkpoint Fase 10**: `make check` en verde + la prueba independiente. La entrada de estado reporta las mutaciones de T-B1001, T-B1003, T-B1005, T-B1007 y T-B1009, cada una con el caso que falla.
 
@@ -2689,7 +2699,7 @@ La concurrencia de DD-44 y DD-45 la prueban T-B1001 y T-B1003; no se reproduce a
 | Contrato v0.4.1: `413 payload_too_large` en las operaciones con body JSON (séptima revisión) | T-B201, T-B305, T-B311; T-F004 (tipos regenerados, frontend) |
 | DD-44 / INV-35 Revalidación del actor bajo el lock de la empresa (decimosexta revisión) | T-B1001, T-B1002 |
 | DD-45 / INV-36 Cupo del hasher antes de la conexión del pool (nota en ADR-007) | T-B1003, T-B1004, T-B604 (hashers instrumentados) |
-| DD-46 / INV-37 Invitar con email verificado (si se aprueba; contrato v0.5.0) | T-B1009, T-B1010 |
+| DD-46 / INV-37 Invitar con email verificado; enmienda H-16 (`429` con `Retry-After` del cupo por usuario del reenvío) (si se aprueba; contrato v0.5.0) | T-B1009, T-B1010 |
 | DD-47 / R-20 Reserva de un email por invitación (riesgo aceptado) | T-B601 (fija el `409` de un desactivado) |
 | DD-48 Cupos de invitación por empresa y por IP | T-B1005, T-B1006 |
 | DD-49 / R-21 Cupo global de registros y alerta de ritmo | T-B1007, T-B1008 |

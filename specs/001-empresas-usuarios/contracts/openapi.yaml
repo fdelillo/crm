@@ -68,8 +68,11 @@ info:
       a `ErrorCode`: un Administrador sin el email verificado no puede invitar (`403`, DD-46).
       `429 rate_limited` en `POST /users/invitations` y `POST /users/{userId}/reactivate` (cupos por
       empresa y por IP, DD-48). Descripciones: cupo global del registro (DD-49), el reset confirmado
-      verifica el email y el reenvío de la verificación tiene un cupo por usuario. Es *minor*
-      porque agrega un valor a un enum (como 0.4.0).
+      verifica el email y el reenvío de la verificación tiene un cupo por usuario (sin cupo,
+      `429 rate_limited` con `Retry-After`, ya declarado). Es *minor* porque agrega un valor a un
+      enum (como 0.4.0). Enmienda H-16 (2026-10-13): el reenvío sin cupo por usuario respondía
+      `202` sin enviar. El cambio queda dentro de 0.5.0 porque esta versión todavía no se había
+      publicado, y no toca esquemas ni enums.
 servers:
   - url: /api/v1
 tags:
@@ -368,9 +371,17 @@ paths:
       operationId: resendEmailVerification
       summary: Reenviar el email de verificación al usuario de la sesión
       description: |
-        Si el email ya está verificado no envía nada. Por usuario, 3 envíos de una vez y después
-        uno cada 20 minutos (DD-46): sin cupo, responde igual y no envía nada. Siempre 202 si el
-        pedido pasa el cupo por IP.
+        Si el email ya está verificado no envía nada y responde 202. Tiene dos cupos, en este
+        orden:
+        - por IP, antes de autenticar, compartido con `POST /auth/email-verification/confirm`: 20
+          pedidos de una vez y después uno cada 3 minutos (DD-9);
+        - por usuario de la sesión, después de autenticar: 3 pedidos de una vez y después uno cada
+          20 minutos (DD-46). Cuenta todo pedido que llega hasta él, también el de un email ya
+          verificado.
+        Si se excede cualquiera de los dos, responde 429 `rate_limited` con `Retry-After` (segundos
+        hasta que ese cupo vuelve a admitir un pedido), sin enviar nada ni invalidar el último
+        enlace enviado. Si se agotaron los dos, responde el de IP; al reintentar después de su
+        `Retry-After`, puede llegar el del usuario.
       security:
         - sessionCookie: []
       responses:

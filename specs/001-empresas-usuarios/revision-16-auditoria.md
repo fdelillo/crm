@@ -1,6 +1,6 @@
 # Decimosexta revisión: auditoría de seguridad de `b945373`
 
-**Fecha**: 2026-10-12 · **Autor**: `backend-architect` · **Estado**: *Accepted*, aprobada por el usuario el 2026-10-12 con todos los defaults: 3 = B (DD-46), 4 = A (DD-47), 5 = valores propuestos (DD-48), 6 = B (DD-49); contrato v0.5.0.
+**Fecha**: 2026-10-12 · **Autor**: `backend-architect` · **Estado**: *Accepted*, aprobada por el usuario el 2026-10-12 con todos los defaults: 3 = B (DD-46), 4 = A (DD-47), 5 = valores propuestos (DD-48), 6 = B (DD-49); contrato v0.5.0. **Enmienda H-16** (*Accepted*, decisión del usuario del 2026-10-13): el reenvío de la verificación sin cupo por usuario responde `429` con `Retry-After` (§3.7); el contrato sigue en v0.5.0.
 
 **Origen**: auditoría de seguridad terminada sobre `main` en `b945373` (skill `security-audit`,
 perfil standard, corrida `crm-run-1`). Fue solo lectura de fuente y no se ejecutó nada. Dejó 0
@@ -453,12 +453,91 @@ hoy funciona tiene que fallar del modo previsto. Las filas, en `tasks.md`.
 | Gate después de `FindInvitedEmail` o del `INSERT` | V2 (devuelve `409 email_taken`) |
 | El reset no verifica el email | V5 y el último paso de V7 |
 | El reset pisa un `email_verified_at` que ya existía | V6 |
-| Sin cupo por usuario en el reenvío, o con el cupo por IP | V8 (los pedidos llegan desde IPs distintas) |
+| Sin cupo por usuario en el reenvío, con la clave por IP, o respondiendo `202` sin enviar (enmienda H-16, §3.7) | V8b (los pedidos llegan desde IPs distintas) |
+| Cupo por usuario antes del de IP | V8f, V8g |
+| `Retry-After` fijo | V8c |
 
 **Fixtures.** El admin de `fixture.NewCompany` y el de un registro nuevo no tienen el email
 verificado. Todo test que invita (`usersFixture`, los tests HTTP de la Fase 6, los fixtures de la
 Fase 8 y `fixture/e2e`) lo verifica antes: `ConfirmEmailVerification` con el token del outbox, o
 un `UPDATE` en el fixture de `identity`. Lo detectan como Red los mismos tests.
+
+### 3.7 Enmienda H-16 (2026-10-13, *Accepted*: decisión del usuario)
+
+**Origen**: hallazgo H-16 del `frontend-architect` (`ui.md` §27.2, revisión 4, aprobada el
+2026-10-13). El usuario decidió sumarlo a la Fase 10 como enmienda de esta revisión, sin abrir otra.
+
+**Cambio en DD-46 (3).** Sin cupo por usuario, `POST /auth/email-verification/resend` responde
+`429 rate_limited` con `Retry-After` en lugar de `202` sin enviar. El valor son los segundos,
+redondeados hacia arriba, hasta el próximo token del cupo por usuario. El cupo no cambia: 3 de
+ráfaga y 1 cada 20 min, con la clave `user_id`. Sí cambia dónde vive: deja de estar dentro de
+`ResendEmailVerification` y pasa a `ratelimit.MiddlewareBy(limiter, userKey)`, después del cupo por
+IP y de `Authenticate`. La clave sale del `Principal`, igual que la de empresa de DD-48. El cupo por
+email del reset vive en `identity` porque su clave sale del body.
+
+**No reabre ninguna enumeración:**
+- La ruta es autenticada y la clave es el usuario de la sesión. El `429` solo le dice a quien tiene
+  la sesión que esa misma cuenta pidió reenvíos hace poco. No dice si otro email existe ni en qué
+  estado está otra cuenta.
+- El cupo corre antes del handler, así que el `429` no depende de que el email esté verificado.
+  Tampoco es un oráculo del estado propio, que además `/me` ya expone.
+- INV-13 y DD-39 tratan el reset, que es público y se pide por email. Ahí el `202` uniforme evita
+  confirmar que una cuenta existe. El cupo por email del reset sigue respondiendo `202` y no cambia.
+- R-23 no cambia, porque el cupo es el mismo. El atacante que le reenvía la verificación a la
+  víctima ahora sabe cuánto esperar, pero ya podía calcularlo.
+
+**No contradice DD-46 (3).** Cambia la respuesta y el lugar del cupo, no el propósito (acotar los
+reenvíos a la víctima) ni los valores. El texto del 2026-10-12 queda en DD-46 como versión
+reemplazada.
+
+**El cupo por IP de DD-9 no cambia.** Sigue en 20 de ráfaga y 1 cada 3 min, con la clave de DD-32,
+compartido con `confirm`, antes de `Authenticate`, y cuenta todo pedido que llega a la ruta. Un
+pedido que recibe `429` por usuario ya gastó su token de IP, igual que antes con el `202` y como en
+DD-48 y DD-49.
+
+**Si se agotan los dos, manda el de IP.** Corre primero, antes de autenticar, y responde con su
+`Retry-After` sin llegar al cupo por usuario, que no se gasta. Si se reintenta después de ese plazo,
+puede llegar el `429` del cupo por usuario con el suyo. `Retry-After` significa "no antes de", no
+promete éxito, y con los dos cupos de DD-48 ya pasa lo mismo.
+
+**Alternativas descartadas:**
+- **Mantener `202` sin enviar** (versión del 2026-10-12): protege una enumeración que en una ruta
+  autenticada no existe, y obliga a la UI a la línea genérica de DD-F30.
+- **Dejar el cupo dentro de `ResendEmailVerification`, con un error tipado**
+  (`*identity.RateLimitedError{RetryAfter}`, que el handler mapea a `429`, como `LockedError` en
+  el login): suma un tipo de error y un mapeo para escribir la misma respuesta que ya escribe
+  `ratelimit`.
+- **Devolver como `Retry-After` el mayor de los dos plazos**: exige autenticar antes del cupo por
+  IP, y entonces un request sin cupo de IP abriría la transacción de `ResolveSession`, algo que DD-9
+  evita. La otra forma es consultar el cupo por usuario sin gastarlo, una operación nueva en
+  `Limiter`. Las dos cuestan demasiado para un caso raro: 20 pedidos desde una IP y 3 reenvíos del
+  mismo usuario en pocos minutos.
+
+**Trade-offs aceptados:**
+- Con los dos cupos agotados, la primera espera puede quedarse corta: como mucho 180 s, y después
+  llega la del usuario.
+- Un usuario ya verificado que llama a la ruta gasta cupo, aunque la UI no se lo ofrece.
+- Un pedido que termina en `503` también gasta, porque el cupo cuenta éxitos y rechazos, como en
+  DD-48.
+
+**Contrato: sigue en v0.5.0.** El `429` (`RateLimited`, con `Retry-After`) ya estaba declarado en
+`resendEmailVerification` por el cupo por IP, así que cambian la descripción y la entrada del
+historial, no un esquema ni un enum. Los tipos generados del cliente no cambian. v0.5.0 no está
+publicada (esta revisión no se mergeó en `main` ni se implementó), y una 0.5.1 dejaría en el
+historial una 0.5.0 que nunca existió en `main`. Si la rama se hubiera mergeado antes de la
+enmienda, sería v0.5.1 *patch*, con el criterio de 0.4.1.
+
+**Invariantes**: no agrega ni altera ninguna.
+
+**Tests**: V8 de T-B1009 pasa de test de servicio a HTTP + contrato y se abre en V8a a V8i. Las
+mutaciones están en `tasks.md`. La implementación está en T-B1010.
+
+**Lo que le pide al frontend** (lo decide el `frontend-architect`):
+- Retirar DD-F30, es decir, la línea "Si lo pediste varias veces, esperá unos 20 minutos." en el
+  `202` del reenvío.
+- El `429` del reenvío puede venir del cupo por IP o del cupo por usuario, con la espera exacta.
+- El caso de los dos cupos agotados (dos esperas seguidas).
+- Cerrar H-16.
 
 ---
 
@@ -729,7 +808,7 @@ cuyo `code` ya existe y cambian descripciones, el mismo criterio de *patch* que 
 | C6 | `signup` (`POST /auth/signup`) | Descripción: además del cupo por IP, un cupo global; el `429` ya estaba declarado | DD-49 | No |
 | C7 | `confirmPasswordReset` | Descripción: si el email no estaba verificado, queda verificado | DD-46 | Sí |
 | C8 | `confirmEmailVerification` | Descripción: la verificación habilita invitar (antes: "no bloquea ninguna funcionalidad") | DD-46 | Sí |
-| C9 | `resendEmailVerification` | Descripción: cupo por usuario de 3 de ráfaga y 1 cada 20 min; sin cupo, `202` sin enviar | DD-46 | Sí |
+| C9 | `resendEmailVerification` | Descripción: cupo por usuario de 3 de ráfaga y 1 cada 20 min, después del cupo por IP; sin cupo, `429 rate_limited` con `Retry-After` (el `429` ya estaba declarado por el cupo por IP); con los dos cupos agotados manda el de IP. *Versión del 2026-10-12, reemplazada por la enmienda H-16 (§3.7)*: sin cupo, `202` sin enviar | DD-46 | Sí |
 | C10 | `getMe` y `CurrentUser.email_verified` | Descripción: `email_verified = false` también significa que no puede invitar | DD-46 | Sí |
 | C11 | `info.version` e historial | `0.5.0` (o `0.4.4`) con su entrada | — | — |
 
@@ -748,6 +827,8 @@ DD-45 y DD-47.
   y "Reactivar".
 - Un `401` en una acción de administración (el actor fue desactivado mientras tanto) se trata
   como cualquier `401`: sesión terminada.
+- *(Enmienda H-16, §3.7)* El `429 rate_limited` con `Retry-After` del reenvío de la verificación
+  también sale del cupo por usuario, así que la línea genérica de DD-F30 sobra.
 
 ---
 
