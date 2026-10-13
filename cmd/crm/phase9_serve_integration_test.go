@@ -166,7 +166,7 @@ func TestPhase9RunServe(t *testing.T) {
 			for _, endpoint := range []struct {
 				ln   *faultListener
 				path string
-			}{{api, "/healthz"}, {metrics, "/debug/vars"}} {
+			}{{api, "/healthz"}, {api, "/readyz"}, {metrics, "/debug/vars"}} {
 				response, err := client.Get("http://" + endpoint.ln.Addr().String() + endpoint.path)
 				if err != nil {
 					t.Fatal(err)
@@ -184,6 +184,32 @@ func TestPhase9RunServe(t *testing.T) {
 					t.Fatal("worker never entered SMTP")
 				}
 			}
+			waitRuntimeConnections := func(present bool) {
+				t.Helper()
+				phase := "runtime connections remain after worker completion"
+				if present {
+					phase = "runtime connection probe never saw a runtime connection before trigger"
+				}
+				probeCtx, stopProbe := context.WithTimeout(context.Background(), 3*time.Second)
+				defer stopProbe()
+				poll := time.NewTicker(20 * time.Millisecond)
+				defer poll.Stop()
+				var active int
+				for {
+					if err := probe.QueryRow(probeCtx, "SELECT count(*) FROM pg_stat_activity WHERE application_name=$1", application).Scan(&active); err != nil {
+						t.Fatalf("%s: %v", phase, err)
+					}
+					if (present && active >= 1) || (!present && active == 0) {
+						return
+					}
+					select {
+					case <-probeCtx.Done():
+						t.Fatalf("%s: count=%d", phase, active)
+					case <-poll.C:
+					}
+				}
+			}
+			waitRuntimeConnections(true)
 			switch scenario {
 			case "api-fails":
 				api.fail()
@@ -238,24 +264,7 @@ func TestPhase9RunServe(t *testing.T) {
 					t.Error("listener still accepts after runServe")
 				}
 			}
-			var active int
-			probeCtx, stopProbe := context.WithTimeout(context.Background(), 3*time.Second)
-			defer stopProbe()
-			poll := time.NewTicker(20 * time.Millisecond)
-			defer poll.Stop()
-			for {
-				if err := probe.QueryRow(probeCtx, "SELECT count(*) FROM pg_stat_activity WHERE application_name=$1", application).Scan(&active); err != nil {
-					t.Fatalf("runtime connection probe: %v", err)
-				}
-				if active == 0 {
-					break
-				}
-				select {
-				case <-probeCtx.Done():
-					t.Fatalf("runtime connections remain after worker completion: %d", active)
-				case <-poll.C:
-				}
-			}
+			waitRuntimeConnections(false)
 			if scenario != "cancel-idle" {
 				var status, last string
 				var attempts int
