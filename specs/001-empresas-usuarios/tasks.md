@@ -2752,6 +2752,15 @@ revisión 16". Tareas afectadas:
 
 Sin tareas nuevas ni cambios de orden. Sistema visual sin cambios.
 
+**Enmienda H-16 (2026-10-13, aprobada por el usuario)** (`ui.md` Revisión 4, enmienda H-16;
+[`revision-16-auditoria.md`](revision-16-auditoria.md) §3.7): sin cupo por usuario, el reenvío de
+la confirmación responde `429 rate_limited` con `Retry-After` (hasta 1200 s) en lugar de `202` sin
+enviar. DD-F30 queda reemplazada. Tareas afectadas: T-F101 (`Retry-After: 1200`), T-F404 y T-F405
+(sin la línea de los 20 minutos; `429` del cupo por IP o por usuario; dos cupos agotados), T-F502
+(aviso W), dependencias y prueba independiente de F4, y trazabilidad. No cambian T-F004 (el
+contrato sigue en v0.5.0 y los tipos generados son los mismos), T-F402 (P-F7: el reset sigue con
+`202`) ni T-F506. Sin tareas nuevas ni cambios de orden.
+
 ### Convenciones de esta sección
 
 - `[T]` = tarea de test. Va **antes** de la tarea de código que la hace pasar, y el test debe
@@ -2812,7 +2821,7 @@ Se corren en `web/` salvo los de `make`.
 | F1 | T-B310 (`/me`) | — |
 | F2 | T-B302, T-B306, T-B310; para ver el `429` del cupo global, T-B1008 (Fase 10) | H-3/H-10 resueltos (DD-24): HTTPS local en cualquier navegador. Revisión 16 incorporada (DD-49, DD-F29) |
 | F3 | T-B405 | — |
-| F4 | T-B507; `APP_LINK_*` con los defaults de DD-14; para el reset que confirma el email y el cupo por usuario del reenvío, T-B1010 (Fase 10) | Revisión 16 incorporada (DD-46 (2) y (3), DD-F30); P-F7 aprobada; P-F10 aprobada (sí, 2026-10-13) |
+| F4 | T-B507; `APP_LINK_*` con los defaults de DD-14; para el reset que confirma el email y el cupo por usuario del reenvío, T-B1010 (Fase 10) | Revisión 16 incorporada (DD-46 (2) y (3), con la enmienda H-16; DD-F30 reemplazada); P-F7 aprobada; P-F10 aprobada (sí, 2026-10-13) |
 | F5 | T-B607; para el gate de invitar y los `429`, T-B1006 y T-B1010 (Fase 10) | H-4, H-5 resueltos (DD-25, DD-26). Revisión 16 incorporada (DD-44, DD-46, DD-48; P-F8 aplicada, DD-F28); P-F11 cerrada (no, 2026-10-13) |
 | F6 | T-B706 (límites de DD-31); DD-42 y DD-43 (contrato v0.4.3) | H-2 y H-11 resueltos (DD-23, DD-31); **H-12 abierto** (prueba en un celular real): no bloquea |
 | F7 | Fases 0 a 10 del backend (en `main`) + `compose.yaml` + T-B014 y la receta de CI de plan §10.5.1 | H-7, H-9, H-10 resueltos (DD-28, DD-30, DD-24); supuesto S-12 se valida en T-F701; los flujos de invitación de T-F702 confirman antes el email del Administrador (DD-46) |
@@ -2894,7 +2903,7 @@ respuestas de `ui.md` §21.1–21.2 (sin `Strict-Transport-Security`, porque es 
   |---|---|
   | Tipo de la respuesta `200` de `paths['/me']['get']` | igual a `SessionInfo` |
   | `ErrorCode` | incluye `email_already_registered`, `email_taken`, `last_admin`, `token_invalid`, `payload_too_large`, `unsupported_media_type`, `method_not_allowed` (v0.4.0) y `email_not_verified` (v0.5.0) |
-| Respuestas de `paths['/users/invitations']['post']` y de `paths['/users/{userId}/reactivate']['post']` | incluyen `429` (v0.5.0, DD-48) |
+  | Respuestas de `paths['/users/invitations']['post']` y de `paths['/users/{userId}/reactivate']['post']` | incluyen `429` (v0.5.0, DD-48) |
   | `User['name']` | `string \| null` |
   | `TenantUpdate['name']` y `TenantUpdate['timezone']` | `string` opcional, sin `null` (DD-43: un `null` da `400`) |
   | `keyof TenantUpdate` | no incluye `base_currency` (DD-15; una clave de más da `400`) |
@@ -3051,10 +3060,10 @@ cerró"; Chrome ofrece "Instalar app" sobre el binario en `https://localhost:844
   | `rate_limited` con `retryAfterSeconds` 3 / 60 / 61 / 1800 / `null` | "unos segundos" / "1 minuto" / "2 minutos" / "30 minutos" / "unos minutos" (DD-F25) |
   | `service_unavailable` con `retryAfterSeconds` 2 en `signup` / sin cabecera | "Probá de nuevo en unos segundos." + "No se creó nada: podés reintentar con los mismos datos." / "Probá de nuevo en unos minutos." |
   | `method_not_allowed` con `requestId` | "No pudimos procesar el pedido." + "Recargá la página y probá de nuevo." + código (contrato v0.4.0) |
-| `email_not_verified` en `invite`, `userAction` y `generic` (contrato v0.5.0; sin su fila, el mapa no compila) | "Confirmá tu email para invitar a tu equipo." + "Te mandamos un enlace cuando te registraste. Si no lo encontrás, pedí uno nuevo." |
-| `rate_limited` en `signup` con `retryAfterSeconds` 45 / 720 | "Hubo muchos intentos de registro seguidos." + "Esperá unos segundos y probá de nuevo. No se creó nada: podés reintentar con los mismos datos." / lo mismo con "12 minutos" (DD-F29) |
-| `rate_limited` en `invite` y en `userAction` con 360 | "Por ahora no podemos enviar más invitaciones." + "Hay un límite de invitaciones y reactivaciones seguidas para cuidar el envío de emails. Esperá 6 minutos y probá de nuevo." |
-| `rate_limited` en `resendVerification` con 300 | "Ya te lo mandamos hace poco." + "Esperá 5 minutos y probá de nuevo." |
+  | `email_not_verified` en `invite`, `userAction` y `generic` (contrato v0.5.0; sin su fila, el mapa no compila) | "Confirmá tu email para invitar a tu equipo." + "Te mandamos un enlace cuando te registraste. Si no lo encontrás, pedí uno nuevo." |
+  | `rate_limited` en `signup` con `retryAfterSeconds` 45 / 720 | "Hubo muchos intentos de registro seguidos." + "Esperá unos segundos y probá de nuevo. No se creó nada: podés reintentar con los mismos datos." / lo mismo con "12 minutos" (DD-F29) |
+  | `rate_limited` en `invite` y en `userAction` con 360 | "Por ahora no podemos enviar más invitaciones." + "Hay un límite de invitaciones y reactivaciones seguidas para cuidar el envío de emails. Esperá 6 minutos y probá de nuevo." |
+  | `rate_limited` en `resendVerification` con 300 / 1200 | "Ya te lo mandamos hace poco." + "Esperá 5 minutos y probá de nuevo." / lo mismo con "Esperá 20 minutos y probá de nuevo." (máximo del cupo por usuario, enmienda H-16) |
   | `internal` con `requestId` | la descripción incluye el código |
   | `kind: 'network'` | "No hay conexión." y `retryable: true` |
   | `kind: 'unexpected'` con `502` / `418` | como `service_unavailable` / como `internal` |
@@ -3095,8 +3104,8 @@ cerró"; Chrome ofrece "Instalar app" sobre el binario en `https://localhost:844
   | `POST /auth/login` → `401 invalid_credentials` | no navega ni limpia la caché (INV-F02) |
   | Una query responde `403 forbidden` | se vuelve a pedir `/me`; con el rol nuevo sin `settings.manage`, el guard muestra "Sin permiso" |
   | Una mutación responde `403 forbidden` (p. ej. rechazo de CSRF, DD-30) | mensaje "No tenés permiso para hacer esto."; se vuelve a pedir `/me` |
-| Una mutación responde `403 email_not_verified` (DD-46) | no navega; no aparece "Sin permiso" ni "No tenés permiso para hacer esto."; el error llega a la pantalla (INV-F16) |
-| Sesión con `email_verified: false`; la pestaña vuelve a enfocarse a los 10 s (antes de los 60 s de `staleTime`) / lo mismo con `email_verified: true` | se vuelve a pedir `/me` / no se pide (DD-F28) |
+  | Una mutación responde `403 email_not_verified` (DD-46) | no navega; no aparece "Sin permiso" ni "No tenés permiso para hacer esto."; el error llega a la pantalla (INV-F16) |
+  | Sesión con `email_verified: false`; la pestaña vuelve a enfocarse a los 10 s (antes de los 60 s de `staleTime`) / lo mismo con `email_verified: true` | se vuelve a pedir `/me` / no se pide (DD-F28) |
   | `['session']` pasa de un usuario a `null` en un refetch al enfocar la ventana | igual que un `401` global (`reason=session_expired`) |
   | Tras el `401`, botón atrás del navegador | se vuelve a pedir `/me`; no se ven datos anteriores |
 - **Green**: pasa la tabla.
@@ -3263,7 +3272,10 @@ aviso de verificación permite reenviar el email.
 restablecimiento, abrir el enlace de Mailpit, definir la contraseña nueva e ingresar; reabrir el
 mismo enlace → "Este enlace ya no sirve."; confirmar el email desde su enlace y ver desaparecer el
 aviso. Con la Fase 10 del backend: registrar otra empresa sin confirmar el email, restablecer su
-contraseña e ingresar → sin aviso (el reset confirmó el email, DD-46).
+contraseña e ingresar → sin aviso (el reset confirmó el email, DD-46). Con la Fase 10 (enmienda
+H-16), con otra empresa sin confirmar: tocar "Reenviar" del aviso cuatro veces → las tres primeras
+dicen "Listo, te lo reenviamos…" y llegan tres emails a Mailpit; la cuarta dice "Ya te lo mandamos
+hace poco. Esperá 20 minutos y probá de nuevo." y no llega ninguno más.
 
 **T-F401 [T] — Token de los enlaces (`useLinkToken`)** · DD-14, DD-F2, INV-F08, `ui.md` §6.2
 - **Red**:
@@ -3311,20 +3323,22 @@ contraseña e ingresar → sin aviso (el reset confirmó el email, DD-46).
   | Montar la pantalla con token | ningún `POST` hasta tocar "Confirmar mi email"; antes del botón, "Si no creaste una cuenta con este email, no lo confirmes: confirmarlo le daría acceso a quien la creó." (P-F10) |
   | Confirmar sin sesión → `204` | "¡Listo! Tu email quedó confirmado." + "Ingresar" |
   | Confirmar con sesión → `204` | "Ir al inicio"; `/me` pedido de nuevo (`email_verified: true`); el texto de éxito no menciona invitar (el token puede ser de otra cuenta) |
-  | `400 token_invalid` con sesión | mensaje de §12.2 + "Reenviar email de confirmación" → `POST …/resend` → `202`: "Listo, te lo reenviamos. Revisá también el correo no deseado. Si lo pediste varias veces, esperá unos 20 minutos." (DD-F30) / `429` con `Retry-After: 120`: "Ya te lo mandamos hace poco." + "Esperá 2 minutos y probá de nuevo." |
+  | `400 token_invalid` con sesión | mensaje de §12.2 + "Reenviar email de confirmación" → `POST …/resend` → `202`: "Listo, te lo reenviamos. Revisá también el correo no deseado.", sin la línea de los 20 minutos (DD-F30 reemplazada, enmienda H-16) / `429` con `Retry-After: 120`: "Ya te lo mandamos hace poco." + "Esperá 2 minutos y probá de nuevo." |
   | `400 token_invalid` sin sesión | mensaje + "Ingresar" |
   | Sin token | "Este enlace está incompleto." |
 - **Green**: pasa la tabla.
 
-**T-F405 [T] — Aviso "Confirmá tu email"** · US-1.3, P-2, BR-F05, `ui.md` §13.13
+**T-F405 [T] — Aviso "Confirmá tu email"** · US-1.3, P-2, BR-F05, DD-46 (3) con la enmienda H-16, `ui.md` §13.13
 - **Red**:
 
   | Caso | Esperado |
   |---|---|
   | `email_verified: false` | aviso con el email en todas las pantallas con sesión |
   | `email_verified: true` | sin aviso |
-  | "Reenviar" → `202` | "Listo, te lo reenviamos. Revisá también el correo no deseado. Si lo pediste varias veces, esperá unos 20 minutos." anunciado en `aria-live` (DD-F30: después de 3 reenvíos el servidor responde `202` sin enviar) |
-  | "Reenviar" → `429` con `Retry-After: 300` (cupo por IP) | "Ya te lo mandamos hace poco. Esperá 5 minutos y probá de nuevo." |
+  | "Reenviar" → `202` | "Listo, te lo reenviamos. Revisá también el correo no deseado." anunciado en `aria-live`; el texto no menciona esperar 20 minutos (DD-F30 reemplazada, enmienda H-16: un `202` siempre envía) |
+  | "Reenviar" → `429` con `Retry-After: 300` (cupo por IP o por usuario; el contrato no los distingue) | "Ya te lo mandamos hace poco. Esperá 5 minutos y probá de nuevo." |
+  | "Reenviar" → `429` con `Retry-After: 1200` (cupo por usuario agotado) | "Ya te lo mandamos hace poco. Esperá 20 minutos y probá de nuevo." |
+  | "Reenviar" → `429` con `Retry-After: 180`; "Reenviar" otra vez → `429` con `Retry-After: 1200` (los dos cupos agotados) | primero "Esperá 3 minutos y probá de nuevo." y después "Esperá 20 minutos y probá de nuevo.", cada uno anunciado en `aria-live`; "Reenviar" sigue habilitado; un solo `POST` por toque |
   | Ingresar después de restablecer la contraseña: la respuesta del login trae `email_verified: true` (DD-46 (2)) | sin aviso |
   | "Ocultar" | desaparece y sigue oculto al navegar; con `sessionStorage` vacío vuelve a aparecer |
   | Teclado | "Reenviar" y "Ocultar" alcanzables con Tab y con nombre accesible |
@@ -3364,8 +3378,8 @@ desactivar a un usuario y ver que su ventana vuelve al login con "Tu sesión se 
   | `invited`+`operator` | `resendInvitation` (sin confirmación), `makeAdmin`, `deactivate` |
   | `invited`+`admin`, siendo el usuario actual el único admin activo | `makeOperator` **habilitada** (los invitados no cuentan para `last_admin`, DD-26), `resendInvitation`, `deactivate` |
   | `disabled` | solo `reactivate` (sin cambio de rol: el backend responde `invalid_state`) |
-| `invited`+`operator` con `actorEmailVerified: false` (las filas anteriores van con `true`) | `resendInvitation` deshabilitada con `disabledReason: 'email_not_verified'`; `makeAdmin` y `deactivate` sin cambios (BR-F14) |
-| `disabled` con `name: null` y `actorEmailVerified: false` / `disabled` con nombre y `actorEmailVerified: false` | `reactivate` deshabilitada con `disabledReason: 'email_not_verified'` (P-F8, S-F12) / `reactivate` habilitada (vuelve a `active` sin emitir invitación) |
+  | `invited`+`operator` con `actorEmailVerified: false` (las filas anteriores van con `true`) | `resendInvitation` deshabilitada con `disabledReason: 'email_not_verified'`; `makeAdmin` y `deactivate` sin cambios (BR-F14) |
+  | `disabled` con `name: null` y `actorEmailVerified: false` / `disabled` con nombre y `actorEmailVerified: false` | `reactivate` deshabilitada con `disabledReason: 'email_not_verified'` (P-F8, S-F12) / `reactivate` habilitada (vuelve a `active` sin emitir invitación) |
 
   | Entrada | Esperado |
   |---|---|
@@ -3386,9 +3400,9 @@ desactivar a un usuario y ver que su ventana vuelve al login con "Tu sesión se 
   | Solo el usuario actual | "Todavía sos el único usuario." + "Invitar" |
   | `500` con `instance` | "No pudimos cargar los usuarios." + código + "Reintentar" |
   | Nombre de 120 caracteres | el texto completo está en el DOM (sin truncar) |
-| Sesión con `email_verified: false` (revisión 4, BR-F14) | aviso "Confirmá tu email para invitar a tu equipo." con "Te mandamos un enlace a {email}…" y "Reenviar email de confirmación"; "+ Invitar" deshabilitado, con `aria-describedby` que apunta al aviso; en el estado vacío, "Invitar" también deshabilitado |
-| "Reenviar email de confirmación" → `202` / `429` con `Retry-After: 120` | en el aviso (`role="status"`): "Listo, te lo reenviamos. Revisá también el correo no deseado. Si lo pediste varias veces, esperá unos 20 minutos." / "Ya te lo mandamos hace poco." + "Esperá 2 minutos y probá de nuevo." |
-| Con el aviso visible, la pestaña vuelve a enfocarse y `/me` responde `email_verified: true` | el aviso desaparece y "+ Invitar" queda habilitado, sin recargar (DD-F28) |
+  | Sesión con `email_verified: false` (revisión 4, BR-F14) | aviso "Confirmá tu email para invitar a tu equipo." con "Te mandamos un enlace a {email}…" y "Reenviar email de confirmación"; "+ Invitar" deshabilitado, con `aria-describedby` que apunta al aviso; en el estado vacío, "Invitar" también deshabilitado |
+  | "Reenviar email de confirmación" → `202` / `429` con `Retry-After: 120` / `429` con `Retry-After: 1200` | en el aviso (`role="status"`): "Listo, te lo reenviamos. Revisá también el correo no deseado." (sin la línea de los 20 minutos, enmienda H-16) / "Ya te lo mandamos hace poco." + "Esperá 2 minutos y probá de nuevo." / lo mismo con "Esperá 20 minutos y probá de nuevo." |
+  | Con el aviso visible, la pestaña vuelve a enfocarse y `/me` responde `email_verified: true` | el aviso desaparece y "+ Invitar" queda habilitado, sin recargar (DD-F28) |
 - **Green**: pasa la tabla.
 
 **T-F503 [T] — Acciones sobre usuarios** · US-3.3, US-3.4, FR-005, P-3, DD-5, DD-26, DD-F7, DD-F8, INV-F04, INV-F10, `ui.md` §13.9
@@ -3411,11 +3425,11 @@ desactivar a un usuario y ver que su ventana vuelve al login con "Tu sesión se 
   | `404 not_found` / `409 invalid_state` | mensaje de §12.2 y lista pedida de nuevo |
   | `403 forbidden` | `/me` pedido de nuevo; "Sin permiso" |
   | Doble confirmación rápida | un solo request |
-| Sesión con `email_verified: false` y un invitado en la lista (datos anteriores a la Fase 10) | "Reenviar invitación" deshabilitado con "Confirmá tu email para invitar a tu equipo." (BR-F14) |
-| "Reenviar invitación" → `429` con `Retry-After: 360` | toast "Por ahora no podemos enviar más invitaciones." con "Esperá 6 minutos y probá de nuevo."; la lista **no** se vuelve a pedir; un solo request (DD-48, DD-F29) |
-| "Reactivar" → confirmar → `429` con `Retry-After: 180` | diálogo cerrado y foco de vuelta en el botón de acciones; toast con "Esperá 3 minutos…"; la tarjeta sigue "Desactivado" |
-| "Reenviar invitación" → `403 email_not_verified` (caché vieja) | toast "Confirmá tu email para invitar a tu equipo."; `/me` pedido de nuevo; **no** aparece "Sin permiso" (INV-F16) |
-| "Desactivar" a otro → confirmar → `401 unauthenticated` (al actor lo desactivaron mientras tanto, DD-44) | caché vacía; login con "Tu sesión se cerró." |
+  | Sesión con `email_verified: false` y un invitado en la lista (datos anteriores a la Fase 10) | "Reenviar invitación" deshabilitado con "Confirmá tu email para invitar a tu equipo." (BR-F14) |
+  | "Reenviar invitación" → `429` con `Retry-After: 360` | toast "Por ahora no podemos enviar más invitaciones." con "Esperá 6 minutos y probá de nuevo."; la lista **no** se vuelve a pedir; un solo request (DD-48, DD-F29) |
+  | "Reactivar" → confirmar → `429` con `Retry-After: 180` | diálogo cerrado y foco de vuelta en el botón de acciones; toast con "Esperá 3 minutos…"; la tarjeta sigue "Desactivado" |
+  | "Reenviar invitación" → `403 email_not_verified` (caché vieja) | toast "Confirmá tu email para invitar a tu equipo."; `/me` pedido de nuevo; **no** aparece "Sin permiso" (INV-F16) |
+  | "Desactivar" a otro → confirmar → `401 unauthenticated` (al actor lo desactivaron mientras tanto, DD-44) | caché vacía; login con "Tu sesión se cerró." |
 - **Green**: pasa la tabla.
 
 **T-F504 [T] — Invitar** · US-3.1, DD-5, DD-21, DD-26, DD-46, DD-48, BR-F08, BR-F11, BR-F14, DD-F6, DD-F28, DD-F29, INV-F16, `ui.md` §13.7, §13.10, §14.3
@@ -3433,10 +3447,10 @@ desactivar a un usuario y ver que su ventana vuelve al login con "Tu sesión se 
   | "Cancelar" | vuelve a Usuarios |
   | `422` con `{field: 'role', code: 'invalid_value'}` | "Elegí un rol." en el grupo de rol (DD-F24) |
   | `429` con `Retry-After: 360` (cupo por empresa compartido con "Reactivar" y con los demás Administradores, DD-48) | "Por ahora no podemos enviar más invitaciones." + "Hay un límite de invitaciones y reactivaciones seguidas para cuidar el envío de emails. Esperá 6 minutos y probá de nuevo."; lo cargado se conserva; un solo `POST` (DD-F29) |
-| Sesión con `email_verified: false` al abrir la pantalla (BR-F14) | "Invitar a alguien" con el aviso "Confirmá tu email para invitar a tu equipo." y "Reenviar email de confirmación"; **sin** formulario; "Volver a Usuarios"; ningún `POST /users/invitations` |
-| Con el aviso, la pestaña vuelve a enfocarse y `/me` → `email_verified: true` | aparece el formulario con "Operador" seleccionado; el foco no se mueve (DD-F28) |
-| Enviar → `403 email_not_verified` (la caché decía confirmado) | aviso con el texto de §12.2 y "Reenviar email de confirmación"; `/me` pedido de nuevo; con `email_verified: false`, la pantalla pasa al estado sin formulario; nunca "Sin permiso" ni "No tenés permiso para hacer esto." (INV-F16) |
-| Panel (S-07) de un Administrador con `email_verified: false` | "Invitá a tu equipo" no es un enlace: aparece deshabilitado, con el aviso y "Reenviar email de confirmación"; "Completá los datos de tu empresa" sigue siendo un enlace |
+  | Sesión con `email_verified: false` al abrir la pantalla (BR-F14) | "Invitar a alguien" con el aviso "Confirmá tu email para invitar a tu equipo." y "Reenviar email de confirmación"; **sin** formulario; "Volver a Usuarios"; ningún `POST /users/invitations` |
+  | Con el aviso, la pestaña vuelve a enfocarse y `/me` → `email_verified: true` | aparece el formulario con "Operador" seleccionado; el foco no se mueve (DD-F28) |
+  | Enviar → `403 email_not_verified` (la caché decía confirmado) | aviso con el texto de §12.2 y "Reenviar email de confirmación"; `/me` pedido de nuevo; con `email_verified: false`, la pantalla pasa al estado sin formulario; nunca "Sin permiso" ni "No tenés permiso para hacer esto." (INV-F16) |
+  | Panel (S-07) de un Administrador con `email_verified: false` | "Invitá a tu equipo" no es un enlace: aparece deshabilitado, con el aviso y "Reenviar email de confirmación"; "Completá los datos de tu empresa" sigue siendo un enlace |
 - **Green**: pasa la tabla.
 
 **T-F505 [T] — Aceptar invitación** · US-3.2, DD-1, DD-4, DD-20, BR-F12, INV-F03, `ui.md` §13.6, §14.3
@@ -3654,8 +3668,8 @@ métricas de Lighthouse y el resultado del supuesto S-12.
   | 5 contraseñas incorrectas → 6.º intento | estado Bloqueado con la hora |
   | En cada pantalla visitada | axe sin violaciones *serious*/*critical*; a 320 px de ancho, `scrollWidth ≤ innerWidth`; 0 violaciones de CSP; 0 errores de consola |
   | Cabeceras de `/` en el binario local | CSP de §10.7 presente; `Strict-Transport-Security` **ausente** (modo local, DD-24) |
-| Registro → Usuarios ("Confirmá tu email para invitar a tu equipo.", "+ Invitar" deshabilitado) → enlace de confirmación de Mailpit en otra pestaña → volver a la primera | "+ Invitar" habilitado sin recargar; invitar → "Invitación enviada" (DD-46, DD-F28) |
-| Registro sin confirmar el email → Olvidé mi contraseña → enlace → contraseña nueva → ingresar | panel **sin** el aviso "Confirmá tu email" (el reset confirmó el email, DD-46) |
+  | Registro → Usuarios ("Confirmá tu email para invitar a tu equipo.", "+ Invitar" deshabilitado) → enlace de confirmación de Mailpit en otra pestaña → volver a la primera | "+ Invitar" habilitado sin recargar; invitar → "Invitación enviada" (DD-46, DD-F28) |
+  | Registro sin confirmar el email → Olvidé mi contraseña → enlace → contraseña nueva → ingresar | panel **sin** el aviso "Confirmá tu email" (el reset confirmó el email, DD-46) |
 - Desde la Fase 10 del backend, el Administrador de los flujos de invitación confirma su email
   (Mailpit) antes de invitar (DD-46).
 - **Green**: todos los flujos pasan en Chromium; WebKit reportado.
@@ -3757,6 +3771,6 @@ usó) reportado.
 | H-15 (`main_test.go` y la SPA embebida) | T-F008 |
 | Contrato v0.5.0 / DD-46 (invitar con el email confirmado), P-F8, BR-F14, DD-F28, INV-F16 | T-F004, T-F101, T-F104, T-F501..T-F504, T-F702 |
 | DD-48 / DD-49 (cupos de invitación y cupo global del registro), DD-F29 | T-F004, T-F101, T-F202, T-F503, T-F504 |
-| DD-46 (2) y (3) (el reset confirma el email; cupo por usuario del reenvío), DD-F30, P-F10 | T-F404, T-F405, T-F502, T-F702 |
+| DD-46 (2) y (3) (el reset confirma el email; cupo por usuario del reenvío, con `429` y `Retry-After` desde la enmienda H-16), H-16 (resuelto), DD-F30 (reemplazada), P-F10 | T-F101, T-F404, T-F405, T-F502, T-F702 |
 | DD-44 (`401` en una acción de administración) | T-F104, T-F503 |
 | NFR-F01..F13 | T-F002 (F02, F07, F08), T-F702 (F01, F06, F10, F12), T-F703 (F09, F11), T-F704 (F03..F05), T-F705 (F06..F08), T-F706 (F13) |

@@ -2170,7 +2170,7 @@ La actualización de la documentación va **en el mismo cambio** que el código.
 | La clase de instancia de PostgreSQL de producción o su versión | Medir la pendiente (T-B910 M-1 y M-2 contra una instancia descartable) + techo y disparadores de DD-33 R-f + §12.4 + la alerta |
 | Una operación nueva que concede o restaura autoridad (rol, estado, invitaciones; en el futuro, claves de API), o el lock con el que empieza la administración de usuarios | DD-44 + INV-35 + T-B1001 (sumar la operación a sus filas y mutaciones) |
 | Un flujo nuevo que deriva una contraseña dentro de una transacción, la concurrencia del hasher (H) o `pool_max_conns` (P) | DD-45 + INV-36 (H < P) + T-B1003 + nota de ADR-007 + DD-33 R-e |
-| Los cupos de invitación, el cupo global de registros o el cupo por usuario del reenvío de la verificación (valores, claves, orden, rutas que cubren, respuesta) | DD-48/DD-49/DD-46 (3) + DD-9 (cotas) + contrato (`429` y descripciones) + T-B1005/T-B1007/T-B1009 + §12.3/§12.4 (alerta) + R-21/R-22/R-23 + `ui.md` (DD-F30 y los textos de `rate_limited`) |
+| Los cupos de invitación, el cupo global de registros o el cupo por usuario del reenvío de la verificación (valores, claves, orden, rutas que cubren, respuesta) | DD-48/DD-49/DD-46 (3) + DD-9 (cotas) + contrato (`429` y descripciones) + T-B1005/T-B1007/T-B1009 + §12.3/§12.4 (alerta) + R-21/R-22/R-23 + `ui.md` (§11.1, §13.13 y los textos de `rate_limited`) |
 | Qué habilita la verificación del email, o qué la completa | DD-46 + DD-4/DD-13 + P-2 + INV-37 + contrato (`email_not_verified` y descripciones) + `data-model.md` §2.2 + spec (clarificación) + `ui.md` + T-B1009 |
 | Un término nuevo | `docs/glosario.md` |
 
