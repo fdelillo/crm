@@ -1,8 +1,8 @@
 # UI (frontend): Empresas, usuarios y roles
 
 **Spec**: [`spec.md`](spec.md) · **Rama**: `001-empresas-usuarios` · **Fecha**: 2026-09-29
-**Autor**: `frontend-architect` · **Estado**: Revisión 3 aprobada por el usuario el 2026-10-12
-**Contrato consumido**: [`contracts/openapi.yaml`](contracts/openapi.yaml) **v0.4.3** (**canónico**; el diseño original se hizo contra v0.3.1)
+**Autor**: `frontend-architect` · **Estado**: Revisión 3 aprobada por el usuario el 2026-10-12; Revisión 4 aprobada por el usuario el 2026-10-13 (P-F10: sí; P-F11: no)
+**Contrato consumido**: [`contracts/openapi.yaml`](contracts/openapi.yaml) **v0.5.0** (**canónico**; el diseño original se hizo contra v0.3.1; la Revisión 3, contra v0.4.3)
 **Revisión 1 (2026-09-29)**: respuestas del usuario a P-F1 a P-F5 (§26) y resolución de los
 hallazgos H-1 a H-9 por el backend (`plan.md` §18, DD-22 a DD-30, §10.7, contrato v0.3.0). Cambios:
 el logo grande se achica en el navegador (§13.11.1, DD-F11, DD-F20, DD-F21); el registro ya no
@@ -31,6 +31,17 @@ de campo según los códigos que el servidor emite de verdad (§12.3, DD-F24); z
 en el selector (DD-F27, S-F11). Sistema visual sin cambios. H-12 sigue abierto; nuevos H-13 a H-15
 (§27.2). Preguntas P-F7 a P-F9 y lista de pantallas **dependientes de la revisión 16 del backend**
 en §26.
+**Revisión 4 (2026-10-13)**: addendum al contrato **v0.5.0** (decimosexta revisión del backend,
+aprobada el 2026-10-12: DD-44 a DD-49, [`revision-16-auditoria.md`](revision-16-auditoria.md)).
+Cierra la lista "Dependiente de la revisión 16" de la Revisión 3 y aplica P-F8 con el default
+aprobado. Cambios: invitar exige el email confirmado (BR-F05, BR-F14 nueva; S-07, S-09 y S-10;
+DD-F28; INV-F16); `email_not_verified` en el mapa de errores, distinto de `forbidden` (§12.2,
+§12.4); `429` con `Retry-After` en invitar, reenviar invitación y reactivar, y cupos de DD-48 y
+DD-49 en la tabla de límites (§11.1, DD-F29); el `429` del registro no distingue el cupo por IP del
+global (§13.1, DD-F29); el reenvío de la confirmación tiene cupo por usuario y responde `202` sin
+enviar (§13.5, §13.13, DD-F30); confirmar un restablecimiento también confirma el email (BR-F05).
+Sistema visual sin cambios (el aviso nuevo reutiliza `FormAlert`). Preguntas nuevas P-F10 y P-F11
+con default (§26); hallazgo H-16 (§27.2).
 
 | Archivo | Contenido |
 |---|---|
@@ -45,8 +56,8 @@ en §26.
 
 **Greenfield en frontend**: no hay código ni `package.json`. El backend de 001 está
 **implementado** (Fases 0 a 9 en `main`, `b945373`; ADR-001 a ADR-014, ADR-024 y ADR-025, y las
-quince tandas del §18 del plan) y su contrato OpenAPI (v0.4.3) es la restricción más dura de este
-diseño.
+quince tandas del §18 del plan; la decimosexta, aprobada el 2026-10-12, se implementa como Fase 10)
+y su contrato OpenAPI (v0.5.0) es la restricción más dura de este diseño.
 
 Diseño sobre este stack (decisiones del usuario marcadas con **(u)**; el resto son defaults
 propuestos, cada uno con su ADR):
@@ -142,7 +153,7 @@ la cookie es la misma que en producción en cualquier navegador.
 | S-10 | Invitar usuario | `/settings/users/invite` | Sesión + `settings.manage` | Invitar (o reinvitar) un email con un rol | US-3.1 |
 | S-11 | Datos de la empresa | `/settings/company` | Sesión + `settings.manage` | Editar datos fiscales y de contacto, zona horaria y logo | US-4 |
 | S-12 | No encontrado | `*` | Público | Ruta inexistente | Casos borde |
-| C-01 | Aviso "Confirmá tu email" (parte del shell) | — | Sesión | Recordar la verificación y reenviar el email (no bloquea, P-2) | US-1.3 |
+| C-01 | Aviso "Confirmá tu email" (parte del shell) | — | Sesión | Recordar la verificación y reenviar el email (solo bloquea invitar, DD-46; P-2) | US-1.3 |
 | C-02 | Aviso "Sin conexión" (parte del shell y de las pantallas públicas) | — | Todos | Avisar que no hay internet | VII |
 
 "Sin permiso" no es una ruta: es un **estado** que muestra el guard de permiso en la misma URL
@@ -286,7 +297,7 @@ después de 24 h), se trata igual que el `401` global (§12.4): caché vacía y 
 | BR-F02 | Si el usuario es el **único Administrador activo** (se cuenta en la lista: `role=admin` y `status=active`; los invitados no cuentan), "Cambiar a Operador" y "Desactivar" aparecen **deshabilitadas** con el motivo visible ("Tiene que quedar al menos un administrador activo"). Es UX: el servidor responde `409 last_admin` igual. | US-3.4, INV-10 |
 | BR-F03 | La fila del usuario actual dice "(vos)". Bajarse a Operador o desactivarse a uno mismo pide una confirmación con advertencia explícita ("Vas a perder el acceso a Ajustes" / "Se va a cerrar tu sesión"). | US-3.3 |
 | BR-F04 | La navegación muestra solo lo que el rol puede usar (`session.permissions`). En Ajustes, el Operador ve su nombre, email y rol, y "Cerrar sesión". | FR-007, ADR-013 |
-| BR-F05 | Con `user.email_verified = false` se muestra el aviso C-01 en todas las pantallas con sesión; no bloquea nada; se puede ocultar hasta cerrar el navegador. **Dependiente de la revisión 16**: si el backend pasa a exigir el email verificado para invitar, ver P-F8 (§26). | P-2, DD-4 |
+| BR-F05 | *(Revisión 4)* Con `user.email_verified = false` se muestra el aviso C-01 en todas las pantallas con sesión; se puede ocultar hasta cerrar el navegador. Lo único que bloquea es **invitar** (BR-F14, DD-46); el resto de la aplicación no depende de la confirmación. El aviso desaparece cuando `/me` trae `email_verified = true`: al confirmar desde el enlace (S-05) y también después de restablecer la contraseña, porque confirmar un restablecimiento confirma el email (DD-46 (2), contrato v0.5.0). | P-2, DD-4, DD-13, DD-46 |
 | BR-F06 | Tras registrarse o aceptar una invitación se entra directo al panel (la sesión viene en la respuesta). Tras restablecer la contraseña se va al login con aviso (el backend no inicia sesión y cierra las demás). | DD-4, plan §4.5 |
 | BR-F07 | `next` solo acepta rutas internas (§6.3). | INV-F07 |
 | BR-F08 | Invitar un email que ya estaba invitado en la empresa (respuesta `200`) muestra "Ya estaba invitado: le reenviamos la invitación"; si el rol elegido era otro, el mensaje lo dice ("…como Administrador"), porque el backend también cambia el rol. | DD-5, DD-26 |
@@ -295,6 +306,7 @@ después de 24 h), se trata igual que el `401` global (§12.4): caché vacía y 
 | BR-F11 | Si el email de una invitación rechazada con `409 email_taken` coincide con un usuario **desactivado** de la lista, se sugiere "Es de {nombre}, que está desactivado. Podés reactivarlo desde la lista". | DD-21 |
 | BR-F12 | Al aceptar una invitación con otra sesión abierta en el navegador se avisa: "Tenés una sesión abierta como {email}. Si aceptás, se va a cerrar." | Casos borde |
 | BR-F13 | Un logo que supera los límites del servidor (tamaño o dimensiones) se achica en el navegador antes de subirlo; un JPEG siempre se vuelve a codificar para aplicar la orientación y quitar los metadatos de la foto (ubicación GPS, modelo del celular). El usuario ve "Preparando la imagen…" y, si se achicó, "Lo achicamos para que pese menos". El servidor sigue siendo quien acepta o rechaza. | P-F2, P-F6, DD-11, DD-31, DD-F20, DD-F21 |
+| BR-F14 | *(Revisión 4, P-F8)* Con `user.email_verified = false`, todo lo que emite una invitación aparece **deshabilitado con el motivo visible** ("Confirmá tu email para invitar a tu equipo.") y el botón "Reenviar email de confirmación" al lado (aviso W, `VerifyToInviteNotice`): "+ Invitar" y el "Invitar" del estado vacío (S-09), "Invitá a tu equipo" (S-07), "Reenviar invitación" de un invitado y "Reactivar" de un desactivado que nunca aceptó (S-09); S-10 muestra el aviso en lugar del formulario. Mismo patrón que BR-F02. Es UX: el servidor decide (`403 email_not_verified`, §12.2) y la UI maneja su rechazo (INV-F06). | DD-46, INV-37 (plan), DD-F28 |
 
 ---
 
@@ -395,6 +407,7 @@ Propiedades que se rompen **sin que falle la compilación**. Cada una tiene un t
 | INV-F13 | Lo que la UI sube como logo es PNG o JPEG, ≤ 2000 px por lado y ≤ `LOGO_TARGET_MAX_BYTES` (2 097 152 bytes, el límite exacto del archivo en el servidor, DD-31); un JPEG subido nunca conserva metadatos EXIF (se vuelve a codificar). El cliente usa los mismos límites que el servidor, que igual decide (INV-24 del plan). | T-F604, T-F706 |
 | INV-F14 | El logo se muestra siempre con la URL versionada `/api/v1/tenant/logo?v={id}-{updated_at}` (parámetro `v` del contrato, ignorado por el servidor): al cambiar el logo o la empresa, cambia la URL. | T-F603 |
 | INV-F15 | *(Revisión 3)* El body de `PATCH /tenant` solo lleva claves de `TenantUpdate` que cambiaron; `name` y `timezone` nunca van como `null`; `base_currency` nunca va (DD-43; el servidor responde `400` ante una clave desconocida o un `null` en esos campos). | T-F602 |
+| INV-F16 | *(Revisión 4)* El manejador global de `403` (§12.4) dispara **solo** con `code = forbidden`. El `403 email_not_verified` (DD-46) lo maneja la pantalla que invitó: nunca muestra "Sin permiso" ni "No tenés permiso para hacer esto.". Se rompe sin que falle la compilación si el manejador pasa a mirar `status === 403`. | T-F104, T-F504 |
 
 ---
 
@@ -411,6 +424,7 @@ Propiedades que se rompen **sin que falle la compilación**. Cada una tiene un t
 | Vista previa de invitación | Server state | Query `['invitation-preview', token]` | `POST` de solo lectura (el token viaja en el body); `gcTime` corto |
 | Permiso "¿puede X?" | Derivado | `useCan(p)` lee `['session']` | No se guarda |
 | ¿Es el único admin activo? | Derivado | `countActiveAdmins(users)` | No se guarda |
+| ¿Puede invitar? (revisión 4, BR-F14) | Derivado | `useInviteBlockedReason()` lee `session.user.email_verified` | No se guarda |
 | `next`, `reason` | URL state | Query string de `/login` | |
 | Email prellenado, token del enlace | Estado de navegación | `location.state` | No es URL: no debe quedar en logs |
 | Valores de formularios, errores de campo | Client local | React Hook Form dentro de la pantalla | |
@@ -429,7 +443,7 @@ necesitan (sesión, permisos, empresa) es server state y ya la comparte la cach�
 | Opción | Valor | Por qué |
 |---|---|---|
 | `staleTime` por defecto | 30 s | Datos que cambian poco; evita refetch en cada montaje |
-| `['session']` | `staleTime` 60 s, `refetchOnWindowFocus: true` | Detecta sesiones vencidas al volver a la app |
+| `['session']` | `staleTime` 60 s; `refetchOnWindowFocus`: `'always'` mientras `user.email_verified = false`, `true` después (función de la query, TanStack Query v5) | Detecta sesiones vencidas al volver a la app. *(Revisión 4, DD-F28)* Con el email sin confirmar, cada vuelta a la pestaña pide `/me` aunque no hayan pasado los 60 s: si el usuario lo confirmó en otra pestaña, "Invitar" se habilita sin recargar |
 | `['tenant']` | `staleTime` 5 min | Cambia solo desde S-11 (que actualiza la caché) |
 | `['industry-templates']` | `staleTime` 1 h | Catálogo estático |
 | `['invitation-preview', token]` | `retry: false`, `gcTime` 0, `refetchOnWindowFocus: false` | Un token inválido no mejora reintentando |
@@ -470,14 +484,17 @@ export const queryKeys = {
 | Invitar / reenviar | `POST /users/invitations` | Reemplaza o agrega el `User` devuelto en `['users']` + `invalidateQueries(users)` |
 | Cambiar rol / desactivar / reactivar | `PUT …/role`, `POST …/deactivate`, `POST …/reactivate` | Reemplaza el `User` devuelto en `['users']` + `invalidateQueries(users)`; si el afectado es el usuario actual, `invalidateQueries(session)` |
 | Cualquier `404`/`409 invalid_state` en acciones de usuario | — | `invalidateQueries(users)` (la lista estaba vieja) |
+| `403 email_not_verified` al invitar o al reenviar una invitación (revisión 4) | — | `invalidateQueries(session)`: si `/me` confirma `email_verified = false`, la pantalla pasa al estado de BR-F14 (DD-46, DD-F28) |
+| `429 rate_limited` al invitar, reenviar o reactivar (revisión 4) | — | Nada: no cambió ningún dato (el cupo de DD-48 corta antes de leer el body) |
 | `5xx` o error de red en `PUT`/`DELETE /tenant/logo` (revisión 3) | — | `invalidateQueries(tenant)` + `invalidateQueries(session)`, y la pantalla decide por lo que lee (DD-42, DD-F26) |
 
 ---
 
 ## 11. Contrato de consumo del API
 
-**Canónico**: `specs/001-empresas-usuarios/contracts/openapi.yaml` **v0.4.3** (el diseño original se
-hizo contra v0.3.1; diferencias en [`ui-revision-3.md`](ui-revision-3.md) §2). Los tipos del
+**Canónico**: `specs/001-empresas-usuarios/contracts/openapi.yaml` **v0.5.0** (el diseño original se
+hizo contra v0.3.1; diferencias hasta v0.4.3 en [`ui-revision-3.md`](ui-revision-3.md) §2; las de
+v0.5.0, en §11.1 y en la Revisión 4 de la cabecera). Los tipos del
 cliente se **generan** de él (ADR-018); si este documento y el YAML difieren, manda el YAML y este
 documento quedó desactualizado. Convención de los ejemplos: el valor es el tipo.
 
@@ -509,26 +526,39 @@ documento quedó desactualizado. Convención de los ejemplos: el valor es el tip
 
 No se consumen `/healthz` ni `/readyz`.
 
-**Límites de tasa** (plan DD-9, verificados en `internal/app/api.go` el 2026-10-12; son constantes
-del backend, no configuración). Cada cupo es una ráfaga más una reposición; excedido →
-`429 rate_limited` con `Retry-After` en segundos. Los cupos compartidos limitan un **flujo**: un
-pedido en una pantalla gasta cupo de la otra.
+**Límites de tasa** (plan DD-9; los cupos por IP se verificaron en `internal/app/api.go` el
+2026-10-12; los de DD-48, DD-49 y DD-46 (3) son de la decimosexta revisión y del contrato v0.5.0, y
+los implementa la Fase 10 del backend). Son constantes del backend, no configuración. Cada cupo es
+una ráfaga más una reposición; excedido → `429 rate_limited` con `Retry-After` en segundos. Los
+cupos compartidos limitan un **flujo**: un pedido en una pantalla gasta cupo de la otra. Cuando una
+ruta tiene dos cupos (por IP y global, o por empresa y por IP), **el contrato no dice cuál se
+agotó** y la UI tampoco lo distingue: la acción del usuario es la misma y `Retry-After` ya trae
+cuánto esperar (DD-F29).
 
-| Cupo (por IP; /64 en IPv6) | Ráfaga y reposición | Rutas que lo comparten | `Retry-After` típico | Qué ve la UI |
+| Cupo (clave) | Ráfaga y reposición | Rutas que lo comparten | `Retry-After` típico | Qué ve la UI |
 |---|---|---|---|---|
-| Registro | 5, 1 cada 12 min (cuenta éxitos y rechazos) | `POST /auth/signup` | hasta 720 s | "Esperá {n} minutos…" (§12.2) |
-| Ingreso | 20, 1 cada 3 s | `POST /auth/login` | hasta 3 s | "Esperá unos segundos…" (DD-F25). Distinto de `login_locked` (15 min por email) |
-| Contraseña | 5, 1 cada 12 min | `POST /auth/password-reset` y `…/confirm` (S-03 y S-04) | hasta 720 s | Minutos |
-| Contraseña, por email | 3, 1 cada 20 min | `POST /auth/password-reset` | — (no hay `429`: responde `202` igual y no envía; DD-9, DD-39) | El texto neutro de S-03 (P-F7) |
-| Verificación | 20, 1 cada 3 min | `…/email-verification/confirm` y `…/resend` (S-05 y C-01) | hasta 180 s | Minutos |
-| Invitación (lado invitado) | 20, 1 cada 3 min | `POST /auth/invitations/preview` y `…/accept` (S-06: una aceptación gasta 2) | hasta 180 s | Minutos |
-| Sin cupo | — | `GET /industry-templates` (el contrato declara `429`; el código no limita, H-14), `/me`, `/tenant*`, `/users*`, `POST /users/invitations`, `POST /auth/logout` | — | Un `429` igual se maneja (puede aparecer con la revisión 16) |
+| Registro (por IP; /64 en IPv6) | 5, 1 cada 12 min (cuenta éxitos y rechazos) | `POST /auth/signup` | hasta 720 s | "Hubo muchos intentos de registro seguidos." + minutos (DD-F29) |
+| Registro, global (todas las IPs; revisión 4) | 30, 1 por minuto; corre después del de IP y un `429` por IP no lo gasta (DD-49) | `POST /auth/signup` | hasta 60 s | El mismo texto, con "unos segundos" o "1 minuto" (DD-F25). Durante un ataque puede frenar registros legítimos (R-21 del plan): lo cargado se conserva |
+| Ingreso (por IP) | 20, 1 cada 3 s | `POST /auth/login` | hasta 3 s | "Esperá unos segundos…" (DD-F25). Distinto de `login_locked` (15 min por email) |
+| Contraseña (por IP) | 5, 1 cada 12 min | `POST /auth/password-reset` y `…/confirm` (S-03 y S-04) | hasta 720 s | Minutos |
+| Contraseña, por email | 3, 1 cada 20 min | `POST /auth/password-reset` | — (no hay `429`: responde `202` igual y no envía; DD-9, DD-39) | La línea de P-F7 en S-03 |
+| Verificación (por IP) | 20, 1 cada 3 min | `…/email-verification/confirm` y `…/resend` (S-05, C-01 y el aviso W de S-07, S-09 y S-10) | hasta 180 s | Reenvío: "Ya te lo mandamos hace poco." + minutos. Confirmación: "Hiciste muchos intentos seguidos." |
+| Reenvío de la verificación, por usuario (revisión 4) | 3, 1 cada 20 min (DD-46 (3)) | `POST …/email-verification/resend` | — (no hay `429`: responde `202` y no envía) | La línea de DD-F30 en "Listo, te lo reenviamos" |
+| Invitación, lado invitado (por IP) | 20, 1 cada 3 min | `POST /auth/invitations/preview` y `…/accept` (S-06: una aceptación gasta 2) | hasta 180 s | Minutos |
+| Invitación, lado Administrador, por empresa (revisión 4) | 10, 1 cada 6 min; cuenta éxitos y rechazos y lo comparten **todos** los Administradores de la empresa (DD-48) | `POST /users/invitations` y `POST /users/{userId}/reactivate` (S-10, y "Reenviar invitación" y "Reactivar" de S-09) | hasta 360 s | "Por ahora no podemos enviar más invitaciones." + minutos (DD-F29) |
+| Invitación, lado Administrador, por IP (revisión 4) | 20, 1 cada 3 min (DD-48) | Las mismas dos rutas | hasta 180 s | El mismo texto |
+| Sin cupo | — | `GET /industry-templates` (el contrato declara `429`; el código no limita, H-14), `/me`, `/tenant*`, `GET /users`, `PUT /users/{userId}/role`, `POST /users/{userId}/deactivate`, `POST /auth/logout` | — | Un `429` igual se maneja con el texto general |
 
 Cambios de contrato posteriores a v0.3.1 que el cliente consume: `method_not_allowed` en
 `ErrorCode` (v0.4.0; `405` con `Allow`, regla global); `Retry-After` opcional en los `5XX` (v0.4.0;
 el registro lo manda con `2`, DD-33); `413 payload_too_large` declarado en toda operación con body
 JSON de más de 65 536 bytes (v0.4.1; la SPA no llega a ese tamaño); texto del cupo del registro
-(v0.4.2); semántica de `PATCH /tenant` (v0.4.3, abajo).
+(v0.4.2); semántica de `PATCH /tenant` (v0.4.3, abajo). *(Revisión 4)* v0.5.0: `email_not_verified`
+en `ErrorCode` (`403` propio de `POST /users/invitations`, con `code` ∈ {`forbidden`,
+`email_not_verified`}); `429` en `POST /users/invitations` y `POST /users/{userId}/reactivate`;
+descripciones del cupo global del registro, del cupo por usuario del reenvío, de que confirmar un
+restablecimiento confirma el email y de que `email_verified = false` deshabilita invitar (`getMe`).
+Ningún esquema de request ni de response cambió, y `SuggestedAction` sigue igual.
 
 **Logo y caché** (contrato v0.4.3, sin cambios desde v0.3.1; DD-23, DD-42): `GET /tenant/logo` responde `Cache-Control: private,
 no-cache` con un `ETag` distinto por objeto (y por empresa); el navegador revalida en cada uso y
@@ -689,6 +719,7 @@ Agregar una spec = una entrada en `redocly.yaml` + un `&` en `schema.ts`.
 | `4xx` de validación (`422`) | `code = validation_failed` | Error debajo de cada campo (`fieldErrors`) + foco en el primero | No |
 | `401 unauthenticated` | Manejador global | Login con "Tu sesión se cerró. Ingresá de nuevo para seguir." | No |
 | `403 forbidden` | Manejador global + pantalla | Mensaje de permiso; se refresca la sesión (el rol pudo cambiar). También lo usa el backend para rechazar un request de origen cruzado (CSRF, DD-30); con la SPA en el mismo origen no debería ocurrir | No |
+| `403 email_not_verified` | Por pantalla (revisión 4; nunca el manejador global, INV-F16) | Solo al invitar o reenviar una invitación con el email sin confirmar (DD-46): aviso "Confirmá tu email para invitar a tu equipo." con "Reenviar email de confirmación"; se refresca la sesión | No |
 | `404` | Por pantalla | Recurso de lista: "Ese usuario ya no está en tu empresa" + refresco. Ruta: S-12 | No |
 | `405` | `method_not_allowed` (contrato v0.4.0) | Como `malformed_request`: "No pudimos procesar el pedido." + `requestId`. Es un bug del cliente (método equivocado); con los tipos generados no debería ocurrir | No |
 | `409` | Por `code` | Mensaje específico (§12.2) | No |
@@ -714,16 +745,17 @@ pantalla cuando hace falta; la tabla muestra el texto por defecto y las variante
 | `unauthenticated` | 401 | En el login: "Tu sesión se cerró. Ingresá de nuevo para seguir." + ayuda "Las sesiones se cierran solas después de 24 horas sin uso o a los 7 días." | **Global** (§12.4) |
 | `invalid_credentials` | 401 | "El email o la contraseña no son correctos." | En S-02: se conserva el email, se vacía la contraseña y se enfoca. **No** dispara el manejador global |
 | `account_disabled` | 403 | "Tu usuario está desactivado." / "Pedile a un administrador de tu empresa que lo reactive." | En S-02: aviso persistente; no es "sin permiso" (no invalida sesión: no hay) |
-| `forbidden` | 403 | "No tenés permiso para hacer esto." / "Si lo necesitás, pedíselo a un administrador." | Global: `invalidateQueries(session)`; la pantalla muestra el mensaje o el guard pasa a "Sin permiso". Mismo tratamiento si el origen fue el rechazo de CSRF (DD-30): la UI no los distingue y no hace falta (§27, H-9 resuelto) |
+| `forbidden` | 403 | "No tenés permiso para hacer esto." / "Si lo necesitás, pedíselo a un administrador." | Global: `invalidateQueries(session)`; la pantalla muestra el mensaje o el guard pasa a "Sin permiso". Mismo tratamiento si el origen fue el rechazo de CSRF (DD-30): la UI no los distingue y no hace falta (§27, H-9 resuelto). Solo con `code = forbidden`: el `403 email_not_verified` de invitar no es falta de permiso y no pasa por acá (INV-F16, revisión 4) |
 | `not_found` | 404 | Acciones de usuario: "Ese usuario ya no está en tu empresa. Actualizamos la lista." · Logo (`GET`): sin mensaje (se muestran iniciales) · Resto: "No encontramos lo que buscás." | Refresca la lista afectada |
 | `method_not_allowed` | 405 | "No pudimos procesar el pedido." / "Recargá la página y probá de nuevo." | Error general del formulario o de la sección, con `requestId`. Es un bug del cliente (la ruta existe con otro método; la respuesta trae `Allow`). Agregado en la revisión 3 (contrato v0.4.0) |
 | `email_already_registered` | 409 | "Ya existe un usuario con ese email." / "¿Querés recuperar la contraseña?" | Si `suggested_action = password_reset`: botón **"Recuperar contraseña"** → `/forgot-password` con el email en `location.state` (DD-F18). Botón secundario "Usar otro email" enfoca el campo email |
 | `email_taken` | 409 | "Ese email ya tiene un usuario en el sistema." / "Usá otro email." | Error en el campo email de S-10; BR-F11 si es un desactivado de la empresa |
+| `email_not_verified` | 403 | "Confirmá tu email para invitar a tu equipo." / "Te mandamos un enlace cuando te registraste. Si no lo encontrás, pedí uno nuevo." | *(Revisión 4, contrato v0.5.0, DD-46)* Solo `POST /users/invitations` (invitar en S-10 y "Reenviar invitación" en S-09). **No** es `forbidden`: no dispara el manejador global ni el estado "Sin permiso" (INV-F16). S-10: `FormAlert` de advertencia con "Reenviar email de confirmación" (el aviso W), y lo cargado se conserva; S-09: toast con el mismo texto. En los dos, `invalidateQueries(session)`: si `/me` confirma `email_verified = false`, la pantalla pasa al estado de BR-F14. Con BR-F14 no debería ocurrir (la UI ya deshabilita): llega con la caché vieja o con un cliente manipulado |
 | `last_admin` | 409 | "Tiene que quedar al menos un administrador activo." / "Nombrá a otra persona como administrador antes de hacer este cambio." | Cierra el diálogo, toast de error, refresca la lista |
 | `invalid_state` | 409 | "El estado de este usuario cambió mientras tanto. Actualizamos la lista." | Refresca la lista |
 | `token_invalid` | 400 | Reset: "Este enlace ya no sirve." / "Vence a la hora o ya se usó. Pedí uno nuevo." · Verificación: "Este enlace de confirmación ya no sirve." / "Vence a las 48 horas o ya se usó." · Invitación: "Esta invitación ya no es válida." / "Venció, ya se usó o la reemplazó una más nueva." | Estado de "enlace inválido" de la pantalla con su salida (§13) |
 | `login_locked` | 429 | "Por seguridad, pausamos el ingreso con este email." / "Hubo varios intentos fallidos. Podés volver a intentar a las {HH:MM} (en {n} minutos) o restablecer tu contraseña ahora." | S-02 pasa al estado Bloqueado (DD-F17) |
-| `rate_limited` | 429 | "Hiciste muchos intentos seguidos." / "Esperá {espera} y probá de nuevo." | Error general. `{espera}` según `Retry-After` (DD-F25): menos de 60 s → "unos segundos"; 60 s → "1 minuto"; más → "{n} minutos" con `n = ceil(s / 60)`; sin cabecera → "unos minutos". Los cupos (algunos compartidos entre pantallas) están en §11.1 |
+| `rate_limited` | 429 | "Hiciste muchos intentos seguidos." / "Esperá {espera} y probá de nuevo." · *(Revisión 4, DD-F29)* Registro (`signup`): "Hubo muchos intentos de registro seguidos." / "Esperá {espera} y probá de nuevo. No se creó nada: podés reintentar con los mismos datos." · Invitar, reenviar invitación y reactivar (`invite`, `userAction`): "Por ahora no podemos enviar más invitaciones." / "Hay un límite de invitaciones y reactivaciones seguidas para cuidar el envío de emails. Esperá {espera} y probá de nuevo." · Reenvío de la confirmación (`resendVerification`): "Ya te lo mandamos hace poco." / "Esperá {espera} y probá de nuevo." | Error general (S-10: `FormAlert`, y lo cargado se conserva; S-09: toast, el diálogo de "Reactivar" se cierra y la lista no se vuelve a pedir, porque nada cambió). Sin reintento automático ni botón bloqueado durante la espera (DD-F25). `{espera}` según `Retry-After` (DD-F25): menos de 60 s → "unos segundos"; 60 s → "1 minuto"; más → "{n} minutos" con `n = ceil(s / 60)`; sin cabecera → "unos minutos". Los cupos (algunos compartidos entre pantallas o entre Administradores) están en §11.1; el texto no dice cuál se agotó porque el contrato no lo distingue |
 | `service_unavailable` | 503 | "El servicio no está disponible en este momento." / "Probá de nuevo en unos minutos." · Con `Retry-After` menor de 60 s: "Probá de nuevo en unos segundos." (en el registro, además: "No se creó nada: podés reintentar con los mismos datos.") | Botón "Reintentar"; conserva lo cargado en el formulario; sin reintento automático de mutaciones (DD-F25) |
 | `internal` | 500 | "Algo salió mal de nuestro lado." / "Probá de nuevo. Si sigue pasando, avisanos con este código: {requestId}." | Botón "Reintentar"; conserva lo cargado |
 | (sin respuesta) | — | "No hay conexión." / "Revisá tu internet y probá de nuevo." | Botón "Reintentar"; conserva lo cargado |
@@ -793,6 +825,11 @@ Detalles:
 - Dispara con **cualquier** query o mutación salvo la propia `['session']` (que mapea `401` a
   `null`) y salvo los endpoints públicos (`/auth/login`, `/auth/signup`, etc.), cuyos `401`
   tienen otro `code`.
+- *(Revisión 4)* El manejador de `403` dispara solo con `code = forbidden` (INV-F16).
+  `POST /users/invitations` también responde `403` con `code = email_not_verified` (DD-46): no es
+  falta de permiso, lo muestra la pantalla que invitó (§12.2) y no pasa por `onForbidden`. Un
+  `401` en una acción de administración porque al actor lo desactivaron mientras tanto (DD-44) es
+  un `401 unauthenticated` más: vuelve al login.
 - Si varias queries fallan a la vez, la navegación ocurre una sola vez (la segunda llamada ve que
   ya está en `/login`).
 - `next` = ruta + query de la pantalla actual (sin fragmento).
@@ -875,7 +912,7 @@ A: ícono de la app. B: `<h1>` y bajada. C y D: `<fieldset>` con `<legend>`. E: 
 |---|---|
 | Carga | Formulario visible de inmediato; el grupo "Rubro" muestra 2 *skeletons* de opción mientras llega `/industry-templates`; "Crear cuenta" deshabilitado hasta que carguen |
 | Vacío | `items` vacío (no debería pasar): en el grupo Rubro "No pudimos cargar los rubros." + "Reintentar" |
-| Error | Rubros: error en línea en el grupo con "Reintentar" (el resto del formulario sigue usable). Envío: §12.2 (`409` con "Recuperar contraseña", `422` por campo (§12.3: el servidor usa `invalid_value` en nombre y empresa), `429` con minutos (cupo de 5 y 1 cada 12 min por IP, §11.1), `503` con `Retry-After` (registros simultáneos, DD-33) con "Probá de nuevo en unos segundos. No se creó nada: podés reintentar con los mismos datos." (DD-F25), `503`/`500`/red con "Reintentar" conservando lo cargado). **Dependiente de la revisión 16** (§26) |
+| Error | Rubros: error en línea en el grupo con "Reintentar" (el resto del formulario sigue usable). Envío: §12.2 (`409` con "Recuperar contraseña", `422` por campo (§12.3: el servidor usa `invalid_value` en nombre y empresa), `429` con "Hubo muchos intentos de registro seguidos. Esperá {espera} y probá de nuevo. No se creó nada: podés reintentar con los mismos datos." (revisión 4: cupo por IP de 5 y 1 cada 12 min, o cupo global de 30 y 1 por minuto, DD-49; el contrato no dice cuál, y el texto sirve para los dos, DD-F29), `503` con `Retry-After` (registros simultáneos, DD-33) con "Probá de nuevo en unos segundos. No se creó nada: podés reintentar con los mismos datos." (DD-F25), `503`/`500`/red con "Reintentar" conservando lo cargado). Ningún `429` ni `503` se reintenta solo |
 | Enviando | Botón "Creando cuenta…" deshabilitado; campos `readOnly` |
 | Éxito | `201` → caché con la sesión → `replace` a `/` + toast "¡Listo! Tu empresa quedó creada." + aviso C-01 de verificación |
 | Sin permiso | N/A |
@@ -952,9 +989,9 @@ stateDiagram-v2
 | Estado | Qué ve el usuario |
 |---|---|
 | Carga / Vacío | N/A (el email puede venir prellenado desde `location.state`) |
-| Error | `422` email inválido en el campo; `429` "Hiciste muchos intentos…" (el cupo por IP es el mismo que el de S-04: 5 y 1 cada 12 min, §11.1); `503`/`500`/red con "Reintentar". **Dependiente de la revisión 16** (§26) |
+| Error | `422` email inválido en el campo; `429` "Hiciste muchos intentos…" (el cupo por IP es el mismo que el de S-04: 5 y 1 cada 12 min, §11.1; la revisión 16 no lo cambió); `503`/`500`/red con "Reintentar" |
 | Enviando | "Enviando…" |
-| Éxito | Siempre el mismo texto neutro ante `202` (el backend responde igual exista o no el email, INV-13); el foco va al título "Revisá tu email". "Pedilo de nuevo" vuelve al formulario con el email cargado. La respuesta puede tardar distinto según la cuenta (DD-39): la UI no mide ni muestra ese tiempo, y nada de lo que muestra depende de él. Después de 3 pedidos del mismo email el backend sigue respondiendo `202` pero no envía hasta pasados 20 min (DD-9): si se acepta P-F7, el estado Enviado suma "Si ya lo pediste varias veces, esperá unos 20 minutos antes de pedirlo de nuevo." |
+| Éxito | Siempre el mismo texto neutro ante `202` (el backend responde igual exista o no el email, INV-13); el foco va al título "Revisá tu email". "Pedilo de nuevo" vuelve al formulario con el email cargado. La respuesta puede tardar distinto según la cuenta (DD-39): la UI no mide ni muestra ese tiempo, y nada de lo que muestra depende de él. Después de 3 pedidos del mismo email el backend sigue respondiendo `202` pero no envía hasta pasados 20 min (DD-9): por eso el estado Enviado suma "Si ya lo pediste varias veces, esperá unos 20 minutos antes de pedirlo de nuevo." (P-F7, aprobada el 2026-10-12) |
 | Sin permiso / Sesión vencida | N/A |
 
 ### 13.4 S-04 Restablecer contraseña (`/reset-password#token=`) · US-2.3
@@ -991,18 +1028,26 @@ Sin campo "repetir contraseña": el control de mostrar/ocultar cumple esa funci�
 │ Confirmá tu email                │   ┌──────────────────────────────────┐
 │ Tocá el botón para confirmar     │   │ ¡Listo! Tu email quedó           │
 │ que este email es tuyo.          │   │ confirmado.                      │
-│ [ Confirmar mi email ]           │   │ [ Ir al inicio ] / [ Ingresar ]  │
-└──────────────────────────────────┘   └──────────────────────────────────┘
+│ A Si no creaste una cuenta con   │   │ [ Ir al inicio ] / [ Ingresar ]  │
+│   este email, no lo confirmes:   │   └──────────────────────────────────┘
+│   confirmarlo le daría acceso a  │
+│   quien la creó.                 │
+│ [ Confirmar mi email ]           │
+└──────────────────────────────────┘
 ```
 
-Confirmación con **botón** y no automática al abrir (DD-F3).
+Confirmación con **botón** y no automática al abrir (DD-F3). A: párrafo de texto (revisión 4,
+P-F10) que repite el aviso que DD-46 (4) agrega al email de confirmación (T-B1010). Como confirmar
+pide un toque, esta pantalla es la última oportunidad de no confirmar una cuenta que creó otra
+persona.
 
 | Estado | Qué ve el usuario |
 |---|---|
 | Sin token | "Este enlace está incompleto." + con sesión: "Reenviar email de confirmación"; sin sesión: "Ingresar" |
-| Error | `token_invalid`: "Este enlace de confirmación ya no sirve. Vence a las 48 horas o ya se usó." + con sesión: "Reenviar email de confirmación" (C-01); sin sesión: "Ingresá y pedí uno nuevo desde el aviso" + "Ingresar". `429`, `503`, `500`, red |
+| Inicial (con token) | Título, bajada, el párrafo A y "Confirmar mi email". Ningún `POST` hasta tocar el botón |
+| Error | `token_invalid`: "Este enlace de confirmación ya no sirve. Vence a las 48 horas o ya se usó." + con sesión: "Reenviar email de confirmación" (resultado en la misma pantalla con los textos de C-01, §13.13: `202` con la línea de DD-F30; `429` con "Ya te lo mandamos hace poco."); sin sesión: "Ingresá y pedí uno nuevo desde el aviso" + "Ingresar". `429` (cupo por IP compartido con el reenvío, §11.1), `503`, `500`, red |
 | Enviando | "Confirmando…" |
-| Éxito | `204` → `invalidateQueries(session)`; con sesión "Ir al inicio", sin sesión "Ingresar" |
+| Éxito | `204` → `invalidateQueries(session)`; con sesión "Ir al inicio", sin sesión "Ingresar". No dice "ya podés invitar", porque el `204` no dice de quién era el token: el enlace puede ser de otra cuenta que la de la sesión abierta. El aviso C-01 y BR-F14 se actualizan solos con `/me` |
 | Sin permiso / Sesión vencida | N/A (funciona con o sin sesión) |
 
 ### 13.6 S-06 Aceptar invitación (`/accept-invitation#token=`) · US-3.2, DD-1, DD-4
@@ -1028,7 +1073,7 @@ Confirmación con **botón** y no automática al abrir (DD-F3).
 |---|---|
 | Sin token | "Este enlace está incompleto." / "Abrilo de nuevo desde el email." |
 | Carga | *Skeleton* de la zona A y del formulario (`POST /auth/invitations/preview`) |
-| Error de vista previa | `token_invalid`: "Esta invitación ya no es válida. Venció, ya se usó o la reemplazó una más nueva." + "Si todavía no la aceptaste, pedí una nueva con tu email" (→ S-03: el backend reemite la invitación, DD-20) + "¿Ya tenés usuario? Ingresá". `429` (cupo por IP compartido con la aceptación, §11.1; sin formulario hasta reintentar), `503`/red con "Reintentar". **Dependiente de la revisión 16** (§26) |
+| Error de vista previa | `token_invalid`: "Esta invitación ya no es válida. Venció, ya se usó o la reemplazó una más nueva." + "Si todavía no la aceptaste, pedí una nueva con tu email" (→ S-03: el backend reemite la invitación, DD-20) + "¿Ya tenés usuario? Ingresá". `429` (cupo por IP compartido con la aceptación, §11.1; sin formulario hasta reintentar), `503`/red con "Reintentar" (la revisión 16 no cambió este cupo) |
 | Error al aceptar | `token_invalid` (venció entre la vista previa y el envío) → mismo estado inválido. `422` por campo: `name` llega como `invalid_value` y `password` como `too_short`/`too_long`/`same_as_email` (§12.3; `same_as_email` se valida también en el cliente con el email de la vista previa). `429` (una aceptación gasta 2 pedidos del cupo compartido, §11.1) |
 | Enviando | "Aceptando…" |
 | Éxito | `201` → `clear()` → sesión en caché → `replace` a `/` + toast "¡Bienvenido/a a {empresa}!" |
@@ -1061,7 +1106,7 @@ Confirmación con **botón** y no automática al abrir (DD-F3).
 | Carga | Saludo con el nombre de `['session']` (ya cargada por el guard); tarjeta de empresa en *skeleton* hasta `['tenant']` y `['industry-templates']` |
 | Vacío | N/A. Si el código de rubro no está en el catálogo, se muestra el código tal cual |
 | Error | Tarjeta de empresa: "No pudimos cargar los datos de tu empresa." + "Reintentar" (el resto de la pantalla sigue) |
-| Éxito | Como el wireframe. El Operador ve la tarjeta sin "Primeros pasos" |
+| Éxito | Como el wireframe. El Operador ve la tarjeta sin "Primeros pasos". *(Revisión 4, BR-F14)* Administrador con `email_verified = false`: "Invitá a tu equipo" no es un enlace. Aparece deshabilitado, con el aviso W debajo ("Confirmá tu email para invitar a tu equipo." + "Reenviar email de confirmación", §13.9); "Completá los datos de tu empresa" sigue igual. Cuando `/me` trae `email_verified = true` (por ejemplo, al volver de confirmar en otra pestaña, DD-F28), pasa a ser el enlace normal |
 | Sin permiso | N/A (todos los roles ven el panel) |
 | Sesión vencida | §12.4 |
 
@@ -1128,6 +1173,48 @@ ensancha). Estado con texto, no solo color. El menú `⋮` es un `DropdownMenu` 
 "Acciones para {nombre o email}". Nombres largos y emails largos hacen *wrap*
 (`overflow-wrap: anywhere`), sin truncar.
 
+**Email sin confirmar (revisión 4, BR-F14, P-F8)**: con `session.user.email_verified = false` la
+pantalla suma, debajo del título, el aviso W. "+ Invitar" queda deshabilitado y descrito por el
+aviso (`aria-describedby`):
+
+```text
+┌──────────────────────────────────┐
+│ ← Ajustes                        │
+│ Usuarios              [+ Invitar]│  ← deshabilitado
+│ W ! Confirmá tu email para       │
+│   invitar a tu equipo.           │
+│   Te mandamos un enlace a ana@…. │
+│   Si no lo encontrás, pedí uno   │
+│   nuevo.                         │
+│   [ Reenviar email de          ] │
+│   [ confirmación               ] │
+│ ┌──────────────────────────────┐ │
+│ │ Ana Pérez (vos)          [⋮] │ │
+│ │ ana@…                        │ │
+│ │ Administrador · [Activo]     │ │
+│ └──────────────────────────────┘ │
+│ Todavía sos el único usuario.    │
+│ [ Invitar ]                      │  ← deshabilitado
+└──────────────────────────────────┘
+```
+
+W: `VerifyToInviteNotice` (§15.1), un `FormAlert` de advertencia (`role="status"`). Título:
+"Confirmá tu email para invitar a tu equipo."; descripción: "Te mandamos un enlace a {email}. Si no
+lo encontrás, pedí uno nuevo."; acción: "Reenviar email de confirmación"
+(`POST /auth/email-verification/resend`). El resultado se anuncia en el mismo aviso:
+- `202` → "Listo, te lo reenviamos. Revisá también el correo no deseado. Si lo pediste varias
+  veces, esperá unos 20 minutos." (DD-F30);
+- `429` → "Ya te lo mandamos hace poco. Esperá {espera} y probá de nuevo.";
+- red, `503` o `500` → el texto de §12.2 con "Reintentar".
+
+Es el mismo aviso en S-07 y en S-10. Cuando `/me` trae `email_verified = true` (al volver a la
+pestaña después de confirmar en otra, DD-F28), el aviso desaparece y todo se habilita sin recargar.
+
+Este es el caso esperable. Con DD-46, el único Administrador sin confirmar es el que registró la
+empresa, y todavía no pudo invitar a nadie, así que la lista lo tiene solo a él (T-B1009 V9). Las
+acciones deshabilitadas de la tabla siguiente para invitados y desactivados solo aparecen con datos
+anteriores a la Fase 10 del backend.
+
 Vencimiento de invitaciones (DD-25 del plan, H-4 resuelto): para un `invited`,
 `invitation_expires_at` es el vencimiento de su **última** invitación aunque ya haya pasado. Si es
 futuro: "La invitación vence el {fecha}"; si pasó: "La invitación venció el {fecha}. Reenviala para
@@ -1140,8 +1227,8 @@ debería, según el contrato), no se muestra vencimiento.
 |---|---|---|
 | `active` + `admin` | "Cambiar a Operador", "Desactivar" (ambas deshabilitadas si es el único admin activo, con el motivo) | Sí, ambas |
 | `active` + `operator` | "Hacer Administrador", "Desactivar" | Sí |
-| `invited` | "Reenviar invitación", "Cambiar a Operador"/"Hacer Administrador" (DD-26: vale para invitados; nunca dispara `last_admin`), "Desactivar" (su invitación deja de funcionar) | Reenviar: no. Resto: sí |
-| `disabled` | "Reactivar" (cambiar el rol de un desactivado no se ofrece: el backend responde `409 invalid_state`) | Sí ("Si nunca aceptó la invitación, le enviamos una nueva") |
+| `invited` | "Reenviar invitación" (deshabilitada con el motivo de BR-F14 si el email del actor no está confirmado), "Cambiar a Operador"/"Hacer Administrador" (DD-26: vale para invitados; nunca dispara `last_admin`), "Desactivar" (su invitación deja de funcionar) | Reenviar: no. Resto: sí |
+| `disabled` | "Reactivar" (cambiar el rol de un desactivado no se ofrece: el backend responde `409 invalid_state`). Si nunca aceptó (`name = null`, S-F12) y el email del actor no está confirmado, queda deshabilitada con el motivo de BR-F14 (P-F8). El servidor no lo exige en `reactivate` (DD-46), pero reactivarlo le enviaría una invitación | Sí ("Si nunca aceptó la invitación, le enviamos una nueva") |
 
 Textos de confirmación (`ConfirmDialog`, `AlertDialog` accesible):
 
@@ -1157,13 +1244,13 @@ Para un invitado, {nombre} es su email (`name` es `null` hasta que acepta).
 | Estado | Qué ve el usuario |
 |---|---|
 | Carga | 3 tarjetas *skeleton* con `aria-busy` |
-| Vacío | Solo está el usuario actual: debajo de su tarjeta, `EmptyState` "Todavía sos el único usuario." / "Invitá a alguien de tu equipo para que cargue clientes y proyectos." + "Invitar" |
+| Vacío | Solo está el usuario actual: debajo de su tarjeta, `EmptyState` "Todavía sos el único usuario." / "Invitá a alguien de tu equipo para que cargue clientes y proyectos." + "Invitar" (deshabilitado con el email sin confirmar, BR-F14) |
 | Error | `ErrorState` "No pudimos cargar los usuarios." + "Reintentar" (con `requestId` en `500`) |
 | Acción en curso | El ítem del menú y el botón del diálogo muestran progreso; el resto de la lista sigue usable |
 | Éxito de acción | Diálogo cerrado, foco de vuelta al `⋮` de esa fila, toast: "{nombre} ahora es Administrador" / "…ahora es Operador" / "Desactivaste a {nombre}" / "Reactivaste a {nombre}" o "Le enviamos una invitación nueva a {email}" (si volvió a `invited`) / "Reenviamos la invitación a {email}" |
-| Error de acción | `last_admin`, `invalid_state`, `not_found` según §12.2 (con refresco de la lista); `403` → Sin permiso |
+| Error de acción | `last_admin`, `invalid_state`, `not_found` según §12.2 (con refresco de la lista); `403 forbidden` → Sin permiso. *(Revisión 4)* "Reenviar invitación" o "Reactivar" → `429` (cupo compartido por empresa y por IP, DD-48): toast "Por ahora no podemos enviar más invitaciones." con la espera (DD-F29); el diálogo se cierra y la lista no se vuelve a pedir. "Reenviar invitación" → `403 email_not_verified`: toast con el texto de §12.2 y `/me` pedido de nuevo (nunca "Sin permiso", INV-F16) |
 | Sin permiso | Guard: "No tenés acceso a esta sección" (Operador por URL, o Administrador al que le bajaron el rol mientras miraba) |
-| Sesión vencida | §12.4. Si el Administrador se desactivó a sí mismo, el siguiente request da `401` y cae acá |
+| Sesión vencida | §12.4. Si el Administrador se desactivó a sí mismo, el siguiente request da `401` y cae acá. También si otro Administrador lo desactivó mientras hacía una acción: el servidor relee al actor bajo el lock de la empresa y responde `401` (DD-44, revisión 4) |
 
 ### 13.10 S-10 Invitar usuario (`/settings/users/invite`) · US-3.1, DD-5, DD-21, DD-26
 
@@ -1191,7 +1278,8 @@ Para un invitado, {nombre} es su email (`name` es `null` hasta que acepta).
 | Estado | Qué ve el usuario |
 |---|---|
 | Carga / Vacío | N/A (formulario; `['users']` se usa solo para BR-F11 si ya está en caché) |
-| Error | `409 email_taken` en el campo email (+ BR-F11); `422` por campo (`email`: `invalid_format`; `role`: `invalid_value`, "Elegí un rol."); `429` (hoy esta ruta no tiene cupo; se maneja por si la revisión 16 lo agrega); `503`/`500`/red con "Reintentar". **Dependiente de la revisión 16** (§26, P-F8) |
+| Email sin confirmar (revisión 4, BR-F14) | Con `session.user.email_verified = false`: título y bajada de siempre, el aviso W de §13.9 **en lugar del formulario** (no se ofrece completar algo que no se puede enviar) y "Volver a Usuarios". Ningún `POST /users/invitations`. Cuando `/me` trae `email_verified = true` (DD-F28), aparece el formulario con "Operador" seleccionado, sin mover el foco |
+| Error | `409 email_taken` en el campo email (+ BR-F11); `422` por campo (`email`: `invalid_format`; `role`: `invalid_value`, "Elegí un rol."); `429` con "Por ahora no podemos enviar más invitaciones." y la espera (cupo por empresa compartido con "Reactivar" y con los demás Administradores, y cupo por IP, DD-48; DD-F29), con lo cargado conservado; `403 email_not_verified` (la caché decía confirmado): `FormAlert` de advertencia con el texto de §12.2 y "Reenviar email de confirmación", lo cargado se conserva y se pide `/me` de nuevo (si confirma `false`, la pantalla pasa al estado anterior); `403 forbidden` → Sin permiso; `401` → §12.4 (también si al actor lo desactivaron mientras tanto, DD-44); `503`/`500`/red con "Reintentar" |
 | Enviando | "Enviando…" |
 | Éxito | `201`: vuelve a Usuarios + toast "Invitación enviada a {email}. Vence el {fecha}." · `200` con el mismo rol que tenía: "{email} ya estaba invitado: le reenviamos la invitación." · `200` con otro rol (se compara con `['users']` en caché; si no está, se usa el texto neutro anterior): "{email} ya estaba invitado: le reenviamos la invitación como {Rol}." |
 | Sin permiso / Sesión vencida | Guard / §12.4 |
@@ -1383,9 +1471,16 @@ contenido" como primer elemento enfocable. El menú del usuario (escritorio) tie
 "Cerrar sesión".
 
 **C-01 Aviso "Confirmá tu email"** (BR-F05): "Confirmá tu email: te mandamos un enlace a
-{email}." + "Reenviar" (→ `202`: "Listo, te lo reenviamos. Revisá también el correo no deseado.";
-`429`: "Ya te lo mandamos hace poco. Esperá {n} minutos.") + botón "Ocultar" con nombre accesible.
-Anuncio del resultado en región `aria-live="polite"`.
+{email}." + "Reenviar" + botón "Ocultar" con nombre accesible. Resultado de "Reenviar":
+- `202`: "Listo, te lo reenviamos. Revisá también el correo no deseado. Si lo pediste varias veces,
+  esperá unos 20 minutos." (revisión 4, DD-F30: el servidor responde `202` sin enviar cuando se
+  agota el cupo por usuario);
+- `429` (cupo por IP): "Ya te lo mandamos hace poco. Esperá {espera} y probá de nuevo.".
+
+El resultado se anuncia en una región `aria-live="polite"`. En S-07, S-09 y S-10 convive con el
+aviso W de BR-F14, que tiene su propio "Reenviar email de confirmación" (P-F11). Desaparece solo
+cuando `/me` trae `email_verified = true`, también después de restablecer la contraseña
+(DD-46 (2)).
 
 **C-02 Aviso "Sin conexión"**: aparece con el evento `offline`, desaparece con `online`.
 
@@ -1443,8 +1538,8 @@ sequenceDiagram
         F->>API: POST /auth/password-reset
         API-->>F: 202
         F-->>V: Revisá tu email (texto neutro)
-    else 429 rate_limited
-        S-->>V: Hiciste muchos intentos seguidos, esperá n minutos
+    else 429 rate_limited por IP o global, con Retry-After
+        S-->>V: Hubo muchos intentos de registro seguidos, esperá y reintentá, no se creó nada
     end
 ```
 
@@ -1459,7 +1554,9 @@ sequenceDiagram
     participant API as /api/v1
     participant M as Email
 
+    Note over A,UI: con email_verified false, S-10 muestra el aviso en lugar del formulario (BR-F14)
     A->>UI: S-10 email y rol Operador, Enviar invitación
+    UI-->>A: botón Enviando y campos de solo lectura
     UI->>API: POST /users/invitations
     alt 201 User invitado
         UI-->>A: vuelve a Usuarios, toast con vencimiento
@@ -1467,6 +1564,11 @@ sequenceDiagram
         UI-->>A: toast Ya estaba invitado, reenviamos
     else 409 email_taken
         UI-->>A: error en el campo email (y sugerencia de reactivar si corresponde)
+    else 403 email_not_verified
+        UI-->>A: aviso Confirmá tu email para invitar, con Reenviar email de confirmación
+        UI->>API: GET /me
+    else 429 rate_limited con Retry-After
+        UI-->>A: Por ahora no podemos enviar más invitaciones, esperá n minutos, datos conservados
     end
     API-->>M: el worker envía el enlace con el token en el fragmento
     O->>UI: abre /accept-invitation con el token
@@ -1616,6 +1718,17 @@ export interface EmailVerificationBannerProps {
   onDismiss: () => void;
 }
 
+// src/components/VerifyToInviteNotice.tsx (aviso W: S-07, S-09, S-10; revisión 4, BR-F14, P-F8)
+// FormAlert variant="warning" (role="status") con título, descripción y la acción de reenviar.
+// Los controles deshabilitados de BR-F14 lo referencian con aria-describedby={id}.
+export interface VerifyToInviteNoticeProps {
+  id: string;                    // destino de aria-describedby de "+ Invitar" e "Invitá a tu equipo"
+  email: string;                 // session.user.email
+  resendStatus: 'idle' | 'pending' | 'sent' | 'error';
+  errorMessage?: string;         // de messageForError(error, 'resendVerification')
+  onResend: () => void;
+}
+
 // src/components/OfflineBanner.tsx (C-02) — sin props; usa useOnlineStatus()
 
 // src/components/AppBrand.tsx — logo o iniciales + nombre
@@ -1651,14 +1764,14 @@ export type UserAction = 'makeAdmin' | 'makeOperator' | 'deactivate' | 'reactiva
 export interface UserActionAvailability {
   action: UserAction;
   enabled: boolean;
-  disabledReason?: 'last_admin';
+  disabledReason?: 'last_admin' | 'email_not_verified';   // revisión 4: BR-F14 (resendInvitation; reactivate si name = null)
   requiresConfirmation: boolean;
   selfWarning?: 'lose_settings_access' | 'end_own_session';
 }
 export function countActiveAdmins(users: User[]): number;
 export function availableUserActions(
   user: User,
-  ctx: { currentUserId: string; activeAdminCount: number },
+  ctx: { currentUserId: string; activeAdminCount: number; actorEmailVerified: boolean }, // revisión 4
 ): UserActionAvailability[];
 
 // src/features/auth/components/IndustryTemplatePicker.tsx
@@ -1708,6 +1821,12 @@ export interface LogoUploaderProps {
 export function useSession(): UseQueryResult<SessionInfo | null, ApiError>;  // 401 → null
 export function useCurrentSession(): SessionInfo;   // solo dentro de RequireSession; lanza si no hay
 export function useCan(permission: Permission): boolean;
+/** Revisión 4 (BR-F14, DD-46): 'email_not_verified' si session.user.email_verified = false; null si no.
+ *  Es UX: el servidor decide (403 email_not_verified). */
+export function useInviteBlockedReason(): 'email_not_verified' | null;
+/** Revisión 4: se mueve acá desde features/auth/api.ts porque lo usan el shell (C-01), S-05, S-07,
+ *  S-09 y S-10, y features/X solo puede importar features/auth/session (§9.1). */
+export function useResendEmailVerification(): UseMutationResult<void, ApiError, void>;
 
 // features/auth/api.ts (mutaciones y queries de auth)
 export function useIndustryTemplates(): UseQueryResult<IndustryTemplate[], ApiError>;
@@ -1717,7 +1836,7 @@ export function useLogout(): UseMutationResult<void, ApiError, void>;
 export function useRequestPasswordReset(): UseMutationResult<void, ApiError, PasswordResetRequest>;
 export function useConfirmPasswordReset(): UseMutationResult<void, ApiError, PasswordResetConfirmRequest>;
 export function useConfirmEmailVerification(): UseMutationResult<void, ApiError, TokenRequest>;
-export function useResendEmailVerification(): UseMutationResult<void, ApiError, void>;
+// useResendEmailVerification: en features/auth/session.ts desde la revisión 4
 export function useInvitationPreview(token: string | null): UseQueryResult<InvitationPreview, ApiError>; // deshabilitada si token = null
 export function useAcceptInvitation(): UseMutationResult<SessionInfo, ApiError, InvitationAcceptRequest>;
 
@@ -1786,7 +1905,7 @@ export interface UserMessage {
 export type ErrorContext =
   | 'signup' | 'login' | 'passwordReset' | 'resetConfirm' | 'verifyEmail'
   | 'invitationPreview' | 'invitationAccept' | 'users' | 'userAction' | 'invite'
-  | 'tenant' | 'logo' | 'generic';
+  | 'tenant' | 'logo' | 'resendVerification' | 'generic';   // resendVerification: revisión 4 (C-01, S-05, aviso W)
 export function messageForError(error: unknown, context: ErrorContext): UserMessage;
 export function fieldErrorMessage(field: string, code: FieldErrorCode): string;
 export function logoRejectMessage(reason: LogoRejectReason): string;      // textos de §13.11.1
@@ -1834,7 +1953,7 @@ export function formatRetryAt(retryAfterSeconds: number, now: Date): { time: str
 | Olvidé mi contraseña | Email | Todo lo demás (respuesta neutra) |
 | Restablecer | Contraseña 10–128 | Token; `same_as_email` (el cliente no conoce el email) |
 | Aceptar invitación | Nombre 1–120; contraseña 10–128 y ≠ email de la vista previa | Token |
-| Invitar | Email; rol | Email en uso (`409`) |
+| Invitar | Email; rol | Email en uso (`409`); email del Administrador confirmado (`403 email_not_verified`, DD-46: la UI solo lo anticipa con BR-F14); cupo (`429`, DD-48) |
 | Datos de la empresa | Nombre 1–120; longitudes; email de contacto; CUIT (formato: 11 dígitos o `NN-NNNNNNNN-N`, + dígito verificador); nunca `null` en nombre ni zona y nunca `base_currency` (INV-F15) | Zona horaria válida (tampoco vacía ni `Local`); todo lo anterior otra vez |
 | Logo | Formato por firma, dimensiones y peso (§13.11.1), con los mismos límites exactos que el servidor (≤ 2000 px, ≤ 2 097 152 bytes) | Tipo real, peso, dimensiones y forma del multipart (DD-11, DD-31) |
 
@@ -2204,6 +2323,9 @@ La preparación de imágenes vive en `features/tenant/logo/` porque solo la usa 
 | **DD-F25** | *(Nueva, revisión 3)* Esperas cortas en segundos: `Retry-After` < 60 → "unos segundos"; 60 → "1 minuto"; más → `ceil(s/60)` minutos; sin cabecera → "unos minutos". El `503` del registro con `Retry-After` no se reintenta solo | El login por IP (1 cada 3 s) y el `503` del registro (`Retry-After: 2`, DD-33) daban "Esperá 1 minutos". Sin reintento automático, como el resto de las mutaciones (§10.2). Descartado: reintentar solo tras `Retry-After` (seguro según el contrato, pero otro camino que solo aparece con registros simultáneos) | Un toque más en un caso raro |
 | **DD-F26** | *(Nueva, revisión 3)* Ante `5xx` o error de red en `PUT`/`DELETE /tenant/logo`, se vuelve a pedir `GET /tenant`; si `has_logo` y `updated_at` muestran la operación hecha, es éxito; si no, error con "Reintentar" | DD-42: el servidor puede devolver el error original aunque el `COMMIT` haya confirmado. Descartado: solo invalidar (mensaje de error con el logo nuevo en pantalla) | Un `GET /tenant` más en el camino de error |
 | **DD-F27** | *(Nueva, revisión 3)* El selector de zona horaria incluye siempre la zona guardada de la empresa y agrupa en "Argentina" también los alias que devuelva `Intl` | S-F11: algún navegador puede devolver `America/Buenos_Aires` en lugar del nombre IANA. Descartado: una tabla propia de alias (otra lista que mantener) | La lista puede mostrar dos nombres para la misma zona |
+| **DD-F28** | *(Nueva, revisión 4; aplica P-F8)* Invitar con el email sin confirmar. La UI lo sabe por `session.user.email_verified` (`/me`, contrato v0.5.0), con `useInviteBlockedReason()`. Deshabilita con el motivo visible todo lo que emite una invitación (BR-F14) y pone al lado el aviso W con "Reenviar email de confirmación"; S-10 muestra el aviso en lugar del formulario. `['session']` usa `refetchOnWindowFocus: 'always'` mientras el email no está confirmado, así una confirmación hecha en otra pestaña habilita todo al volver, sin recargar. El `403 email_not_verified` lo maneja la pantalla (INV-F16) y refresca la sesión. "Reactivar" a un desactivado que nunca aceptó también se deshabilita (P-F8) aunque el servidor no lo exija en esa ruta, porque reactivarlo envía una invitación | Con DD-46, invitar depende de un dato que `/me` ya trae. Anticiparlo evita un formulario que siempre falla y le dice al usuario cómo salir. Sin el refetch al enfocar, si vuelve de confirmar antes de que pasen los 60 s de `staleTime`, el botón sigue deshabilitado. Descartado: (a) dejar todo habilitado y mostrar solo el `403` (el usuario completa un formulario para enterarse); (b) ocultar "Invitar" (no sabe que existe ni cómo habilitarlo); (c) una pantalla aparte "confirmá primero" (más navegación para un aviso); (d) `'always'` para todos los usuarios (un `/me` por cada vuelta a la pestaña, sin necesidad) | Un `/me` por cada vuelta a la pestaña mientras el email no esté confirmado (solo el fundador, hasta que hace un clic); dos botones de reenvío en S-07, S-09 y S-10 mientras C-01 esté visible (P-F11); una confirmación hecha en otro dispositivo se ve recién al enfocar o recargar |
+| **DD-F29** | *(Nueva, revisión 4)* Textos de `rate_limited` por contexto, ciertos para cualquier cupo que se haya agotado: registro "Hubo muchos intentos de registro seguidos." (+ "No se creó nada…"); invitar, reenviar invitación y reactivar "Por ahora no podemos enviar más invitaciones." (+ el motivo: cuidar el envío de emails); reenvío de la confirmación "Ya te lo mandamos hace poco.". La UI no distingue el cupo por IP del global (registro) ni el de la empresa del de la IP (invitaciones) | El contrato no los distingue y la acción del usuario es la misma: esperar y reintentar. `Retry-After` ya trae la diferencia que le importa (cuánto esperar, DD-F25). "Hiciste muchos intentos" es falso con el cupo global (el visitante puede haber hecho uno solo) y con el de la empresa (lo puede haber gastado otro Administrador). Descartado: pedir al backend un código o un dato que diga qué cupo se agotó (un valor más en `ErrorCode` para el mismo comportamiento) | El texto no explica por qué (otro Administrador, un ataque en curso). Durante un ataque al registro (R-21 del plan), el visitante legítimo solo ve "esperá" |
+| **DD-F30** | *(Nueva, revisión 4; mismo criterio que P-F7, aprobada)* El resultado "Listo, te lo reenviamos" del reenvío de la confirmación (C-01, S-05, aviso W) suma "Si lo pediste varias veces, esperá unos 20 minutos." | Con DD-46 (3), después de 3 reenvíos el servidor responde `202` sin enviar hasta pasados 20 min. Sin la línea, el usuario reintenta y cree que el sistema anda mal. Descartado: contar los reenvíos en el cliente (no ve los de otras pestañas ni dispositivos) | Una línea más en el aviso, aunque sea el primer reenvío. Si el backend adopta H-16 (`429` con `Retry-After`), la línea se va y la espera sale exacta |
 
 ---
 
@@ -2223,6 +2345,7 @@ La preparación de imágenes vive en `features/tenant/logo/` porque solo la usa 
 | S-12 (plan) | Tras `mkcert -install`, Chrome, Firefox y Safari en desarrollo, y Chromium y WebKit de Playwright en CI, confían en el certificado de `localhost` | Abierto | Primera corrida de T-F701 (y spike de T-F006 en desarrollo) | Respaldo en CI: `ignoreHTTPSErrors` solo si el service worker se registra igual (T-F703); si no, volver al arquitecto |
 | S-F10 | En Android, el reenvío de puertos de Chrome (`chrome://inspect`) a `localhost:8443` más la CA de mkcert instalada en el teléfono permiten probar el binario local con sesión (respaldo de H-12) | Abierto (no verificado) | Checkpoint F6, si no hay otro origen | Probar en el celular solo contra un entorno con dominio y HTTPS real |
 | S-F11 | *(Revisión 3)* `Intl.supportedValuesOf('timeZone')` y `resolvedOptions().timeZone` devuelven nombres IANA canónicos (`America/Argentina/Buenos_Aires`) en los navegadores de NFR-F02. Un reporte de WebKit (bug 218542) muestra que Safari devolvía el alias `America/Buenos_Aires` | Abierto (no verificado) | T-F602 (selector de DD-F27) y a mano en Chrome, Firefox y Safari (T-F705) | DD-F27 ya cubre la zona guardada; el registro funciona igual (el backend conoce los alias por `time/tzdata`) |
+| S-F12 | *(Revisión 4)* Un usuario `disabled` con `name = null` nunca aceptó su invitación. El contrato solo dice "`null` mientras el usuario está invitado"; según `data-model.md` §2.2, `name` se completa al aceptar y desactivar no lo toca | Abierto | T-F501 y lectura de `Deactivate` en el código | "Reactivar" queda habilitado para ese usuario con el email sin confirmar. El servidor lo acepta igual (no exige la confirmación en `reactivate`): el efecto es solo una invitación que P-F8 quería evitar. Caso inalcanzable salvo con datos anteriores a la Fase 10 |
 
 ## 26. Preguntas
 
@@ -2243,10 +2366,24 @@ Preguntas de la revisión 3 (detalle en [`ui-revision-3.md`](ui-revision-3.md) �
 | P-F8 | *Si la revisión 16 exige el email verificado para invitar*: ¿cómo se muestra? | **Cerrada 2026-10-12**: la revisión 16 lo exige (DD-46, opción B); se aplica el default | Deshabilitar "Invitar", "Invitá a tu equipo", "Reenviar invitación" y "Reactivar" de un invitado con el motivo visible y "Reenviar email de confirmación" al lado (patrón de BR-F02); el servidor decide igual |
 | P-F9 | *Si la revisión 16 propone una prueba anti-bots en registro o ingreso*: ¿se agrega? | **Cerrada 2026-10-12**: la revisión 16 no la propone (usa un cupo global, DD-49); no | No en 001 (§18 promete "sin CAPTCHA" y la CSP solo admite scripts propios); si se decide igual, es un ADR |
 
-**Dependiente de la revisión 16 del backend** (auditoría de seguridad en curso): S-01 Registro y
-§14.2; S-05 Confirmar email y C-01 (BR-F05); S-10 Invitar y las acciones de invitado de S-09; S-03
-y S-04; S-06; posiblemente S-02. Todo lo demás se puede implementar ya. Detalle y fases en
-[`ui-revision-3.md`](ui-revision-3.md) §9.
+Preguntas de la revisión 4 (2026-10-13):
+
+| ID | Pregunta | Estado | Default propuesto |
+|---|---|---|---|
+| P-F10 | ¿S-05 (Confirmar email) repite antes del botón el aviso que DD-46 (4) agrega al email: "Si no creaste una cuenta con este email, no lo confirmes: confirmarlo le daría acceso a quien la creó."? La confirmación pide un toque (DD-F3), así que esa pantalla es la última oportunidad de no confirmar una cuenta ajena | **Cerrada 2026-10-13**: sí (default) | **Sí**, con ese texto (ya escrito en §13.5) |
+| P-F11 | Con el email sin confirmar, S-07, S-09 y S-10 muestran el aviso W de BR-F14 y, arriba, el aviso C-01 del shell: quedan dos botones de reenvío en la misma pantalla. ¿Se oculta C-01 en esas pantallas? | **Cerrada 2026-10-13**: no (default) | **No**: se dejan los dos. Para ocultarlo, el shell tendría que saber qué pantalla tiene el aviso (un `handle` por ruta), y el estado dura hasta que el fundador hace un clic. Además, C-01 se puede ocultar a mano |
+
+**Revisión 16 del backend: cerrada para la UI** (la lista "Dependiente de la revisión 16" de la
+Revisión 3 queda resuelta en la Revisión 4):
+- S-01 y §14.2: `429` del cupo global (DD-49, DD-F29); sin prueba anti-bots (P-F9).
+- S-05 y C-01: cupo por usuario del reenvío (DD-F30); el reset confirma el email (BR-F05).
+- S-10 y S-09: BR-F14, `email_not_verified`, `429` (DD-F28).
+- S-03 y S-04: sin cambios (la revisión 16 no tocó sus cupos ni DD-39; P-F7 aprobada).
+- S-06 y S-02: sin cambios.
+
+Lo que resta del backend es implementar la Fase 10 (T-B1001 a T-B1010). Las pruebas con MSW no la
+esperan; las pruebas independientes de F2, F4 y F5 sí, en lo que toca a DD-46, DD-48 y DD-49
+(`tasks.md`, Frontend, dependencias).
 
 ## 27. Hallazgos para el backend-architect
 
@@ -2278,6 +2415,19 @@ respecto de lo que este documento asume (diferencias en [`ui-revision-3.md`](ui-
 cupos de §11.1 y los códigos de campo de §12.3. No se pudo correr `git log -p` sobre el contrato
 (sin shell): la lista de cambios sale del historial del propio contrato y de plan §18.
 
+Verificación de la revisión 4 (2026-10-13), contra estas fuentes:
+- `contracts/openapi.yaml` v0.5.0: historial, `ErrorCode`, `signup`, `confirmPasswordReset`,
+  `confirmEmailVerification`, `resendEmailVerification`, `getMe`, `inviteUser`, `reactivateUser`,
+  `CurrentUser`;
+- `plan.md`: DD-4, DD-9, DD-13, DD-44 a DD-49 y la decimosexta tanda;
+- `revision-16-auditoria.md` §9;
+- la Fase 10 de `tasks.md` (T-B1005, T-B1007, T-B1009, T-B1010);
+- `spec.md` (clarificación de la Historia 3.1).
+
+El código del backend todavía no tiene la Fase 10 (sin `email_not_verified` ni los cupos nuevos en
+`internal/`), así que los valores de §11.1 marcados "revisión 4" salen del plan y del contrato, no
+del código. `SuggestedAction` no cambió. H-14 sigue abierto: la revisión 16 no lo tocó.
+
 ### 27.2 Nuevos
 
 | ID | Hallazgo | Propuesta | Impacto en el frontend |
@@ -2286,6 +2436,7 @@ cupos de §11.1 y los códigos de campo de §12.3. No se pudo correr `git log -p
 | **H-13** (no bloquea; revisión 3) | El contrato no dice qué `FieldError.code` usa cada campo, y el servidor usa `invalid_value` para textos vacíos o largos (registro, aceptación, opcionales de `PATCH /tenant`) y para `password` en el login | (a) **Recomendada**: documentarlo en la descripción de cada operación (contrato *patch*). (b) Alinear el servidor a `required`/`too_long`: cambia comportamiento probado | DD-F24 cubre los dos casos; con (b), T-F101 suma filas |
 | **H-14** (documental; revisión 3) | `GET /industry-templates` declara `429` en el contrato, pero el código no le aplica limitador | Quitar el `429` del contrato o agregar el cupo | Ninguno: la UI trata el `429` igual en cualquier query |
 | **H-15** (coordinación con T-F008; revisión 3) | `cmd/crm/main_test.go` exige `503` en `GET /login`. Con la SPA embebida, el resultado depende de si `web/dist` tiene `index.html` al correr `go test` | T-F008 ajusta el test: `503` sin `index.html`, `200` `text/html` con él | T-F008 |
+| **H-16** (no bloquea; revisión 4) | `POST /auth/email-verification/resend` responde `202` sin enviar cuando se agota el cupo por usuario (DD-46 (3)), igual que el pedido de restablecimiento por email. En el restablecimiento, el `202` uniforme protege contra la enumeración (INV-13). Acá la ruta es autenticada y el email es el de la sesión, así que un `429` no revelaría nada nuevo | (a) Dejarlo así: la UI usa la línea de DD-F30 (diseño actual). (b) **Recomendada para una revisión futura**: `429 rate_limited` con `Retry-After` también en el cupo por usuario (contrato *patch*: el `429` ya está declarado). El usuario sabría cuánto esperar | Ninguno bloqueante: con (b), DD-F30 se retira y `resendVerification` ya tiene su texto de `rate_limited` (T-F101) |
 
 Otros puntos menores (los dos **resueltos** al 2026-10-12, revisión 3: el índice de ADR ya muestra ADR-019 *Accepted* y el encabezado de `tasks.md` ya dice que la sección Frontend se actualizó en la segunda revisión):
 
@@ -2312,7 +2463,8 @@ Otros puntos menores (los dos **resueltos** al 2026-10-12, revisión 3: el índi
 | RF-11 | Chromium o WebKit de Playwright no confían en la CA de mkcert en CI (S-12) | Media | Medio | Se ve en la primera corrida de T-F701; respaldo `ignoreHTTPSErrors` solo si T-F703 pasa |
 | RF-12 | Se filtra la clave de la CA local (`rootCA-key.pem`) de un desarrollador | Baja | Medio | No se comparte ni se copia al repo; `.certs/` ignorado por git; en CI la CA es efímera (R-14 del plan) |
 | RF-13 | La prueba en un celular real no se puede hacer por falta de un origen HTTPS accesible (H-12) | Alta hasta tener *staging* | Medio (S-F8 y NFR-F13 sin validar) | H-12: *staging* o reenvío de puertos en Android; se reporta como pendiente sin bloquear F6 |
-| RF-14 | *(Revisión 3)* La revisión 16 del backend cambia registro, verificación, invitación o recuperación después de implementar F2, F4 o F5 | Media | Medio | Lista "Dependiente de la revisión 16" (§26); el mapa exhaustivo de `ErrorCode` no compila ante un código nuevo (INV-F05); implementar esas fases después de aprobada la revisión 16 |
+| RF-14 | *(Revisión 3; cerrado en la revisión 4)* La revisión 16 del backend cambia registro, verificación, invitación o recuperación después de implementar F2, F4 o F5 | — | — | Cerrado: la revisión 16 se aprobó el 2026-10-12 y la Revisión 4 la incorpora antes de implementar esas fases |
+| RF-16 | *(Revisión 4)* La Fase 10 del backend se atrasa o cambia un valor (cupos de DD-48 o DD-49, texto del reenvío) después de implementar F5 | Media | Bajo | Los textos dependen de `Retry-After` y no de los valores (DD-F25, DD-F29). El `403 email_not_verified` está en el contrato v0.5.0 y los tests con MSW no esperan al backend. La prueba independiente de F5 en esos puntos se hace con la Fase 10 en `main` |
 | RF-15 | *(Revisión 3)* El selector de zona no muestra la zona guardada porque el navegador usa un alias (S-F11) | Baja | Bajo | DD-F27; T-F602 |
 
 ---
@@ -2327,6 +2479,7 @@ La actualización va **en el mismo cambio** que el código.
 | Un `code` de error o `suggested_action` | `api/errorMessages.ts` (no compila sin él) + §12.2 |
 | Un `FieldError.code` o una longitud del contrato | §12.3 + esquema Zod del formulario + su test |
 | Un cupo de DD-9, o el código de error de campo que usa un endpoint (revisión 3) | §11.1 (tabla de cupos) + §12.3 (variantes) + `api/errorMessages.ts` + el test de la pantalla |
+| Un cupo de DD-48 o DD-49, el cupo por usuario del reenvío (DD-46 (3)) o una regla que dependa de `email_verified` (revisión 4) | §11.1 + §12.2 (`rate_limited` por contexto) + BR-F14 y DD-F28 si cambia qué exige el email confirmado + `api/errorMessages.ts` + T-F501..T-F504 (y DD-F30 si el reenvío pasa a `429`, H-16) |
 | Una pantalla o su ruta | §4 inventario + §5 mapa + §6.1 árbol + guards |
 | Un *path* de enlace de email | §6.2 + `APP_LINK_*` del backend (plan §10.5, DD-14) + E2E |
 | Props de un componente compartido | §15 + sus usos |

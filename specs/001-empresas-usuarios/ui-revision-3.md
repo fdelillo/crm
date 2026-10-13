@@ -281,3 +281,16 @@ hayan concretado y se cierra esta lista en `ui.md` §26.
 - WebKit Bugzilla 218542 (Safari devolvía `America/Buenos_Aires` en lugar de
   `America/Argentina/Buenos_Aires`): <https://auto-bugs.webkit.org/show_bug.cgi?id=218542>. Es
   la base de S-F11; no verifiqué el comportamiento actual de Chrome, Firefox ni Safari 16.4+.
+
+---
+
+## 14. Nota posterior: Revisión 4 (2026-10-13)
+
+La lista de §9 ("Dependiente de la revisión 16") y la condición de P-F8 y P-F9 quedaron resueltas
+con la decimosexta revisión del backend (aprobada el 2026-10-12, contrato **v0.5.0**). Lo que
+decidió el frontend está en dos lugares:
+- la **Revisión 4** de [`ui.md`](ui.md): cabecera, BR-F05, BR-F14, INV-F16, §11.1, §12.2, §13.1,
+  §13.5, §13.7, §13.9, §13.10, §13.13, DD-F28 a DD-F30, P-F10, P-F11 y H-16;
+- la cuarta revisión de la sección Frontend de [`tasks.md`](tasks.md).
+
+Este documento no se reescribe: §9 y §10 describen el estado al 2026-10-12.
