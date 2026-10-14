@@ -346,8 +346,17 @@ func (s *Service) withInvitation(ctx context.Context, raw string, fn func(contex
 	})
 }
 func (s *Service) AcceptInvitation(ctx context.Context, raw, name, plain string, meta RequestMeta) (SessionResult, error) {
+	if raw == "" {
+		return SessionResult{}, ErrTokenInvalid
+	}
+	// DD-45: reserve the seat before the transaction opens (INV-36).
+	slot, err := s.hasher.Acquire(ctx)
+	if err != nil {
+		return SessionResult{}, err
+	}
+	defer slot.Release()
 	var session SessionResult
-	err := s.withInvitation(ctx, raw, func(ctx context.Context, tx db.Tx, route store.LookupTokenByHashRow, id uuid.UUID, user store.GetTokenFlowUserRow, _ store.GetTokenForUpdateRow) error {
+	err = s.withInvitation(ctx, raw, func(ctx context.Context, tx db.Tx, route store.LookupTokenByHashRow, id uuid.UUID, user store.GetTokenFlowUserRow, _ store.GetTokenForUpdateRow) error {
 		name = strings.TrimSpace(name)
 		if name == "" || utf8.RuneCountInString(name) > 120 || strings.ContainsRune(name, '\x00') {
 			return &UserValidationError{Fields: map[string]string{"name": "invalid_value"}}
@@ -355,7 +364,7 @@ func (s *Service) AcceptInvitation(ctx context.Context, raw, name, plain string,
 		if code := password.Validate(plain, user.Email); code != "" {
 			return &PasswordValidationError{Code: code}
 		}
-		hash, err := s.hasher.Hash(ctx, plain)
+		hash, err := slot.Hash(plain)
 		if err != nil {
 			return err
 		}

@@ -98,10 +98,17 @@ func (s *Service) Login(ctx context.Context, email, plain string, meta RequestMe
 	}
 	email = strings.ToLower(strings.TrimSpace(email))
 	key := s.emailHMAC(email)
+	// DD-45: the seat of the hasher is reserved before the transaction takes a connection of the
+	// pool, so waiting for it never retains one (INV-36). Orden: seat, connection, row locks.
+	slot, err := s.hasher.Acquire(ctx)
+	if err != nil {
+		return SessionResult{}, err
+	}
+	defer slot.Release()
 	var result SessionResult
 	var outcome error
 	var signal loginSignal
-	err := s.runner.InSystemTx(ctx, db.RoleAuth, func(ctx context.Context, tx db.Tx) error {
+	err = s.runner.InSystemTx(ctx, db.RoleAuth, func(ctx context.Context, tx db.Tx) error {
 		q := store.New(tx)
 		now := s.clock.Now()
 		if err := q.EnsureLoginThrottle(ctx, store.EnsureLoginThrottleParams{EmailHmac: key, Now: now}); err != nil {
@@ -120,7 +127,7 @@ func (s *Service) Login(ctx context.Context, email, plain string, meta RequestMe
 		}
 		route, err := q.LookupUserByEmail(ctx, email)
 		if errors.Is(db.MapError(err), db.ErrNotFound) {
-			s.hasher.VerifyDummy(ctx, plain)
+			slot.VerifyDummy(plain)
 			return s.failedLogin(ctx, tx, key, state, now, uuid.Nil, "", meta, &outcome, &signal)
 		}
 		if err != nil {
@@ -136,12 +143,12 @@ func (s *Service) Login(ctx context.Context, email, plain string, meta RequestMe
 		valid := false
 		needsRehash := false
 		if user.PasswordHash.Valid && user.Status != "invited" {
-			valid, needsRehash, err = s.hasher.Verify(ctx, plain, user.PasswordHash.String)
+			valid, needsRehash, err = slot.Verify(plain, user.PasswordHash.String)
 			if err != nil {
 				return fmt.Errorf("identity: verify password: %w", err)
 			}
 		} else {
-			s.hasher.VerifyDummy(ctx, plain)
+			slot.VerifyDummy(plain)
 		}
 		if !valid || user.Status == "invited" {
 			reason := "bad_password"
@@ -160,7 +167,7 @@ func (s *Service) Login(ctx context.Context, email, plain string, meta RequestMe
 			return nil
 		}
 		if needsRehash {
-			hash, err := s.hasher.Hash(ctx, plain)
+			hash, err := slot.Hash(plain)
 			if err != nil {
 				return fmt.Errorf("identity: rehash password: %w", err)
 			}
