@@ -186,6 +186,9 @@ func (s *Service) ConfirmPasswordReset(ctx context.Context, raw, plain string, m
 	if s.hasher == nil {
 		return errors.New("identity: authentication not configured")
 	}
+	if raw == "" {
+		return ErrTokenInvalid
+	}
 	// DD-45: reserve the seat before the transaction opens (INV-36).
 	slot, err := s.hasher.Acquire(ctx)
 	if err != nil {

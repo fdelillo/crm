@@ -107,7 +107,7 @@ func Middleware(limiter *Limiter) func(http.Handler) http.Handler {
 }
 
 // MiddlewareBy spends one token of the quota of key(r) before the request reaches its handler:
-// by company (DD-48), by user (DD-46 (3)) or with a constant key (DD-49). Excedido: 429
+// by company (DD-48), by user (DD-46 (3)) or with a constant key (DD-49). Over the quota: 429
 // rate_limited with Retry-After.
 func MiddlewareBy(limiter *Limiter, key KeyFunc) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {

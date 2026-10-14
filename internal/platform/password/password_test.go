@@ -225,3 +225,20 @@ func TestHashWaitsForAHeldSlot(t *testing.T) { // P5
 		t.Fatal("Hasher.Hash did not resume after Release")
 	}
 }
+
+func TestSlotFailsClosedAfterRelease(t *testing.T) {
+	h := slotHasher()
+	encoded, err := h.Hash(context.Background(), "correct horse")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := acquireSlot(t, h)
+	s.Release()
+	if _, err := s.Hash("x"); !errors.Is(err, ErrSlotReleased) {
+		t.Fatalf("Hash after Release: %v", err)
+	}
+	if ok, _, err := s.Verify("correct horse", encoded); ok || !errors.Is(err, ErrSlotReleased) {
+		t.Fatalf("Verify after Release: ok=%v err=%v", ok, err)
+	}
+	s.VerifyDummy("x") // must not derive nor panic
+}

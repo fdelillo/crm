@@ -45,7 +45,7 @@ func (e *phase10Env) footprint(tenantID uuid.UUID) [4]int {
 
 // requireRateLimitedProblem checks the 429 of the limiters: a problem with code rate_limited and a
 // Retry-After in whole seconds.
-func requireRateLimitedProblem(t *testing.T, code int, header string, body []byte) {
+func requireRateLimitedProblem(t *testing.T, header string, body []byte) {
 	t.Helper()
 	var problem struct {
 		Code string `json:"code"`
@@ -61,7 +61,7 @@ func requireRateLimitedProblem(t *testing.T, code int, header string, body []byt
 func (e *phase10Env) invite429(raw, ip, email string) {
 	e.t.Helper()
 	rec := e.doFrom(raw, ip, "POST", "/api/v1/users/invitations", `{"email":"`+email+`","role":"operator"}`, 429)
-	requireRateLimitedProblem(e.t, rec.Code, rec.Header().Get("Retry-After"), rec.Body.Bytes())
+	requireRateLimitedProblem(e.t, rec.Header().Get("Retry-After"), rec.Body.Bytes())
 }
 
 // tenSteps sends the ten requests of Q1 through send, alternating the two addresses, with every
@@ -74,7 +74,7 @@ func (e *phase10Env) tenSteps(senders [2]string, otherEmail string) {
 		body string
 		want int
 	}{}
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 5; i++ {
 		plan = append(plan, struct {
 			body string
 			want int
@@ -96,7 +96,11 @@ func (e *phase10Env) tenSteps(senders [2]string, otherEmail string) {
 		struct {
 			body string
 			want int
-		}{`{"email":"not-an-email","role":"operator"}`, 422})
+		}{`{"email":"not-an-email","role":"operator"}`, 422},
+		struct {
+			body string
+			want int
+		}{`{"email":`, 400}) // malformed JSON: it spends quota too
 	if len(plan) != 10 {
 		e.t.Fatalf("plan has %d steps", len(plan))
 	}
@@ -149,7 +153,7 @@ func TestInvitationQuotas(t *testing.T) {
 			e.invite(e.aRaw, ipOne, newEmail(), 201)
 		}
 		rec := e.doFrom(e.aRaw, ipOne, "POST", "/api/v1/users/"+member.Principal.UserID.String()+"/reactivate", "", 429)
-		requireRateLimitedProblem(t, rec.Code, rec.Header().Get("Retry-After"), rec.Body.Bytes())
+		requireRateLimitedProblem(t, rec.Header().Get("Retry-After"), rec.Body.Bytes())
 		if _, status := e.userState(member.Principal.UserID); status != "disabled" {
 			t.Fatalf("the user is %s, want disabled", status)
 		}
@@ -178,8 +182,11 @@ func TestInvitationQuotas(t *testing.T) {
 		}
 		// The twenty-first company request has room in its company (7 of 10 used) but not in the IP.
 		e.invite429(companies[0].aRaw, ipOne, newEmail())
-		// Another address of the same company still works.
-		e.invite(companies[0].aRaw, ipTwo, newEmail(), 201)
+		// The refusal by IP did not spend company quota: 3 of its 10 are left, from another address.
+		for i := 0; i < 3; i++ {
+			e.invite(companies[0].aRaw, ipTwo, newEmail(), 201)
+		}
+		e.invite429(companies[0].aRaw, ipTwo, newEmail())
 	})
 	t.Run("Q7 a refused permission does not spend quota", func(t *testing.T) {
 		e := newPhase10Env(t)

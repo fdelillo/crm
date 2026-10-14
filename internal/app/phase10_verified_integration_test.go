@@ -30,7 +30,7 @@ func (e *phase10Env) emailCount(tenantID uuid.UUID, email string) int {
 	return n
 }
 
-// openTokens counts the verification links of a user that are neither used nor revoked, and all of them.
+// tokens counts the verification links of a user that are neither used nor revoked, and all of them.
 func (e *phase10Env) tokens(tenantID, userID uuid.UUID) (open, total int) {
 	e.t.Helper()
 	if err := e.runner.TxRunner.InTenantTx(context.Background(), tenantID, func(ctx context.Context, tx db.Tx) error {
@@ -52,7 +52,7 @@ func (e *phase10Env) emailOf(p authz.Principal) string {
 	return email
 }
 
-func (e *phase10Env) requireProblem(rec *httptest.ResponseRecorder, retryAfter string) {
+func (e *phase10Env) requireRetryAfter(rec *httptest.ResponseRecorder, retryAfter string) {
 	e.t.Helper()
 	if got := rec.Header().Get("Retry-After"); got != retryAfter {
 		e.t.Fatalf("Retry-After=%q, want %q", got, retryAfter)
@@ -136,7 +136,7 @@ func TestResendEmailVerificationQuota(t *testing.T) {
 		// V8b: the fourth, from a new address.
 		rec := e.resend(c.aRaw, 4, 429)
 		requireCode(t, rec.Body.Bytes(), "rate_limited")
-		e.requireProblem(rec, "1200")
+		e.requireRetryAfter(rec, "1200")
 		if o, n := e.tokens(tenantID, c.a.UserID); o != open || n != total || open != 1 {
 			t.Fatalf("V8b: open=%d total=%d, want open=%d total=%d and one open link", o, n, open, total)
 		}
@@ -146,7 +146,7 @@ func TestResendEmailVerificationQuota(t *testing.T) {
 		// V8c: five minutes later, another address.
 		e.clock.advance(5 * time.Minute)
 		rec = e.resend(c.aRaw, 5, 429)
-		e.requireProblem(rec, "900")
+		e.requireRetryAfter(rec, "900")
 		// V8d: another user of the same company, from the address of V8c, has its own quota.
 		u2Mails := e.emailCount(tenantID, u2Email)
 		e.resend(u2.RawToken, 5, 202)
@@ -160,7 +160,7 @@ func TestResendEmailVerificationQuota(t *testing.T) {
 			t.Fatalf("V8e: %d messages, want 4", got)
 		}
 		rec = e.resend(c.aRaw, 7, 429)
-		e.requireProblem(rec, "1200")
+		e.requireRetryAfter(rec, "1200")
 		// V8i: no refusal revoked the link of the last 202.
 		last := e.token(tenantID, u1Email, "email_verification")
 		e.doFrom("", signupIP(8), "POST", "/api/v1/auth/email-verification/confirm", `{"token":"`+last+`"}`, 204)
@@ -174,7 +174,7 @@ func TestResendEmailVerificationQuota(t *testing.T) {
 		}
 		mails := e.emailCount(c.a.TenantID, email)
 		rec := e.doFrom(c.aRaw, x, "POST", resendPath, "", 429)
-		e.requireProblem(rec, "180")
+		e.requireRetryAfter(rec, "180")
 		if e.emailCount(c.a.TenantID, email) != mails {
 			t.Fatal("V8f: a message was queued")
 		}
@@ -185,13 +185,13 @@ func TestResendEmailVerificationQuota(t *testing.T) {
 			t.Fatalf("V8f: %d messages, want 3", got)
 		}
 		rec = e.doFrom(c.aRaw, y, "POST", resendPath, "", 429)
-		e.requireProblem(rec, "1200")
+		e.requireRetryAfter(rec, "1200")
 		// V8g: both quotas are spent; the one of the IP answers, with its own Retry-After.
 		rec = e.doFrom(c.aRaw, x, "POST", resendPath, "", 429)
-		e.requireProblem(rec, "180")
+		e.requireRetryAfter(rec, "180")
 		e.clock.advance(3 * time.Minute)
 		rec = e.doFrom(c.aRaw, x, "POST", resendPath, "", 429)
-		e.requireProblem(rec, "1020")
+		e.requireRetryAfter(rec, "1020")
 	})
 	t.Run("V8h every authenticated request counts, even those that send nothing", func(t *testing.T) {
 		e := newPhase10Env(t)

@@ -180,10 +180,13 @@ func (e *phase10Env) member(admin authz.Principal, email string, role authz.Role
 func settleOutbox(t *testing.T, runner db.TxRunner, tenantID uuid.UUID) {
 	t.Helper()
 	t.Cleanup(func() {
-		_ = runner.InTenantTx(context.Background(), tenantID, func(ctx context.Context, tx db.Tx) error {
+		err := runner.InTenantTx(context.Background(), tenantID, func(ctx context.Context, tx db.Tx) error {
 			_, err := tx.Exec(ctx, `UPDATE app.outbox_messages SET status='sent', payload=NULL, sent_at=now() WHERE tenant_id=$1 AND status<>'sent'`, tenantID)
 			return err
 		})
+		if err != nil {
+			t.Errorf("settling the outbox of %s: %v", tenantID, err)
+		}
 	})
 }
 

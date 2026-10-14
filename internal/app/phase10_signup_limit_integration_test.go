@@ -72,8 +72,10 @@ func TestSignupGlobalQuota(t *testing.T) {
 	t.Run("G1, G2, G3 and G5 the global quota", func(t *testing.T) {
 		e, logs := newEnv(t)
 		before := globalLimited(t)
-		exhaust(e, 0)                                     // G1
-		rec := e.signup(signupIP(30), invalidSignup, 429) // G2
+		exhaust(e, 0) // G1
+		// G2: the body has an email, so the check below that the event does not carry it proves something.
+		leaked := "leak-" + uuid.NewString() + "@example.test"
+		rec := e.signup(signupIP(30), `{"name":"","email":"`+leaked+`","password":"x","company_name":"","base_currency":"","industry_template_code":""}`, 429)
 		if seconds, err := strconv.Atoi(rec.Header().Get("Retry-After")); err != nil || seconds <= 0 {
 			t.Fatalf("Retry-After=%q", rec.Header().Get("Retry-After"))
 		}
@@ -90,7 +92,7 @@ func TestSignupGlobalQuota(t *testing.T) {
 		if event == nil || event["level"] != "WARN" || event["ip"] != signupIP(30) {
 			t.Fatalf("log event signup_global_limited: %v", event)
 		}
-		if strings.Contains(logs.String(), "example.test") || strings.Contains(logs.String(), `"email"`) {
+		if strings.Contains(logs.String(), leaked) || strings.Contains(logs.String(), "leak-") {
 			t.Fatal("the event carries an email")
 		}
 		// G3: one token per minute.

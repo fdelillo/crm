@@ -99,7 +99,7 @@ func (s *Service) Login(ctx context.Context, email, plain string, meta RequestMe
 	email = strings.ToLower(strings.TrimSpace(email))
 	key := s.emailHMAC(email)
 	// DD-45: the seat of the hasher is reserved before the transaction takes a connection of the
-	// pool, so waiting for it never retains one (INV-36). Orden: seat, connection, row locks.
+	// pool, so waiting for it never retains one (INV-36). Order: seat, connection, row locks.
 	slot, err := s.hasher.Acquire(ctx)
 	if err != nil {
 		return SessionResult{}, err

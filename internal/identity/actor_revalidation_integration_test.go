@@ -3,8 +3,11 @@
 package identity
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -19,11 +22,12 @@ import (
 // actorPair is a company with two active administrators: a (the founder, with the fixture's real
 // session) and b (accepted from an invitation).
 type actorPair struct {
-	s      *Service
-	r      db.TxRunner
-	a, b   authz.Principal
-	ctx    context.Context
-	nowNow func() time.Time
+	logs *bytes.Buffer // WARN log of the service
+	s    *Service
+	r    db.TxRunner
+	a, b authz.Principal
+	ctx  context.Context
+	now  func() time.Time
 }
 
 func newActorPair(t *testing.T) *actorPair {
@@ -36,7 +40,9 @@ func newActorPair(t *testing.T) *actorPair {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &actorPair{s: s, r: r, a: a, b: accepted.Principal, ctx: ctx, nowNow: c.Now}
+	logs := &bytes.Buffer{}
+	s.logger = slog.New(slog.NewJSONHandler(logs, nil))
+	return &actorPair{logs: logs, s: s, r: r, a: a, b: accepted.Principal, ctx: ctx, now: c.Now}
 }
 
 // demoteA / disableA apply, inside T_B's transaction, what ChangeRole and Deactivate would, with the
@@ -46,10 +52,10 @@ func (p *actorPair) demoteA(ctx context.Context, tx db.Tx) error {
 	if _, err := q.LockManagedUser(ctx, store.LockManagedUserParams{TenantID: p.a.TenantID, UserID: p.a.UserID}); err != nil {
 		return err
 	}
-	return q.SetManagedUserRole(ctx, store.SetManagedUserRoleParams{TenantID: p.a.TenantID, UserID: p.a.UserID, Role: "operator", Now: p.nowNow()})
+	return q.SetManagedUserRole(ctx, store.SetManagedUserRoleParams{TenantID: p.a.TenantID, UserID: p.a.UserID, Role: "operator", Now: p.now()})
 }
 func (p *actorPair) disableA(ctx context.Context, tx db.Tx) error {
-	return adminMutation(ctx, tx, fixture.Company{ID: p.a.TenantID, UserID: p.a.UserID}, false, p.nowNow())
+	return adminMutation(ctx, tx, fixture.Company{ID: p.a.TenantID, UserID: p.a.UserID}, false, p.now())
 }
 
 // underLock is mechanism E of T-B604: T_B takes the tenant lock and applies mutate; the test waits,
@@ -99,6 +105,21 @@ func (p *actorPair) counts(t *testing.T) [4]int {
 	return n
 }
 
+// requireRevalidationLog asserts the WARN event of DD-44 with its reason and the user of the actor.
+func (p *actorPair) requireRevalidationLog(t *testing.T, reason string, userID uuid.UUID) {
+	t.Helper()
+	for _, line := range bytes.Split(bytes.TrimSpace(p.logs.Bytes()), []byte("\n")) {
+		var e map[string]any
+		if json.Unmarshal(line, &e) != nil || e["security_event"] != "actor_revalidation_failed" {
+			continue
+		}
+		if e["level"] == "WARN" && e["reason"] == reason && e["user_id"] == userID.String() && e["tenant_id"] == p.a.TenantID.String() {
+			return
+		}
+	}
+	t.Fatalf("no WARN security_event=actor_revalidation_failed reason=%s user_id=%s in %s", reason, userID, p.logs.String())
+}
+
 func (p *actorPair) state(t *testing.T, id uuid.UUID) (role, status string) {
 	t.Helper()
 	if err := p.r.InTenantTx(p.ctx, p.a.TenantID, func(ctx context.Context, tx db.Tx) error {
@@ -127,6 +148,7 @@ func TestActorRevalidationUnderTenantLock(t *testing.T) {
 		if p.counts(t) != before {
 			t.Fatal("rejected operation left rows behind")
 		}
+		p.requireRevalidationLog(t, "permission", p.a.UserID)
 	})
 	t.Run("S2 disabled actor cannot reactivate itself", func(t *testing.T) {
 		p := newActorPair(t)
@@ -144,6 +166,7 @@ func TestActorRevalidationUnderTenantLock(t *testing.T) {
 		if p.counts(t) != before {
 			t.Fatal("rejected operation left rows behind")
 		}
+		p.requireRevalidationLog(t, "status", p.a.UserID)
 	})
 	t.Run("S3 demoted actor cannot invite", func(t *testing.T) {
 		p := newActorPair(t)
@@ -248,6 +271,47 @@ func TestActorRevalidationUnderTenantLock(t *testing.T) {
 		}
 		if _, _, err := p.s.Invite(p.ctx, p.a, email, authz.RoleOperator, meta); !errors.Is(err, authz.ErrForbidden) {
 			t.Fatalf("got %v, want ErrForbidden and not ErrEmailTaken", err)
+		}
+	})
+	t.Run("S9 last administrator under concurrency: the loser keeps its authority and the rule applies", func(t *testing.T) {
+		p := newActorPair(t)
+		// A demoted itself (T_B); B, still valid, tries the same and would leave no administrator.
+		before := p.counts(t)
+		err := p.underLock(t, p.demoteA, func(ctx context.Context) error {
+			_, err := p.s.ChangeRole(ctx, p.b, p.b.UserID, authz.RoleOperator, meta)
+			return err
+		})
+		if !errors.Is(err, ErrLastAdmin) {
+			t.Fatalf("got %v, want ErrLastAdmin", err)
+		}
+		if role, _ := p.state(t, p.b.UserID); role != "admin" {
+			t.Fatalf("B is %s, want admin", role)
+		}
+		if p.counts(t) != before {
+			t.Fatal("rejected operation left rows behind")
+		}
+	})
+	t.Run("S10 last administrator under concurrency: deactivation", func(t *testing.T) {
+		p := newActorPair(t)
+		before := p.counts(t)
+		err := p.underLock(t, p.disableA, func(ctx context.Context) error {
+			_, err := p.s.Deactivate(ctx, p.b, p.b.UserID, meta)
+			return err
+		})
+		if !errors.Is(err, ErrLastAdmin) {
+			t.Fatalf("got %v, want ErrLastAdmin", err)
+		}
+		if _, status := p.state(t, p.b.UserID); status != "active" {
+			t.Fatalf("B is %s, want active", status)
+		}
+		var revoked bool
+		if err := p.r.InTenantTx(p.ctx, p.a.TenantID, func(ctx context.Context, tx db.Tx) error {
+			return tx.QueryRow(ctx, `SELECT revoked_at IS NOT NULL FROM app.sessions WHERE tenant_id=$1 AND id=$2`, p.a.TenantID, p.b.SessionID).Scan(&revoked)
+		}); err != nil || revoked {
+			t.Fatalf("session of B revoked=%v err=%v", revoked, err)
+		}
+		if p.counts(t) != before {
+			t.Fatal("rejected operation left rows behind")
 		}
 	})
 }

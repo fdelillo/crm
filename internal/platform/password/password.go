@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"unicode/utf8"
 
 	"golang.org/x/crypto/argon2"
@@ -144,16 +145,41 @@ func (h *hasher) Acquire(ctx context.Context) (Slot, error) {
 }
 
 type slot struct {
-	h    *hasher
-	once sync.Once
+	h        *hasher
+	once     sync.Once
+	released atomic.Bool
 }
 
-func (s *slot) Hash(plain string) (string, error) { return s.h.deriveHash(plain) }
+// ErrSlotReleased is returned by the methods of a Slot used after Release: the seat is no longer
+// reserved, so deriving would bypass the semaphore.
+var ErrSlotReleased = errors.New("password: slot used after Release")
+
+func (s *slot) Hash(plain string) (string, error) {
+	if s.released.Load() {
+		return "", ErrSlotReleased
+	}
+	return s.h.deriveHash(plain)
+}
 func (s *slot) Verify(plain, encoded string) (bool, bool, error) {
+	if s.released.Load() {
+		return false, false, ErrSlotReleased
+	}
 	return s.h.deriveVerify(plain, encoded)
 }
-func (s *slot) VerifyDummy(plain string) { _, _, _ = s.h.deriveVerify(plain, s.h.dummy) }
-func (s *slot) Release()                 { s.once.Do(s.h.release) }
+
+// VerifyDummy has no error to return: after Release it does nothing.
+func (s *slot) VerifyDummy(plain string) {
+	if s.released.Load() {
+		return
+	}
+	_, _, _ = s.h.deriveVerify(plain, s.h.dummy)
+}
+func (s *slot) Release() {
+	s.once.Do(func() {
+		s.released.Store(true)
+		s.h.release()
+	})
+}
 
 func encode(p parameters, salt, hash []byte) string {
 	return fmt.Sprintf("$argon2id$v=19$m=%d,t=%d,p=%d$%s$%s", p.memory, p.iterations, p.parallelism,
