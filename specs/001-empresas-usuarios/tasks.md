@@ -826,6 +826,28 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
     Quedan `Phase 1` en comentarios de `db/bootstrap`, `testsupport/pgtest` y `sqlcspike`
     (con espacio, fuera del patrón y de las tablas; no se tocaron). Pendiente de revisión.
 
+    - **Seguimiento de la revisión del PR #21 (2026-10-14)**: rama `chore/001-naming-followups`,
+      solo comentarios, nombres y un helper de test; sin cambios de producción ni de texto de
+      diseño más que esta entrada. (1) Comentario de `TestHeldTenantLockDoesNotBlockAuthFlows`
+      corregido (no hay `AcceptInvitation`: R1 y R2 son pedidos de reset de un usuario activo y
+      de uno `invited`, R4 es login). (2) Reescritos en presente los comentarios que contaban
+      historia en `pgtest`, `db/bootstrap` (dos) y `sqlcspike`; ya no queda `Phase 1` en
+      ningún `*.go`. (3) `newUnverifiedCompany` devuelve `signupFounder` (solo el administrador A);
+      `twoAdminCompany`, con B, lo arma `newCompany`. (4) `queries.sql` dice "Phase-one routing
+      lookup" y `queries.sql.go` se regeneró con sqlc. (5) Nits: doc duplicada de
+      `queryrules_test.go`, comentarios de `tenant_integration_test.go`, `serve_router_env_test.go`
+      (import de `C`), trazabilidad de `cancellation_errors`, `serve_metrics_bind` y
+      `metrics_integration_test.go`. `TestOutboxDeliversEmailToMailpit` actualiza
+      `next_attempt_at` con `runner.InTenantTx` (`crm_tenant` tiene UPDATE en `outbox_messages`,
+      migración 00006), sin superusuario. Verificación: con el archivo renombrado a `zz_…`,
+      `go test -tags=integration -count=1 ./internal/app/` en verde y el test de Mailpit en
+      verde; archivo restaurado. (6) `TestSlotFailsClosedAfterRelease` cuenta las llamadas a
+      `derive` de un `newHasher(1, params, derive)` y afirma 0 tras `Release` (Hash, Verify y
+      VerifyDummy). Mutación: quitar el guard `released` de `VerifyDummy` hace fallar el test
+      ("a released slot derived 1 times"); restaurado. `make check` con `GOFLAGS=-count=1` en
+      verde; `gofmt -l` vacío; `grep -rnE --include='*.go' '[Pp]hase ?[0-9]' .` sin resultados.
+      Pendiente de revisión.
+
 ### Convenciones de esta sección
 
 - `[T]` = tarea de test. Va **antes** de la tarea de código que la hace pasar, y el test debe
