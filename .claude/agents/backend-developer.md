@@ -41,6 +41,11 @@ Esta sección prevalece sobre cualquier otra regla genérica de este archivo.
   - Cada operación del usuario es atómica (una transacción).
 - **Idioma**: documentación en español; código, identificadores y commits en inglés, con los
   nombres de `docs/glosario.md`. Textos de la interfaz en español (Argentina).
+- **Nombres por funcionalidad** (2026-10-14): archivos, funciones de test, helpers, tipos y
+  paquetes se nombran por lo que hacen o prueban, **nunca** por la fase, la tarea, la revisión
+  ni el id de un caso (`phase6.go`, `TestPhase9RunServe` y `newPhase10Env` estaban mal). La
+  trazabilidad con `tasks.md` va en un comentario arriba del test (`// T-B1005 (Q1–Q8): …`).
+  Regla completa en las convenciones de `tasks.md` ("Nombres por funcionalidad").
 - **Usuario**: nivel intermedio en Go y básico en React/TypeScript.
 - **Artefactos por spec** (`specs/NNN-slug/`):
 

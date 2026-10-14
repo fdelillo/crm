@@ -881,10 +881,14 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
   `newUsersServer`), **nunca** por la fase, la tarea (`T-Bnnn`), la revisión ni el id de un caso de
   la tabla de una tarea (`Q1`, `R3`). La fase, la tarea y la revisión son historia del proyecto:
   viven en git y en este archivo, no en el código. No cuentan como fase los números que son
-  identidad de un artefacto del dominio (la migración `00001`, la versión del contrato) ni la fase
-  SMTP de ADR-024 (`outbox.PhaseData`).
-  - **Trazabilidad**: cada función `Test*` lleva arriba un comentario con la tarea y los casos que
-    cubre, y una frase con el comportamiento: `// T-B1005 (Q1–Q8, DD-48): invitation and
+  identidad de un artefacto del dominio (la migración `00001`, la versión del contrato), la fase
+  SMTP de ADR-024 (`outbox.PhaseData`, `smtp_phase`), las dos fases del patrón de búsqueda previa
+  a conocer la empresa de plan §4.4 ("phase-one lookups") ni la etapa de una sonda dentro de un
+  test (`waitRuntimeConnections`). Tampoco los comentarios: no cuentan la historia del proyecto
+  ("arrives in Phase 1", "does not exist yet"); dicen el porqué vigente, en presente.
+  - **Trazabilidad**: toda función `Test*` nueva, o que se renombra o modifica, lleva arriba un
+    comentario con la tarea y los casos que cubre (los tests existentes lo reciben cuando se
+    tocan), y una frase con el comportamiento: `// T-B1005 (Q1–Q8, DD-48): invitation and
     reactivation share one quota per company and one per IP.` Un subtest o una fila de tabla solo
     lleva comentario propio si su id de caso no está ya en su nombre. Un subtest puede empezar con
     el id del caso **seguido de una descripción** (`"Q4 reactivation and invitation share one
