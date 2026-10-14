@@ -29,6 +29,7 @@ func TestProblemCodes(t *testing.T) {
 		{CodePayloadTooLarge, 413}, {CodeUnauthenticated, 401}, {CodeInvalidCredentials, 401},
 		{CodeAccountDisabled, 403}, {CodeForbidden, 403}, {CodeNotFound, 404},
 		{CodeMethodNotAllowed, 405}, {CodeEmailAlreadyRegistered, 409}, {CodeEmailTaken, 409},
+		{CodeEmailNotVerified, 403},
 		{CodeLastAdmin, 409}, {CodeInvalidState, 409}, {CodeTokenInvalid, 400},
 		{CodeLoginLocked, 429}, {CodeRateLimited, 429}, {CodeServiceUnavailable, 503}, {CodeInternal, 500},
 	}

@@ -30,6 +30,7 @@ const (
 	CodeMethodNotAllowed       Code = "method_not_allowed"
 	CodeEmailAlreadyRegistered Code = "email_already_registered"
 	CodeEmailTaken             Code = "email_taken"
+	CodeEmailNotVerified       Code = "email_not_verified"
 	CodeLastAdmin              Code = "last_admin"
 	CodeInvalidState           Code = "invalid_state"
 	CodeTokenInvalid           Code = "token_invalid"
@@ -45,7 +46,7 @@ type spec struct {
 	title, detail string
 }
 
-// problems holds every Code's spec (ADR-009, contract v0.4.0, plan §9.1).
+// problems holds every Code's spec (ADR-009, contract v0.5.0, plan §9.1).
 var problems = map[Code]spec{
 	CodeMalformedRequest:       {400, "Solicitud incorrecta", ""},
 	CodeValidationFailed:       {422, "Los datos ingresados no son válidos", ""},
@@ -59,6 +60,7 @@ var problems = map[Code]spec{
 	CodeMethodNotAllowed:       {405, "Método no permitido", ""},
 	CodeEmailAlreadyRegistered: {409, "Ya existe un usuario con ese email", "Ya existe un usuario con ese email. ¿Querés recuperar la contraseña?"},
 	CodeEmailTaken:             {409, "Ese email ya está en uso", ""},
+	CodeEmailNotVerified:       {403, "Tu email todavía no está verificado", ""},
 	CodeLastAdmin:              {409, "La empresa necesita al menos un administrador activo", ""},
 	CodeInvalidState:           {409, "La operación no es válida en el estado actual", ""},
 	CodeTokenInvalid:           {400, "El enlace no es válido o venció", ""},
