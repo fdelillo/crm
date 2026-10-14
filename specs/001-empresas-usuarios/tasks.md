@@ -804,7 +804,7 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
 
   - **Renombre completo (2026-10-14)**: hecho en la rama `refactor/001-feature-names` (PR #21,
     borrador), en tres commits de código y sin tocar texto de diseño más que esta entrada.
-    (1) `git mv` puro de los 5 archivos de producción y 38 de test de las tablas A y B más el
+    (1) `git mv` puro de los 5 archivos de producción y 34 de test de las tablas A y B más el
     directorio `phase9bench` → `perfbench` (4 archivos): 43 renombres, todos R100 en
     `git show --stat -M`. (2) Identificadores de las tablas B y C, cadenas de fixture
     (`"mailpit-"`, `"mailpit-token"`, `"run-serve-"`, `"@reprovision.test"`), `PERFBENCH_*`,
