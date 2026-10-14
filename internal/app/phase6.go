@@ -16,8 +16,10 @@ import (
 )
 
 // RegisterUserRoutes shares one IP quota between preview and accept (DD-9).
-// Management permission is checked before parsing or searching any target ID (INV-12).
-func RegisterUserRoutes(r chi.Router, users *identity.Service, companies *tenant.Service, invitationsLimiter *ratelimit.Limiter, logger *slog.Logger) {
+// Management permission is checked before parsing or searching any target ID (INV-12). Inviting
+// and reactivating share a quota per IP and per company (DD-48); both run after Authenticate and
+// RequirePermission and before the body is decoded, and they count successes and rejections.
+func RegisterUserRoutes(r chi.Router, users *identity.Service, companies *tenant.Service, invitationsLimiter, inviteTenantLimiter, inviteIPLimiter *ratelimit.Limiter, logger *slog.Logger) {
 	r.With(ratelimit.Middleware(invitationsLimiter)).Post("/api/v1/auth/invitations/preview", func(w http.ResponseWriter, req *http.Request) {
 		var input struct {
 			Token string `json:"token"`
@@ -71,7 +73,8 @@ func RegisterUserRoutes(r chi.Router, users *identity.Service, companies *tenant
 				Items []identity.User `json:"items"`
 			}{items})
 		})
-		r.Post("/api/v1/users/invitations", func(w http.ResponseWriter, req *http.Request) {
+		inviteQuotas := r.With(ratelimit.Middleware(inviteIPLimiter), ratelimit.MiddlewareBy(inviteTenantLimiter, tenantKey))
+		inviteQuotas.Post("/api/v1/users/invitations", func(w http.ResponseWriter, req *http.Request) {
 			var input struct {
 				Email string     `json:"email"`
 				Role  authz.Role `json:"role"`
@@ -122,7 +125,7 @@ func RegisterUserRoutes(r chi.Router, users *identity.Service, companies *tenant
 			}
 			writeUsersJSON(w, http.StatusOK, user)
 		})
-		r.Post("/api/v1/users/{userId}/reactivate", func(w http.ResponseWriter, req *http.Request) {
+		inviteQuotas.Post("/api/v1/users/{userId}/reactivate", func(w http.ResponseWriter, req *http.Request) {
 			id, err := uuid.Parse(chi.URLParam(req, "userId"))
 			if err != nil {
 				httpx.WriteProblem(w, req, httpx.CodeNotFound)
@@ -136,6 +139,16 @@ func RegisterUserRoutes(r chi.Router, users *identity.Service, companies *tenant
 			writeUsersJSON(w, http.StatusOK, user)
 		})
 	})
+}
+
+// tenantKey is the company quota key of DD-48. ratelimit cannot import authz, so the key is built
+// here, from the Principal that Authenticate injected.
+func tenantKey(r *http.Request) (string, bool) {
+	p, ok := authz.PrincipalFrom(r.Context())
+	if !ok {
+		return "", false
+	}
+	return p.TenantID.String(), true
 }
 
 func writeUserError(w http.ResponseWriter, req *http.Request, err error, logger *slog.Logger) bool {

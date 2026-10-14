@@ -462,6 +462,9 @@ func TestIsolationHTTPMatrix(t *testing.T) {
 				}
 				// RequestID is server-generated. Reuse one genuine request context for both API calls,
 				// so every byte (including instance) is compared without stripping/rewriting the body.
+				// DD-48: reactivate has an IP quota, so the router needs the client address that the
+				// common middleware sets in production.
+				withIP := httpx.ClientIP(nil, f.Logger)(api)
 				httpx.RequestID(http.HandlerFunc(func(_ http.ResponseWriter, req *http.Request) {
 					var payload []byte
 					ct := ""
@@ -469,9 +472,9 @@ func TestIsolationHTTPMatrix(t *testing.T) {
 						payload = []byte(`{"role":"operator"}`)
 						ct = "application/json"
 					}
-					missing := isolationRequest(t, api, req.Context(), f.A.Users["admin"].Cookie, method, strings.ReplaceAll(path, "{userId}", uuid.NewString()), ct, payload, "", 404, checkResponse)
+					missing := isolationRequest(t, withIP, req.Context(), f.A.Users["admin"].Cookie, method, strings.ReplaceAll(path, "{userId}", uuid.NewString()), ct, payload, "", 404, checkResponse)
 					for _, state := range []string{"admin", "operator", "invited", "disabled_password", "disabled_no_password"} {
-						foreign := isolationRequest(t, api, req.Context(), f.A.Users["admin"].Cookie, method, strings.ReplaceAll(path, "{userId}", f.B.Users[state].ID.String()), ct, payload, "", 404, checkResponse)
+						foreign := isolationRequest(t, withIP, req.Context(), f.A.Users["admin"].Cookie, method, strings.ReplaceAll(path, "{userId}", f.B.Users[state].ID.String()), ct, payload, "", 404, checkResponse)
 						counts.verify(t, bytes.Equal(missing.Body.Bytes(), foreign.Body.Bytes()), "%s: foreign 404 differs byte for byte from absent id: %s != %s", state, foreign.Body.String(), missing.Body.String())
 						counts.verify(t, reflect.DeepEqual(missing.Header(), foreign.Header()), "%s: foreign 404 headers differ from absent id: %v != %v", state, foreign.Header(), missing.Header())
 						assertUnchanged(t, f, f.B.ID, bBefore, counts)

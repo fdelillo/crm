@@ -88,16 +88,36 @@ func (l *Limiter) Allow(key string) (allowed bool, retryAfter time.Duration) {
 	return false, retryAfter
 }
 
-// Middleware is registered within a chi route group, after the common ClientIP middleware.
+// KeyFunc extracts the key of a request's quota. ok == false is a wiring bug (the route lacks what
+// the key needs), and the middleware answers 500 (DD-48).
+type KeyFunc func(r *http.Request) (key string, ok bool)
+
+func ipKeyFunc(r *http.Request) (string, bool) {
+	ip := httpx.ClientIPFrom(r.Context())
+	if !ip.IsValid() {
+		return "", false
+	}
+	return IPKey(ip).String(), true
+}
+
+// Middleware is registered within a chi route group, after the common ClientIP middleware. It
+// limits by client address.
 func Middleware(limiter *Limiter) func(http.Handler) http.Handler {
+	return MiddlewareBy(limiter, ipKeyFunc)
+}
+
+// MiddlewareBy spends one token of the quota of key(r) before the request reaches its handler:
+// by company (DD-48), by user (DD-46 (3)) or with a constant key (DD-49). Excedido: 429
+// rate_limited with Retry-After.
+func MiddlewareBy(limiter *Limiter, key KeyFunc) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ip := httpx.ClientIPFrom(r.Context())
-			if !ip.IsValid() {
+			k, ok := key(r)
+			if !ok {
 				httpx.WriteProblem(w, r, httpx.CodeInternal)
 				return
 			}
-			allowed, retry := limiter.Allow(IPKey(ip).String())
+			allowed, retry := limiter.Allow(k)
 			if !allowed {
 				httpx.WriteProblem(w, r, httpx.CodeRateLimited, httpx.RetryAfter(retry))
 				return

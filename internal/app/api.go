@@ -24,7 +24,10 @@ func BuildAPIRouter(users *identity.Service, companies *tenant.Service, c clock.
 	RegisterMeRoute(api, users, companies, logger)
 	RegisterRecoveryRoutes(api, users, ratelimit.NewLimiter(rate.Every(12*time.Minute), 5, c, time.Hour),
 		ratelimit.NewLimiter(rate.Every(3*time.Minute), 20, c, time.Hour), logger)
-	RegisterUserRoutes(api, users, companies, ratelimit.NewLimiter(rate.Every(3*time.Minute), 20, c, time.Hour), logger)
+	// DD-48: invitation and reactivation share one quota per company and one per IP.
+	RegisterUserRoutes(api, users, companies, ratelimit.NewLimiter(rate.Every(3*time.Minute), 20, c, time.Hour),
+		ratelimit.NewLimiter(rate.Every(6*time.Minute), 10, c, time.Hour),
+		ratelimit.NewLimiter(rate.Every(3*time.Minute), 20, c, time.Hour), logger)
 	RegisterTenantRoutes(api, users, companies, logger)
 	return api
 }

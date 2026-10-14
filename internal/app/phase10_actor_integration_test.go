@@ -7,6 +7,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -67,55 +68,82 @@ func (b *firstReadGate) Read(p []byte) (int, error) {
 }
 func (b *firstReadGate) Close() error { return nil }
 
+// phase10Company is a company with two active administrators, each with a real session.
+type phase10Company struct {
+	a, b       authz.Principal
+	aRaw, bRaw string
+}
+
 type phase10Env struct {
-	t      *testing.T
-	root   http.Handler
-	users  *identity.Service
-	runner *gatedRunner
-	a, b   authz.Principal
-	aRaw   string
-	bRaw   string
+	t         *testing.T
+	root      http.Handler
+	users     *identity.Service
+	companies *tenant.Service
+	runner    *gatedRunner
+	clock     *usersHTTPClock // clock of the rate limiters; the services use the real one
+	phase10Company
 }
 
 // newPhase10Env builds the real router of BuildAPIRouter over services whose runner can be gated,
-// and a company with two active administrators A and B, each with a real session.
+// and a first company with two active administrators A and B.
 func newPhase10Env(t *testing.T) *phase10Env {
 	t.Helper()
-	ctx := context.Background()
-	c := clock.Real{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	c := clock.Real{}
 	runner := &gatedRunner{TxRunner: db.NewTxRunner(pgtest.AppPool(t), db.WithLogger(logger))}
 	h := password.NewHasher(2)
 	recorder := audit.NewRecorder()
 	users := identity.NewService(runner, outbox.NewEnqueuer(c), c, 24*time.Hour, 7*24*time.Hour,
 		identity.WithAuthentication(h, recorder, []byte("0123456789abcdef0123456789abcdef"), logger))
 	companies := tenant.NewService(runner, users, industrytemplate.NoopSeeder{}, h, recorder, logger)
-	suffix := uuid.NewString()
-	reg, err := companies.Register(ctx, tenant.Signup{Name: "Admin A", Email: "admin-a-" + suffix + "@example.test", Password: e2e.Password,
-		CompanyName: "Company " + suffix, BaseCurrency: "ARS", IndustryTemplateCode: "generic", Timezone: "America/Argentina/Buenos_Aires"}, identity.RequestMeta{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	env := &phase10Env{t: t, users: users, runner: runner, a: reg.Session.Principal, aRaw: reg.Session.RawToken}
-	settleOutbox(t, runner, env.a.TenantID)
-	invited, _, err := users.Invite(ctx, env.a, "admin-b-"+suffix+"@example.test", authz.RoleAdmin, identity.RequestMeta{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var token string
-	if err := runner.InTenantTx(ctx, env.a.TenantID, func(ctx context.Context, tx db.Tx) error {
-		return tx.QueryRow(ctx, `SELECT payload->>'token' FROM app.outbox_messages WHERE tenant_id=$1 AND recipient=$2 AND template='invitation' ORDER BY created_at DESC, id DESC LIMIT 1`, env.a.TenantID, invited.Email).Scan(&token)
-	}); err != nil {
-		t.Fatal(err)
-	}
-	accepted, err := users.AcceptInvitation(ctx, token, "Admin B", e2e.Password, identity.RequestMeta{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	env.b, env.bRaw = accepted.Principal, accepted.RawToken
-	api := app.BuildAPIRouter(users, companies, c, logger)
+	limiterClock := &usersHTTPClock{now: time.Now().UTC()}
+	env := &phase10Env{t: t, users: users, companies: companies, runner: runner, clock: limiterClock}
+	env.phase10Company = env.newCompany()
+	api := app.BuildAPIRouter(users, companies, limiterClock, logger)
 	env.root = app.NewRootHandler(app.RootDeps{API: api, Liveness: app.LivenessHandler(), Readiness: app.ReadinessPlaceholder(), SPA: app.SPAUnavailableHandler()}, app.NewCommonMiddleware(logger, true, nil))
 	return env
+}
+
+func (e *phase10Env) token(tenantID uuid.UUID, recipient, template string) string {
+	e.t.Helper()
+	var token string
+	if err := e.runner.TxRunner.InTenantTx(context.Background(), tenantID, func(ctx context.Context, tx db.Tx) error {
+		return tx.QueryRow(ctx, `SELECT payload->>'token' FROM app.outbox_messages WHERE tenant_id=$1 AND recipient=$2 AND template=$3 ORDER BY created_at DESC, id DESC LIMIT 1`, tenantID, recipient, template).Scan(&token)
+	}); err != nil {
+		e.t.Fatal(err)
+	}
+	return token
+}
+
+// newCompany registers a company (its founder is administrator A) and adds administrator B.
+func (e *phase10Env) newCompany() phase10Company {
+	e.t.Helper()
+	ctx := context.Background()
+	suffix := uuid.NewString()
+	reg, err := e.companies.Register(ctx, tenant.Signup{Name: "Admin A", Email: "admin-a-" + suffix + "@example.test", Password: e2e.Password,
+		CompanyName: "Company " + suffix, BaseCurrency: "ARS", IndustryTemplateCode: "generic", Timezone: "America/Argentina/Buenos_Aires"}, identity.RequestMeta{})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	c := phase10Company{a: reg.Session.Principal, aRaw: reg.Session.RawToken}
+	settleOutbox(e.t, e.runner, c.a.TenantID)
+	member := e.member(c.a, "admin-b-"+suffix+"@example.test", authz.RoleAdmin)
+	c.b, c.bRaw = member.Principal, member.RawToken
+	return c
+}
+
+// member invites and accepts a user of the company, through the services (no rate limit involved).
+func (e *phase10Env) member(admin authz.Principal, email string, role authz.Role) identity.SessionResult {
+	e.t.Helper()
+	ctx := context.Background()
+	if _, _, err := e.users.Invite(ctx, admin, email, role, identity.RequestMeta{}); err != nil {
+		e.t.Fatal(err)
+	}
+	session, err := e.users.AcceptInvitation(ctx, e.token(admin.TenantID, email, "invitation"), "Member", e2e.Password, identity.RequestMeta{})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return session
 }
 
 // settleOutbox marks the company's pending messages as sent when the test ends. The Phase 2 test
@@ -137,20 +165,31 @@ func (e *phase10Env) request(raw, method, path string, body io.Reader) (*httptes
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	req.AddCookie(&http.Cookie{Name: identity.SessionCookieName, Value: raw})
+	if raw != "" {
+		req.AddCookie(&http.Cookie{Name: identity.SessionCookieName, Value: raw})
+	}
 	return httptest.NewRecorder(), req
 }
 
 func (e *phase10Env) do(raw, method, path, body string, want int) *httptest.ResponseRecorder {
+	e.t.Helper()
+	return e.doFrom(raw, "", method, path, body, want)
+}
+
+// doFrom is do with the client address of the request (documentation addresses, DD-32).
+func (e *phase10Env) doFrom(raw, ip, method, path, body string, want int) *httptest.ResponseRecorder {
 	e.t.Helper()
 	var reader io.Reader
 	if body != "" {
 		reader = bytes.NewReader([]byte(body))
 	}
 	rec, req := e.request(raw, method, path, reader)
+	if ip != "" {
+		req.RemoteAddr = net.JoinHostPort(ip, "4242")
+	}
 	e.root.ServeHTTP(rec, req)
 	if rec.Code != want {
-		e.t.Fatalf("%s %s: status=%d want %d body=%s", method, path, rec.Code, want, rec.Body.String())
+		e.t.Fatalf("%s %s from %s: status=%d want %d body=%s", method, path, ip, rec.Code, want, rec.Body.String())
 	}
 	if body != "" {
 		req.Body = io.NopCloser(bytes.NewReader([]byte(body)))

@@ -160,3 +160,55 @@ func TestMiddlewareCountsRejectedHandlerResponses(t *testing.T) {
 		t.Fatalf("handler called %d times", called)
 	}
 }
+
+func TestMiddlewareByUsesTheKeyOfTheRequest(t *testing.T) {
+	clock := &fakeClock{now: time.Now()}
+	limiter := NewLimiter(rate.Every(time.Hour/2), 2, clock, time.Hour)
+	key := func(r *http.Request) (string, bool) { k := r.Header.Get("X-Key"); return k, k != "" }
+	called := 0
+	h := MiddlewareBy(limiter, key)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called++
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	send := func(k string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", "/", nil)
+		if k != "" {
+			r.Header.Set("X-Key", k)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	for i := 0; i < 2; i++ {
+		if w := send("a"); w.Code != 204 {
+			t.Fatalf("request %d of a: %d", i+1, w.Code)
+		}
+	}
+	w := send("a")
+	if w.Code != 429 || w.Header().Get("Retry-After") != "1800" {
+		t.Fatalf("third of a: status=%d Retry-After=%q", w.Code, w.Header().Get("Retry-After"))
+	}
+	if w := send("b"); w.Code != 204 {
+		t.Fatalf("an independent key was limited: %d", w.Code)
+	}
+	if called != 3 {
+		t.Fatalf("handler called %d times, want 3", called)
+	}
+	// ok == false is a wiring bug: 500, and no token is spent.
+	if w := send(""); w.Code != 500 {
+		t.Fatalf("missing key: %d", w.Code)
+	}
+}
+
+// Middleware(l) is MiddlewareBy(l, key by IP): a request without a client address keeps answering 500.
+func TestMiddlewareWithoutClientIPIsAnInternalError(t *testing.T) {
+	clock := &fakeClock{now: time.Now()}
+	h := Middleware(NewLimiter(rate.Every(time.Hour), 1, clock, time.Hour))(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("handler reached without a client address")
+	}))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("POST", "/", nil))
+	if w.Code != 500 {
+		t.Fatalf("status=%d", w.Code)
+	}
+}

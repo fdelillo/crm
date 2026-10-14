@@ -20,7 +20,10 @@ func TestInvitationRoutesShareIPQuota(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	r := app.NewAPIRouter()
 	limiter := ratelimit.NewLimiter(rate.Every(3*time.Minute), 20, clock.Real{}, time.Hour)
-	app.RegisterUserRoutes(r, nil, nil, limiter, logger)
+	inviteLimiter := func() *ratelimit.Limiter {
+		return ratelimit.NewLimiter(rate.Every(3*time.Minute), 20, clock.Real{}, time.Hour)
+	}
+	app.RegisterUserRoutes(r, nil, nil, limiter, inviteLimiter(), inviteLimiter(), logger)
 	root := app.NewRootHandler(app.RootDeps{API: r, Liveness: app.LivenessHandler(), Readiness: app.ReadinessPlaceholder(), SPA: app.SPAUnavailableHandler()}, app.NewCommonMiddleware(logger, true, nil))
 	for i := range 22 {
 		path := "/api/v1/auth/invitations/preview"
