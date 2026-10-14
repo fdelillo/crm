@@ -19,7 +19,7 @@ import (
 const resendPath = "/api/v1/auth/email-verification/resend"
 
 // emailCount counts the verification messages queued for an address.
-func (e *phase10Env) emailCount(tenantID uuid.UUID, email string) int {
+func (e *apiEnv) emailCount(tenantID uuid.UUID, email string) int {
 	e.t.Helper()
 	var n int
 	if err := e.runner.TxRunner.InTenantTx(context.Background(), tenantID, func(ctx context.Context, tx db.Tx) error {
@@ -31,7 +31,7 @@ func (e *phase10Env) emailCount(tenantID uuid.UUID, email string) int {
 }
 
 // tokens counts the verification links of a user that are neither used nor revoked, and all of them.
-func (e *phase10Env) tokens(tenantID, userID uuid.UUID) (open, total int) {
+func (e *apiEnv) tokens(tenantID, userID uuid.UUID) (open, total int) {
 	e.t.Helper()
 	if err := e.runner.TxRunner.InTenantTx(context.Background(), tenantID, func(ctx context.Context, tx db.Tx) error {
 		return tx.QueryRow(ctx, `SELECT count(*) FILTER (WHERE used_at IS NULL AND revoked_at IS NULL), count(*) FROM app.user_tokens WHERE tenant_id=$1 AND user_id=$2 AND purpose='email_verification'`, tenantID, userID).Scan(&open, &total)
@@ -41,7 +41,7 @@ func (e *phase10Env) tokens(tenantID, userID uuid.UUID) (open, total int) {
 	return open, total
 }
 
-func (e *phase10Env) emailOf(p authz.Principal) string {
+func (e *apiEnv) emailOf(p authz.Principal) string {
 	e.t.Helper()
 	var email string
 	if err := e.runner.TxRunner.InTenantTx(context.Background(), p.TenantID, func(ctx context.Context, tx db.Tx) error {
@@ -52,21 +52,21 @@ func (e *phase10Env) emailOf(p authz.Principal) string {
 	return email
 }
 
-func (e *phase10Env) requireRetryAfter(rec *httptest.ResponseRecorder, retryAfter string) {
+func (e *apiEnv) requireRetryAfter(rec *httptest.ResponseRecorder, retryAfter string) {
 	e.t.Helper()
 	if got := rec.Header().Get("Retry-After"); got != retryAfter {
 		e.t.Fatalf("Retry-After=%q, want %q", got, retryAfter)
 	}
 }
 
-func (e *phase10Env) resend(raw string, ipIndex int, want int) *httptest.ResponseRecorder {
+func (e *apiEnv) resend(raw string, ipIndex int, want int) *httptest.ResponseRecorder {
 	e.t.Helper()
 	return e.doFrom(raw, signupIP(ipIndex), http.MethodPost, resendPath, "", want)
 }
 
 func TestInviteEmailNotVerifiedHTTP(t *testing.T) {
 	t.Run("V1 and V2 an unverified administrator gets 403 email_not_verified", func(t *testing.T) {
-		e := newPhase10Env(t)
+		e := newAPIEnv(t)
 		c, _ := e.newUnverifiedCompany()
 		other := e.newCompany()
 		before := e.footprint(c.a.TenantID)
@@ -80,7 +80,7 @@ func TestInviteEmailNotVerifiedHTTP(t *testing.T) {
 		}
 	})
 	t.Run("V7 the audit scenario: the owner recovers a company that someone else registered", func(t *testing.T) {
-		e := newPhase10Env(t)
+		e := newAPIEnv(t)
 		ctx := context.Background()
 		victim := "v-" + uuid.NewString() + "@example.test"
 		signup := `{"name":"Attacker","email":"` + victim + `","password":"valid-password","company_name":"ACME","base_currency":"ARS","industry_template_code":"generic"}`
@@ -118,7 +118,7 @@ func TestInviteEmailNotVerifiedHTTP(t *testing.T) {
 // TestResendEmailVerificationQuota covers T-B1009 V8a to V8i (DD-46 (3), amendment H-16).
 func TestResendEmailVerificationQuota(t *testing.T) {
 	t.Run("V8a to V8e the quota is per user, with the Retry-After of its next token", func(t *testing.T) {
-		e := newPhase10Env(t)
+		e := newAPIEnv(t)
 		c := e.newCompany() // A (founder, U1), B (a verified member)
 		u2 := e.member(c.a, "u2-"+newEmail(), authz.RoleOperator)
 		e.unverify(c.a.TenantID, c.a.UserID, u2.Principal.UserID)
@@ -166,7 +166,7 @@ func TestResendEmailVerificationQuota(t *testing.T) {
 		e.doFrom("", signupIP(8), "POST", "/api/v1/auth/email-verification/confirm", `{"token":"`+last+`"}`, 204)
 	})
 	t.Run("V8f and V8g the IP quota runs first and a refusal by IP does not spend the user quota", func(t *testing.T) {
-		e := newPhase10Env(t)
+		e := newAPIEnv(t)
 		c, email := e.newUnverifiedCompany()
 		x, y := signupIP(20), signupIP(21)
 		for i := 0; i < 20; i++ {
@@ -194,7 +194,7 @@ func TestResendEmailVerificationQuota(t *testing.T) {
 		e.requireRetryAfter(rec, "1020")
 	})
 	t.Run("V8h every authenticated request counts, even those that send nothing", func(t *testing.T) {
-		e := newPhase10Env(t)
+		e := newAPIEnv(t)
 		u4 := e.member(e.a, newEmail(), authz.RoleOperator) // active, with a verified email
 		before := e.emailCount(e.a.TenantID, e.emailOf(u4.Principal))
 		for i := 0; i < 3; i++ {

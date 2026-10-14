@@ -68,30 +68,30 @@ func (b *firstReadGate) Read(p []byte) (int, error) {
 }
 func (b *firstReadGate) Close() error { return nil }
 
-// phase10Company is a company with two active administrators, each with a real session.
-type phase10Company struct {
+// twoAdminCompany is a company with two active administrators, each with a real session.
+type twoAdminCompany struct {
 	a, b       authz.Principal
 	aRaw, bRaw string
 }
 
-type phase10Env struct {
+type apiEnv struct {
 	t         *testing.T
 	root      http.Handler
 	users     *identity.Service
 	companies *tenant.Service
 	runner    *gatedRunner
 	clock     *usersHTTPClock // clock of the rate limiters; the services use the real one
-	phase10Company
+	twoAdminCompany
 }
 
-// newPhase10Env builds the real router of BuildAPIRouter over services whose runner can be gated,
+// newAPIEnv builds the real router of BuildAPIRouter over services whose runner can be gated,
 // and a first company with two active administrators A and B.
-func newPhase10Env(t *testing.T) *phase10Env {
+func newAPIEnv(t *testing.T) *apiEnv {
 	t.Helper()
-	return newPhase10EnvWithLogger(t, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return newAPIEnvWithLogger(t, slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 
-func newPhase10EnvWithLogger(t *testing.T, logger *slog.Logger) *phase10Env {
+func newAPIEnvWithLogger(t *testing.T, logger *slog.Logger) *apiEnv {
 	t.Helper()
 	c := clock.Real{}
 	runner := &gatedRunner{TxRunner: db.NewTxRunner(pgtest.AppPool(t), db.WithLogger(logger))}
@@ -101,14 +101,14 @@ func newPhase10EnvWithLogger(t *testing.T, logger *slog.Logger) *phase10Env {
 		identity.WithAuthentication(h, recorder, []byte("0123456789abcdef0123456789abcdef"), logger))
 	companies := tenant.NewService(runner, users, industrytemplate.NoopSeeder{}, h, recorder, logger)
 	limiterClock := &usersHTTPClock{now: time.Now().UTC()}
-	env := &phase10Env{t: t, users: users, companies: companies, runner: runner, clock: limiterClock}
-	env.phase10Company = env.newCompany()
+	env := &apiEnv{t: t, users: users, companies: companies, runner: runner, clock: limiterClock}
+	env.twoAdminCompany = env.newCompany()
 	api := app.BuildAPIRouter(users, companies, limiterClock, logger)
 	env.root = app.NewRootHandler(app.RootDeps{API: api, Liveness: app.LivenessHandler(), Readiness: app.ReadinessPlaceholder(), SPA: app.SPAUnavailableHandler()}, app.NewCommonMiddleware(logger, true, nil))
 	return env
 }
 
-func (e *phase10Env) token(tenantID uuid.UUID, recipient, template string) string {
+func (e *apiEnv) token(tenantID uuid.UUID, recipient, template string) string {
 	e.t.Helper()
 	var token string
 	if err := e.runner.TxRunner.InTenantTx(context.Background(), tenantID, func(ctx context.Context, tx db.Tx) error {
@@ -121,7 +121,7 @@ func (e *phase10Env) token(tenantID uuid.UUID, recipient, template string) strin
 
 // newCompany registers a company, confirms its founder's email with the token of the outbox (DD-46:
 // an unverified administrator cannot invite) and adds administrator B. The founder is administrator A.
-func (e *phase10Env) newCompany() phase10Company {
+func (e *apiEnv) newCompany() twoAdminCompany {
 	e.t.Helper()
 	c, email := e.newUnverifiedCompany()
 	token := e.token(c.a.TenantID, email, "email_verification")
@@ -134,7 +134,7 @@ func (e *phase10Env) newCompany() phase10Company {
 }
 
 // newUnverifiedCompany is what a signup leaves: one active administrator whose email is not verified.
-func (e *phase10Env) newUnverifiedCompany() (phase10Company, string) {
+func (e *apiEnv) newUnverifiedCompany() (twoAdminCompany, string) {
 	e.t.Helper()
 	suffix := uuid.NewString()
 	email := "admin-a-" + suffix + "@example.test"
@@ -144,11 +144,11 @@ func (e *phase10Env) newUnverifiedCompany() (phase10Company, string) {
 		e.t.Fatal(err)
 	}
 	settleOutbox(e.t, e.runner, reg.Session.Principal.TenantID)
-	return phase10Company{a: reg.Session.Principal, aRaw: reg.Session.RawToken}, email
+	return twoAdminCompany{a: reg.Session.Principal, aRaw: reg.Session.RawToken}, email
 }
 
 // unverify clears email_verified_at of users of a company, to reach the state of a fresh signup.
-func (e *phase10Env) unverify(tenantID uuid.UUID, ids ...uuid.UUID) {
+func (e *apiEnv) unverify(tenantID uuid.UUID, ids ...uuid.UUID) {
 	e.t.Helper()
 	for _, id := range ids {
 		if err := e.runner.TxRunner.InTenantTx(context.Background(), tenantID, func(ctx context.Context, tx db.Tx) error {
@@ -161,7 +161,7 @@ func (e *phase10Env) unverify(tenantID uuid.UUID, ids ...uuid.UUID) {
 }
 
 // member invites and accepts a user of the company, through the services (no rate limit involved).
-func (e *phase10Env) member(admin authz.Principal, email string, role authz.Role) identity.SessionResult {
+func (e *apiEnv) member(admin authz.Principal, email string, role authz.Role) identity.SessionResult {
 	e.t.Helper()
 	ctx := context.Background()
 	if _, _, err := e.users.Invite(ctx, admin, email, role, identity.RequestMeta{}); err != nil {
@@ -174,9 +174,9 @@ func (e *phase10Env) member(admin authz.Principal, email string, role authz.Role
 	return session
 }
 
-// settleOutbox marks the company's pending messages as sent when the test ends. The Phase 2 test
-// drains the shared outbox into a Mailpit it expects to hold exactly one message, and this file
-// runs before it (phase10 < phase2): a test of Phase 10 must not leave pending messages behind.
+// settleOutbox marks the company's pending messages as sent when the test ends. No test assumes an
+// empty outbox, so this is a courtesy: it keeps the shared outbox small for the tests that run a
+// Dispatcher over it.
 func settleOutbox(t *testing.T, runner db.TxRunner, tenantID uuid.UUID) {
 	t.Helper()
 	t.Cleanup(func() {
@@ -190,7 +190,7 @@ func settleOutbox(t *testing.T, runner db.TxRunner, tenantID uuid.UUID) {
 	})
 }
 
-func (e *phase10Env) request(raw, method, path string, body io.Reader) (*httptest.ResponseRecorder, *http.Request) {
+func (e *apiEnv) request(raw, method, path string, body io.Reader) (*httptest.ResponseRecorder, *http.Request) {
 	e.t.Helper()
 	req := httptest.NewRequestWithContext(context.Background(), method, path, body)
 	if body != nil {
@@ -202,13 +202,13 @@ func (e *phase10Env) request(raw, method, path string, body io.Reader) (*httptes
 	return httptest.NewRecorder(), req
 }
 
-func (e *phase10Env) do(raw, method, path, body string, want int) *httptest.ResponseRecorder {
+func (e *apiEnv) do(raw, method, path, body string, want int) *httptest.ResponseRecorder {
 	e.t.Helper()
 	return e.doFrom(raw, "", method, path, body, want)
 }
 
 // doFrom is do with the client address of the request (documentation addresses, DD-32).
-func (e *phase10Env) doFrom(raw, ip, method, path, body string, want int) *httptest.ResponseRecorder {
+func (e *apiEnv) doFrom(raw, ip, method, path, body string, want int) *httptest.ResponseRecorder {
 	e.t.Helper()
 	var reader io.Reader
 	if body != "" {
@@ -229,7 +229,7 @@ func (e *phase10Env) doFrom(raw, ip, method, path, body string, want int) *httpt
 	return rec
 }
 
-func (e *phase10Env) userState(id uuid.UUID) (role, status string) {
+func (e *apiEnv) userState(id uuid.UUID) (role, status string) {
 	e.t.Helper()
 	if err := e.runner.TxRunner.InTenantTx(context.Background(), e.a.TenantID, func(ctx context.Context, tx db.Tx) error {
 		return tx.QueryRow(ctx, `SELECT role, status FROM app.users WHERE tenant_id=$1 AND id=$2`, e.a.TenantID, id).Scan(&role, &status)
@@ -243,7 +243,7 @@ func (e *phase10Env) userState(id uuid.UUID) (role, status string) {
 // that was demoted or disabled meanwhile must not restore its authority.
 func TestActorRevalidationHTTP(t *testing.T) {
 	t.Run("H1 demoted administrator cannot promote itself with a retained body", func(t *testing.T) {
-		e := newPhase10Env(t)
+		e := newAPIEnv(t)
 		gate := &firstReadGate{data: bytes.NewReader([]byte(`{"role":"admin"}`)), entered: make(chan struct{}), release: make(chan struct{})}
 		rec, req := e.request(e.aRaw, http.MethodPut, "/api/v1/users/"+e.a.UserID.String()+"/role", gate)
 		done := make(chan struct{})
@@ -267,7 +267,7 @@ func TestActorRevalidationHTTP(t *testing.T) {
 		e.do(e.aRaw, http.MethodGet, "/api/v1/users", "", http.StatusForbidden)
 	})
 	t.Run("H2 disabled administrator cannot reactivate itself with a retained request", func(t *testing.T) {
-		e := newPhase10Env(t)
+		e := newAPIEnv(t)
 		e.runner.arm()
 		rec, req := e.request(e.aRaw, http.MethodPost, "/api/v1/users/"+e.a.UserID.String()+"/reactivate", nil)
 		done := make(chan struct{})

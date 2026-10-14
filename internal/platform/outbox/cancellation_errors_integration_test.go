@@ -26,7 +26,8 @@ func (r *failDeferralRunner) InSystemTx(ctx context.Context, role db.SystemRole,
 	return r.TxRunner.InSystemTx(ctx, role, fn)
 }
 
-func TestPhase9CanceledCyclePreservesRealDeferralFailure(t *testing.T) {
+// T-B908 (research R-27): a canceled cycle still reports a real deferral failure.
+func TestCanceledCyclePreservesRealDeferralFailure(t *testing.T) {
 	var logs bytes.Buffer
 	runner, id, _, d := newLoggedFixture(t, &logs)
 	enqueue(t, runner, d.clock, id, "password_reset")
@@ -43,7 +44,8 @@ func TestPhase9CanceledCyclePreservesRealDeferralFailure(t *testing.T) {
 	}
 }
 
-func TestPhase9CanceledTaskPreservesRealFailure(t *testing.T) {
+// T-B908 (research R-27): a canceled periodic task still reports its real failure.
+func TestCanceledTaskPreservesRealFailure(t *testing.T) {
 	for _, failure := range []error{db.ErrUnavailable, fmt.Errorf("wrapped: %w", db.ErrUnavailable), context.Canceled, db.ErrCanceled} {
 		t.Run(failure.Error(), func(t *testing.T) {
 			var logs bytes.Buffer

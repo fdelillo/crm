@@ -8,8 +8,9 @@ import (
 	"testing"
 )
 
+// T-B705 (DD-43): invalid text fields in PATCH /tenant map to their problem codes.
 func TestTenantHTTPPatchTextErrorCodes(t *testing.T) {
-	h, admin, _, _ := phase7Handler(t)
+	h, admin, _, _ := newTenantHandler(t)
 	for _, tc := range []struct{ name, field, value, code string }{
 		{"timezone_long", "timezone", strings.Repeat(" ", 62) + "UTC", "invalid_timezone"},
 		{"timezone_NUL", "timezone", "UTC\x00", "invalid_timezone"},

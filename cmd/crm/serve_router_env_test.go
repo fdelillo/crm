@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func revision14EnvStruct(t *testing.T, source string) string {
+func envStructSource(t *testing.T, source string) string {
 	t.Helper()
 	start := strings.Index(source, "type env struct {")
 	if start < 0 {
@@ -20,10 +20,11 @@ func revision14EnvStruct(t *testing.T, source string) string {
 	return source[start : start+end+2]
 }
 
-func TestRouterRevision14Rule4Mutations(t *testing.T) {
+// T-B801 (rule 4, mutations j-o and the type-alias, pointer-struct and constraint-struct variants): the router guard rejects every way of aliasing, converting or reassigning env.listen.
+func TestRouterGuardEnvAliasingMutations(t *testing.T) {
 	fset := token.NewFileSet()
 	imp := compositionImporter(t, fset)
-	envStruct := revision14EnvStruct(t, compositionSources(t)["main.go"])
+	envStruct := envStructSource(t, compositionSources(t)["main.go"])
 	listen := "(&net.ListenConfig{}).Listen"
 	for _, tc := range []struct {
 		name, file, old, replacement string
@@ -71,7 +72,8 @@ func TestRouterRevision14Rule4Mutations(t *testing.T) {
 	}
 }
 
-func TestRouterRevision14Rule6Mutations(t *testing.T) {
+// T-B801 (rule 6, mutations p and q): the router guard rejects unsafe and reflect imports in cmd/crm.
+func TestRouterGuardForbiddenImportMutations(t *testing.T) {
 	fset := token.NewFileSet()
 	imp := compositionImporter(t, fset)
 	for _, tc := range []struct{ name, path, statement string }{

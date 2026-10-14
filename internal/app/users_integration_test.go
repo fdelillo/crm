@@ -43,7 +43,7 @@ func (c *usersHTTPClock) advance(d time.Duration) {
 	c.now = c.now.Add(d)
 }
 
-func phase6Server(t *testing.T) (*apitest.Server, *usersHTTPClock, db.TxRunner) {
+func newUsersServer(t *testing.T) (*apitest.Server, *usersHTTPClock, db.TxRunner) {
 	t.Helper()
 	c := &usersHTTPClock{now: time.Now().UTC()}
 	runner := db.NewTxRunner(pgtest.AppPool(t))
@@ -142,8 +142,10 @@ func invitationHTTPToken(t *testing.T, r db.TxRunner, tenantID uuid.UUID, email 
 	}
 	return payload["token"]
 }
+
+// T-B606 (FR-005, FR-007): the invitation lifecycle and the permissions of each role over the users endpoints.
 func TestUsersHTTPInvitationLifecycleAndPermissions(t *testing.T) {
-	s, _, runner := phase6Server(t)
+	s, _, runner := newUsersServer(t)
 	tenantID, adminID := usersSignup(t, s, runner)
 	adminCookies := s.Client.Jar.Cookies(mustURL(t, s.URL))
 	email := uuid.NewString() + "@example.com"
@@ -232,8 +234,10 @@ func TestUsersHTTPInvitationLifecycleAndPermissions(t *testing.T) {
 	}
 	usersRequest(t, s, "POST", "/api/v1/auth/login", `{"email":"`+email+`","password":"valid-password"}`, 200)
 }
+
+// T-B606 (P-3, H-4, H-5): role, deactivation and reactivation transitions over HTTP, and 404 for unknown users.
 func TestUsersHTTPStatesAndNotFound(t *testing.T) {
-	s, c, runner := phase6Server(t)
+	s, c, runner := newUsersServer(t)
 	tenantID, adminID := usersSignup(t, s, runner)
 	c.advance(time.Second) // Registration uses the database clock; later invitations use the fake clock.
 	cookie := s.Client.Jar.Cookies(mustURL(t, s.URL))
@@ -338,8 +342,9 @@ func mustURL(t *testing.T, raw string) *url.URL {
 	return u
 }
 
+// T-B606: an invalid accept request does not consume the invitation.
 func TestUsersHTTPValidationPreservesInvitation(t *testing.T) {
-	s, c, r := phase6Server(t)
+	s, c, r := newUsersServer(t)
 	tenantID, adminID := usersSignup(t, s, r)
 	c.advance(time.Second)
 	for _, tc := range []struct{ body, field, code string }{
@@ -367,8 +372,9 @@ func TestUsersHTTPValidationPreservesInvitation(t *testing.T) {
 	usersRequest(t, s, "POST", "/api/v1/auth/invitations/accept", `{"token":"`+raw+`","name":"B","password":"valid-password"}`, 201)
 }
 
+// T-B606 (DD-9): preview and accept of an invitation token share one IP quota.
 func TestInvitationTokenRoutesShareIPQuota(t *testing.T) {
-	s, _, _ := phase6Server(t)
+	s, _, _ := newUsersServer(t)
 	for i := range 21 {
 		path := "/api/v1/auth/invitations/preview"
 		if i%2 == 1 {

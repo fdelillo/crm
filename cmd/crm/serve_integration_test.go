@@ -59,7 +59,8 @@ func (w *workerExitLog) Write(p []byte) (int, error) {
 	return w.safeBuffer.Write(p)
 }
 
-func TestPhase9RunServe(t *testing.T) {
+// T-B911 (T-B908, DD-35): runServe stops both servers and the worker on a failed Accept or on cancellation, waiting for an in-flight SMTP conversation and leaving no runtime connection behind.
+func TestRunServeStopsServersAndWorker(t *testing.T) {
 	for _, scenario := range []string{"api-fails", "metrics-fails", "cancel-sending", "cancel-idle"} {
 		t.Run(scenario, func(t *testing.T) {
 			pool := pgtest.AppPool(t)
@@ -106,7 +107,7 @@ func TestPhase9RunServe(t *testing.T) {
 			}
 			query := u.Query()
 			query.Set("pool_max_conns", "4")
-			application := "phase9-serve-" + uuid.NewString()
+			application := "run-serve-" + uuid.NewString()
 			query.Set("application_name", application)
 			u.RawQuery = query.Encode()
 			values["DATABASE_URL"] = u.String()

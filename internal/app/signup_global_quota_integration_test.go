@@ -52,7 +52,7 @@ func globalLimited(t *testing.T) int64 {
 	return n
 }
 
-func (e *phase10Env) signup(ip, body string, want int) *httptest.ResponseRecorder {
+func (e *apiEnv) signup(ip, body string, want int) *httptest.ResponseRecorder {
 	e.t.Helper()
 	return e.doFrom("", ip, http.MethodPost, "/api/v1/auth/signup", body, want)
 }
@@ -60,11 +60,11 @@ func (e *phase10Env) signup(ip, body string, want int) *httptest.ResponseRecorde
 // TestSignupGlobalQuota covers T-B1007 (DD-49). It creates companies only in G5, and does not run in
 // parallel with other signups (T-B303 convention): the quota is process-wide state of its own router.
 func TestSignupGlobalQuota(t *testing.T) {
-	newEnv := func(t *testing.T) (*phase10Env, *bytes.Buffer) {
+	newEnv := func(t *testing.T) (*apiEnv, *bytes.Buffer) {
 		logs := &bytes.Buffer{}
-		return newPhase10EnvWithLogger(t, slog.New(slog.NewJSONHandler(logs, nil))), logs
+		return newAPIEnvWithLogger(t, slog.New(slog.NewJSONHandler(logs, nil))), logs
 	}
-	exhaust := func(e *phase10Env, from int) {
+	exhaust := func(e *apiEnv, from int) {
 		for i := from; i < 30; i++ {
 			e.signup(signupIP(i), invalidSignup, 422)
 		}

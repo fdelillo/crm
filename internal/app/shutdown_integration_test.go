@@ -38,7 +38,9 @@ func (h *shutdownDelivery) Handle(ctx context.Context, _ outbox.Message) error {
 	}
 	return ctx.Err()
 }
-func TestPhase9Shutdown(t *testing.T) {
+
+// T-B908 (DD-35): shutdown lets the in-flight request and the in-flight delivery finish before returning.
+func TestShutdownDrainsRequestAndDelivery(t *testing.T) {
 	if app.ShutdownTimeout < outbox.SendBudget+5*time.Second {
 		t.Fatalf("shutdown budget=%s send=%s", app.ShutdownTimeout, outbox.SendBudget)
 	}

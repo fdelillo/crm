@@ -6,10 +6,11 @@ import (
 	"testing"
 )
 
-func TestRouterRevision15TypeParameterMutations(t *testing.T) {
+// T-B801 (rule 4, mutations r-t): the router guard rejects type parameters and generic aliases that could hide env.listen.
+func TestRouterGuardTypeParameterMutations(t *testing.T) {
 	fset := token.NewFileSet()
 	imp := compositionImporter(t, fset)
-	envStruct := revision14EnvStruct(t, compositionSources(t)["main.go"])
+	envStruct := envStructSource(t, compositionSources(t)["main.go"])
 	listenType := "func(context.Context, string, string) (net.Listener, error)"
 	tagged := strings.Replace(envStruct, listenType, listenType+` "x"`, 1)
 	shape := strings.Replace(envStruct, listenType, "F", 1)
@@ -61,7 +62,8 @@ func TestRouterRevision15TypeParameterMutations(t *testing.T) {
 	}
 }
 
-func TestRouterRevision15ExternalGenericInstantiation(t *testing.T) {
+// T-B801 (rule 4): instantiating a generic type from another package is not a violation.
+func TestRouterGuardAllowsExternalGenericInstantiation(t *testing.T) {
 	fset := token.NewFileSet()
 	imp := compositionImporter(t, fset)
 	sources := compositionSources(t)

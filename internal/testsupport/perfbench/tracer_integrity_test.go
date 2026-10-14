@@ -1,6 +1,6 @@
 //go:build bench
 
-package phase9bench_test
+package perfbench_test
 
 import (
 	"encoding/csv"
@@ -113,9 +113,9 @@ func TestBenchTracerFullSetControls(t *testing.T) {
 // CSV lacks Register/callback boundaries; the reconstruction validates the recorded
 // event set, IDs, PID and intervals only, and never recomputes the reported targets.
 func TestBenchTracerCSVControls(t *testing.T) {
-	paths := filepath.SplitList(os.Getenv("PHASE9_BENCH_TRACE_FILES"))
+	paths := filepath.SplitList(os.Getenv("PERFBENCH_TRACE_FILES"))
 	if len(paths) == 0 {
-		t.Skip("set PHASE9_BENCH_TRACE_FILES to preserved benchmark CSV paths")
+		t.Skip("set PERFBENCH_TRACE_FILES to preserved benchmark CSV paths")
 	}
 	for _, path := range paths {
 		t.Run(filepath.Base(path), func(t *testing.T) {

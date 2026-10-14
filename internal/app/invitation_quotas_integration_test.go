@@ -22,14 +22,14 @@ const (
 	ipThree = "192.0.2.30"
 )
 
-func (e *phase10Env) invite(raw, ip, email string, want int) {
+func (e *apiEnv) invite(raw, ip, email string, want int) {
 	e.t.Helper()
 	e.doFrom(raw, ip, "POST", "/api/v1/users/invitations", `{"email":"`+email+`","role":"operator"}`, want)
 }
 func newEmail() string { return uuid.NewString() + "@example.test" }
 
 // footprint counts what an accepted invitation leaves behind in a company.
-func (e *phase10Env) footprint(tenantID uuid.UUID) [4]int {
+func (e *apiEnv) footprint(tenantID uuid.UUID) [4]int {
 	e.t.Helper()
 	var n [4]int
 	if err := e.runner.TxRunner.InTenantTx(context.Background(), tenantID, func(ctx context.Context, tx db.Tx) error {
@@ -58,7 +58,7 @@ func requireRateLimitedProblem(t *testing.T, header string, body []byte) {
 	}
 }
 
-func (e *phase10Env) invite429(raw, ip, email string) {
+func (e *apiEnv) invite429(raw, ip, email string) {
 	e.t.Helper()
 	rec := e.doFrom(raw, ip, "POST", "/api/v1/users/invitations", `{"email":"`+email+`","role":"operator"}`, 429)
 	requireRateLimitedProblem(e.t, rec.Header().Get("Retry-After"), rec.Body.Bytes())
@@ -66,7 +66,7 @@ func (e *phase10Env) invite429(raw, ip, email string) {
 
 // tenSteps sends the ten requests of Q1 through send, alternating the two addresses, with every
 // kind of answer: new emails, one reinvitation, an email of another company and an invalid body.
-func (e *phase10Env) tenSteps(senders [2]string, otherEmail string) {
+func (e *apiEnv) tenSteps(senders [2]string, otherEmail string) {
 	e.t.Helper()
 	ips := [2]string{ipOne, ipTwo}
 	reinvited := newEmail()
@@ -109,9 +109,10 @@ func (e *phase10Env) tenSteps(senders [2]string, otherEmail string) {
 	}
 }
 
+// T-B1005 (Q1-Q8, DD-48): invitation and reactivation share one quota per company and one per IP.
 func TestInvitationQuotas(t *testing.T) {
 	t.Run("Q1 ten requests of every kind are answered normally and Q2 the eleventh is limited", func(t *testing.T) {
-		e := newPhase10Env(t)
+		e := newAPIEnv(t)
 		other := e.newCompany()
 		var otherEmail string
 		if err := e.runner.TxRunner.InTenantTx(context.Background(), other.a.TenantID, func(ctx context.Context, tx db.Tx) error {
@@ -131,7 +132,7 @@ func TestInvitationQuotas(t *testing.T) {
 		e.invite(other.aRaw, ipOne, newEmail(), 201)
 	})
 	t.Run("Q1b two administrators share the company quota", func(t *testing.T) {
-		e := newPhase10Env(t)
+		e := newAPIEnv(t)
 		other := e.newCompany()
 		var otherEmail string
 		if err := e.runner.TxRunner.InTenantTx(context.Background(), other.a.TenantID, func(ctx context.Context, tx db.Tx) error {
@@ -144,7 +145,7 @@ func TestInvitationQuotas(t *testing.T) {
 		e.invite429(e.bRaw, ipTwo, newEmail())
 	})
 	t.Run("Q4 reactivation and invitation share one company quota", func(t *testing.T) {
-		e := newPhase10Env(t)
+		e := newAPIEnv(t)
 		member := e.member(e.a, newEmail(), authz.RoleOperator)
 		if _, err := e.users.Deactivate(context.Background(), e.a, member.Principal.UserID, identity.RequestMeta{}); err != nil {
 			t.Fatal(err)
@@ -158,14 +159,14 @@ func TestInvitationQuotas(t *testing.T) {
 			t.Fatalf("the user is %s, want disabled", status)
 		}
 		// The other way around: the quota spent only by reactivations (any outcome counts).
-		other := newPhase10Env(t)
+		other := newAPIEnv(t)
 		for i := 0; i < 10; i++ {
 			other.doFrom(other.aRaw, ipTwo, "POST", "/api/v1/users/"+uuid.NewString()+"/reactivate", "", 404)
 		}
 		other.invite429(other.aRaw, ipTwo, newEmail())
 	})
 	t.Run("Q5 a token comes back after six minutes", func(t *testing.T) {
-		e := newPhase10Env(t)
+		e := newAPIEnv(t)
 		for i := 0; i < 10; i++ {
 			e.invite(e.aRaw, ipOne, newEmail(), 201)
 		}
@@ -175,8 +176,8 @@ func TestInvitationQuotas(t *testing.T) {
 		e.invite429(e.aRaw, ipOne, newEmail())
 	})
 	t.Run("Q6 one address is limited across companies", func(t *testing.T) {
-		e := newPhase10Env(t)
-		companies := []phase10Company{e.phase10Company, e.newCompany(), e.newCompany()}
+		e := newAPIEnv(t)
+		companies := []twoAdminCompany{e.twoAdminCompany, e.newCompany(), e.newCompany()}
 		for i := 0; i < 20; i++ {
 			e.invite(companies[i%3].aRaw, ipOne, newEmail(), 201)
 		}
@@ -189,7 +190,7 @@ func TestInvitationQuotas(t *testing.T) {
 		e.invite429(companies[0].aRaw, ipTwo, newEmail())
 	})
 	t.Run("Q7 a refused permission does not spend quota", func(t *testing.T) {
-		e := newPhase10Env(t)
+		e := newAPIEnv(t)
 		operator := e.member(e.a, newEmail(), authz.RoleOperator)
 		for i := 0; i < 10; i++ {
 			e.doFrom(operator.RawToken, ipOne, "POST", "/api/v1/users/invitations", `{"email":"`+newEmail()+`","role":"operator"}`, 403)
@@ -199,7 +200,7 @@ func TestInvitationQuotas(t *testing.T) {
 		}
 	})
 	t.Run("Q8 an unauthenticated request does not spend quota", func(t *testing.T) {
-		e := newPhase10Env(t)
+		e := newAPIEnv(t)
 		second := e.newCompany()
 		for i := 0; i < 25; i++ {
 			e.doFrom("", ipOne, "POST", "/api/v1/users/invitations", `{"email":"`+newEmail()+`","role":"operator"}`, 401)

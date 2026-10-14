@@ -1,6 +1,6 @@
 //go:build bench
 
-package phase9bench_test
+package perfbench_test
 
 import (
 	"bytes"
@@ -111,7 +111,7 @@ func newEnvironment(t *testing.T, ctx context.Context) *environment {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dir := os.Getenv("PHASE9_BENCH_ARTIFACT_DIR")
+	dir := os.Getenv("PERFBENCH_ARTIFACT_DIR")
 	if dir == "" {
 		dir = t.TempDir()
 	}
@@ -145,7 +145,7 @@ func newEnvironment(t *testing.T, ctx context.Context) *environment {
 	if err != nil {
 		t.Fatalf("Docker memory: %v", err)
 	}
-	t.Logf("BENCH environment run=%s digest=%s container=%s server_version=%s go=%s os=%s arch=%s cpus=%d docker_memory_bytes=%s pool_max_conns=%d trace=%s", os.Getenv("PHASE9_BENCH_RUN"), postgresDigest, ctr.GetContainerID()[:12], version, runtime.Version(), runtime.GOOS, runtime.GOARCH, runtime.NumCPU(), strings.TrimSpace(string(mem)), e.pool.Config().MaxConns, path)
+	t.Logf("BENCH environment run=%s digest=%s container=%s server_version=%s go=%s os=%s arch=%s cpus=%d docker_memory_bytes=%s pool_max_conns=%d trace=%s", os.Getenv("PERFBENCH_RUN"), postgresDigest, ctr.GetContainerID()[:12], version, runtime.Version(), runtime.GOOS, runtime.GOARCH, runtime.NumCPU(), strings.TrimSpace(string(mem)), e.pool.Config().MaxConns, path)
 	c := clock.Real{}
 	recorder := audit.NewRecorder()
 	e.hasher = password.NewHasher(4)

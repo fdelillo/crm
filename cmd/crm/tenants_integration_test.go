@@ -15,7 +15,8 @@ import (
 	"testing"
 )
 
-func TestPhase9ReprovisionCommand(t *testing.T) {
+// T-B906 (DD-33 R-d): crm tenants reprovision-roles recreates missing company roles and reports its result.
+func TestReprovisionRolesCommand(t *testing.T) {
 	ctx := context.Background()
 	pool := pgtest.AppPool(t)
 	company := fixture.NewCompany(t, pool)

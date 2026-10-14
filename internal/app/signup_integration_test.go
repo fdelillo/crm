@@ -31,15 +31,15 @@ import (
 	"golang.org/x/time/rate"
 )
 
-func phase3Server(t *testing.T) *apitest.Server {
-	return phase3ServerWithAbsolute(t, 7*24*time.Hour)
+func newAuthServer(t *testing.T) *apitest.Server {
+	return newAuthServerWithAbsolute(t, 7*24*time.Hour)
 }
 
-func phase3ServerWithAbsolute(t *testing.T, absolute time.Duration) *apitest.Server {
-	return phase3ServerWithLoginClock(t, absolute, clock.Real{})
+func newAuthServerWithAbsolute(t *testing.T, absolute time.Duration) *apitest.Server {
+	return newAuthServerWithLoginClock(t, absolute, clock.Real{})
 }
 
-func phase3ServerWithLoginClock(t *testing.T, absolute time.Duration, loginClock clock.Clock) *apitest.Server {
+func newAuthServerWithLoginClock(t *testing.T, absolute time.Duration, loginClock clock.Clock) *apitest.Server {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	runner := db.NewTxRunner(pgtest.AppPool(t))
@@ -69,7 +69,7 @@ func phase3ServerWithLoginClock(t *testing.T, absolute time.Duration, loginClock
 func TestSignupCookieUsesStoredSessionExpiry(t *testing.T) {
 	for _, absolute := range []time.Duration{2 * time.Hour, 10 * 24 * time.Hour} {
 		t.Run(absolute.String(), func(t *testing.T) {
-			server := phase3ServerWithAbsolute(t, absolute)
+			server := newAuthServerWithAbsolute(t, absolute)
 			email := uuid.NewString() + "@example.com"
 			body := `{"name":"Ana","email":"` + email + `","password":"example-password","company_name":"ACME","base_currency":"ARS","industry_template_code":"generic"}`
 			resp := postSignup(t, server, body, "application/json")
@@ -95,7 +95,7 @@ func TestSignupCookieUsesStoredSessionExpiry(t *testing.T) {
 }
 
 func TestSignupRejectsNULAsValidationError(t *testing.T) {
-	server := phase3Server(t)
+	server := newAuthServer(t)
 	for _, tc := range []struct {
 		field, body string
 	}{
@@ -122,8 +122,9 @@ func TestSignupRejectsNULAsValidationError(t *testing.T) {
 	}
 }
 
-func TestPhase3SignupAndMe(t *testing.T) {
-	server := phase3Server(t)
+// T-B305, T-B309: signup creates the company and session, and GET /me returns the user and company views.
+func TestSignupAndMeHTTP(t *testing.T) {
+	server := newAuthServer(t)
 	email := "ana-" + uuid.NewString() + "@example.com"
 	body := `{"name":"Ana","email":"` + email + `","password":"example-password","company_name":"ACME","base_currency":"ARS","industry_template_code":"generic"}`
 	post := func(payload string) *http.Response {
@@ -293,7 +294,7 @@ func postSignup(t *testing.T, server *apitest.Server, body, contentType string) 
 }
 
 func TestSignupHTTPValidationSizeAndRateLimit(t *testing.T) {
-	server := phase3Server(t)
+	server := newAuthServer(t)
 	email := uuid.NewString() + "@example.com"
 	valid := `{"name":"Ana","email":"` + email + `","password":"example-password","company_name":"ACME","base_currency":"ARS","industry_template_code":"generic"}`
 	for _, tc := range []struct {
@@ -322,7 +323,7 @@ func TestSignupHTTPValidationSizeAndRateLimit(t *testing.T) {
 }
 
 func TestSignupDuplicateBodyDoesNotRevealAccount(t *testing.T) {
-	server := phase3Server(t)
+	server := newAuthServer(t)
 	email := uuid.NewString() + "@example.com"
 	first := `{"name":"Secret Person","email":"` + email + `","password":"example-password","company_name":"Private Company","base_currency":"USD","industry_template_code":"generic"}`
 	resp := postSignup(t, server, first, "application/json")
@@ -354,7 +355,7 @@ func TestSignupDuplicateBodyDoesNotRevealAccount(t *testing.T) {
 }
 
 func TestSignupLockTimeoutReturnsRetryable503(t *testing.T) {
-	server := phase3Server(t)
+	server := newAuthServer(t)
 	ctx := context.Background()
 	super := pgtest.SuperuserPool(t)
 	role := "crm_test_" + strings.ReplaceAll(uuid.NewString(), "-", "")

@@ -1,6 +1,6 @@
 //go:build bench
 
-package phase9bench_test
+package perfbench_test
 
 import (
 	"context"

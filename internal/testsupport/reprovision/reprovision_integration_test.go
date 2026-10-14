@@ -72,7 +72,9 @@ func service(runner db.TxRunner) *tenant.Service {
 	users := identity.NewService(runner, outbox.NewEnqueuer(c), c, 24*time.Hour, 7*24*time.Hour)
 	return tenant.NewService(runner, users, industrytemplate.NoopSeeder{}, password.NewHasher(2), audit.NewRecorder(), slog.New(slog.NewJSONHandler(io.Discard, nil)))
 }
-func TestPhase9Reprovision(t *testing.T) {
+
+// T-B906 (DD-33 R-d): reprovisioning recreates the roles of companies that lost theirs, one commit per company.
+func TestReprovisionTenantRoles(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	pool := pgtest.AppPool(t)
@@ -217,7 +219,7 @@ func TestPhase9Reprovision(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
 	}
-	registration, signupErr := service(base).Register(ctx, tenant.Signup{Name: "Ana", Email: uuid.NewString() + "@phase9.test", Password: "a safe password 123", CompanyName: "Concurrent", BaseCurrency: "ARS", IndustryTemplateCode: "generic"}, identity.RequestMeta{})
+	registration, signupErr := service(base).Register(ctx, tenant.Signup{Name: "Ana", Email: uuid.NewString() + "@reprovision.test", Password: "a safe password 123", CompanyName: "Concurrent", BaseCurrency: "ARS", IndustryTemplateCode: "generic"}, identity.RequestMeta{})
 	close(release)
 	if err := <-firstDone; err != nil {
 		t.Fatal(err)

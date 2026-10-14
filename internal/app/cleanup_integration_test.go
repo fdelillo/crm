@@ -64,8 +64,9 @@ func (stopCleanup) Name() string                { return "test_cleanup_complete"
 func (stopCleanup) Every() time.Duration        { return time.Hour }
 func (s stopCleanup) Run(context.Context) error { s.cancel(); return nil }
 
+// T-B901 (DD-25): the periodic cleanup, as crm_worker, deletes only expired rows and never touches live ones of any company.
 // Two companies, owner-independent worker deletes, database policy probes and the real users API.
-func TestPhase9Cleanup(t *testing.T) {
+func TestCleanupDeletesOnlyExpiredRowsAsWorker(t *testing.T) {
 	f := e2e.New(t, pgtest.AppPool(t))
 	ctx := context.Background()
 	super := pgtest.SuperuserPool(t)

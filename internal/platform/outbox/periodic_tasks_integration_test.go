@@ -30,7 +30,8 @@ func (p *periodicProbe) Run(ctx context.Context) error {
 	return nil
 }
 
-func TestPhase9PeriodicSchedulingAndFailure(t *testing.T) {
+// T-B901: periodic tasks run at their interval and a failing task does not stop the others.
+func TestPeriodicTaskSchedulingAndFailure(t *testing.T) {
 	var logs bytes.Buffer
 	runner, id, handler, d := newLoggedFixture(t, &logs)
 	now := d.clock.Now()
@@ -63,7 +64,8 @@ func TestPhase9PeriodicSchedulingAndFailure(t *testing.T) {
 	}
 }
 
-func TestPhase9PeriodicCancellationRollsBack(t *testing.T) {
+// T-B901, T-B908: canceling a periodic task rolls its transaction back.
+func TestPeriodicTaskCancellationRollsBack(t *testing.T) {
 	var logs bytes.Buffer
 	runner, id, _, d := newLoggedFixture(t, &logs)
 	var idMessage uuid.UUID

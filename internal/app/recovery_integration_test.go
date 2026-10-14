@@ -30,7 +30,7 @@ func postRecovery(t *testing.T, client *http.Client, url, body string) *http.Res
 }
 
 func TestRecoveryHTTPContractAndUniformResponses(t *testing.T) {
-	server := phase3Server(t)
+	server := newAuthServer(t)
 	runner := db.NewTxRunner(pgtest.AppPool(t))
 	var baseline http.Header
 	for _, status := range []string{"active", "invited", "disabled", "missing"} {

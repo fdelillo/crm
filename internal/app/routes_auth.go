@@ -16,7 +16,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// RegisterRoutes exposes login and idempotent logout. Login spends an IP token before decoding.
+// RegisterAuthRoutes exposes login and idempotent logout. Login spends an IP token before decoding.
 func RegisterAuthRoutes(r chi.Router, users *identity.Service, companies *tenant.Service, limiter *ratelimit.Limiter, logger *slog.Logger) {
 	r.With(ratelimit.Middleware(limiter)).Post("/api/v1/auth/login", func(w http.ResponseWriter, req *http.Request) {
 		var input struct {

@@ -29,7 +29,8 @@ import (
 
 func TestMain(m *testing.M) { os.Exit(pgtest.Main(m)) }
 
-func TestPhase2EnqueueAndDeliverToMailpit(t *testing.T) {
+// T-B211, T-B213: an outbox message is delivered through the real SMTP adapter and arrives in Mailpit.
+func TestOutboxDeliversEmailToMailpit(t *testing.T) {
 	ctx := context.Background()
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
@@ -80,11 +81,11 @@ func TestPhase2EnqueueAndDeliverToMailpit(t *testing.T) {
 	}
 	// The outbox is shared with the other tests of the package (the Dispatcher reads every company):
 	// a recipient of its own, and only its message is looked up in Mailpit.
-	recipient := "phase2-" + uuid.NewString() + "@example.com"
+	recipient := "mailpit-" + uuid.NewString() + "@example.com"
 	err = runner.InTenantTx(ctx, company.ID, func(ctx context.Context, tx db.Tx) error {
 		return outbox.NewEnqueuer(clock.Real{}).Enqueue(ctx, tx, outbox.Message{
 			TenantID: company.ID, Kind: "email", Template: "password_reset", Recipient: recipient,
-			Payload: map[string]string{"token": "phase2token"},
+			Payload: map[string]string{"token": "mailpit-token"},
 		})
 	})
 	if err != nil {

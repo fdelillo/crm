@@ -17,7 +17,7 @@ import (
 	"github.com/fdelillo/crm/internal/platform/httpx"
 )
 
-func phase2Root(t *testing.T, local bool, trusted []netip.Prefix, logs *bytes.Buffer, called *int) http.Handler {
+func commonMiddlewareRoot(t *testing.T, local bool, trusted []netip.Prefix, logs *bytes.Buffer, called *int) http.Handler {
 	t.Helper()
 	api := app.NewAPIRouter()
 	logger := slog.New(slog.NewJSONHandler(logs, nil))
@@ -41,11 +41,12 @@ func phase2Root(t *testing.T, local bool, trusted []netip.Prefix, logs *bytes.Bu
 	}, app.NewCommonMiddleware(logger, local, trusted))
 }
 
-func TestPhase2CommonMiddleware(t *testing.T) {
+// T-B203 (DD-24, DD-28, DD-32, INV-21): the common middleware chain applies CSRF protection, security headers and cache rules.
+func TestCommonMiddlewareCSRFSecurityHeadersAndCache(t *testing.T) {
 	var logs bytes.Buffer
 	called := 0
 	trusted := []netip.Prefix{netip.MustParsePrefix("198.51.100.0/24")}
-	root := phase2Root(t, false, trusted, &logs, &called)
+	root := commonMiddlewareRoot(t, false, trusted, &logs, &called)
 	cases := []struct {
 		name, method, path, fetch, origin, host string
 		status                                  int
@@ -114,7 +115,7 @@ func TestPhase2CommonMiddleware(t *testing.T) {
 	if w.Header().Get("Cache-Control") != "private, no-cache" {
 		t.Fatalf("logo cache=%q", w.Header().Get("Cache-Control"))
 	}
-	local := phase2Root(t, true, nil, &bytes.Buffer{}, new(int))
+	local := commonMiddlewareRoot(t, true, nil, &bytes.Buffer{}, new(int))
 	w = httptest.NewRecorder()
 	local.ServeHTTP(w, httptest.NewRequest("GET", "/", nil))
 	if w.Header().Get("Strict-Transport-Security") != "" {
@@ -127,7 +128,7 @@ func TestPhase2CommonMiddleware(t *testing.T) {
 // the body and a session Cookie never reach it.
 func TestRequestLogNeverCarriesBodyOrCookie(t *testing.T) {
 	var logs bytes.Buffer
-	root := phase2Root(t, true, nil, &logs, new(int))
+	root := commonMiddlewareRoot(t, true, nil, &logs, new(int))
 	r := httptest.NewRequest("POST", "/api/v1/test", strings.NewReader(`{"password":"unsafe-secret-value"}`))
 	r.Header.Set("Sec-Fetch-Site", "same-origin")
 	r.Header.Set("Cookie", "session=unsafe-cookie-value")
@@ -142,7 +143,7 @@ func TestRequestLogNeverCarriesBodyOrCookie(t *testing.T) {
 // RemoteAddr, never a header the client could set itself.
 func TestRequestLogUsesRemoteAddrWithoutTrustedProxies(t *testing.T) {
 	var logs bytes.Buffer
-	root := phase2Root(t, true, nil, &logs, new(int)) // trusted = nil
+	root := commonMiddlewareRoot(t, true, nil, &logs, new(int)) // trusted = nil
 	r := httptest.NewRequest("GET", "/api/v1/test", nil)
 	r.RemoteAddr = "203.0.113.5:4711"
 	r.Header.Set("X-Forwarded-For", "192.0.2.66")
@@ -157,7 +158,7 @@ func TestRequestLogUsesRemoteAddrWithoutTrustedProxies(t *testing.T) {
 
 func TestCanceledRequestLog(t *testing.T) {
 	var logs bytes.Buffer
-	root := phase2Root(t, true, nil, &logs, new(int))
+	root := commonMiddlewareRoot(t, true, nil, &logs, new(int))
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	r := httptest.NewRequest("GET", "/api/v1/error", nil).WithContext(ctx)
@@ -184,7 +185,7 @@ func TestCanceledRequestLog(t *testing.T) {
 func TestBadForwardedForWarningCarriesRequestID(t *testing.T) {
 	var logs bytes.Buffer
 	trusted := []netip.Prefix{netip.MustParsePrefix("198.51.100.0/24")}
-	root := phase2Root(t, true, trusted, &logs, new(int))
+	root := commonMiddlewareRoot(t, true, trusted, &logs, new(int))
 	r := httptest.NewRequest("GET", "/api/v1/test", nil)
 	r.RemoteAddr = "198.51.100.10:4711"
 	r.Header.Set("X-Forwarded-For", "192.0.2.66, basura")

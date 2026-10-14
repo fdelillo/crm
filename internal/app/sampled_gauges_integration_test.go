@@ -41,7 +41,8 @@ type sampleClock struct{ now time.Time }
 
 func (c *sampleClock) Now() time.Time { return c.now }
 
-func TestPhase9SampledGauges(t *testing.T) {
+// T-B903: the sampled gauges (outbox, tenants, tenant roles) are read as crm_worker and published.
+func TestSampledGauges(t *testing.T) {
 	ctx := context.Background()
 	f := e2e.New(t, pgtest.AppPool(t))
 	runner := &sampleRunner{TxRunner: f.Runner}
@@ -83,7 +84,7 @@ func TestPhase9SampledGauges(t *testing.T) {
 		}
 	}
 	super := pgtest.SuperuserPool(t)
-	// No pending messages from earlier tests: this package's phase tests are sequential.
+	// No pending messages from earlier tests: this package's tests run sequentially.
 	if _, err := super.Exec(ctx, "UPDATE app.outbox_messages SET next_attempt_at=now()+interval '1 day' WHERE status='pending'"); err != nil {
 		t.Fatal(err)
 	}

@@ -76,7 +76,7 @@ func (s *httpLogoStorage) Delete(_ context.Context, key string) error {
 	delete(s.objects, key)
 	return nil
 }
-func phase7Handler(t *testing.T, logSinks ...io.Writer) (http.Handler, string, string, *httpLogoStorage) {
+func newTenantHandler(t *testing.T, logSinks ...io.Writer) (http.Handler, string, string, *httpLogoStorage) {
 	t.Helper()
 	runner := db.NewTxRunner(pgtest.AppPool(t))
 	c := clock.Real{}
@@ -173,8 +173,10 @@ func tenantRequest(t *testing.T, h http.Handler, token, method, path, ct string,
 	}
 	return rec
 }
+
+// T-B705 (FR-007): GET and PATCH /tenant data and permissions per role.
 func TestTenantHTTPDataAndPermissions(t *testing.T) {
-	h, admin, operator, _ := phase7Handler(t)
+	h, admin, operator, _ := newTenantHandler(t)
 	for _, token := range []string{admin, operator} {
 		tenantRequest(t, h, token, "GET", "/api/v1/tenant", "", nil, "", 200)
 	}
@@ -220,8 +222,10 @@ func assertTenantProblem(t *testing.T, rec *httptest.ResponseRecorder, field, co
 		t.Fatalf("problem=%s", rec.Body.Bytes())
 	}
 }
+
+// T-B705 (DD-31, INV-24): the logo multipart upload accepts and rejects bodies per the contract.
 func TestTenantHTTPMultipartTable(t *testing.T) {
-	h, admin, _, f := phase7Handler(t)
+	h, admin, _, f := newTenantHandler(t)
 	valid := httpPNG(t, 10, 10, 0)
 	for _, tc := range []struct {
 		name        string
@@ -271,8 +275,10 @@ func (r *countedLogoReader) Read(p []byte) (int, error) {
 	r.read += n
 	return n, err
 }
+
+// T-B705 (DD-31): oversized bodies stop being read.
 func TestTenantHTTPStopsReadingOversizedBodies(t *testing.T) {
-	h, admin, _, _ := phase7Handler(t)
+	h, admin, _, _ := newTenantHandler(t)
 	file, ct := logoMultipart(t, httpPNG(t, 10, 10, tenant.LogoMaxBytes+1), "file")
 	small, smallCT := logoMultipart(t, httpPNG(t, 10, 10, 0), "file")
 	// Oversized preamble is legal multipart syntax. Without MaxBytesReader the small file succeeds.
@@ -301,8 +307,10 @@ func TestTenantHTTPStopsReadingOversizedBodies(t *testing.T) {
 		})
 	}
 }
+
+// T-B705 (DD-23, INV-21, H-2): the logo cache headers and conditional requests follow the logo lifecycle.
 func TestTenantHTTPLogoCacheLifecycle(t *testing.T) {
-	h, admin, operator, f := phase7Handler(t)
+	h, admin, operator, f := newTenantHandler(t)
 	tenantRequest(t, h, admin, "GET", "/api/v1/tenant/logo", "", nil, "", 404)
 	before := tenantRequest(t, h, admin, "GET", "/api/v1/tenant", "", nil, "", 200)
 	valid := httpPNG(t, 10, 10, 0)
@@ -355,8 +363,9 @@ func TestTenantHTTPLogoCacheLifecycle(t *testing.T) {
 	tenantRequest(t, h, admin, "DELETE", "/api/v1/tenant/logo", "", nil, "", 204)
 }
 
-func TestTenantHTTPPatchRevisionSemantics(t *testing.T) {
-	h, admin, _, _ := phase7Handler(t)
+// T-B705 (DD-43): PATCH /tenant distinguishes absent, null and empty fields.
+func TestTenantHTTPPatchNullAndEmptySemantics(t *testing.T) {
+	h, admin, _, _ := newTenantHandler(t)
 	for _, body := range []string{`{"name":null}`, `{"timezone":null}`} {
 		t.Run(body, func(t *testing.T) {
 			before := tenantRequest(t, h, admin, "GET", "/api/v1/tenant", "", nil, "", 200)
@@ -390,8 +399,9 @@ func TestTenantHTTPPatchRevisionSemantics(t *testing.T) {
 	})
 }
 
+// T-B705 (DD-31): bytes after the closing multipart boundary count against the body limit.
 func TestTenantHTTPMultipartEpilogueLimit(t *testing.T) {
-	h, admin, _, f := phase7Handler(t)
+	h, admin, _, f := newTenantHandler(t)
 	body, ct := logoMultipart(t, httpPNG(t, 10, 10, 1024), "file")
 	body = append(body, bytes.Repeat([]byte("x"), tenant.LogoMaxBodyBytes-len(body))...)
 	tenantRequest(t, h, admin, "PUT", "/api/v1/tenant/logo", ct, body, "", 200)
@@ -404,8 +414,10 @@ func TestTenantHTTPMultipartEpilogueLimit(t *testing.T) {
 		t.Fatalf("oversize epilogue reached Put: count=%d", f.putCount)
 	}
 }
+
+// T-B705: GET /tenant/logo answers 503 when the object store is unavailable.
 func TestTenantHTTPStorageUnavailableOnGet(t *testing.T) {
-	h, admin, _, f := phase7Handler(t)
+	h, admin, _, f := newTenantHandler(t)
 	body, ct := logoMultipart(t, httpPNG(t, 10, 10, 0), "file")
 	tenantRequest(t, h, admin, "PUT", "/api/v1/tenant/logo", ct, body, "", 200)
 	f.getErr = objectstore.ErrUnavailable
@@ -426,11 +438,13 @@ func (w brokenDownloadWriter) Write([]byte) (int, error) {
 	}
 	return 0, errors.New("test: download write failed")
 }
+
+// T-B705: a failed logo download is logged differently when the client canceled than when the storage failed.
 func TestTenantHTTPDownloadFailureLogs(t *testing.T) {
 	for _, clientCanceled := range []bool{true, false} {
 		t.Run(fmt.Sprint(clientCanceled), func(t *testing.T) {
 			var logs bytes.Buffer
-			h, admin, _, _ := phase7Handler(t, &logs)
+			h, admin, _, _ := newTenantHandler(t, &logs)
 			body, ct := logoMultipart(t, httpPNG(t, 10, 10, 0), "file")
 			tenantRequest(t, h, admin, "PUT", "/api/v1/tenant/logo", ct, body, "", 200)
 			logs.Reset()

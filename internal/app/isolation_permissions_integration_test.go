@@ -83,6 +83,7 @@ func permissionRequest(t *testing.T, f *e2e.Scenario, key string) (path, ct stri
 	return
 }
 
+// T-B802 (FR-007): anonymous, operator and administrator outcomes for every endpoint are the literal declared ones.
 func TestIsolationPermissionMatrix(t *testing.T) {
 	api := app.BuildAPIRouter(nil, nil, clock.Real{}, discardLogger())
 	routeCoverage(t, api)

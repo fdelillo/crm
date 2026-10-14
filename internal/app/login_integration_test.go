@@ -35,8 +35,9 @@ func postAuth(t *testing.T, server *apitest.Server, path, body string, cookie *h
 	return resp
 }
 
-func TestPhase4LoginLockAndLogout(t *testing.T) {
-	server := phase3Server(t)
+// T-B404 (DD-7, DD-9): login failures lock the account, success sets the session cookie and logout is idempotent.
+func TestLoginLockAndLogoutHTTP(t *testing.T) {
+	server := newAuthServer(t)
 	email := uuid.NewString() + "@example.com"
 	signup := `{"name":"Ana","email":"` + email + `","password":"example-password","company_name":"ACME","base_currency":"ARS","industry_template_code":"generic"}`
 	created := postSignup(t, server, signup, "application/json")
@@ -121,8 +122,9 @@ type frozenClock struct{ now time.Time }
 
 func (c frozenClock) Now() time.Time { return c.now }
 
-func TestPhase4LoginIPRateLimit(t *testing.T) {
-	server := phase3ServerWithLoginClock(t, 7*24*time.Hour, frozenClock{now: time.Now()})
+// T-B404 (DD-7, DD-9): login attempts from one IP are rate limited with Retry-After.
+func TestLoginIPRateLimitHTTP(t *testing.T) {
+	server := newAuthServerWithLoginClock(t, 7*24*time.Hour, frozenClock{now: time.Now()})
 	for i := 0; i < 21; i++ {
 		email := uuid.NewString() + "@example.com"
 		resp := postAuth(t, server, "login", `{"email":"`+email+`","password":"wrong"}`, nil)

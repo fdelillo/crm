@@ -1,6 +1,6 @@
 //go:build bench
 
-package phase9bench_test
+package perfbench_test
 
 import (
 	"bytes"
@@ -86,7 +86,8 @@ func (e *environment) request(ctx context.Context, root http.Handler, method, pa
 	return time.Since(started), rec.Code
 }
 
-func TestPhase9Measurements(t *testing.T) {
+// T-B910 (M-1 to M-6, T-1 to T-3): the 10,000-company measurements of lock retention, bursts and breakdown.
+func TestPerformanceMeasurements(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Minute)
 	defer cancel()
 	e := newEnvironment(t, ctx)
@@ -293,7 +294,7 @@ func TestPhase9Measurements(t *testing.T) {
 	}{{"T-1", baseline["hold"].P95MS < 140, baseline["hold"]}, {"T-2", unavailable[10] == 0, map[string]int{"samples": 50, "503": unavailable[10]}}, {"T-3", m6["GET_me"].P95MS < 50 && m6["GET_logo_304"].P95MS < 50 && m6["POST_login"].P95MS < 400 && m6["POST_signup"].P95MS < 1000, m6}} {
 		logMeasurement(t, "target", map[string]any{"id": target.id, "passed": target.pass, "values": target.value})
 		if !target.pass {
-			t.Errorf("BENCH target %s failed; report and complete the phase checkpoint", target.id)
+			t.Errorf("BENCH target %s failed; report it and complete the checkpoint", target.id)
 		}
 	}
 	if recovered+failed != 0 {
@@ -435,7 +436,7 @@ func (e *environment) measureOriginal(t *testing.T, ctx context.Context, root ht
 	}
 	logMeasurement(t, "M-6", result)
 	// Export structured summaries independently of Go's text prefix, for the report generator.
-	dir := os.Getenv("PHASE9_BENCH_ARTIFACT_DIR")
+	dir := os.Getenv("PERFBENCH_ARTIFACT_DIR")
 	if dir != "" {
 		path := filepath.Join(dir, "m6.json")
 		data, err := json.MarshalIndent(result, "", "  ")

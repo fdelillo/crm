@@ -101,7 +101,8 @@ func TestTenantLockAllowlist(t *testing.T) {
 	}
 }
 
-func TestR0IdentityRowLocks(t *testing.T) {
+// T-B604 R0 (DD-40): store queries take only the allowed row locks.
+func TestStoreQueriesUseAllowedRowLocks(t *testing.T) {
 	root := "../../.."
 	err := filepath.WalkDir(filepath.Join(root, "internal"), func(p string, d fs.DirEntry, err error) error {
 		if err != nil {

@@ -11,7 +11,8 @@ import (
 	"testing"
 )
 
-func TestPhase9DeliveryMetrics(t *testing.T) {
+// T-B903 (ADR-024): delivery errors by cause and deferrals are counted in the outbox metrics.
+func TestDeliveryMetrics(t *testing.T) {
 	for _, cause := range []Cause{CauseNetwork, CauseTransient, CauseConfig, CauseRecipient, CauseBug} {
 		t.Run(string(cause), func(t *testing.T) {
 			runner, id, handler, d := newFixture(t)

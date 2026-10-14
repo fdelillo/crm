@@ -27,7 +27,8 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-func TestPhase9Readiness(t *testing.T) {
+// T-B903: /readyz answers 200 only when the database is reachable and migrated to the expected version.
+func TestReadinessHandler(t *testing.T) {
 	ctx := context.Background()
 	runner := db.NewTxRunner(pgtest.AppPool(t))
 	expected, err := migrations.ExpectedVersion(migrations.FS)
@@ -228,7 +229,8 @@ func (tx emptyVersionTx) QueryRow(ctx context.Context, query string, args ...any
 	return tx.Tx.QueryRow(ctx, query, args...)
 }
 
-func TestPhase9MetricNames(t *testing.T) {
+// T-B903, T-B1008: /debug/vars exposes the expected metric names.
+func TestMetricsExposeExpectedNames(t *testing.T) {
 	rec := httptest.NewRecorder()
 	app.NewMetricsServer(config.Config{}).Handler.ServeHTTP(rec, httptest.NewRequest("GET", "/debug/vars", nil))
 	var values map[string]json.RawMessage

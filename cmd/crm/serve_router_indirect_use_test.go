@@ -6,7 +6,8 @@ import (
 	"testing"
 )
 
-func TestRouterRevision13Mutations(t *testing.T) {
+// T-B801 (rules 4 and 5, mutations e-i): the router guard rejects protected functions used as values and listeners not obtained from env.listen.
+func TestRouterGuardIndirectUseAndListenMutations(t *testing.T) {
 	fset := token.NewFileSet()
 	imp := compositionImporter(t, fset)
 	for _, tc := range []struct {

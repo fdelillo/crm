@@ -72,6 +72,7 @@ func routeCoverage(t *testing.T, api chi.Router) int {
 	return len(seen)
 }
 
+// T-B801: every route of the API router has a declared isolation case and matches the OpenAPI paths.
 func TestIsolationRouteCoverage(t *testing.T) {
 	routeCoverage(t, app.BuildAPIRouter(nil, nil, clock.Real{}, slog.New(slog.NewTextHandler(io.Discard, nil))))
 }
@@ -168,7 +169,7 @@ func jsonBody(v any) []byte {
 	return b
 }
 
-// Only T-B801 supplies a counter. Other phases retain the same assertions without
+// Only T-B801 supplies a counter. Other tests reuse the same assertions without
 // contributing to its report; no global state or extra connection is involved.
 type isolationCount struct{ detections, sentinelChecks, stateChecks int }
 
@@ -324,6 +325,7 @@ func assertNoCompanyData(t *testing.T, body []byte, c e2e.Company) {
 	assertNoCompanyResponseData(t, rec, c, false)
 }
 
+// T-B801: the sentinels the isolation matrix looks for in responses are detected when present.
 func TestIsolationResponseSentinels(t *testing.T) {
 	c := e2e.Company{Suffix: "foreign-suffix", Reset: "raw-reset", Verification: "raw-verification", Invitation: "raw-invitation",
 		ETag: `"018fdcca-06d0-7b20-8c58-0842a9900239"`, Users: map[string]e2e.User{"operator": {Cookie: &http.Cookie{Value: "raw-cookie"}}}}
@@ -413,6 +415,7 @@ func TestIsolationResponseSentinels(t *testing.T) {
 	}
 }
 
+// T-B801 (SC-002): no request from one company reads or changes another company's data on any route.
 func TestIsolationHTTPMatrix(t *testing.T) {
 	counts := &isolationCount{}
 	covered, total := 0, 0
@@ -699,6 +702,7 @@ func assertOtherUsersUnchanged(t *testing.T, before, after string, changed uuid.
 
 func discardLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
+// T-B801: the isolation counters are plain values that report detections and checks.
 func TestIsolationCounterTypes(t *testing.T) {
 	counts := &isolationCount{}
 	counts.verify(t, true, "state check")
