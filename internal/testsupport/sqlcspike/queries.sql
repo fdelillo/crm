@@ -4,7 +4,7 @@ FROM app.tenants
 WHERE id = @tenant_id;
 
 -- name: LookupUserByEmail :one
--- Phase 1 style routing lookup as crm_auth: routing columns only (plan §4.4).
+-- Phase-one routing lookup as crm_auth: routing columns only (plan §4.4).
 SELECT id, tenant_id FROM app.users WHERE email = @email;
 
 -- name: InsertAuditLog :one

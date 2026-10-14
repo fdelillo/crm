@@ -22,7 +22,7 @@ type failingAccept struct {
 
 func (ln *failingAccept) Accept() (net.Conn, error) { close(ln.entered); return nil, ln.fault }
 
-// T-B904: a failure to bind the metrics listener names METRICS_ADDR even when the API server also fails.
+// T-B903, T-B904: a failure to bind the metrics listener names METRICS_ADDR even when the API server also fails.
 func TestRunServeMetricsBindErrorNamesAddressDespiteAPIFailure(t *testing.T) {
 	values := validEnv()
 	values["DATABASE_URL"] = pgtest.AppURL(t)

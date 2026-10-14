@@ -94,7 +94,7 @@ type LookupUserByEmailRow struct {
 	TenantID uuid.UUID
 }
 
-// Phase 1 style routing lookup as crm_auth: routing columns only (plan §4.4).
+// Phase-one routing lookup as crm_auth: routing columns only (plan §4.4).
 func (q *Queries) LookupUserByEmail(ctx context.Context, email string) (LookupUserByEmailRow, error) {
 	row := q.db.QueryRow(ctx, lookupUserByEmail, email)
 	var i LookupUserByEmailRow

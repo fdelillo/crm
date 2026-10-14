@@ -74,6 +74,13 @@ type twoAdminCompany struct {
 	aRaw, bRaw string
 }
 
+// signupFounder is the only administrator a signup leaves (A), with a real session. A company
+// only gets administrator B in newCompany.
+type signupFounder struct {
+	a    authz.Principal
+	aRaw string
+}
+
 type apiEnv struct {
 	t         *testing.T
 	root      http.Handler
@@ -123,7 +130,8 @@ func (e *apiEnv) token(tenantID uuid.UUID, recipient, template string) string {
 // an unverified administrator cannot invite) and adds administrator B. The founder is administrator A.
 func (e *apiEnv) newCompany() twoAdminCompany {
 	e.t.Helper()
-	c, email := e.newUnverifiedCompany()
+	f, email := e.newUnverifiedCompany()
+	c := twoAdminCompany{a: f.a, aRaw: f.aRaw}
 	token := e.token(c.a.TenantID, email, "email_verification")
 	if err := e.users.ConfirmEmailVerification(context.Background(), token, identity.RequestMeta{}); err != nil {
 		e.t.Fatal(err)
@@ -134,7 +142,7 @@ func (e *apiEnv) newCompany() twoAdminCompany {
 }
 
 // newUnverifiedCompany is what a signup leaves: one active administrator whose email is not verified.
-func (e *apiEnv) newUnverifiedCompany() (twoAdminCompany, string) {
+func (e *apiEnv) newUnverifiedCompany() (signupFounder, string) {
 	e.t.Helper()
 	suffix := uuid.NewString()
 	email := "admin-a-" + suffix + "@example.test"
@@ -144,7 +152,7 @@ func (e *apiEnv) newUnverifiedCompany() (twoAdminCompany, string) {
 		e.t.Fatal(err)
 	}
 	settleOutbox(e.t, e.runner, reg.Session.Principal.TenantID)
-	return twoAdminCompany{a: reg.Session.Principal, aRaw: reg.Session.RawToken}, email
+	return signupFounder{a: reg.Session.Principal, aRaw: reg.Session.RawToken}, email
 }
 
 // unverify clears email_verified_at of users of a company, to reach the state of a fresh signup.

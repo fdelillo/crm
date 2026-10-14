@@ -227,18 +227,26 @@ func TestHashWaitsForAHeldSlot(t *testing.T) { // P5
 }
 
 func TestSlotFailsClosedAfterRelease(t *testing.T) {
-	h := slotHasher()
+	var derivations atomic.Int32
+	h := newHasher(1, parameters{memory: 64, iterations: 1, parallelism: 1}, func(plain, salt []byte, p parameters) []byte {
+		derivations.Add(1)
+		return make([]byte, 32)
+	})
 	encoded, err := h.Hash(context.Background(), "correct horse")
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := acquireSlot(t, h)
 	s.Release()
+	derivations.Store(0) // the constructor and the setup Hash above derive; only the calls after Release count
 	if _, err := s.Hash("x"); !errors.Is(err, ErrSlotReleased) {
 		t.Fatalf("Hash after Release: %v", err)
 	}
 	if ok, _, err := s.Verify("correct horse", encoded); ok || !errors.Is(err, ErrSlotReleased) {
 		t.Fatalf("Verify after Release: ok=%v err=%v", ok, err)
 	}
-	s.VerifyDummy("x") // must not derive nor panic
+	s.VerifyDummy("x")
+	if n := derivations.Load(); n != 0 {
+		t.Fatalf("a released slot derived %d times", n)
+	}
 }

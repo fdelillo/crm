@@ -44,7 +44,7 @@ func TestCanceledCyclePreservesRealDeferralFailure(t *testing.T) {
 	}
 }
 
-// T-B908 (research R-27): a canceled periodic task still reports its real failure.
+// T-B901, T-B908 (R-27): a canceled periodic task still reports its real failure.
 func TestCanceledTaskPreservesRealFailure(t *testing.T) {
 	for _, failure := range []error{db.ErrUnavailable, fmt.Errorf("wrapped: %w", db.ErrUnavailable), context.Canceled, db.ErrCanceled} {
 		t.Run(failure.Error(), func(t *testing.T) {
