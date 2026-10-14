@@ -802,6 +802,30 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
   en verde; grep sin `[Pp]hase[0-9]`, `PHASE9` ni `[Rr]evision1[345]` en `*.go` fuera de los usos de
   dominio.
 
+  - **Renombre completo (2026-10-14)**: hecho en la rama `refactor/001-feature-names` (PR #21,
+    borrador), en tres commits de código y sin tocar texto de diseño más que esta entrada.
+    (1) `git mv` puro de los 5 archivos de producción y 38 de test de las tablas A y B más el
+    directorio `phase9bench` → `perfbench` (4 archivos): 43 renombres, todos R100 en
+    `git show --stat -M`. (2) Identificadores de las tablas B y C, cadenas de fixture
+    (`"mailpit-"`, `"mailpit-token"`, `"run-serve-"`, `"@reprovision.test"`), `PERFBENCH_*`,
+    `package perfbench_test`, los comentarios que quedaban falsos y el comentario de
+    trazabilidad `// T-B…` en cada `Test*` renombrado (más todos los de `users_*`, `tenant_*` e
+    `isolation_*` de `internal/app`); `settleOutbox` pasa a describirse como cortesía.
+    (3) `TestOutboxDeliversEmailToMailpit`: su mensaje lleva `next_attempt_at = 1970-01-01`
+    (UPDATE como superusuario tras encolarlo), así que `LockDueMessage` (orden por
+    `next_attempt_at, id`) lo toma primero sin importar los pendientes ajenos ni el orden de
+    los archivos; el bucle con tope de 50 `RunOnce` se conserva como red de seguridad.
+    Verificación (código en `45efe7a`): con el archivo renombrado a `zz_…` (ordena último),
+    `go test -race -tags=integration -count=1 ./internal/app/` en verde; con
+    `-shuffle=1`, `-shuffle=20261014` y `-shuffle=777` en verde. `go test -list` (sin tags, con
+    `integration` y con `bench`) antes (`e8112b7`) y después: idénticas una vez aplicados los
+    renombres de las tablas B y C. `make check` con `GOFLAGS=-count=1` en verde (lint 0 issues);
+    `go test -tags=bench -run TestBenchTracerFullSetControls ./internal/testsupport/perfbench/`
+    en verde; `grep -rnE --include='*.go' '[Pp]hase[0-9]|PHASE9|[Rr]evision1[345]' .` sin
+    resultados; `gofmt -l` vacío; todo `*_integration_test.go` lleva `//go:build integration`.
+    Quedan `Phase 1` en comentarios de `db/bootstrap`, `testsupport/pgtest` y `sqlcspike`
+    (con espacio, fuera del patrón y de las tablas; no se tocaron). Pendiente de revisión.
+
 ### Convenciones de esta sección
 
 - `[T]` = tarea de test. Va **antes** de la tarea de código que la hace pasar, y el test debe
