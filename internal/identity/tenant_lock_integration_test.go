@@ -172,7 +172,8 @@ func requireAuthAudit(t *testing.T, r db.TxRunner, c fixture.Company, action str
 	}))
 }
 
-func TestTenantLockRegressionE(t *testing.T) {
+// T-B604 (R1, R2, R4, mechanism E, DD-40): while an administrator holds the company lock, login, reset request and invitation acceptance do not wait for it.
+func TestHeldTenantLockDoesNotBlockAuthFlows(t *testing.T) {
 	for _, name := range []string{"R1", "R2", "R4"} {
 		t.Run(name, func(t *testing.T) {
 			s, r, c, email, ctx := lockFixture(t)
@@ -291,7 +292,9 @@ func TestTenantLockRegressionE(t *testing.T) {
 		})
 	}
 }
-func TestTenantLockRegressionR3(t *testing.T) {
+
+// T-B604 R3: confirming a password reset and disabling the same user, concurrently, both commit without a deadlock.
+func TestPasswordResetConfirmAndDisableBothCommit(t *testing.T) {
 	s, r, c, email, ctx := lockFixture(t)
 	session, err := s.Login(ctx, email, "old-password", RequestMeta{})
 	requireFlow(t, err)
@@ -368,7 +371,9 @@ func requireResetState(t *testing.T, s *Service, r db.TxRunner, c fixture.Compan
 		return err
 	}))
 }
-func TestTenantLockRegressionR5(t *testing.T) {
+
+// T-B604 R5 (DD-41): a login concurrent with a disable leaves a session that no longer resolves.
+func TestLoginDuringDisableLeavesUnresolvableSession(t *testing.T) {
 	s, r, c, email, ctx := lockFixture(t)
 	gate := &gatedLoginHasher{Hasher: s.hasher, entered: make(chan struct{}), release: make(chan struct{})}
 	s.hasher = gate

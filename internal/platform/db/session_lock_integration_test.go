@@ -10,7 +10,8 @@ import (
 	"testing"
 )
 
-func TestPhase9SessionLockReleased(t *testing.T) {
+// T-B907 (DD-33): the session-level lock is released after an error, a cancellation or a panic.
+func TestSessionLockReleasedAfterErrorCancelOrPanic(t *testing.T) {
 	ctx := context.Background()
 	locker := db.NewTxRunner(pgtest.AppPool(t)).(db.SessionLocker)
 	const key int64 = 0x54455354

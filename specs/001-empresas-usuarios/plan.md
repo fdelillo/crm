@@ -1452,7 +1452,7 @@ crm/
 │   │   ├── reprovision.go      # reaprovisionamiento de roles, una transacción por empresa (DD-33 R-d)
 │   │   ├── http.go             # incluye la lectura acotada del multipart (DD-31)
 │   │   └── store/              # *.sql (incluido provisioning.sql) + código generado por sqlc
-│   └── testsupport/            # solo tests: pgtest, apitest (httptest.NewTLSServer + cookiejar), fixture, isolation, queryrules, reporules, containers (referencias de imágenes, DD-36), contract (validador del contrato con libopenapi-validator, T-B311; único paquete que importa esa librería)
+│   └── testsupport/            # solo tests: pgtest, apitest (httptest.NewTLSServer + cookiejar), fixture, isolation, queryrules, reporules, containers (referencias de imágenes, DD-36), contract (validador del contrato con libopenapi-validator, T-B311; único paquete que importa esa librería), reprovision (integración de la reprovisión de roles, T-B906), perfbench (mediciones de T-B910; build tag `bench`, fuera de `make check`), sqlcspike (spike de sqlc)
 ├── web/                        # frontend (ADR-015, ADR-019); en Go, solo el paquete `web`:
 │   ├── embed.go                #   //go:embed all:dist + NewHandler (T-F007/T-F008)
 │   └── dist/                   #   build de Vite (ignorado por git salvo .gitkeep)

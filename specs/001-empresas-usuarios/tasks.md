@@ -779,6 +779,53 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
 
   **Corrección post-revisión (2026-10-14) — PR #20**: solo tests, más los nits de producción listados. Red: S9 y S10 pasan sin cambio de producción (caracterizan código correcto: el perdedor pasa la revalidación y recibe `ErrLastAdmin`), y quedan protegidos por mutaciones; Q1 con el `400`, Q6 extendido, S1/S2 con el log y el test unitario del `Slot` ya liberado pasan con el código actual, protegidos por las mutaciones de abajo. Mutaciones, cada una aplicada, vista fallar y restaurada: limiter después de decodificar → Q2 (también Q1b, Q4, Q5, Q6); cupo de empresa antes que el de IP → Q6; sin `protectLastAdmin` en `setUserRole` → S9; sin `protectLastAdmin` en `Deactivate` → S10; sin `LockUsersTenant` en `withManagedUser` → S9 y S10 (también S1, S2, S4); borrar el `WarnContext` → S1 y S2; `reason` fijo `session` → S1 y S2; quitar la comprobación `released` de `Slot.Hash` → `TestSlotFailsClosedAfterRelease`. Comprobación de C3 (sin mutación): con `settleOutbox` anulado, es decir con mensajes pendientes de otras empresas en el outbox compartido, el paquete `internal/app` completo pasa, incluido `TestPhase2EnqueueAndDeliverToMailpit`; restaurado. La API de Mailpit permite filtrar (`/api/v1/search?query=to:<destinatario>`, con `messages_count`). Cambios: `settleOutbox` falla el test en el `Cleanup` si no puede marcar los mensajes (M-I1); `slot` falla cerrado después de `Release` (`password.ErrSlotReleased`; `VerifyDummy` no hace nada); `ConfirmPasswordReset` corta con `ErrTokenInvalid` ante token vacío antes del `Acquire`; el chequeo de que el evento no lleva email usa ahora un body con email; comentarios en inglés, `requireRateLimitedProblem` sin parámetro sin uso, `requireProblem` renombrada `requireRetryAfter` (solo mira `Retry-After`), `nowNow` → `now`, y el comentario de `fixture/e2e` sobre el administrador sin verificar con invitados. `make check` completo verde sin caché (`GOFLAGS=-count=1`), lint 0 issues. Código probado en `3d941bdab9c7ab51544ffbe6d77da25efdffcf59`; el commit siguiente solo registra esta entrada.
 
+- **Renombre por funcionalidad (2026-10-14, *Accepted*: aprobado por el usuario el 2026-10-14)**:
+  archivos, tests, helpers y el paquete del bench nombrados por fase, revisión o id de caso pasan a
+  nombrarse por funcionalidad (tabla en "Renombre por funcionalidad (2026-10-14)"; regla en las
+  convenciones). Renombres: cinco archivos de producción de `internal/app` (`routes_*.go`), unos 40
+  archivos de test, identificadores de test (incluida la tabla C, ids de caso), `phase9bench` →
+  `perfbench` con sus variables de entorno `PHASE9_BENCH_*` → `PERFBENCH_*`, cadenas de fixture y
+  los comentarios que quedarían falsos. **Único cambio de lógica (de test)**: el diseño del renombre
+  encontró que `TestPhase2EnqueueAndDeliverToMailpit` depende del orden de los archivos (corre
+  `RunOnce` con tope y su mensaje sale último entre los pendientes vencidos que dejan otros tests;
+  si su archivo ordenara después de `isolation_*`, fallaría). El usuario decidió corregir el test en
+  este mismo PR en lugar de elegir un nombre que conserve el orden: el test pasa a no depender de
+  los pendientes ajenos (p. ej., su mensaje con `next_attempt_at` anterior a todos, o marcando los
+  pendientes ajenos como hacen los tests de shutdown y de `runServe`; lo elige el desarrollador).
+  Además: comentarios de trazabilidad (`// T-Bnnn (…): …`) en cada `Test*` renombrado, la regla en
+  las definiciones de `backend-developer`, `frontend-developer` y `code-reviewer`, y el árbol de
+  plan §11. Rama `refactor/001-feature-names` desde `main`. Commits: `git mv` puro (similitud 100 %),
+  identificadores y comentarios, el arreglo del test, y documentación. Verificación: la lista de
+  `go test -list` es la misma salvo los renombres; `make check` en verde sin caché;
+  `go test -race -tags=integration -count=1 -shuffle=on ./internal/app/` en verde (al menos 3
+  semillas); `go test -tags=bench -run TestBenchTracerFullSetControls ./internal/testsupport/perfbench/`
+  en verde; grep sin `[Pp]hase[0-9]`, `PHASE9` ni `[Rr]evision1[345]` en `*.go` fuera de los usos de
+  dominio.
+
+  - **Renombre completo (2026-10-14)**: hecho en la rama `refactor/001-feature-names` (PR #21,
+    borrador), en tres commits de código y sin tocar texto de diseño más que esta entrada.
+    (1) `git mv` puro de los 5 archivos de producción y 34 de test de las tablas A y B más el
+    directorio `phase9bench` → `perfbench` (4 archivos): 43 renombres, todos R100 en
+    `git show --stat -M`. (2) Identificadores de las tablas B y C, cadenas de fixture
+    (`"mailpit-"`, `"mailpit-token"`, `"run-serve-"`, `"@reprovision.test"`), `PERFBENCH_*`,
+    `package perfbench_test`, los comentarios que quedaban falsos y el comentario de
+    trazabilidad `// T-B…` en cada `Test*` renombrado (más todos los de `users_*`, `tenant_*` e
+    `isolation_*` de `internal/app`); `settleOutbox` pasa a describirse como cortesía.
+    (3) `TestOutboxDeliversEmailToMailpit`: su mensaje lleva `next_attempt_at = 1970-01-01`
+    (UPDATE como superusuario tras encolarlo), así que `LockDueMessage` (orden por
+    `next_attempt_at, id`) lo toma primero sin importar los pendientes ajenos ni el orden de
+    los archivos; el bucle con tope de 50 `RunOnce` se conserva como red de seguridad.
+    Verificación (código en `45efe7a`): con el archivo renombrado a `zz_…` (ordena último),
+    `go test -race -tags=integration -count=1 ./internal/app/` en verde; con
+    `-shuffle=1`, `-shuffle=20261014` y `-shuffle=777` en verde. `go test -list` (sin tags, con
+    `integration` y con `bench`) antes (`e8112b7`) y después: idénticas una vez aplicados los
+    renombres de las tablas B y C. `make check` con `GOFLAGS=-count=1` en verde (lint 0 issues);
+    `go test -tags=bench -run TestBenchTracerFullSetControls ./internal/testsupport/perfbench/`
+    en verde; `grep -rnE --include='*.go' '[Pp]hase[0-9]|PHASE9|[Rr]evision1[345]' .` sin
+    resultados; `gofmt -l` vacío; todo `*_integration_test.go` lleva `//go:build integration`.
+    Quedan `Phase 1` en comentarios de `db/bootstrap`, `testsupport/pgtest` y `sqlcspike`
+    (con espacio, fuera del patrón y de las tablas; no se tocaron). Pendiente de revisión.
+
 ### Convenciones de esta sección
 
 - `[T]` = tarea de test. Va **antes** de la tarea de código que la hace pasar, y el test debe
@@ -828,6 +875,33 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
   un outbox vacío: usa un destinatario único, corre `RunOnce` hasta que su mensaje queda `sent`
   (con un tope) y busca en Mailpit solo ese mensaje. Los demás tests no tienen que limpiar el
   outbox (`settleOutbox` puede quedar; no es una regla).
+- **Nombres por funcionalidad** (2026-10-14): archivos, funciones de test, subtests de primer
+  nivel, helpers, tipos de test y paquetes se nombran por lo que hacen o prueban (dominio o
+  componente: `routes_users.go`, `invitation_quotas_integration_test.go`, `TestSignupGlobalQuota`,
+  `newUsersServer`), **nunca** por la fase, la tarea (`T-Bnnn`), la revisión ni el id de un caso de
+  la tabla de una tarea (`Q1`, `R3`). La fase, la tarea y la revisión son historia del proyecto:
+  viven en git y en este archivo, no en el código. No cuentan como fase los números que son
+  identidad de un artefacto del dominio (la migración `00001`, la versión del contrato) ni la fase
+  SMTP de ADR-024 (`outbox.PhaseData`).
+  - **Trazabilidad**: cada función `Test*` lleva arriba un comentario con la tarea y los casos que
+    cubre, y una frase con el comportamiento: `// T-B1005 (Q1–Q8, DD-48): invitation and
+    reactivation share one quota per company and one per IP.` Un subtest o una fila de tabla solo
+    lleva comentario propio si su id de caso no está ya en su nombre. Un subtest puede empezar con
+    el id del caso **seguido de una descripción** (`"Q4 reactivation and invitation share one
+    company quota"`), porque así se filtra con `-run`; un subtest cuyo nombre es solo el id y que la
+    lógica usa como discriminante (`R1`, `L2`) no se renombra en un refactor de nombres.
+  - **Agrupación de los archivos de test**: un archivo por funcionalidad del paquete. El nombre es
+    el del archivo de producción que prueba (`routes_users.go` → `routes_users_test.go`) o, si
+    prueba un flujo que cruza archivos, el del flujo (`signup_integration_test.go`,
+    `isolation_permissions_integration_test.go`). Los de integración llevan el sufijo
+    `_integration_test.go` **y** `//go:build integration`; el bench, `//go:build bench`, en un
+    paquete propio. Un test nuevo va al archivo de su funcionalidad; si no existe, se crea con ese
+    criterio, nunca uno por fase.
+  - **Orden**: `go test` corre los tests de un paquete en el orden de los archivos (léxico) y de
+    declaración, pero ningún test depende de ese orden: si depende, es un bug del test y se
+    corrige (no se elige el nombre del archivo para conservar un orden).
+  - Las referencias históricas a nombres viejos (entradas de estado, plan §18, `revision-*.md`) no
+    se editan: se resuelven con "Renombre por funcionalidad (2026-10-14)".
 
 ### Comandos de validación (los crea la Fase 0)
 
@@ -2456,7 +2530,7 @@ de la fase y se agrega a plan §11.1 en el mismo cambio (matriz §16).
 **T-B909 — Implementar el apagado ordenado del servidor y del worker**. Quinta revisión (DD-35): el timeout de apagado es ≥ 25 s (`outbox.SendBudget` + 5 s), porque go-mail no corta una conversación SMTP en curso al cancelarse el contexto.
 
 **T-B910 — Re-medición con 10.000 empresas: retención del lock, ráfagas y desglose** · R-2, R-3, R-15, R-17, ADR-005, DD-33 (R-b, R-e), DD-34, INV-26 · decimotercera revisión
-- **Alcance**: solo código de test en `internal/testsupport/phase9bench/` (build tag `bench`, fuera de `make check`). Reemplaza a `TestPhase9Benchmark` de T-B905 y conserva sus mediciones: `registration_tx_10` y `registration_tx_50` se siguen reportando, sin target. No cambia el código de producción, `lock_timeout`, el pool de runtime, los targets ni el diseño. Si algo no se puede medir sin tocar producción, se reporta "no medido" y se sigue.
+- **Alcance**: solo código de test en `internal/testsupport/perfbench/` (build tag `bench`, fuera de `make check`). Reemplaza a `TestPhase9Benchmark` de T-B905 y conserva sus mediciones: `registration_tx_10` y `registration_tx_50` se siguen reportando, sin target. No cambia el código de producción, `lock_timeout`, el pool de runtime, los targets ni el diseño. Si algo no se puede medir sin tocar producción, se reporta "no medido" y se sigue.
 - **Entorno**:
   - El de la corrida 1: imagen por digest, `server_version` 18.6 verificada, 10.000 empresas con `Register` real, hash precalculado salvo en login y signup HTTP.
   - La medición usa un pool propio del bench como `crm_app`, con `pool_max_conns=8` **explícito** en el DSN.
@@ -2603,7 +2677,7 @@ La concurrencia de DD-44 y DD-45 la prueban T-B1001 y T-B1003; no se reproduce a
   | H5 login correcto con un hash de parámetros más débiles (rehash) | un solo `Acquire`; el `Slot` hace un `Verify` y un `Hash`; el hash guardado tiene los parámetros vigentes |
   | H6 email bloqueado (5 fallos previos) y el cupo ocupado por otro login | mientras espera, no toma una conexión; cuando obtiene el cupo, `LockedError` sin derivar (el `Slot` no registra llamadas) |
 - **Mutaciones**: `Acquire` dentro del callback de `InSystemTx` en `Login` → H1; lo mismo en `AcceptInvitation` o en `ConfirmPasswordReset` → H2 o H3; `Login` llama a `s.hasher.VerifyDummy(ctx, …)` dentro de la transacción → H1 (el fake falla); `Slot.Verify` vuelve a tomar el semáforo → P1 (vence el plazo); `Acquire` no cuenta contra el semáforo → P5; `Release` no idempotente → P3.
-- **Tests existentes que se adaptan, sin cambiar lo que prueban**: `gatedLoginHasher` (`token_flows_integration_test.go`) y `gatedResetHasher` (`tenant_lock_integration_test.go`, mecanismos U y V de T-B604) sobrescriben `Acquire` y devuelven un `Slot` con la compuerta. Los dos `countingHasher` (`identity` y `tenant`) implementan `Acquire`. Si un hasher instrumentado no se adapta, su test se cuelga esperando `entered`: no pasa en silencio. `phase9bench.prehashed` no cambia.
+- **Tests existentes que se adaptan, sin cambiar lo que prueban**: `gatedLoginHasher` (`token_flows_integration_test.go`) y `gatedResetHasher` (`tenant_lock_integration_test.go`, mecanismos U y V de T-B604) sobrescriben `Acquire` y devuelven un `Slot` con la compuerta. Los dos `countingHasher` (`identity` y `tenant`) implementan `Acquire`. Si un hasher instrumentado no se adapta, su test se cuelga esperando `entered`: no pasa en silencio. `perfbench.prehashed` no cambia.
 - **Green**: pasan las dos tablas, T-B402, T-B404 (DD-7 exacto con concurrencia) y T-B604 (R3, R5).
 
 **T-B1004 — Implementar DD-45**. `Slot` y `Hasher.Acquire` (plan §11.1). `Login`, `AcceptInvitation` y `ConfirmPasswordReset` reservan el cupo antes de abrir la transacción, lo sueltan con `defer` y derivan solo con el `Slot`. El registro no cambia: hashea antes de su transacción, con `Hasher.Hash`.
@@ -2625,7 +2699,7 @@ La concurrencia de DD-44 y DD-45 la prueban T-B1001 y T-B1003; no se reproduce a
 - **Mutaciones**: clave por IP en lugar de por empresa → Q1; clave por usuario → Q1b; limiter después de decodificar → Q2 (el `400` de Q1 no gasta y la 11.ª da `201`); limiter que gasta solo en los éxitos, después del servicio → Q2 (no gastan el `409`, el `422` ni el `400`); `reactivate` sin limiter o con un cupo propio → Q4; limiter antes de `RequirePermission` → Q7; sin el cupo por IP → Q6; el cupo de empresa antes que el de IP → Q6 (la 3.ª desde la otra IP da `429`).
 - **Green**: pasa la tabla.
 
-**T-B1006 — Implementar DD-48**. `ratelimit.KeyFunc` y `ratelimit.MiddlewareBy`; `Middleware` pasa a ser `MiddlewareBy` con la clave por IP, sin cambio de comportamiento (lo cubren T-B217 y T-B606). En `internal/app`, `tenantKey` y los dos limiters en `BuildAPIRouter`, aplicados con `With` a las dos rutas, después de `Authenticate` y `RequirePermission`, primero el de IP y después el de empresa. Contrato: `429` en `inviteUser` y en `reactivateUser`. Tests existentes que se adaptan: `RegisterUserRoutes` recibe los dos limiters (`phase6_test.go`, `phase6Server`), y `TestIsolationHTTPMatrix` (caso `foreign_id`), que llamaba al router de la API sin el middleware común, lo envuelve con `httpx.ClientIP` como producción: sin dirección de cliente, la clave por IP de `reactivate` responde `500` (bug de cableado, `KeyFunc`).
+**T-B1006 — Implementar DD-48**. `ratelimit.KeyFunc` y `ratelimit.MiddlewareBy`; `Middleware` pasa a ser `MiddlewareBy` con la clave por IP, sin cambio de comportamiento (lo cubren T-B217 y T-B606). En `internal/app`, `tenantKey` y los dos limiters en `BuildAPIRouter`, aplicados con `With` a las dos rutas, después de `Authenticate` y `RequirePermission`, primero el de IP y después el de empresa. Contrato: `429` en `inviteUser` y en `reactivateUser`. Tests existentes que se adaptan: `RegisterUserRoutes` recibe los dos limiters (`routes_users_test.go`, `newUsersServer`), y `TestIsolationHTTPMatrix` (caso `foreign_id`), que llamaba al router de la API sin el middleware común, lo envuelve con `httpx.ClientIP` como producción: sin dirección de cliente, la clave por IP de `reactivate` responde `500` (bug de cableado, `KeyFunc`).
 
 **T-B1007 [T] — Cupo global de registros** · FR-001, DD-9, DD-33 R-f, DD-49
 - **Red** (HTTP + contrato, reloj falso, router real; los bodies son inválidos y responden `422` sin crear empresas, para no crear roles en el test):
@@ -2640,7 +2714,7 @@ La concurrencia de DD-44 y DD-45 la prueban T-B1001 y T-B1003; no se reproduce a
 - **Mutaciones**: clave global por IP → G2; el cupo global antes que el de IP → G4; el cupo global después de validar el body → G2; sin la métrica o sin el log → G2.
 - **Green**: pasa la tabla. El test no corre en paralelo con otros registros (convención de T-B303).
 
-**T-B1008 — Implementar DD-49**. Segundo limiter en `tenant.RegisterRoutes`, con clave constante, después del de IP (`MiddlewareBy` de T-B1006). Constantes en `BuildAPIRouter`. Métrica `signup_global_limited_total` (`expvar`) y el evento. `RegisterRoutes` recibe los dos limiters (se adaptan los servidores de test que la llaman) y `TestPhase9MetricNames` suma la métrica. El runbook y la alerta de ritmo ya están en el plan (§12.3 y §12.4).
+**T-B1008 — Implementar DD-49**. Segundo limiter en `tenant.RegisterRoutes`, con clave constante, después del de IP (`MiddlewareBy` de T-B1006). Constantes en `BuildAPIRouter`. Métrica `signup_global_limited_total` (`expvar`) y el evento. `RegisterRoutes` recibe los dos limiters (se adaptan los servidores de test que la llaman) y `TestMetricsExposeExpectedNames` suma la métrica. El runbook y la alerta de ritmo ya están en el plan (§12.3 y §12.4).
 
 **T-B1009 [T] — Invitar exige email verificado** *(DD-46, opción B)* · US-3.1, FR-005, DD-4, DD-9, DD-13, DD-46 (con la enmienda H-16), INV-37
 - **Red** (integración de servicio y HTTP + contrato; V7 sigue el `validation_plan.local` de la auditoría):
@@ -2665,12 +2739,83 @@ La concurrencia de DD-44 y DD-45 la prueban T-B1001 y T-B1003; no se reproduce a
   | V8i U1 confirma con el token del último `202` de V8e | `204` (ningún `429` revocó un enlace) |
   | V9 caracterización: un admin sin verificar no tiene a nadie que reactivar | en una empresa recién registrada, `ListUsers` solo lo tiene a él, y `Reactivate` de cualquier id da `404` |
 - **Mutaciones**: sin el gate → V1, V7; el gate después de `FindInvitedEmail` o del `INSERT` → V2; el reset no verifica → V5, V7; el reset pisa un `email_verified_at` existente → V6; sin el cupo por usuario del reenvío → V8b (`202`); el cupo responde `202` sin enviar (versión del 2026-10-12) → V8b; clave por IP (`ratelimit.Middleware` en lugar de `MiddlewareBy` con `userKey`) → V8b (el 4.º llega desde una IP nueva); clave por empresa o constante → V8d; `Retry-After` fijo de 20 min → V8c (espera `900`); orden `Authenticate` → cupo por usuario → cupo por IP → V8f (el `429` por IP gasta el cupo de U3 y el 3.º desde Y da `429`) y V8g (`1200` en lugar de `180`); el cupo dentro de `ResendEmailVerification` después de mirar `email_verified_at` (cuenta solo los envíos) → V8h; el `429` después de llamar al servicio (encola, o revoca el enlace vigente) → V8b, V8i.
-- **Fixtures**: todo test que invita con el admin de `fixture.NewCompany` o con el de un registro nuevo tiene que verificar antes su email (`usersFixture`, los tests HTTP de la Fase 6, los fixtures de la Fase 8 y `fixture/e2e`). Los mismos tests lo muestran como Red. Cómo quedó (aclaración del 2026-10-14): `usersFixture` es `unverifiedFixture` (la empresa recién registrada) con `email_verified_at` fijado; `usersSignup` y `phase7Handler` confirman el email del fundador con el enlace del outbox por la ruta real (por eso `phase6Server` registra las rutas de recuperación); `TestInvitationPreviewAcceptanceAndInvalidTokens/wrong_purpose` borra `email_verified_at` antes del reenvío, porque el reenvío solo emite un enlace a un usuario sin verificar; `fixture/e2e` termina con los administradores sin verificar (Fixture común de la Fase 8), y los dos tests que invitan con ellos (el caso `invite` de la matriz de aislamiento y la fila `POST /users/invitations` de la matriz de permisos) llaman antes a `Scenario.VerifyAdmin`.
+- **Fixtures**: todo test que invita con el admin de `fixture.NewCompany` o con el de un registro nuevo tiene que verificar antes su email (`usersFixture`, los tests HTTP de la Fase 6, los fixtures de la Fase 8 y `fixture/e2e`). Los mismos tests lo muestran como Red. Cómo quedó (aclaración del 2026-10-14): `usersFixture` es `unverifiedFixture` (la empresa recién registrada) con `email_verified_at` fijado; `usersSignup` y `newTenantHandler` confirman el email del fundador con el enlace del outbox por la ruta real (por eso `newUsersServer` registra las rutas de recuperación); `TestInvitationPreviewAcceptanceAndInvalidTokens/wrong_purpose` borra `email_verified_at` antes del reenvío, porque el reenvío solo emite un enlace a un usuario sin verificar; `fixture/e2e` termina con los administradores sin verificar (Fixture común de la Fase 8), y los dos tests que invitan con ellos (el caso `invite` de la matriz de aislamiento y la fila `POST /users/invitations` de la matriz de permisos) llaman antes a `Scenario.VerifyAdmin`.
 - **Green**: pasa la tabla.
 
 **T-B1010 — Implementar DD-46** *(opción B)*. `ErrEmailNotVerified` y el gate en `Invite`, con la fila de `requireActor`, mapeado a `403 email_not_verified` (el `httpx.CodeEmailNotVerified` y su fila en `problems` ya están en `main` desde el PR fdelillo/crm#19, porque `TestProblemCodesMatchContract` exige que el código siga al contrato). `SetResetPassword` también completa `email_verified_at` si era nulo. Cupo por usuario del reenvío de la verificación (DD-46 (3) con la enmienda H-16): un `ratelimit.Limiter` de 3 de ráfaga y 1 cada 20 min, construido en `BuildAPIRouter` con los demás y pasado a `RegisterRecoveryRoutes`. Esa función lo aplica con `ratelimit.MiddlewareBy(limiter, userKey)` en `POST /auth/email-verification/resend`, **después** de `ratelimit.Middleware(verificationLimiter)` y de `identity.Authenticate`. `userKey` (`internal/app`, no exportada, como `tenantKey`) devuelve `Principal.UserID`; sin `Principal`, `ok == false` → `500` (bug de cableado). Sin cupo, el middleware responde `429 rate_limited` con `Retry-After` y el handler no corre: `ResendEmailVerification` no cambia. Depende de `MiddlewareBy` (T-B1006, paso 3). En el contrato cambia solo la descripción de `resendEmailVerification`: el `429` ya estaba declarado. Texto nuevo de `email_verification.txt` y `.html`: «Si no creaste una cuenta con este email, no abras el enlace: confirmarlo le daría acceso a quien la creó. Podés ignorar este mensaje.» Contrato v0.5.0.
 
 **Checkpoint Fase 10**: `make check` en verde + la prueba independiente. La entrada de estado reporta las mutaciones de T-B1001, T-B1003, T-B1005, T-B1007 y T-B1009, cada una con el caso que falla.
+
+---
+
+### Renombre por funcionalidad (2026-10-14)
+
+Equivalencias para resolver las referencias históricas (entradas de estado, plan §18,
+`revision-*.md`), que no se editan. Convención: "Nombres por funcionalidad" en las convenciones de
+esta sección. Solo nombres, salvo el arreglo del test de Mailpit (entrada de estado del renombre).
+No se renombran los usos de dominio de "phase": la fase SMTP (`outbox.Phase*`,
+`classifyCodeInPhase`, `TestConnectionPhase…`, `…InDataPhase`, `smtp_phase`), la etapa de la sonda
+en `waitRuntimeConnections`, los "phase-one lookups" de `queryrules` (plan §4.4) y
+`TestMigration00001_*`.
+
+**A. Producción (`internal/app`)**
+
+| Viejo | Nuevo | Contenido |
+|---|---|---|
+| `phase3.go` | `routes_me.go` | `RegisterMeRoute` |
+| `phase4.go` | `routes_auth.go` | `RegisterAuthRoutes` |
+| `phase5.go` | `routes_recovery.go` | `RegisterRecoveryRoutes`, `requestMeta`, `userKey` |
+| `phase6.go` | `routes_users.go` | `RegisterUserRoutes`, `tenantKey`, `writeUserError` |
+| `phase7.go` | `routes_tenant.go` | `RegisterTenantRoutes` |
+
+**B. Tests, helpers y paquete**
+
+| Paquete | Archivo viejo → nuevo | Identificadores viejo → nuevo |
+|---|---|---|
+| `internal/app` | `common_phase2_test.go` → `common_middleware_test.go` | `TestPhase2CommonMiddleware` → `TestCommonMiddlewareCSRFSecurityHeadersAndCache`; `phase2Root` → `commonMiddlewareRoot` |
+| `internal/app` | `phase2_independent_integration_test.go` → `email_delivery_integration_test.go` | `TestPhase2EnqueueAndDeliverToMailpit` → `TestOutboxDeliversEmailToMailpit`; `"phase2-"` → `"mailpit-"`; `"phase2token"` → `"mailpit-token"` |
+| `internal/app` | `phase3_integration_test.go` → `signup_integration_test.go` | `TestPhase3SignupAndMe` → `TestSignupAndMeHTTP`; `phase3Server` → `newAuthServer`; `phase3ServerWithAbsolute` → `newAuthServerWithAbsolute`; `phase3ServerWithLoginClock` → `newAuthServerWithLoginClock` |
+| `internal/app` | `phase4_integration_test.go` → `login_integration_test.go` | `TestPhase4LoginLockAndLogout` → `TestLoginLockAndLogoutHTTP`; `TestPhase4LoginIPRateLimit` → `TestLoginIPRateLimitHTTP` |
+| `internal/app` | `phase5_integration_test.go` → `recovery_integration_test.go` | — |
+| `internal/app` | `phase6_integration_test.go` → `users_integration_test.go` | `phase6Server` → `newUsersServer` |
+| `internal/app` | `phase6_test.go` → `routes_users_test.go` | — |
+| `internal/app` | `phase7_integration_test.go` → `tenant_integration_test.go` | `phase7Handler` → `newTenantHandler`; `TestTenantHTTPPatchRevisionSemantics` → `TestTenantHTTPPatchNullAndEmptySemantics` |
+| `internal/app` | `phase7_validation_integration_test.go` → `tenant_validation_integration_test.go` | — |
+| `internal/app` | `phase8_integration_test.go` → `isolation_http_integration_test.go` | — |
+| `internal/app` | `phase8_flows_integration_test.go` → `isolation_flows_integration_test.go` | — |
+| `internal/app` | `phase8_permissions_integration_test.go` → `isolation_permissions_integration_test.go` | — |
+| `internal/app` | `phase9_cleanup_integration_test.go` → `cleanup_integration_test.go` | `TestPhase9Cleanup` → `TestCleanupDeletesOnlyExpiredRowsAsWorker` |
+| `internal/app` | `phase9_metrics_test.go` → `metrics_server_test.go` | — |
+| `internal/app` | `phase9_ops_integration_test.go` → `ops_integration_test.go` | `TestPhase9Readiness` → `TestReadinessHandler`; `TestPhase9MetricNames` → `TestMetricsExposeExpectedNames` |
+| `internal/app` | `phase9_samples_integration_test.go` → `sampled_gauges_integration_test.go` | `TestPhase9SampledGauges` → `TestSampledGauges` |
+| `internal/app` | `phase9_shutdown_integration_test.go` → `shutdown_integration_test.go` | `TestPhase9Shutdown` → `TestShutdownDrainsRequestAndDelivery` |
+| `internal/app` | `phase10_actor_integration_test.go` → `actor_revalidation_integration_test.go` | `phase10Env` → `apiEnv`; `newPhase10Env` → `newAPIEnv`; `newPhase10EnvWithLogger` → `newAPIEnvWithLogger`; `phase10Company` → `twoAdminCompany` |
+| `internal/app` | `phase10_invite_limits_integration_test.go` → `invitation_quotas_integration_test.go` | (usa `apiEnv`, `twoAdminCompany`) |
+| `internal/app` | `phase10_signup_limit_integration_test.go` → `signup_global_quota_integration_test.go` | (usa `apiEnv`) |
+| `internal/app` | `phase10_verified_integration_test.go` → `email_verification_integration_test.go` | (usa `apiEnv`) |
+| `cmd/crm` | `phase9_bind_integration_test.go` → `serve_metrics_bind_integration_test.go` | `TestPhase9MetricsBindNamesAddressDespiteAPIFailure` → `TestRunServeMetricsBindErrorNamesAddressDespiteAPIFailure` |
+| `cmd/crm` | `phase9_metrics_test.go` → `serve_metrics_test.go` | — |
+| `cmd/crm` | `phase9_serve_integration_test.go` → `serve_integration_test.go` | `TestPhase9RunServe` → `TestRunServeStopsServersAndWorker`; `"phase9-serve-"` → `"run-serve-"` |
+| `cmd/crm` | `phase9_tenants_integration_test.go` → `tenants_integration_test.go` | `TestPhase9ReprovisionCommand` → `TestReprovisionRolesCommand` |
+| `cmd/crm` | `phase9_tenants_test.go` → `tenants_test.go` | — |
+| `cmd/crm` | `serve_router_revision13_test.go` → `serve_router_indirect_use_test.go` | `TestRouterRevision13Mutations` → `TestRouterGuardIndirectUseAndListenMutations` |
+| `cmd/crm` | `serve_router_revision14_test.go` → `serve_router_env_test.go` | `revision14EnvStruct` → `envStructSource`; `TestRouterRevision14Rule4Mutations` → `TestRouterGuardEnvAliasingMutations`; `TestRouterRevision14Rule6Mutations` → `TestRouterGuardForbiddenImportMutations` |
+| `cmd/crm` | `serve_router_revision15_test.go` → `serve_router_generics_test.go` | `TestRouterRevision15TypeParameterMutations` → `TestRouterGuardTypeParameterMutations`; `TestRouterRevision15ExternalGenericInstantiation` → `TestRouterGuardAllowsExternalGenericInstantiation` |
+| `internal/platform/outbox` | `phase9_cancel_error_integration_test.go` → `cancellation_errors_integration_test.go` | `TestPhase9CanceledCyclePreservesRealDeferralFailure` → `TestCanceledCyclePreservesRealDeferralFailure`; `TestPhase9CanceledTaskPreservesRealFailure` → `TestCanceledTaskPreservesRealFailure` |
+| `internal/platform/outbox` | `phase9_metrics_integration_test.go` → `metrics_integration_test.go` | `TestPhase9DeliveryMetrics` → `TestDeliveryMetrics` |
+| `internal/platform/outbox` | `phase9_periodic_integration_test.go` → `periodic_tasks_integration_test.go` | `TestPhase9PeriodicSchedulingAndFailure` → `TestPeriodicTaskSchedulingAndFailure`; `TestPhase9PeriodicCancellationRollsBack` → `TestPeriodicTaskCancellationRollsBack` |
+| `internal/platform/db` | `session_lock_integration_test.go` (sin cambio) | `TestPhase9SessionLockReleased` → `TestSessionLockReleasedAfterErrorCancelOrPanic` |
+| `internal/testsupport/isolation` | `phase8_integration_test.go` → `isolation_integration_test.go` | — |
+| `internal/testsupport/reprovision` | `phase9_integration_test.go` → `reprovision_integration_test.go` | `TestPhase9Reprovision` → `TestReprovisionTenantRoles`; `"@phase9.test"` → `"@reprovision.test"` |
+| paquete | `internal/testsupport/phase9bench/` → `internal/testsupport/perfbench/` | `package phase9bench_test` → `package perfbench_test`; `TestPhase9Measurements` → `TestPerformanceMeasurements`; `PHASE9_BENCH_TRACE_FILES`, `PHASE9_BENCH_ARTIFACT_DIR`, `PHASE9_BENCH_RUN` → `PERFBENCH_TRACE_FILES`, `PERFBENCH_ARTIFACT_DIR`, `PERFBENCH_RUN`; `TestPhase9Benchmark` (eliminado por T-B910) no tiene equivalente |
+
+**C. Ids de caso en nombres de función**
+
+| Archivo | Viejo → nuevo |
+|---|---|
+| `internal/identity/tenant_lock_integration_test.go` | `TestTenantLockRegressionE` → `TestHeldTenantLockDoesNotBlockAuthFlows`; `TestTenantLockRegressionR3` → `TestPasswordResetConfirmAndDisableBothCommit`; `TestTenantLockRegressionR5` → `TestLoginDuringDisableLeavesUnresolvableSession` |
+| `internal/testsupport/queryrules/rowlocks_test.go` | `TestR0IdentityRowLocks` → `TestStoreQueriesUseAllowedRowLocks` |
+| `internal/testsupport/queryrules/queryrules_test.go` | `TestDefaultExceptionsAreTheFourFilesOfPlanSection44` → `TestDefaultExceptionsAreTheFourSystemQueryFiles` |
 
 ---
 
@@ -2800,6 +2945,14 @@ contrato sigue en v0.5.0 y los tipos generados son los mismos), T-F402 (P-F7: el
   fallar por la razón correcta antes de implementar (Red).
 - Trazabilidad: `US-n` (historia de la spec), `FR-`, `SC-`, `P-` (plan), `DD-` (plan), `BR-F`,
   `INV-F`, `DD-F`, `NFR-F`, `H-` (hallazgos) y secciones de `ui.md`; `ADR-`.
+- **Nombres por funcionalidad** (misma regla que el backend, 2026-10-14): archivos, componentes,
+  hooks, tests (`*.test.ts(x)` junto al código), specs de Playwright (`web/e2e/<flujo>.spec.ts`),
+  handlers y fixtures de MSW se nombran por la funcionalidad o el recurso (`features/users/…`,
+  `invite-user.spec.ts`, `usersHandlers`), **nunca** por la fase (`F5`), la tarea (`T-F502`), la
+  revisión ni el id de un caso. Los `describe`/`it` describen el comportamiento que percibe el
+  usuario. La trazabilidad va en un comentario arriba del `describe` o del `it`:
+  `// T-F502 (BR-F14, DD-48): …`. Un `it` puede empezar con el id del caso seguido de la
+  descripción.
 - **Se prueba lo que el usuario percibe**: consultas por rol y nombre accesible
   (`getByRole('button', { name: 'Crear cuenta' })`), nunca por clase CSS ni estructura del DOM;
   nada de estado interno ni conteo de renders.
