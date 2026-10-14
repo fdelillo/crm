@@ -72,7 +72,7 @@ func TestRouterGuardEnvAliasingMutations(t *testing.T) {
 	}
 }
 
-// T-B801 (rule 6, mutations p and q): the router guard rejects unsafe and reflect imports in cmd/crm.
+// T-B801 (rule 6, mutations p and q): the router guard rejects unsafe and reflect imports (and the cgo import of "C") in cmd/crm.
 func TestRouterGuardForbiddenImportMutations(t *testing.T) {
 	fset := token.NewFileSet()
 	imp := compositionImporter(t, fset)

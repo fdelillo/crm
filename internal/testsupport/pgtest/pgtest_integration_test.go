@@ -42,8 +42,8 @@ func TestAppPool_RoleAttributes(t *testing.T) {
 	}
 }
 
-// INV-02: a query outside a role switch fails closed. There are no company tables until Phase 1,
-// so the test creates its own as crm_owner (which gets the default privileges of migration 00001)
+// INV-02: a query outside a role switch fails closed. The test creates its own table as crm_owner
+// (which gets the default privileges of migration 00001) instead of relying on a company table,
 // and checks crm_app cannot touch it.
 func TestAppPool_NoDirectAccessToAppTables(t *testing.T) {
 	t.Parallel()

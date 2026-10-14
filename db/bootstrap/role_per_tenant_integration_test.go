@@ -3,8 +3,8 @@
 // This spike checks, against a real PostgreSQL 18, the assumption ADR-005 rests on: a role created
 // and granted to crm_app inside a transaction can be used with SET LOCAL ROLE in that same
 // transaction, with no intermediate COMMIT, and vanishes on ROLLBACK (INV-14). It uses a helper
-// function shaped like provisioning.provision_tenant_role (data-model.md §3.3, Phase 1) because
-// the real one does not exist yet.
+// function shaped like provisioning.provision_tenant_role (data-model.md §3.3) that lives in the
+// test itself, so the assumption is checked in isolation from the real migration.
 package bootstrap_test
 
 import (
@@ -304,7 +304,7 @@ func TestSpike_NewRoleHasCompanyPrivilegesBeforeCommit(t *testing.T) {
 
 	// A company table as a migration creates it: crm_owner owns it, RLS is forced, and the default
 	// privileges of migration 00001 give crm_tenant SELECT and INSERT. The policy avoids
-	// app.current_tenant_id(), which arrives in Phase 1.
+	// app.current_tenant_id() so the table depends only on the bootstrap roles.
 	owner := pgtest.OwnerPool(t)
 	for _, q := range []string{
 		`CREATE TABLE ` + table + ` (id uuid NOT NULL DEFAULT uuidv7(), tenant_id uuid NOT NULL, note text NOT NULL)`,

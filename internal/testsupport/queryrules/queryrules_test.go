@@ -189,8 +189,8 @@ func TestDefaultExceptionsAreExactPaths(t *testing.T) {
 	}
 }
 
-// T-B112 (plan §4.4): the default exceptions are exactly the four system-query files.
-// The four system-query files of plan §4.4, by exact path and nothing else.
+// T-B112 (plan §4.4): the default exceptions are exactly the four system-query files, by exact
+// path and nothing else.
 func TestDefaultExceptionsAreTheFourSystemQueryFiles(t *testing.T) {
 	var got []string
 	for _, e := range queryrules.DefaultExceptions {

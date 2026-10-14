@@ -172,7 +172,7 @@ func requireAuthAudit(t *testing.T, r db.TxRunner, c fixture.Company, action str
 	}))
 }
 
-// T-B604 (R1, R2, R4, mechanism E, DD-40): while an administrator holds the company lock, login, reset request and invitation acceptance do not wait for it.
+// T-B604 (R1, R2, R4, mechanism E, DD-40): while an administrator holds the company lock, a login and a reset request (of an active user, and of an invited one, which reissues the invitation) do not wait for it.
 func TestHeldTenantLockDoesNotBlockAuthFlows(t *testing.T) {
 	for _, name := range []string{"R1", "R2", "R4"} {
 		t.Run(name, func(t *testing.T) {

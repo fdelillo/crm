@@ -363,7 +363,7 @@ func TestTenantHTTPLogoCacheLifecycle(t *testing.T) {
 	tenantRequest(t, h, admin, "DELETE", "/api/v1/tenant/logo", "", nil, "", 204)
 }
 
-// T-B705 (DD-43): PATCH /tenant distinguishes absent, null and empty fields.
+// T-B705 (DD-43): PATCH /tenant rejects null name and timezone with 400 and no change, stores an empty phone as NULL, and answers 422 invalid_timezone for timezone "Local" (DD-27).
 func TestTenantHTTPPatchNullAndEmptySemantics(t *testing.T) {
 	h, admin, _, _ := newTenantHandler(t)
 	for _, body := range []string{`{"name":null}`, `{"timezone":null}`} {

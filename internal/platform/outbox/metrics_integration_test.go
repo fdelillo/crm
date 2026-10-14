@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// T-B903 (ADR-024): delivery errors by cause and deferrals are counted in the outbox metrics.
+// T-B903 (ADR-024): delivery errors by cause and deferrals are counted in the outbox metrics; a delivery rolled back before commit is not counted, and a failing outbox_stats task logs an ERROR.
 func TestDeliveryMetrics(t *testing.T) {
 	for _, cause := range []Cause{CauseNetwork, CauseTransient, CauseConfig, CauseRecipient, CauseBug} {
 		t.Run(string(cause), func(t *testing.T) {
