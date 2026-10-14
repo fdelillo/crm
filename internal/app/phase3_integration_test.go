@@ -51,7 +51,8 @@ func phase3ServerWithLoginClock(t *testing.T, absolute time.Duration, loginClock
 	companies := tenant.NewService(runner, users, industrytemplate.NoopSeeder{}, hasher, recorder, logger)
 	r := app.NewAPIRouter()
 	industrytemplate.RegisterRoutes(r)
-	tenant.RegisterRoutes(r, companies, ratelimit.NewLimiter(rate.Every(12*time.Minute), 5, c, time.Hour), logger)
+	tenant.RegisterRoutes(r, companies, ratelimit.NewLimiter(rate.Every(12*time.Minute), 5, c, time.Hour),
+		ratelimit.NewLimiter(rate.Every(time.Minute), 30, c, time.Hour), logger)
 	app.RegisterAuthRoutes(r, users, companies, ratelimit.NewLimiter(rate.Every(3*time.Second), 20, loginClock, time.Minute), logger)
 	app.RegisterMeRoute(r, users, companies, logger)
 	app.RegisterRecoveryRoutes(r, users, ratelimit.NewLimiter(rate.Every(12*time.Minute), 5, c, time.Hour),

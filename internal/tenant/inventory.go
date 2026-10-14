@@ -22,6 +22,7 @@ var publishedInventory atomic.Pointer[RoleInventory]
 func init() {
 	expvar.Publish("signup_email_exists_total", expvar.Func(func() any { return SignupEmailExistsCount() }))
 	expvar.Publish("signup_lock_timeout_total", expvar.Func(func() any { return SignupLockTimeoutCount() }))
+	expvar.Publish("signup_global_limited_total", expvar.Func(func() any { return SignupGlobalLimitedCount() }))
 	for _, name := range []string{"tenants_total", "tenant_roles_total", "tenant_roles_missing"} {
 		expvar.Publish(name, expvar.Func(func() any {
 			inventory := publishedInventory.Load()

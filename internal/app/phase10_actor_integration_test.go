@@ -88,7 +88,11 @@ type phase10Env struct {
 // and a first company with two active administrators A and B.
 func newPhase10Env(t *testing.T) *phase10Env {
 	t.Helper()
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return newPhase10EnvWithLogger(t, slog.New(slog.NewTextHandler(io.Discard, nil)))
+}
+
+func newPhase10EnvWithLogger(t *testing.T, logger *slog.Logger) *phase10Env {
+	t.Helper()
 	c := clock.Real{}
 	runner := &gatedRunner{TxRunner: db.NewTxRunner(pgtest.AppPool(t), db.WithLogger(logger))}
 	h := password.NewHasher(2)

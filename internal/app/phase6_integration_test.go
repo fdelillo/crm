@@ -53,7 +53,8 @@ func phase6Server(t *testing.T) (*apitest.Server, *usersHTTPClock, db.TxRunner) 
 	users := identity.NewService(runner, outbox.NewEnqueuer(c), c, 24*time.Hour, 7*24*time.Hour, identity.WithAuthentication(h, recorder, []byte("0123456789abcdef0123456789abcdef"), logger))
 	companies := tenant.NewService(runner, users, industrytemplate.NoopSeeder{}, h, recorder, logger)
 	r := app.NewAPIRouter()
-	tenant.RegisterRoutes(r, companies, ratelimit.NewLimiter(rate.Every(12*time.Minute), 5, c, time.Hour), logger)
+	tenant.RegisterRoutes(r, companies, ratelimit.NewLimiter(rate.Every(12*time.Minute), 5, c, time.Hour),
+		ratelimit.NewLimiter(rate.Every(time.Minute), 30, c, time.Hour), logger)
 	app.RegisterAuthRoutes(r, users, companies, ratelimit.NewLimiter(rate.Every(3*time.Second), 20, c, time.Minute), logger)
 	app.RegisterMeRoute(r, users, companies, logger)
 	app.RegisterUserRoutes(r, users, companies, ratelimit.NewLimiter(rate.Every(3*time.Minute), 20, c, time.Hour),
