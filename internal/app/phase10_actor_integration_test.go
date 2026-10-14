@@ -97,6 +97,7 @@ func newPhase10Env(t *testing.T) *phase10Env {
 		t.Fatal(err)
 	}
 	env := &phase10Env{t: t, users: users, runner: runner, a: reg.Session.Principal, aRaw: reg.Session.RawToken}
+	settleOutbox(t, runner, env.a.TenantID)
 	invited, _, err := users.Invite(ctx, env.a, "admin-b-"+suffix+"@example.test", authz.RoleAdmin, identity.RequestMeta{})
 	if err != nil {
 		t.Fatal(err)
@@ -115,6 +116,19 @@ func newPhase10Env(t *testing.T) *phase10Env {
 	api := app.BuildAPIRouter(users, companies, c, logger)
 	env.root = app.NewRootHandler(app.RootDeps{API: api, Liveness: app.LivenessHandler(), Readiness: app.ReadinessPlaceholder(), SPA: app.SPAUnavailableHandler()}, app.NewCommonMiddleware(logger, true, nil))
 	return env
+}
+
+// settleOutbox marks the company's pending messages as sent when the test ends. The Phase 2 test
+// drains the shared outbox into a Mailpit it expects to hold exactly one message, and this file
+// runs before it (phase10 < phase2): a test of Phase 10 must not leave pending messages behind.
+func settleOutbox(t *testing.T, runner db.TxRunner, tenantID uuid.UUID) {
+	t.Helper()
+	t.Cleanup(func() {
+		_ = runner.InTenantTx(context.Background(), tenantID, func(ctx context.Context, tx db.Tx) error {
+			_, err := tx.Exec(ctx, `UPDATE app.outbox_messages SET status='sent', payload=NULL, sent_at=now() WHERE tenant_id=$1 AND status<>'sent'`, tenantID)
+			return err
+		})
+	})
 }
 
 func (e *phase10Env) request(raw, method, path string, body io.Reader) (*httptest.ResponseRecorder, *http.Request) {

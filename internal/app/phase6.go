@@ -145,6 +145,11 @@ func writeUserError(w http.ResponseWriter, req *http.Request, err error, logger 
 	var invalid *identity.UserValidationError
 	var invalidPassword *identity.PasswordValidationError
 	switch {
+	case errors.Is(err, identity.ErrUnauthenticated):
+		identity.ClearSessionCookie(w)
+		httpx.WriteProblem(w, req, httpx.CodeUnauthenticated)
+	case errors.Is(err, authz.ErrForbidden):
+		httpx.WriteProblem(w, req, httpx.CodeForbidden)
 	case errors.Is(err, identity.ErrUserNotFound):
 		httpx.WriteProblem(w, req, httpx.CodeNotFound)
 	case errors.Is(err, identity.ErrLastAdmin):

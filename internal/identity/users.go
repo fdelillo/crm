@@ -60,6 +60,9 @@ func (s *Service) Invite(ctx context.Context, p authz.Principal, email string, r
 		if _, err := q.LockUsersTenant(ctx, p.TenantID); err != nil {
 			return db.MapError(err)
 		}
+		if _, err := s.requireActor(ctx, q, p); err != nil {
+			return err
+		}
 		existing, err := q.FindInvitedEmail(ctx, store.FindInvitedEmailParams{TenantID: p.TenantID, Email: email})
 		now := s.clock.Now()
 		var id uuid.UUID
@@ -109,6 +112,43 @@ func (s *Service) Invite(ctx context.Context, p authz.Principal, email string, r
 	return result, reissued, err
 }
 
+// requireActor rereads the session and the actor right after the tenant lock (DD-44, INV-35):
+// the Principal was resolved before the handler, and every demotion or deactivation takes this
+// same lock, so what is read here is the authority the actor still has. It is a plain SELECT.
+func (s *Service) requireActor(ctx context.Context, q *store.Queries, p authz.Principal) (store.GetSessionUserRow, error) {
+	reject := func(reason string, err error) (store.GetSessionUserRow, error) {
+		if s.logger != nil {
+			s.logger.WarnContext(ctx, "actor revalidation failed", "security_event", "actor_revalidation_failed",
+				"tenant_id", p.TenantID, "user_id", p.UserID, "reason", reason)
+		}
+		return store.GetSessionUserRow{}, err
+	}
+	if p.SessionID == uuid.Nil {
+		return reject("session", ErrUnauthenticated)
+	}
+	row, err := q.GetSessionUser(ctx, store.GetSessionUserParams{TenantID: p.TenantID, SessionID: p.SessionID})
+	if errors.Is(db.MapError(err), db.ErrNotFound) {
+		return reject("session", ErrUnauthenticated)
+	}
+	if err != nil {
+		return store.GetSessionUserRow{}, db.MapError(err)
+	}
+	if row.UserID != p.UserID {
+		return reject("session", ErrUnauthenticated)
+	}
+	if !s.sessionValid(row, s.clock.Now()) {
+		reason := "session"
+		if row.Status != "active" {
+			reason = "status"
+		}
+		return reject(reason, ErrUnauthenticated)
+	}
+	if !authz.Can(authz.Role(row.Role), authz.SettingsManage) {
+		return reject("permission", authz.ErrForbidden)
+	}
+	return row, nil
+}
+
 func validUserRole(role authz.Role) bool {
 	return role == authz.RoleAdmin || role == authz.RoleOperator
 }
@@ -152,6 +192,9 @@ func (s *Service) withManagedUser(ctx context.Context, p authz.Principal, id uui
 		q := store.New(tx)
 		if _, err := q.LockUsersTenant(ctx, p.TenantID); err != nil {
 			return db.MapError(err)
+		}
+		if _, err := s.requireActor(ctx, q, p); err != nil {
+			return err
 		}
 		user, err := q.LockManagedUser(ctx, store.LockManagedUserParams{TenantID: p.TenantID, UserID: id})
 		if errors.Is(db.MapError(err), db.ErrNotFound) {

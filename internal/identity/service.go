@@ -170,7 +170,7 @@ func (s *Service) ResolveSession(ctx context.Context, raw string) (authz.Princip
 			return fmt.Errorf("identity: read session: %w", db.MapError(err))
 		}
 		now := s.clock.Now()
-		if row.RevokedAt != nil || !now.Before(row.ExpiresAt) || !now.Before(row.LastSeenAt.Add(s.idle)) || row.Status != "active" {
+		if !s.sessionValid(row, now) {
 			return ErrUnauthenticated
 		}
 		if now.Sub(row.LastSeenAt) > 5*time.Minute {
@@ -182,6 +182,12 @@ func (s *Service) ResolveSession(ctx context.Context, raw string) (authz.Princip
 		return nil
 	})
 	return principal, err
+}
+
+// sessionValid is the single rule for a usable session: not revoked, inside the absolute and the
+// idle lifetime, and its user active. ResolveSession and requireActor (DD-44) share it.
+func (s *Service) sessionValid(row store.GetSessionUserRow, now time.Time) bool {
+	return row.RevokedAt == nil && now.Before(row.ExpiresAt) && now.Before(row.LastSeenAt.Add(s.idle)) && row.Status == "active"
 }
 
 func (s *Service) Me(ctx context.Context, p authz.Principal) (CurrentUser, error) {

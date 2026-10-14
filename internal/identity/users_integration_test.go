@@ -548,10 +548,13 @@ func TestConcurrentUserOperations(t *testing.T) {
 					}
 					u := inviteForTest(t, s, p, initialRole)
 					raw := deliveredToken(t, runner, p.TenantID, u.Email, "invitation")
+					other := authz.Principal{TenantID: p.TenantID, UserID: u.ID, Role: authz.RoleAdmin}
 					if operation != "reinvite_distinct_roles" && operation != "accept" {
-						if _, err := s.AcceptInvitation(ctx, raw, "B", "valid-password", RequestMeta{}); err != nil {
+						accepted, err := s.AcceptInvitation(ctx, raw, "B", "valid-password", RequestMeta{})
+						if err != nil {
 							t.Fatal(err)
 						}
+						other = accepted.Principal // DD-44: carries the session the acceptance created
 					}
 					if operation == "reactivate_deactivate" {
 						if _, err := s.Deactivate(ctx, p, u.ID, RequestMeta{}); err != nil {
@@ -561,7 +564,6 @@ func TestConcurrentUserOperations(t *testing.T) {
 					before := userAuditCount(t, runner, p)
 					var a, b func() error
 					var deactivateErr error
-					other := authz.Principal{TenantID: p.TenantID, UserID: u.ID, Role: authz.RoleAdmin}
 					switch operation {
 					case "reinvite_distinct_roles":
 						// The ninth review starts with an operator and permits either serial order.
@@ -594,6 +596,14 @@ func TestConcurrentUserOperations(t *testing.T) {
 							continue
 						}
 						expected := ErrLastAdmin
+						// DD-44: the administrator that lost the race no longer has the authority
+						// that ErrLastAdmin used to be raised for.
+						if operation == "demote" {
+							expected = authz.ErrForbidden
+						}
+						if operation == "deactivate" {
+							expected = ErrUnauthenticated
+						}
 						if operation == "accept" {
 							expected = ErrTokenInvalid
 						}
@@ -790,7 +800,17 @@ func TestAdministratorSelfDeactivationAndRestoration(t *testing.T) {
 	if _, err := s.ChangeRole(ctx, other, u.ID, authz.RoleOperator, RequestMeta{}); err != nil {
 		t.Fatal("restored administrator must count", err)
 	}
-	if _, err := s.ChangeRole(ctx, p, p.UserID, authz.RoleOperator, RequestMeta{}); !errors.Is(err, ErrLastAdmin) {
+	// The self-deactivation revoked the fixture's session (DD-44): the restored administrator
+	// needs a new one to act.
+	var restored SessionResult
+	if err := r.InTenantTx(ctx, p.TenantID, func(ctx context.Context, tx db.Tx) error {
+		var err error
+		restored, err = s.CreateSession(ctx, tx, p, RequestMeta{})
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ChangeRole(ctx, restored.Principal, p.UserID, authz.RoleOperator, RequestMeta{}); !errors.Is(err, ErrLastAdmin) {
 		t.Fatal(err)
 	}
 	if _, err := s.ResolveSession(ctx, firstSession.RawToken); !errors.Is(err, ErrUnauthenticated) {
