@@ -235,7 +235,7 @@ func TestPhase9MetricNames(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &values); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range strings.Fields("http_requests_total http_client_canceled_total login_failed_total login_locked_total signup_email_exists_total signup_lock_timeout_total set_role_retry_total csrf_rejected_total outbox_pending outbox_oldest_pending_seconds outbox_failed_total outbox_delivery_errors_total outbox_deferred_total db_pool_acquire_wait_ms tenants_total tenant_roles_total tenant_roles_missing") {
+	for _, name := range strings.Fields("http_requests_total http_client_canceled_total login_failed_total login_locked_total signup_email_exists_total signup_lock_timeout_total signup_global_limited_total set_role_retry_total csrf_rejected_total outbox_pending outbox_oldest_pending_seconds outbox_failed_total outbox_delivery_errors_total outbox_deferred_total db_pool_acquire_wait_ms tenants_total tenant_roles_total tenant_roles_missing") {
 		if _, ok := values[name]; !ok {
 			t.Errorf("missing metric %s", name)
 		}

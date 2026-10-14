@@ -15,7 +15,6 @@ import (
 
 	"github.com/fdelillo/crm/internal/authz"
 	"github.com/fdelillo/crm/internal/platform/db"
-	"github.com/fdelillo/crm/internal/platform/password"
 	"github.com/fdelillo/crm/internal/platform/securetoken"
 	"github.com/fdelillo/crm/internal/testsupport/fixture"
 	"github.com/fdelillo/crm/internal/testsupport/pgtest"
@@ -23,10 +22,19 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+// usersFixture is a company with an administrator that may invite: DD-44 revalidates the session, so
+// the Principal carries the fixture's real one, and DD-46 asks for a verified email, which the fixture
+// confirms. unverifiedFixture is the same company before that.
 func usersFixture(t *testing.T) (*Service, db.TxRunner, authz.Principal, *loginClock) {
 	t.Helper()
-	svc, runner, company, _, c, _ := loginFixture(t, password.NewHasher(2))
-	return svc, runner, authz.Principal{TenantID: company.ID, UserID: company.UserID, Role: authz.RoleAdmin}, c
+	svc, runner, p, c := unverifiedFixture(t)
+	if err := runner.InTenantTx(context.Background(), p.TenantID, func(ctx context.Context, tx db.Tx) error {
+		_, err := tx.Exec(ctx, `UPDATE app.users SET email_verified_at=$3 WHERE tenant_id=$1 AND id=$2`, p.TenantID, p.UserID, c.now)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return svc, runner, p, c
 }
 func inviteForTest(t *testing.T, s *Service, p authz.Principal, role authz.Role) User {
 	t.Helper()
@@ -189,6 +197,13 @@ func TestInvitationPreviewAcceptanceAndInvalidTokens(t *testing.T) {
 					t.Fatal(err)
 				}
 			case "wrong_purpose":
+				// The resend only issues a link to an unverified user, and usersFixture verifies it.
+				if err := runner.InTenantTx(ctx, p.TenantID, func(ctx context.Context, tx db.Tx) error {
+					_, err := tx.Exec(ctx, `UPDATE app.users SET email_verified_at=NULL WHERE tenant_id=$1 AND id=$2`, p.TenantID, p.UserID)
+					return err
+				}); err != nil {
+					t.Fatal(err)
+				}
 				if err := s.ResendEmailVerification(ctx, p); err != nil {
 					t.Fatal(err)
 				}
@@ -282,17 +297,27 @@ func TestRoleChangesAndLastAdmin(t *testing.T) {
 	if _, err := s.ChangeRole(ctx, p, p.UserID, authz.RoleOperator, RequestMeta{}); !errors.Is(err, ErrLastAdmin) {
 		t.Fatalf("invited admin counted: %v", err)
 	}
-	if _, err := s.AcceptInvitation(ctx, raw, "B", "valid-password", RequestMeta{}); err != nil {
+	accepted, err := s.AcceptInvitation(ctx, raw, "B", "valid-password", RequestMeta{})
+	if err != nil {
 		t.Fatal(err)
 	}
+	second := accepted.Principal // u: active administrator since the acceptance
 	if _, err := s.ChangeRole(ctx, p, p.UserID, authz.RoleOperator, RequestMeta{}); err != nil {
 		t.Fatal(err)
 	}
 	requireUserAudit(t, runner, p, p.UserID, "user.role_changed", p.UserID, map[string]any{"from": "admin", "to": "operator", "status": "active"})
-	if _, err := s.ChangeRole(ctx, p, u.ID, authz.RoleOperator, RequestMeta{}); !errors.Is(err, ErrLastAdmin) {
+	// DD-44: p keeps the old Principal but is an operator now, so it neither counts as an actor
+	// nor can it promote itself back (this used to assert the hole).
+	if _, err := s.ChangeRole(ctx, p, u.ID, authz.RoleOperator, RequestMeta{}); !errors.Is(err, authz.ErrForbidden) {
+		t.Fatalf("demoted actor: %v", err)
+	}
+	if _, err := s.ChangeRole(ctx, p, p.UserID, authz.RoleAdmin, RequestMeta{}); !errors.Is(err, authz.ErrForbidden) {
+		t.Fatalf("self promotion: %v", err)
+	}
+	if _, err := s.ChangeRole(ctx, second, u.ID, authz.RoleOperator, RequestMeta{}); !errors.Is(err, ErrLastAdmin) {
 		t.Fatalf("last active: %v", err)
 	}
-	if _, err := s.ChangeRole(ctx, p, p.UserID, authz.RoleAdmin, RequestMeta{}); err != nil {
+	if _, err := s.ChangeRole(ctx, second, p.UserID, authz.RoleAdmin, RequestMeta{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.Deactivate(ctx, p, u.ID, RequestMeta{}); err != nil {
@@ -537,10 +562,13 @@ func TestConcurrentUserOperations(t *testing.T) {
 					}
 					u := inviteForTest(t, s, p, initialRole)
 					raw := deliveredToken(t, runner, p.TenantID, u.Email, "invitation")
+					other := authz.Principal{TenantID: p.TenantID, UserID: u.ID, Role: authz.RoleAdmin}
 					if operation != "reinvite_distinct_roles" && operation != "accept" {
-						if _, err := s.AcceptInvitation(ctx, raw, "B", "valid-password", RequestMeta{}); err != nil {
+						accepted, err := s.AcceptInvitation(ctx, raw, "B", "valid-password", RequestMeta{})
+						if err != nil {
 							t.Fatal(err)
 						}
+						other = accepted.Principal // DD-44: carries the session the acceptance created
 					}
 					if operation == "reactivate_deactivate" {
 						if _, err := s.Deactivate(ctx, p, u.ID, RequestMeta{}); err != nil {
@@ -550,7 +578,6 @@ func TestConcurrentUserOperations(t *testing.T) {
 					before := userAuditCount(t, runner, p)
 					var a, b func() error
 					var deactivateErr error
-					other := authz.Principal{TenantID: p.TenantID, UserID: u.ID, Role: authz.RoleAdmin}
 					switch operation {
 					case "reinvite_distinct_roles":
 						// The ninth review starts with an operator and permits either serial order.
@@ -583,6 +610,14 @@ func TestConcurrentUserOperations(t *testing.T) {
 							continue
 						}
 						expected := ErrLastAdmin
+						// DD-44: the administrator that lost the race no longer has the authority
+						// that ErrLastAdmin used to be raised for.
+						if operation == "demote" {
+							expected = authz.ErrForbidden
+						}
+						if operation == "deactivate" {
+							expected = ErrUnauthenticated
+						}
 						if operation == "accept" {
 							expected = ErrTokenInvalid
 						}
@@ -779,7 +814,17 @@ func TestAdministratorSelfDeactivationAndRestoration(t *testing.T) {
 	if _, err := s.ChangeRole(ctx, other, u.ID, authz.RoleOperator, RequestMeta{}); err != nil {
 		t.Fatal("restored administrator must count", err)
 	}
-	if _, err := s.ChangeRole(ctx, p, p.UserID, authz.RoleOperator, RequestMeta{}); !errors.Is(err, ErrLastAdmin) {
+	// The self-deactivation revoked the fixture's session (DD-44): the restored administrator
+	// needs a new one to act.
+	var restored SessionResult
+	if err := r.InTenantTx(ctx, p.TenantID, func(ctx context.Context, tx db.Tx) error {
+		var err error
+		restored, err = s.CreateSession(ctx, tx, p, RequestMeta{})
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ChangeRole(ctx, restored.Principal, p.UserID, authz.RoleOperator, RequestMeta{}); !errors.Is(err, ErrLastAdmin) {
 		t.Fatal(err)
 	}
 	if _, err := s.ResolveSession(ctx, firstSession.RawToken); !errors.Is(err, ErrUnauthenticated) {

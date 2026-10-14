@@ -250,6 +250,19 @@ func (h *countingHasher) Verify(context.Context, string, string) (bool, bool, er
 	return false, false, nil
 }
 func (h *countingHasher) VerifyDummy(context.Context, string) {}
+func (h *countingHasher) Acquire(context.Context) (password.Slot, error) {
+	return countingSlot{h}, nil
+}
+
+type countingSlot struct{ h *countingHasher }
+
+func (countingSlot) Hash(string) (string, error) { return "unused", nil }
+func (s countingSlot) Verify(string, string) (bool, bool, error) {
+	s.h.verifies.Add(1)
+	return false, false, nil
+}
+func (countingSlot) VerifyDummy(string) {}
+func (countingSlot) Release()           {}
 
 func TestConcurrentLoginVerifiesOnlyFivePasswords(t *testing.T) {
 	h := &countingHasher{}

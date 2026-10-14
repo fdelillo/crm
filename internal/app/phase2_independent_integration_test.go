@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"testing"
 	"time"
@@ -21,6 +22,7 @@ import (
 	"github.com/fdelillo/crm/internal/testsupport/containers"
 	"github.com/fdelillo/crm/internal/testsupport/fixture"
 	"github.com/fdelillo/crm/internal/testsupport/pgtest"
+	"github.com/google/uuid"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
@@ -76,9 +78,12 @@ func TestPhase2EnqueueAndDeliverToMailpit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The outbox is shared with the other tests of the package (the Dispatcher reads every company):
+	// a recipient of its own, and only its message is looked up in Mailpit.
+	recipient := "phase2-" + uuid.NewString() + "@example.com"
 	err = runner.InTenantTx(ctx, company.ID, func(ctx context.Context, tx db.Tx) error {
 		return outbox.NewEnqueuer(clock.Real{}).Enqueue(ctx, tx, outbox.Message{
-			TenantID: company.ID, Kind: "email", Template: "password_reset", Recipient: "user@example.com",
+			TenantID: company.ID, Kind: "email", Template: "password_reset", Recipient: recipient,
 			Payload: map[string]string{"token": "phase2token"},
 		})
 	})
@@ -86,14 +91,29 @@ func TestPhase2EnqueueAndDeliverToMailpit(t *testing.T) {
 		t.Fatal(err)
 	}
 	dispatcher := outbox.NewDispatcher(runner, emailHandler, clock.Real{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	if err := dispatcher.RunOnce(ctx); err != nil {
-		t.Fatal(err)
+	// RunOnce takes a limited batch of any company: repeat until our message is sent (with a cap).
+	for i := 0; ; i++ {
+		if err := dispatcher.RunOnce(ctx); err != nil {
+			t.Fatal(err)
+		}
+		var sent bool
+		if err := runner.InTenantTx(ctx, company.ID, func(ctx context.Context, tx db.Tx) error {
+			return tx.QueryRow(ctx, `SELECT status = 'sent' FROM app.outbox_messages WHERE tenant_id = $1 AND recipient = $2`, company.ID, recipient).Scan(&sent)
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if sent {
+			break
+		}
+		if i >= 50 {
+			t.Fatal("the message of the test was not sent after 50 runs")
+		}
 	}
 	err = runner.InTenantTx(ctx, company.ID, func(ctx context.Context, tx db.Tx) error {
 		var status string
 		var payloadNull bool
 		if err := tx.QueryRow(ctx, `SELECT status, payload IS NULL FROM app.outbox_messages
-   WHERE tenant_id = $1 AND recipient = 'user@example.com' ORDER BY created_at DESC LIMIT 1`, company.ID).
+   WHERE tenant_id = $1 AND recipient = $2 ORDER BY created_at DESC LIMIT 1`, company.ID, recipient).
 			Scan(&status, &payloadNull); err != nil {
 			return err
 		}
@@ -108,12 +128,12 @@ func TestPhase2EnqueueAndDeliverToMailpit(t *testing.T) {
 	api := "http://" + net.JoinHostPort(host, apiPort.Port())
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		response, err := http.Get(api + "/api/v1/messages")
+		response, err := http.Get(api + "/api/v1/search?query=" + url.QueryEscape("to:"+recipient))
 		if err != nil {
 			t.Fatal(err)
 		}
 		var result struct {
-			Total int `json:"total"`
+			Total int `json:"messages_count"`
 		}
 		err = json.NewDecoder(response.Body).Decode(&result)
 		response.Body.Close()

@@ -186,11 +186,20 @@ func (s *Service) ConfirmPasswordReset(ctx context.Context, raw, plain string, m
 	if s.hasher == nil {
 		return errors.New("identity: authentication not configured")
 	}
+	if raw == "" {
+		return ErrTokenInvalid
+	}
+	// DD-45: reserve the seat before the transaction opens (INV-36).
+	slot, err := s.hasher.Acquire(ctx)
+	if err != nil {
+		return err
+	}
+	defer slot.Release()
 	return s.withToken(ctx, raw, "password_reset", true, func(ctx context.Context, tx db.Tx, route store.LookupTokenByHashRow, user store.GetTokenFlowUserRow, now time.Time) error {
 		if code := password.Validate(plain, user.Email); code != "" {
 			return &PasswordValidationError{Code: code}
 		}
-		hash, err := s.hasher.Hash(ctx, plain)
+		hash, err := slot.Hash(plain)
 		if err != nil {
 			return fmt.Errorf("identity: hash reset password: %w", err)
 		}

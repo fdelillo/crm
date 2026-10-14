@@ -106,6 +106,8 @@ func (f *Scenario) company(t testing.TB, label string, tint color.NRGBA, taxID, 
 	require(t, err)
 	p := reg.Session.Principal
 	c := Company{ID: p.TenantID, Suffix: suffix, Users: map[string]User{"admin": {ID: p.UserID, Email: reg.User.Email, Name: reg.User.Name, Status: "active", Principal: p, Cookie: cookie(reg.Session.RawToken)}}}
+	// DD-46: an administrator invites only with a verified email, which a fresh signup does not have.
+	f.setAdminVerified(t, c.ID, p.UserID, true)
 	for _, key := range []string{"operator", "invited", "disabled_password", "disabled_no_password"} {
 		email := key + "-" + suffix + "@example.test"
 		u, _, err := f.Users.Invite(ctx, p, email, authz.RoleOperator, identity.RequestMeta{})
@@ -171,8 +173,33 @@ func (f *Scenario) company(t testing.TB, label string, tint color.NRGBA, taxID, 
 	require(t, f.Users.RequestPasswordReset(ctx, c.Users["operator"].Email, identity.RequestMeta{}))
 	c.Reset = f.Token(t, c.ID, c.Users["operator"].Email, "password_reset")
 	c.Verification = f.Token(t, c.ID, c.Users["admin"].Email, "email_verification")
+	// The scenario ends as a fresh signup does: unverified administrators with a pending verification
+	// link, which the token-flow tests need. Tests that invite with the administrator call VerifyAdmin.
+	// An unverified administrator with invited users is an artifact of this fixture: it cannot happen
+	// in production, where only a verified administrator invites (DD-46, T-B1009 V9).
+	f.setAdminVerified(t, c.ID, p.UserID, false)
 	c.Invitation = f.Token(t, c.ID, c.Users["invited"].Email, "invitation")
 	return c
+}
+
+// VerifyAdmin confirms the email of the administrator of c (DD-46): the tests that invite with that
+// administrator need it, and the scenario does not leave it, so that the verification flows still have
+// a user to verify.
+func (f *Scenario) VerifyAdmin(t testing.TB, c Company) {
+	t.Helper()
+	f.setAdminVerified(t, c.ID, c.Users["admin"].ID, true)
+}
+
+func (f *Scenario) setAdminVerified(t testing.TB, tenantID, userID uuid.UUID, verified bool) {
+	t.Helper()
+	require(t, f.Runner.InTenantTx(context.Background(), tenantID, func(ctx context.Context, tx db.Tx) error {
+		query := `UPDATE app.users SET email_verified_at=NULL WHERE tenant_id=$1 AND id=$2`
+		if verified {
+			query = `UPDATE app.users SET email_verified_at=now() WHERE tenant_id=$1 AND id=$2`
+		}
+		_, err := tx.Exec(ctx, query, tenantID, userID)
+		return err
+	}))
 }
 
 // Token reads the real transactional outbox as its own company, including reissued tokens.

@@ -20,15 +20,38 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-var signupEmailExistsCount, signupLockTimeoutCount atomic.Int64
+var signupEmailExistsCount, signupLockTimeoutCount, signupGlobalLimitedCount atomic.Int64
 
-func SignupEmailExistsCount() int64 { return signupEmailExistsCount.Load() }
-func SignupLockTimeoutCount() int64 { return signupLockTimeoutCount.Load() }
+func SignupEmailExistsCount() int64   { return signupEmailExistsCount.Load() }
+func SignupLockTimeoutCount() int64   { return signupLockTimeoutCount.Load() }
+func SignupGlobalLimitedCount() int64 { return signupGlobalLimitedCount.Load() }
 
-// RegisterRoutes registers the public signup endpoint. The limiter spends a token before decoding
-// or validating the body, so rejected attempts also consume the hourly budget.
-func RegisterRoutes(r chi.Router, service *Service, limiter *ratelimit.Limiter, logger *slog.Logger) {
-	r.With(ratelimit.Middleware(limiter)).Post("/api/v1/auth/signup", func(w http.ResponseWriter, req *http.Request) {
+// globalSignupQuota is the constant-key quota of DD-49. A request that does not reach next was
+// refused by the quota (its key cannot fail), so the metric and the event are emitted here; the
+// 429 itself is written by ratelimit.MiddlewareBy. The event carries the address and no email.
+func globalSignupQuota(limiter *ratelimit.Limiter, logger *slog.Logger) func(http.Handler) http.Handler {
+	by := ratelimit.MiddlewareBy(limiter, func(*http.Request) (string, bool) { return "signup", true })
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			reached := false
+			by(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				reached = true
+				next.ServeHTTP(w, req)
+			})).ServeHTTP(w, req)
+			if !reached {
+				signupGlobalLimitedCount.Add(1)
+				logger.WarnContext(req.Context(), "signup global quota exhausted", "event", "signup_global_limited",
+					"ip", httpx.ClientIPFrom(req.Context()).String())
+			}
+		})
+	}
+}
+
+// RegisterRoutes registers the public signup endpoint. Both limiters spend a token before decoding
+// or validating the body, so rejected attempts also consume the budget. The IP quota (DD-9) runs
+// first, so a refusal by IP does not spend the global quota (DD-49).
+func RegisterRoutes(r chi.Router, service *Service, ipLimiter, globalLimiter *ratelimit.Limiter, logger *slog.Logger) {
+	r.With(ratelimit.Middleware(ipLimiter), globalSignupQuota(globalLimiter, logger)).Post("/api/v1/auth/signup", func(w http.ResponseWriter, req *http.Request) {
 		var input Signup
 		if err := httpx.DecodeJSON(w, req, &input); err != nil {
 			return

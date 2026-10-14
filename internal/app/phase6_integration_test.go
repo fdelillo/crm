@@ -53,10 +53,16 @@ func phase6Server(t *testing.T) (*apitest.Server, *usersHTTPClock, db.TxRunner) 
 	users := identity.NewService(runner, outbox.NewEnqueuer(c), c, 24*time.Hour, 7*24*time.Hour, identity.WithAuthentication(h, recorder, []byte("0123456789abcdef0123456789abcdef"), logger))
 	companies := tenant.NewService(runner, users, industrytemplate.NoopSeeder{}, h, recorder, logger)
 	r := app.NewAPIRouter()
-	tenant.RegisterRoutes(r, companies, ratelimit.NewLimiter(rate.Every(12*time.Minute), 5, c, time.Hour), logger)
+	tenant.RegisterRoutes(r, companies, ratelimit.NewLimiter(rate.Every(12*time.Minute), 5, c, time.Hour),
+		ratelimit.NewLimiter(rate.Every(time.Minute), 30, c, time.Hour), logger)
 	app.RegisterAuthRoutes(r, users, companies, ratelimit.NewLimiter(rate.Every(3*time.Second), 20, c, time.Minute), logger)
 	app.RegisterMeRoute(r, users, companies, logger)
-	app.RegisterUserRoutes(r, users, companies, ratelimit.NewLimiter(rate.Every(3*time.Minute), 20, c, time.Hour), logger)
+	// usersSignup confirms the administrator's email through the real route (DD-46).
+	app.RegisterRecoveryRoutes(r, users, ratelimit.NewLimiter(rate.Every(12*time.Minute), 5, c, time.Hour),
+		ratelimit.NewLimiter(rate.Every(3*time.Minute), 20, c, time.Hour),
+		ratelimit.NewLimiter(rate.Every(20*time.Minute), 3, c, time.Hour), logger)
+	app.RegisterUserRoutes(r, users, companies, ratelimit.NewLimiter(rate.Every(3*time.Minute), 20, c, time.Hour),
+		ratelimit.NewLimiter(rate.Every(6*time.Minute), 10, c, time.Hour), ratelimit.NewLimiter(rate.Every(3*time.Minute), 20, c, time.Hour), logger)
 	root := app.NewRootHandler(app.RootDeps{API: r, Liveness: app.LivenessHandler(), Readiness: app.ReadinessPlaceholder(), SPA: app.SPAUnavailableHandler()}, app.NewCommonMiddleware(logger, true, nil))
 	server := apitest.NewServer(t, root)
 	contract.Default(t).Wrap(t, server.Client)
@@ -85,10 +91,39 @@ func usersRequest(t *testing.T, s *apitest.Server, method, path, body string, wa
 	}
 	return out, resp
 }
-func usersSignup(t *testing.T, s *apitest.Server) (uuid.UUID, uuid.UUID) {
+
+// usersSignup registers a company over HTTP and confirms the email of its administrator with the
+// link of the outbox, as the user would (DD-46: an unverified administrator cannot invite).
+func usersSignup(t *testing.T, s *apitest.Server, runner db.TxRunner) (uuid.UUID, uuid.UUID) {
 	t.Helper()
 	body, _ := usersRequest(t, s, "POST", "/api/v1/auth/signup", `{"name":"A","email":"`+uuid.NewString()+`@example.com","password":"valid-password","company_name":"ACME","base_currency":"ARS","industry_template_code":"generic"}`, 201)
-	return uuid.MustParse(body["tenant"].(map[string]any)["id"].(string)), uuid.MustParse(body["user"].(map[string]any)["id"].(string))
+	tenantID := uuid.MustParse(body["tenant"].(map[string]any)["id"].(string))
+	token := outboxToken(t, runner, tenantID, body["user"].(map[string]any)["email"].(string), "email_verification")
+	resp, err := s.Client.Post(s.URL+"/api/v1/auth/email-verification/confirm", "application/json", strings.NewReader(`{"token":"`+token+`"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("confirm email: %d", resp.StatusCode)
+	}
+	return tenantID, uuid.MustParse(body["user"].(map[string]any)["id"].(string))
+}
+
+// outboxToken reads the token of the latest message of a template sent to recipient.
+func outboxToken(t *testing.T, r db.TxRunner, tenantID uuid.UUID, recipient, template string) string {
+	t.Helper()
+	var encoded []byte
+	if err := r.InTenantTx(context.Background(), tenantID, func(ctx context.Context, tx db.Tx) error {
+		return tx.QueryRow(ctx, `SELECT payload FROM app.outbox_messages WHERE tenant_id=$1 AND recipient=$2 AND template=$3 ORDER BY created_at DESC,id DESC LIMIT 1`, tenantID, recipient, template).Scan(&encoded)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]string
+	if err := json.Unmarshal(encoded, &payload); err != nil {
+		t.Fatal(err)
+	}
+	return payload["token"]
 }
 func invitationHTTPToken(t *testing.T, r db.TxRunner, tenantID uuid.UUID, email string) string {
 	t.Helper()
@@ -109,7 +144,7 @@ func invitationHTTPToken(t *testing.T, r db.TxRunner, tenantID uuid.UUID, email 
 }
 func TestUsersHTTPInvitationLifecycleAndPermissions(t *testing.T) {
 	s, _, runner := phase6Server(t)
-	tenantID, adminID := usersSignup(t, s)
+	tenantID, adminID := usersSignup(t, s, runner)
 	adminCookies := s.Client.Jar.Cookies(mustURL(t, s.URL))
 	email := uuid.NewString() + "@example.com"
 	invited, _ := usersRequest(t, s, "POST", "/api/v1/users/invitations", `{"email":"`+email+`","role":"operator"}`, 201)
@@ -199,7 +234,7 @@ func TestUsersHTTPInvitationLifecycleAndPermissions(t *testing.T) {
 }
 func TestUsersHTTPStatesAndNotFound(t *testing.T) {
 	s, c, runner := phase6Server(t)
-	tenantID, adminID := usersSignup(t, s)
+	tenantID, adminID := usersSignup(t, s, runner)
 	c.advance(time.Second) // Registration uses the database clock; later invitations use the fake clock.
 	cookie := s.Client.Jar.Cookies(mustURL(t, s.URL))
 	email := uuid.NewString() + "@example.com"
@@ -242,7 +277,7 @@ func TestUsersHTTPStatesAndNotFound(t *testing.T) {
 	disabledID := disabledUser["id"].(string)
 	usersRequest(t, s, "POST", "/api/v1/users/"+disabledID+"/deactivate", "", 200)
 	// A real second tenant's ID, not a fabricated cross-tenant case.
-	otherID, _ := usersSignup(t, s)
+	otherID, _ := usersSignup(t, s, runner)
 	var otherUser uuid.UUID
 	if err := runner.InTenantTx(context.Background(), otherID, func(ctx context.Context, tx db.Tx) error {
 		return tx.QueryRow(ctx, `SELECT id FROM app.users WHERE tenant_id=$1`, otherID).Scan(&otherUser)
@@ -305,7 +340,7 @@ func mustURL(t *testing.T, raw string) *url.URL {
 
 func TestUsersHTTPValidationPreservesInvitation(t *testing.T) {
 	s, c, r := phase6Server(t)
-	tenantID, adminID := usersSignup(t, s)
+	tenantID, adminID := usersSignup(t, s, r)
 	c.advance(time.Second)
 	for _, tc := range []struct{ body, field, code string }{
 		{`{"email":"not an email","role":"operator"}`, "email", "invalid_format"},

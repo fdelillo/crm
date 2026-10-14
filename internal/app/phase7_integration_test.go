@@ -90,8 +90,13 @@ func phase7Handler(t *testing.T, logSinks ...io.Writer) (http.Handler, string, s
 	storage := &httpLogoStorage{objects: map[string][]byte{}}
 	users := identity.NewService(runner, outbox.NewEnqueuer(c), c, 24*time.Hour, 7*24*time.Hour, identity.WithAuthentication(h, recorder, []byte("0123456789abcdef0123456789abcdef"), logger))
 	companies := tenant.NewService(runner, users, industrytemplate.NoopSeeder{}, h, recorder, logger, tenant.WithObjectStorage(storage))
-	reg, err := companies.Register(context.Background(), tenant.Signup{Name: "Admin", Email: uuid.NewString() + "@example.com", Password: "valid-password", CompanyName: "ACME", BaseCurrency: "ARS", IndustryTemplateCode: "generic"}, identity.RequestMeta{})
+	adminEmail := uuid.NewString() + "@example.com"
+	reg, err := companies.Register(context.Background(), tenant.Signup{Name: "Admin", Email: adminEmail, Password: "valid-password", CompanyName: "ACME", BaseCurrency: "ARS", IndustryTemplateCode: "generic"}, identity.RequestMeta{})
 	if err != nil {
+		t.Fatal(err)
+	}
+	// DD-46: an unverified administrator cannot invite; confirm the email with the link of the outbox.
+	if err := users.ConfirmEmailVerification(context.Background(), outboxToken(t, runner, reg.Tenant.ID, adminEmail, "email_verification"), identity.RequestMeta{}); err != nil {
 		t.Fatal(err)
 	}
 	email := uuid.NewString() + "@example.com"

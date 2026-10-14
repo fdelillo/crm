@@ -25,15 +25,26 @@ type gatedResetHasher struct {
 	once             sync.Once
 }
 
-func (h *gatedResetHasher) Hash(ctx context.Context, plain string) (string, error) {
-	h.once.Do(func() {
-		close(h.entered)
-		select {
-		case <-h.release:
-		case <-ctx.Done():
-		}
+func (h *gatedResetHasher) Acquire(ctx context.Context) (password.Slot, error) {
+	slot, err := h.Hasher.Acquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &gatedResetSlot{Slot: slot, h: h}, nil
+}
+
+// gatedResetSlot holds the first Hash of the Slot (DD-45): the reset derives with it.
+type gatedResetSlot struct {
+	password.Slot
+	h *gatedResetHasher
+}
+
+func (s *gatedResetSlot) Hash(plain string) (string, error) {
+	s.h.once.Do(func() {
+		close(s.h.entered)
+		<-s.h.release
 	})
-	return h.Hasher.Hash(ctx, plain)
+	return s.Slot.Hash(plain)
 }
 
 type logoutGate struct {

@@ -19,12 +19,19 @@ import (
 func BuildAPIRouter(users *identity.Service, companies *tenant.Service, c clock.Clock, logger *slog.Logger) chi.Router {
 	api := NewAPIRouter()
 	industrytemplate.RegisterRoutes(api)
-	tenant.RegisterRoutes(api, companies, ratelimit.NewLimiter(rate.Every(12*time.Minute), 5, c, time.Hour), logger)
+	// DD-49: besides the quota per IP, signups share a global one (30 + 1 per minute).
+	tenant.RegisterRoutes(api, companies, ratelimit.NewLimiter(rate.Every(12*time.Minute), 5, c, time.Hour),
+		ratelimit.NewLimiter(rate.Every(time.Minute), 30, c, time.Hour), logger)
 	RegisterAuthRoutes(api, users, companies, ratelimit.NewLimiter(rate.Every(3*time.Second), 20, c, time.Minute), logger)
 	RegisterMeRoute(api, users, companies, logger)
+	// DD-46 (3): the resend also has a quota per user, 3 + 1 every 20 minutes.
 	RegisterRecoveryRoutes(api, users, ratelimit.NewLimiter(rate.Every(12*time.Minute), 5, c, time.Hour),
+		ratelimit.NewLimiter(rate.Every(3*time.Minute), 20, c, time.Hour),
+		ratelimit.NewLimiter(rate.Every(20*time.Minute), 3, c, time.Hour), logger)
+	// DD-48: invitation and reactivation share one quota per company and one per IP.
+	RegisterUserRoutes(api, users, companies, ratelimit.NewLimiter(rate.Every(3*time.Minute), 20, c, time.Hour),
+		ratelimit.NewLimiter(rate.Every(6*time.Minute), 10, c, time.Hour),
 		ratelimit.NewLimiter(rate.Every(3*time.Minute), 20, c, time.Hour), logger)
-	RegisterUserRoutes(api, users, companies, ratelimit.NewLimiter(rate.Every(3*time.Minute), 20, c, time.Hour), logger)
 	RegisterTenantRoutes(api, users, companies, logger)
 	return api
 }

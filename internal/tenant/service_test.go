@@ -14,6 +14,7 @@ import (
 	"github.com/fdelillo/crm/internal/platform/clock"
 	"github.com/fdelillo/crm/internal/platform/db"
 	"github.com/fdelillo/crm/internal/platform/outbox"
+	"github.com/fdelillo/crm/internal/platform/password"
 	"github.com/fdelillo/crm/internal/tenant"
 	"github.com/google/uuid"
 )
@@ -39,6 +40,10 @@ func (*countingHasher) Verify(context.Context, string, string) (bool, bool, erro
 	return false, false, errors.New("unexpected verify")
 }
 func (*countingHasher) VerifyDummy(context.Context, string) {}
+func (h *countingHasher) Acquire(context.Context) (password.Slot, error) {
+	h.calls++
+	return nil, errors.New("unexpected acquire")
+}
 
 func TestRegisterRejectsInvalidInputBeforeHashOrTransaction(t *testing.T) {
 	runner := &countingRunner{}

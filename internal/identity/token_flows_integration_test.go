@@ -240,6 +240,8 @@ func TestEmailVerificationExpires(t *testing.T) {
 	}
 }
 
+// gatedLoginHasher holds the first Verify of the Slot it hands out (DD-45: the flows derive with the
+// Slot, never with the Hasher, so the gate sits there).
 type gatedLoginHasher struct {
 	password.Hasher
 	entered chan struct{}
@@ -247,15 +249,25 @@ type gatedLoginHasher struct {
 	once    sync.Once
 }
 
-func (h *gatedLoginHasher) Verify(ctx context.Context, plain, encoded string) (bool, bool, error) {
-	h.once.Do(func() {
-		close(h.entered)
-		select {
-		case <-h.release:
-		case <-ctx.Done():
-		}
+func (h *gatedLoginHasher) Acquire(ctx context.Context) (password.Slot, error) {
+	slot, err := h.Hasher.Acquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &gatedLoginSlot{Slot: slot, h: h}, nil
+}
+
+type gatedLoginSlot struct {
+	password.Slot
+	h *gatedLoginHasher
+}
+
+func (s *gatedLoginSlot) Verify(plain, encoded string) (bool, bool, error) {
+	s.h.once.Do(func() {
+		close(s.h.entered)
+		<-s.h.release
 	})
-	return h.Hasher.Verify(ctx, plain, encoded)
+	return s.Slot.Verify(plain, encoded)
 }
 
 type resetRaceContextKey struct{}

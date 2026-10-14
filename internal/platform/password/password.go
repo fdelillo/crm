@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"unicode/utf8"
 
 	"golang.org/x/crypto/argon2"
@@ -24,6 +26,18 @@ type Hasher interface {
 	// VerifyDummy spends the same work as Verify against a fixed dummy hash, so a login attempt
 	// for an email that does not exist takes as long as one that does (timing side channel).
 	VerifyDummy(ctx context.Context, plain string)
+	// Acquire reserves one of the concurrent derivations and returns it as a Slot (DD-45).
+	Acquire(ctx context.Context) (Slot, error)
+}
+
+// Slot is a reserved derivation of the Hasher's semaphore. Its methods never wait for the
+// semaphore, so a flow that holds a database connection reserves the Slot first (INV-36) and
+// derives with it afterwards. Release is idempotent.
+type Slot interface {
+	Hash(plain string) (string, error)
+	Verify(plain, encoded string) (ok bool, needsRehash bool, err error)
+	VerifyDummy(plain string)
+	Release()
 }
 
 type parameters struct {
@@ -70,27 +84,20 @@ func (h *hasher) acquire(ctx context.Context) error {
 }
 func (h *hasher) release() { <-h.sem }
 
-func (h *hasher) Hash(ctx context.Context, plain string) (string, error) {
+// derive* do the work without touching the semaphore: the caller already holds a seat.
+func (h *hasher) deriveHash(plain string) (string, error) {
 	salt := make([]byte, 16)
 	if _, err := rand.Read(salt); err != nil {
 		return "", err
 	}
-	if err := h.acquire(ctx); err != nil {
-		return "", err
-	}
-	defer h.release()
 	return encode(h.params, salt, h.derive([]byte(plain), salt, h.params)), nil
 }
 
-func (h *hasher) Verify(ctx context.Context, plain, encoded string) (bool, bool, error) {
+func (h *hasher) deriveVerify(plain, encoded string) (bool, bool, error) {
 	params, salt, expected, err := parse(encoded)
 	if err != nil {
 		return false, false, err
 	}
-	if err := h.acquire(ctx); err != nil {
-		return false, false, err
-	}
-	defer h.release()
 	actual := h.derive([]byte(plain), salt, params)
 	ok := subtle.ConstantTimeCompare(actual, expected) == 1
 	// Key length is not part of parameters: every hash this package has ever produced derives with
@@ -101,8 +108,77 @@ func (h *hasher) Verify(ctx context.Context, plain, encoded string) (bool, bool,
 	return ok, ok && rehash, nil
 }
 
+// Hash, Verify and VerifyDummy take a seat for the length of one derivation: they are for callers
+// that hold no database connection (the registration hashes before its transaction).
+func (h *hasher) Hash(ctx context.Context, plain string) (string, error) {
+	s, err := h.Acquire(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer s.Release()
+	return s.Hash(plain)
+}
+
+func (h *hasher) Verify(ctx context.Context, plain, encoded string) (bool, bool, error) {
+	// A corrupt hash fails before it asks for a seat, as before.
+	if _, _, _, err := parse(encoded); err != nil {
+		return false, false, err
+	}
+	s, err := h.Acquire(ctx)
+	if err != nil {
+		return false, false, err
+	}
+	defer s.Release()
+	return s.Verify(plain, encoded)
+}
+
 func (h *hasher) VerifyDummy(ctx context.Context, plain string) {
 	_, _, _ = h.Verify(ctx, plain, h.dummy)
+}
+
+// Acquire waits for a seat of the semaphore or for ctx (DD-45).
+func (h *hasher) Acquire(ctx context.Context) (Slot, error) {
+	if err := h.acquire(ctx); err != nil {
+		return nil, err
+	}
+	return &slot{h: h}, nil
+}
+
+type slot struct {
+	h        *hasher
+	once     sync.Once
+	released atomic.Bool
+}
+
+// ErrSlotReleased is returned by the methods of a Slot used after Release: the seat is no longer
+// reserved, so deriving would bypass the semaphore.
+var ErrSlotReleased = errors.New("password: slot used after Release")
+
+func (s *slot) Hash(plain string) (string, error) {
+	if s.released.Load() {
+		return "", ErrSlotReleased
+	}
+	return s.h.deriveHash(plain)
+}
+func (s *slot) Verify(plain, encoded string) (bool, bool, error) {
+	if s.released.Load() {
+		return false, false, ErrSlotReleased
+	}
+	return s.h.deriveVerify(plain, encoded)
+}
+
+// VerifyDummy has no error to return: after Release it does nothing.
+func (s *slot) VerifyDummy(plain string) {
+	if s.released.Load() {
+		return
+	}
+	_, _, _ = s.h.deriveVerify(plain, s.h.dummy)
+}
+func (s *slot) Release() {
+	s.once.Do(func() {
+		s.released.Store(true)
+		s.h.release()
+	})
 }
 
 func encode(p parameters, salt, hash []byte) string {
