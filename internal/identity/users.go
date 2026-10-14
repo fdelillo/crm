@@ -60,8 +60,15 @@ func (s *Service) Invite(ctx context.Context, p authz.Principal, email string, r
 		if _, err := q.LockUsersTenant(ctx, p.TenantID); err != nil {
 			return db.MapError(err)
 		}
-		if _, err := s.requireActor(ctx, q, p); err != nil {
+		actor, err := s.requireActor(ctx, q, p)
+		if err != nil {
 			return err
+		}
+		// DD-46, INV-37: an administrator that has not proven its email cannot invite. It comes
+		// after the revalidation (INV-35) and before the email is looked up, so the answer does not
+		// depend on who owns that email.
+		if actor.EmailVerifiedAt == nil {
+			return ErrEmailNotVerified
 		}
 		existing, err := q.FindInvitedEmail(ctx, store.FindInvitedEmailParams{TenantID: p.TenantID, Email: email})
 		now := s.clock.Now()

@@ -3,4 +3,4 @@ Hola:
 Verificá tu email abriendo este enlace:
 {{.Link}}
 
-Si no creaste una cuenta, podés ignorar este email.
+Si no creaste una cuenta con este email, no abras el enlace: confirmarlo le daría acceso a quien la creó. Podés ignorar este mensaje.

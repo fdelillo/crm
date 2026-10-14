@@ -163,6 +163,8 @@ func writeUserError(w http.ResponseWriter, req *http.Request, err error, logger 
 		httpx.WriteProblem(w, req, httpx.CodeUnauthenticated)
 	case errors.Is(err, authz.ErrForbidden):
 		httpx.WriteProblem(w, req, httpx.CodeForbidden)
+	case errors.Is(err, identity.ErrEmailNotVerified):
+		httpx.WriteProblem(w, req, httpx.CodeEmailNotVerified)
 	case errors.Is(err, identity.ErrUserNotFound):
 		httpx.WriteProblem(w, req, httpx.CodeNotFound)
 	case errors.Is(err, identity.ErrLastAdmin):

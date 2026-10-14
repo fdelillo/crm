@@ -329,6 +329,12 @@ func TestHasherSeatIsTakenBeforeTheConnection(t *testing.T) {
 		e := newQuotaEnv(t)
 		raw := e.validSession()
 		c, _ := e.company("correct-password")
+		if err := e.r.InTenantTx(e.ctx, c.ID, func(ctx context.Context, tx db.Tx) error {
+			_, err := tx.Exec(ctx, `UPDATE app.users SET email_verified_at=now() WHERE tenant_id=$1 AND id=$2`, c.ID, c.UserID)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
 		admin := authz.Principal{TenantID: c.ID, UserID: c.UserID, SessionID: c.Rows["sessions"], Role: authz.RoleAdmin}
 		email := uuid.NewString() + "@example.com"
 		if _, _, err := e.s.Invite(e.ctx, admin, email, authz.RoleOperator, RequestMeta{}); err != nil {

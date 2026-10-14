@@ -545,6 +545,7 @@ func TestIsolationHTTPMatrix(t *testing.T) {
 				assertChanged(t, f, f.A.ID, aBefore, "tenants", "audit_log")
 				assertUnchanged(t, f, f.B.ID, bBefore, counts)
 			case "invite":
+				f.VerifyAdmin(t, f.A) // DD-46
 				email := "new-" + uuid.NewString() + "@example.test"
 				call(path, "application/json", jsonBody(map[string]string{"email": email, "role": "operator"}), "", 201)
 				list, err := f.Users.ListUsers(context.Background(), f.A.Users["admin"].Principal)

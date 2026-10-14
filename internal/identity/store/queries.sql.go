@@ -385,7 +385,8 @@ func (q *Queries) RevokeUserSessions(ctx context.Context, arg RevokeUserSessions
 }
 
 const setResetPassword = `-- name: SetResetPassword :exec
-UPDATE app.users SET password_hash = $1, updated_at = $2
+UPDATE app.users SET password_hash = $1, email_verified_at = COALESCE(email_verified_at, $2::timestamptz),
+  updated_at = $2
 WHERE tenant_id = $3 AND id = $4
 `
 
@@ -396,6 +397,8 @@ type SetResetPasswordParams struct {
 	UserID       uuid.UUID
 }
 
+// The reset token reached the address, so it also proves it (DD-46 (2)); a verification date that
+// already exists is kept.
 func (q *Queries) SetResetPassword(ctx context.Context, arg SetResetPasswordParams) error {
 	_, err := q.db.Exec(ctx, setResetPassword,
 		arg.PasswordHash,

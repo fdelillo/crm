@@ -15,7 +15,6 @@ import (
 
 	"github.com/fdelillo/crm/internal/authz"
 	"github.com/fdelillo/crm/internal/platform/db"
-	"github.com/fdelillo/crm/internal/platform/password"
 	"github.com/fdelillo/crm/internal/platform/securetoken"
 	"github.com/fdelillo/crm/internal/testsupport/fixture"
 	"github.com/fdelillo/crm/internal/testsupport/pgtest"
@@ -23,11 +22,19 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+// usersFixture is a company with an administrator that may invite: DD-44 revalidates the session, so
+// the Principal carries the fixture's real one, and DD-46 asks for a verified email, which the fixture
+// confirms. unverifiedFixture is the same company before that.
 func usersFixture(t *testing.T) (*Service, db.TxRunner, authz.Principal, *loginClock) {
 	t.Helper()
-	svc, runner, company, _, c, _ := loginFixture(t, password.NewHasher(2))
-	// DD-44: administration revalidates the session, so the Principal carries the fixture's real one.
-	return svc, runner, authz.Principal{TenantID: company.ID, UserID: company.UserID, SessionID: company.Rows["sessions"], Role: authz.RoleAdmin}, c
+	svc, runner, p, c := unverifiedFixture(t)
+	if err := runner.InTenantTx(context.Background(), p.TenantID, func(ctx context.Context, tx db.Tx) error {
+		_, err := tx.Exec(ctx, `UPDATE app.users SET email_verified_at=$3 WHERE tenant_id=$1 AND id=$2`, p.TenantID, p.UserID, c.now)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return svc, runner, p, c
 }
 func inviteForTest(t *testing.T, s *Service, p authz.Principal, role authz.Role) User {
 	t.Helper()
@@ -190,6 +197,13 @@ func TestInvitationPreviewAcceptanceAndInvalidTokens(t *testing.T) {
 					t.Fatal(err)
 				}
 			case "wrong_purpose":
+				// The resend only issues a link to an unverified user, and usersFixture verifies it.
+				if err := runner.InTenantTx(ctx, p.TenantID, func(ctx context.Context, tx db.Tx) error {
+					_, err := tx.Exec(ctx, `UPDATE app.users SET email_verified_at=NULL WHERE tenant_id=$1 AND id=$2`, p.TenantID, p.UserID)
+					return err
+				}); err != nil {
+					t.Fatal(err)
+				}
 				if err := s.ResendEmailVerification(ctx, p); err != nil {
 					t.Fatal(err)
 				}

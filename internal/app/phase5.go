@@ -13,7 +13,11 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-func RegisterRecoveryRoutes(r chi.Router, users *identity.Service, resetLimiter, verificationLimiter *ratelimit.Limiter, logger *slog.Logger) {
+// RegisterRecoveryRoutes: the resend of the verification has, after the IP quota shared with confirm
+// (DD-9) and after Authenticate, a quota per user (DD-46 (3), amendment H-16). It counts every request
+// that reaches it and answers 429 without calling the service, so a refusal queues nothing and revokes
+// no link.
+func RegisterRecoveryRoutes(r chi.Router, users *identity.Service, resetLimiter, verificationLimiter, resendLimiter *ratelimit.Limiter, logger *slog.Logger) {
 	r.With(ratelimit.Middleware(resetLimiter)).Post("/api/v1/auth/password-reset", func(w http.ResponseWriter, req *http.Request) {
 		var input struct {
 			Email string `json:"email"`
@@ -70,7 +74,7 @@ func RegisterRecoveryRoutes(r chi.Router, users *identity.Service, resetLimiter,
 			w.WriteHeader(http.StatusNoContent)
 		}
 	})
-	r.With(ratelimit.Middleware(verificationLimiter), identity.Authenticate(users, logger)).Post("/api/v1/auth/email-verification/resend", func(w http.ResponseWriter, req *http.Request) {
+	r.With(ratelimit.Middleware(verificationLimiter), identity.Authenticate(users, logger), ratelimit.MiddlewareBy(resendLimiter, userKey)).Post("/api/v1/auth/email-verification/resend", func(w http.ResponseWriter, req *http.Request) {
 		principal, ok := authz.PrincipalFrom(req.Context())
 		if !ok {
 			httpx.WriteProblem(w, req, httpx.CodeUnauthenticated)
@@ -86,4 +90,14 @@ func RegisterRecoveryRoutes(r chi.Router, users *identity.Service, resetLimiter,
 
 func requestMeta(req *http.Request) identity.RequestMeta {
 	return identity.RequestMeta{IP: httpx.ClientIPFrom(req.Context()), UserAgent: req.UserAgent(), RequestID: httpx.RequestIDFrom(req.Context())}
+}
+
+// userKey is the quota key of the resend: the user of the session. It runs after Authenticate; without
+// a Principal the route is wired wrong, and the middleware answers 500.
+func userKey(r *http.Request) (string, bool) {
+	p, ok := authz.PrincipalFrom(r.Context())
+	if !ok {
+		return "", false
+	}
+	return p.UserID.String(), true
 }

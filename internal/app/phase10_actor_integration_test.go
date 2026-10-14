@@ -119,21 +119,45 @@ func (e *phase10Env) token(tenantID uuid.UUID, recipient, template string) strin
 	return token
 }
 
-// newCompany registers a company (its founder is administrator A) and adds administrator B.
+// newCompany registers a company, confirms its founder's email with the token of the outbox (DD-46:
+// an unverified administrator cannot invite) and adds administrator B. The founder is administrator A.
 func (e *phase10Env) newCompany() phase10Company {
 	e.t.Helper()
-	ctx := context.Background()
+	c, email := e.newUnverifiedCompany()
+	token := e.token(c.a.TenantID, email, "email_verification")
+	if err := e.users.ConfirmEmailVerification(context.Background(), token, identity.RequestMeta{}); err != nil {
+		e.t.Fatal(err)
+	}
+	member := e.member(c.a, "b-"+email, authz.RoleAdmin)
+	c.b, c.bRaw = member.Principal, member.RawToken
+	return c
+}
+
+// newUnverifiedCompany is what a signup leaves: one active administrator whose email is not verified.
+func (e *phase10Env) newUnverifiedCompany() (phase10Company, string) {
+	e.t.Helper()
 	suffix := uuid.NewString()
-	reg, err := e.companies.Register(ctx, tenant.Signup{Name: "Admin A", Email: "admin-a-" + suffix + "@example.test", Password: e2e.Password,
+	email := "admin-a-" + suffix + "@example.test"
+	reg, err := e.companies.Register(context.Background(), tenant.Signup{Name: "Admin A", Email: email, Password: e2e.Password,
 		CompanyName: "Company " + suffix, BaseCurrency: "ARS", IndustryTemplateCode: "generic", Timezone: "America/Argentina/Buenos_Aires"}, identity.RequestMeta{})
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	c := phase10Company{a: reg.Session.Principal, aRaw: reg.Session.RawToken}
-	settleOutbox(e.t, e.runner, c.a.TenantID)
-	member := e.member(c.a, "admin-b-"+suffix+"@example.test", authz.RoleAdmin)
-	c.b, c.bRaw = member.Principal, member.RawToken
-	return c
+	settleOutbox(e.t, e.runner, reg.Session.Principal.TenantID)
+	return phase10Company{a: reg.Session.Principal, aRaw: reg.Session.RawToken}, email
+}
+
+// unverify clears email_verified_at of users of a company, to reach the state of a fresh signup.
+func (e *phase10Env) unverify(tenantID uuid.UUID, ids ...uuid.UUID) {
+	e.t.Helper()
+	for _, id := range ids {
+		if err := e.runner.TxRunner.InTenantTx(context.Background(), tenantID, func(ctx context.Context, tx db.Tx) error {
+			_, err := tx.Exec(ctx, `UPDATE app.users SET email_verified_at=NULL WHERE tenant_id=$1 AND id=$2`, tenantID, id)
+			return err
+		}); err != nil {
+			e.t.Fatal(err)
+		}
+	}
 }
 
 // member invites and accepts a user of the company, through the services (no rate limit involved).

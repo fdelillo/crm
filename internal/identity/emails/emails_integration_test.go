@@ -94,6 +94,13 @@ func TestTemplatesReachMailpit(t *testing.T) {
 					t.Fatalf("invitation=%q", detail.Text)
 				}
 			}
+			if tc.template == "email_verification" {
+				// DD-46 (4): whoever did not create the account is told not to open the link.
+				notice := "Si no creaste una cuenta con este email, no abras el enlace: confirmarlo le daría acceso a quien la creó. Podés ignorar este mensaje."
+				if !strings.Contains(detail.Text, notice) || !strings.Contains(detail.HTML, notice) {
+					t.Fatalf("verification notice absent: text=%q html=%q", detail.Text, detail.HTML)
+				}
+			}
 			if strings.Contains(detail.Text, "<no value>") || strings.Contains(detail.HTML, "<no value>") {
 				t.Fatal("empty template field")
 			}

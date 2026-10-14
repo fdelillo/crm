@@ -65,7 +65,10 @@ WHERE tenant_id = @tenant_id AND id = @token_id AND purpose = @purpose
   AND used_at IS NULL AND revoked_at IS NULL AND expires_at > @now;
 
 -- name: SetResetPassword :exec
-UPDATE app.users SET password_hash = @password_hash, updated_at = @now
+-- The reset token reached the address, so it also proves it (DD-46 (2)); a verification date that
+-- already exists is kept.
+UPDATE app.users SET password_hash = @password_hash, email_verified_at = COALESCE(email_verified_at, @now::timestamptz),
+  updated_at = @now
 WHERE tenant_id = @tenant_id AND id = @user_id;
 
 -- name: RevokeUserSessions :execrows

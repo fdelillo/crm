@@ -111,6 +111,9 @@ func TestIsolationPermissionMatrix(t *testing.T) {
 				f := e2e.New(t, pgtest.AppPool(t))
 				api := app.BuildAPIRouter(f.Users, f.Companies, f.Clock, f.Logger)
 				h := isolationRoot(t, f, api)
+				if key == "POST /api/v1/users/invitations" {
+					f.VerifyAdmin(t, f.A) // DD-46: only a verified administrator invites
+				}
 				path, ct, body := permissionRequest(t, f, key)
 				method := strings.SplitN(key, " ", 2)[0]
 				var cookie *http.Cookie

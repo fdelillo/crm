@@ -26,6 +26,8 @@ import (
 var (
 	ErrEmailTaken      = errors.New("identity: email taken")
 	ErrUnauthenticated = errors.New("identity: unauthenticated")
+	// ErrEmailNotVerified: the actor of an invitation has not proven its email (DD-46, INV-37).
+	ErrEmailNotVerified = errors.New("identity: email not verified")
 )
 
 type RequestMeta struct {
