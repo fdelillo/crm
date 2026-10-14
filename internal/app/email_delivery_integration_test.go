@@ -91,8 +91,16 @@ func TestOutboxDeliversEmailToMailpit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// LockDueMessage takes due messages ordered by next_attempt_at, and RunOnce handles a limited batch.
+	// Other tests of the package leave due messages behind (hundreds, from the isolation matrices), so
+	// this message is made the oldest one: it is the first the Dispatcher picks, whatever those tests
+	// left in the shared outbox and whatever order the test files run in.
+	if _, err := pgtest.SuperuserPool(t).Exec(ctx, `UPDATE app.outbox_messages SET next_attempt_at = '1970-01-01T00:00:00Z'
+   WHERE tenant_id = $1 AND recipient = $2`, company.ID, recipient); err != nil {
+		t.Fatal(err)
+	}
 	dispatcher := outbox.NewDispatcher(runner, emailHandler, clock.Real{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	// RunOnce takes a limited batch of any company: repeat until our message is sent (with a cap).
+	// RunOnce also takes messages of other companies: repeat until ours is sent (with a cap).
 	for i := 0; ; i++ {
 		if err := dispatcher.RunOnce(ctx); err != nil {
 			t.Fatal(err)
