@@ -58,6 +58,7 @@ ajustes antes de la Fase 6). La sección Frontend no cambia: el contrato no camb
 **Decimotercera revisión 2026-10-08** (*Accepted*, aprobada por el usuario el 2026-10-08): detención en T-B905 y pendientes de la revisión de código del PR fdelillo/crm#17 (plan §18, decimotercera tanda; [`revision-13-t-b905.md`](revision-13-t-b905.md)). Target de §13 redefinido (retención sin contención y ráfaga), DD-33 R-e, re-medición T-B910 con reglas de decisión, reglas (4) y (5) del guard de `crm serve` y tests de `runServe` (T-B911). Tareas afectadas: T-B801 (Fase 8, en la rama de la Fase 9), T-B905, T-B910 y T-B911 (nuevas), y la prueba independiente y el checkpoint de la Fase 9. La sección Frontend no cambia: el contrato no cambia.
 **Decimocuarta revisión 2026-10-08** (*Accepted*, aprobada por el usuario el 2026-10-08): resultado de T-B910 registrado (plan §18, decimocuarta tanda; [`revision-14-t-b910.md`](revision-14-t-b910.md)). Se mantiene ADR-005, y la condición de salida a producción está cumplida. En lugar de repetir T-B910 con 20.000 roles, rigen el techo de ADR-005 (plan DD-33 R-f) y los disparadores sobre `tenant_roles_total` (plan §12.4). Tareas afectadas: T-B910 (resultado y autocontrol del tracer) y la condición de salida a producción. Parte B (revisión de código del PR fdelillo/crm#17, *Accepted*, aprobada por el usuario el 2026-10-08): T-B801 (regla (4) ampliada, regla (6) nueva, mutaciones (j) a (q)), T-B903 y la fila 3 del paso 0 de la Fase 9 (mutaciones ratificadas). Sin tareas nuevas ni cambios de código de producción: la parte B cambia el guard y el tracer, que son código de test. La sección Frontend no cambia: el contrato no cambia.
 **Decimoquinta revisión 2026-10-10** (*Accepted*, aprobada por el usuario el 2026-10-10): pendientes no bloqueantes de la revisión final de código del PR fdelillo/crm#17 (Fase 9, mergeado en `main` en `b945373`; plan §18, decimoquinta tanda), en un PR solo de tests y texto. T-B801: la regla (4) prohíbe declarar parámetros de tipo en `cmd/crm` (mutaciones (r) a (t)), y se corrige su frase sobre "otro tipo", que era falsa con genéricos. T-B911: control positivo de la sonda de `pg_stat_activity`. T-B910: casos sintéticos del autocontrol del tracer. Textos: §B-5 de `revision-14-t-b910.md`, fila 4 de la entrada de la decimocuarta parte B y fecha de la entrada de la Fase 9. Sin tareas nuevas ni cambios de código de producción. La sección Frontend no cambia: el contrato no cambia.
+**Decimosexta revisión 2026-10-12** (*Accepted*, aprobada por el usuario el 2026-10-12): auditoría de seguridad de `b945373` (plan §18, decimosexta tanda; [`revision-16-auditoria.md`](revision-16-auditoria.md)). Fase 10 nueva (T-B1001 a T-B1010): revalidación del actor bajo el lock de la empresa (DD-44), cupo del hasher antes de la conexión (DD-45), cupos de invitación (DD-48), cupo global de registros (DD-49) e invitar con email verificado (DD-46, opción B). Cambia un test existente (`TestRoleChangesAndLastAdmin`), y se adaptan los hashers instrumentados de T-B503 y T-B604. Contrato **v0.5.0**: ver "Coordinación con la sección Frontend".
 
 ---
 
@@ -65,7 +66,7 @@ ajustes antes de la Fase 6). La sección Frontend no cambia: el contrato no camb
 
 Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invocación**.
 
-### Estado de la implementación (2026-10-10)
+### Estado de la implementación (2026-10-12)
 
 - **Fase 0**: implementada y mergeada (PR fdelillo/crm#6).
 - **Fase 1**: implementada y mergeada.
@@ -747,6 +748,21 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
 
   El desarrollador no edita texto de diseño (descripciones de tareas, reglas, mutaciones). Si encuentra uno incorrecto, lo reporta en su entrada de estado y lo corrige el arquitecto. La aprobación es el merge del PR: la entrada nunca dice "aprobado".
 
+- **Decimosexta revisión (2026-10-12, *Accepted*: aprobada por el usuario el 2026-10-12)**: respuesta del arquitecto a la auditoría de seguridad de `b945373` (plan §18, decimosexta tanda; detalle en [`revision-16-auditoria.md`](revision-16-auditoria.md)). Nueva **Fase 10** (T-B1001 a T-B1010), en una rama nueva desde `main` después del merge de la decimoquinta (`fix/001-phase-10-security`). Orden, con `make check` en verde después de cada paso:
+
+  | Orden | Tareas | Qué | Red |
+  |---|---|---|---|
+  | 1 | T-B1001, T-B1002 | Revalidación del actor (DD-44) | Hoy fallan S1, S2 y H1; `TestRoleChangesAndLastAdmin` cambia (afirmaba el hueco) |
+  | 2 | T-B1003, T-B1004 | Cupo del hasher antes de la conexión (DD-45) | Hoy H1 da `AcquiredConns() == 2`; se adaptan los hashers instrumentados |
+  | 3 | T-B1005, T-B1006 | Cupos de invitación (DD-48) y `ratelimit.MiddlewareBy` | Hoy Q2 y Q6 dan `201` |
+  | 4 | T-B1007, T-B1008 | Cupo global de registros (DD-49) | Hoy G2 da `422` |
+  | 5 | T-B1009, T-B1010 | Invitar con email verificado (DD-46, opción B) y enmienda H-16 | Hoy V1 da `201` |
+  | 6 | Cierre | Checkpoint de la Fase 10 | — |
+
+  El paso 5 va último para poder sacarlo sin rehacer nada. El desarrollador no edita texto de diseño; la aprobación es el merge del PR.
+
+  **Enmienda H-16 (2026-10-13, *Accepted*: decisión del usuario)**: sin cupo por usuario, el reenvío de la verificación responde `429 rate_limited` con `Retry-After` en lugar de `202` sin enviar (plan DD-46 (3); [`revision-16-auditoria.md`](revision-16-auditoria.md) §3.7; `ui.md` §27.2). Cambian V8 y las mutaciones de T-B1009, T-B1010 y la prueba independiente de la Fase 10. El orden de los pasos no cambia y el contrato sigue en v0.5.0. Hoy V8b da `202` y encola (Red).
+
 ### Convenciones de esta sección
 
 - `[T]` = tarea de test. Va **antes** de la tarea de código que la hace pasar, y el test debe
@@ -824,6 +840,7 @@ duplican acá**. Dependen de:
 | T-F004 (tipos del contrato) y T-F101 (mensajes por `code`) | Contrato **v0.4.0** (tercera revisión) | `ErrorCode` suma `method_not_allowed`: el mapa exhaustivo de T-F101 deja de compilar hasta que tenga su mensaje (a propósito). Lo actualiza el `frontend-architect` en su sección y en `ui.md` |
 | T-F004 (tipos del contrato) y T-F101 (mensajes por `code`) | Contrato **v0.4.1** (séptima revisión) | Declara `413 payload_too_large` en las operaciones con body JSON. No agrega valores a `ErrorCode` ni cambia esquemas: el mapa de T-F101 compila igual y `ui.md` §12.2 ya cubre `payload_too_large` fuera del logo ("como `malformed_request`"). Cuando exista `web/`, `gen:api` regenera los tipos (incluyen la respuesta `413` nueva). Sin decisión de UI pendiente |
 | T-F202 (pantalla de registro) | T-B305 (tercera revisión) | El `503` del registro puede traer `Retry-After: 2` (DD-33); el mensaje de "Reintentar" puede usarlo. Decisión del `frontend-architect` |
+| T-F004 y T-F101 (tipos y mensajes), Fase F5 (usuarios e invitaciones) | Contrato **v0.5.0** (decimosexta revisión; T-B1005, T-B1009) | `ErrorCode` suma `email_not_verified`: T-F101 deja de compilar hasta tener su mensaje. `POST /users/invitations` puede responder `403 email_not_verified` (aviso y "Reenviar verificación"; `/me` ya trae `email_verified`) y `429 rate_limited` con `Retry-After`, igual que `POST /users/{userId}/reactivate`. "Reenviar invitación" usa la misma ruta que invitar (DD-5). Lo decide el `frontend-architect` en `ui.md` |
 
 Orden sugerido: Fase 0 del backend completa → T-F007/T-F008 (en la misma rama o la siguiente) →
 T-F009.
@@ -2506,6 +2523,134 @@ de la fase y se agrega a plan §11.1 en el mismo cambio (matriz §16).
 
 ---
 
+### Fase 10 — Endurecimiento tras la auditoría de seguridad (decimosexta revisión, *Accepted*)
+
+**Objetivo**: cerrar los candidatos de la auditoría de `b945373` que se arreglan ([`revision-16-auditoria.md`](revision-16-auditoria.md)): revalidación del actor bajo el lock de la empresa (DD-44), cupo del hasher antes de la conexión del pool (DD-45), cupos de invitación (DD-48), cupo global de registros (DD-49) e invitar con el email verificado (DD-46, opción B). DD-47 (reserva de un email por invitación) es riesgo aceptado y no tiene tareas.
+
+**Prueba independiente** (`crm serve` real con Compose y `TRUSTED_PROXIES=127.0.0.1/32`, para elegir la IP con `X-Forwarded-For` de documentación):
+- un admin recién registrado invita y recibe `403 email_not_verified`; pide el reenvío de la verificación 3 veces (`202`, 3 emails nuevos en Mailpit) y el 4.º da `429 rate_limited` con `Retry-After`, sin email nuevo; confirma su email con el último enlace, invita y recibe `201` (solo con DD-46);
+- el mismo admin invita 10 veces más y la 11.ª da `429 rate_limited` con `Retry-After`;
+- 31 registros con body inválido desde 31 IPs distintas: el 31.º da `429` y `signup_global_limited_total` = 1 en `/debug/vars`;
+- con dos admins A y B, B baja a A y el siguiente request de A a `/users` da `403`.
+
+La concurrencia de DD-44 y DD-45 la prueban T-B1001 y T-B1003; no se reproduce a mano.
+
+**T-B1001 [T] — Revalidación del actor bajo el lock de la empresa** · FR-005, FR-008, INV-10, INV-11, INV-12, INV-35, DD-40, DD-44
+- **Red** (integración contra PostgreSQL real, con el mecanismo E de T-B604). Una transacción del test, `T_B`, toma `LockUsersTenant` y aplica la baja del actor A con las queries de `store`. El test sondea `pg_blocking_pids` cada 10 ms, con un contexto de 20 s, hasta ver la operación de A bloqueada por `T_B`; después `T_B` hace `COMMIT`. La empresa tiene dos admins activos, A y B. El `Principal` de A sale de una sesión real (`CreateSession`) y se resolvió **antes** de la baja:
+
+  | Caso | Esperado |
+  |---|---|
+  | S1 `T_B` baja a A a `operator`; A, con su `Principal` viejo, hace `ChangeRole(A → admin)` | `authz.ErrForbidden`; A sigue `operator`; la operación de A no deja auditoría. Hoy A vuelve a `admin` (Red) |
+  | S2 `T_B` desactiva a A (estado, sesiones y tokens, como `Deactivate`); A hace `Reactivate(A)` | `identity.ErrUnauthenticated`; A sigue `disabled`; sin auditoría. Hoy A vuelve a `active` (Red) |
+  | S3 `T_B` baja a A; A hace `Invite(email nuevo, admin)` | `authz.ErrForbidden`; ningún usuario, token, mensaje ni auditoría nuevos |
+  | S4 `T_B` desactiva a A; A hace `Deactivate(B)` | `ErrUnauthenticated`; B sigue `active` |
+  | S5 (secuencial) A cierra sesión (`Logout`) y después, con el `Principal` de esa sesión, hace `ChangeRole` de un operador | `ErrUnauthenticated`; sin cambios |
+  | S6 `Principal` con `SessionID = uuid.Nil` | `ErrUnauthenticated` en las cuatro operaciones (falla cerrada) |
+  | S7 control: A vigente | las cuatro operaciones responden como en T-B601, T-B603 y T-B604 |
+  | S8 orden: A, ya degradado, invita el email de un usuario de **otra** empresa | `authz.ErrForbidden`, no `ErrEmailTaken` (la revalidación va antes de buscar el email) |
+  | H1 (HTTP, router real, `httptest.NewRecorder`) A manda `PUT /users/{A}/role` con `{"role":"admin"}` y un body que se bloquea en su primer `Read` y avisa por un canal; mientras tanto, B baja a A por HTTP (`200`); el test libera el body de A | `403 forbidden` (validado contra el contrato); A sigue `operator`. Control: un request nuevo de A a `GET /users` da `403` |
+  | H2 (HTTP) igual que H1, pero B desactiva a A y A intenta reactivarse | `401 unauthenticated` con la cookie borrada (contrato); A sigue `disabled` |
+
+  Cada caso concurrente corre una sola vez, porque el mecanismo es determinista.
+
+  **Cambia un test existente**: `TestRoleChangesAndLastAdmin` afirmaba el hueco. En las líneas 292 y 295, con `p` ya bajado a operador, esperaba `ErrLastAdmin` y un ascenso propio exitoso. Ahora las dos esperan `authz.ErrForbidden`, y el test vuelve a ascender a `p` con el `Principal` de `u` (admin activo desde la aceptación). `usersFixture` arma el `Principal` con `SessionID = company.Rows["sessions"]`. Si un test adelanta el reloj falso más allá de la vida de esa sesión y después administra usuarios, crea otra sesión con `CreateSession`.
+- **Mutaciones** (se aplican, el caso falla y se restauran): quitar la revalidación de `withManagedUser` → S1, S2, S4; revalidar antes de `LockUsersTenant` → S1, S2 (la lectura todavía ve a A como admin); revalidar solo el rol → S2, S4, S5; quitarla de `Invite` → S3, S8; quitar el mapeo de `writeUserError` → H1, H2 (`500`).
+- **Green**: pasa la tabla.
+
+**T-B1002 — Implementar DD-44**. `requireActor` y `sessionValid` (plan DD-44; la regla de sesión vigente pasa a ser una sola, compartida por `ResolveSession` y la revalidación), llamada en la sentencia siguiente a `LockUsersTenant` en `withManagedUser` y en `Invite`. `writeUserError` mapea `ErrUnauthenticated` → `401` (borra la cookie, como `Authenticate`) y `authz.ErrForbidden` → `403`. Log `WARN` `security_event=actor_revalidation_failed` con `reason`. No hay queries nuevas (`GetSessionUser` ya existe) ni locks nuevos (la regla R0 de T-B604 no cambia).
+
+**T-B1003 [T] — Cupo del hasher antes de la conexión del pool** · FR-003, INV-13, INV-36, DD-7, DD-45, ADR-007
+- **Red, unitario** (`internal/platform/password`, hasher real con concurrencia 1 y parámetros chicos):
+
+  | Caso | Esperado |
+  |---|---|
+  | P1 `Acquire` → `s`; `s.Verify` de un hash válido, con un plazo de 2 s | termina con `ok = true` |
+  | P2 `s.Hash` y `s.VerifyDummy` | terminan dentro del plazo; el hash verifica con `Hasher.Verify` después de `Release` |
+  | P3 `s.Release()` dos veces | la segunda no hace nada; un `Acquire` posterior es inmediato |
+  | P4 con el cupo tomado, `Acquire` con un contexto cancelado | devuelve `ctx.Err()` sin bloquear |
+  | P5 con el cupo tomado por un `Slot`, `Hasher.Hash(ctx, …)` | espera hasta el `Release` (el `Slot` cuenta contra el mismo semáforo) |
+- **Red, integración** (`internal/identity`). Usa un pool propio de **2** conexiones, armado con `pgtest.AppURL` y `pool_max_conns=2`, y un hasher falso de **1** cupo. Los métodos de su `Slot` esperan una compuerta que abre el test. El fake avisa por un canal cuando un `Acquire` queda esperando, y **falla el test** si un flujo de `identity` llama a `Hash`, `Verify` o `VerifyDummy` del `Hasher` (los métodos que esperan el semáforo):
+
+  | Caso | Esperado |
+  |---|---|
+  | H1 el login L1 (email inexistente) entra a `VerifyDummy` con la compuerta cerrada; el login L2 (otro email inexistente) queda esperando en `Acquire` | Mientras esperan: `pool.Stat().AcquiredConns() == 1`, y un `ResolveSession` de una sesión válida de **otra** empresa, con plazo de 250 ms, la resuelve. Al abrir la compuerta: L1 y L2 → `ErrInvalidCredentials`, con un fallo en el throttle de cada email. Hoy `AcquiredConns() == 2` y el `ResolveSession` vence (Red) |
+  | H2 igual que H1, pero el segundo flujo es `AcceptInvitation` con un token válido | `AcquiredConns() == 1` mientras espera; después, la aceptación termina bien |
+  | H3 igual, con `ConfirmPasswordReset` | lo mismo |
+  | H4 L2 esperando en `Acquire`; se cancela su contexto | L2 vuelve con `context.Canceled` sin haber tomado una conexión; no hay fila de throttle para su email ni auditoría; después, L1 termina normalmente |
+  | H5 login correcto con un hash de parámetros más débiles (rehash) | un solo `Acquire`; el `Slot` hace un `Verify` y un `Hash`; el hash guardado tiene los parámetros vigentes |
+  | H6 email bloqueado (5 fallos previos) y el cupo ocupado por otro login | mientras espera, no toma una conexión; cuando obtiene el cupo, `LockedError` sin derivar (el `Slot` no registra llamadas) |
+- **Mutaciones**: `Acquire` dentro del callback de `InSystemTx` en `Login` → H1; lo mismo en `AcceptInvitation` o en `ConfirmPasswordReset` → H2 o H3; `Login` llama a `s.hasher.VerifyDummy(ctx, …)` dentro de la transacción → H1 (el fake falla); `Slot.Verify` vuelve a tomar el semáforo → P1 (vence el plazo); `Acquire` no cuenta contra el semáforo → P5; `Release` no idempotente → P3.
+- **Tests existentes que se adaptan, sin cambiar lo que prueban**: `gatedLoginHasher` (`token_flows_integration_test.go`) y `gatedResetHasher` (`tenant_lock_integration_test.go`, mecanismos U y V de T-B604) sobrescriben `Acquire` y devuelven un `Slot` con la compuerta. Los dos `countingHasher` (`identity` y `tenant`) implementan `Acquire`. Si un hasher instrumentado no se adapta, su test se cuelga esperando `entered`: no pasa en silencio. `phase9bench.prehashed` no cambia.
+- **Green**: pasan las dos tablas, T-B402, T-B404 (DD-7 exacto con concurrencia) y T-B604 (R3, R5).
+
+**T-B1004 — Implementar DD-45**. `Slot` y `Hasher.Acquire` (plan §11.1). `Login`, `AcceptInvitation` y `ConfirmPasswordReset` reservan el cupo antes de abrir la transacción, lo sueltan con `defer` y derivan solo con el `Slot`. El registro no cambia: hashea antes de su transacción, con `Hasher.Hash`.
+
+**T-B1005 [T] — Cupos de invitación por empresa y por IP** · FR-005, DD-9, DD-48, INV-16
+- **Red** (HTTP + contrato, reloj falso, router de `BuildAPIRouter` con los valores reales):
+
+  | Caso | Esperado |
+  |---|---|
+  | Q1 Empresa A, un admin, alternando dos IPs: 10 `POST /users/invitations` (emails nuevos, una reinvitación, un email de otra empresa y un body inválido) | cada uno con su respuesta normal (`201`, `200`, `409 email_taken`, `422`) |
+  | Q1b como Q1, repartidos entre dos admins de la empresa A | lo mismo; la 11.ª de cualquiera de los dos da `429` |
+  | Q2 la 11.ª, desde cualquiera de las dos IPs | `429 rate_limited` con `Retry-After`; ningún usuario, token, mensaje ni auditoría nuevos |
+  | Q3 inmediatamente después, un admin de la empresa B desde una de esas IPs | `201` (los cupos por empresa son independientes; la IP todavía tiene cupo) |
+  | Q4 empresa A sin cupo: `POST /users/{id}/reactivate` de un usuario desactivado | `429`; el usuario sigue `disabled`. Y al revés: con el cupo agotado solo por reactivaciones, una invitación da `429` (un solo cupo para el flujo) |
+  | Q5 reloj + 6 min | entra una invitación más (`201`); la siguiente da `429` |
+  | Q6 desde una sola IP, admins de tres empresas distintas mandan 21 invitaciones seguidas | la 21.ª da `429` aunque su empresa tenga cupo |
+  | Q7 un operador manda 10 `POST /users/invitations` (`403`); después, el admin de su empresa invita 10 veces | las 10 del admin dan `201` (un `403` no gasta cupo) |
+  | Q8 sin sesión | `401` sin gastar cupo |
+- **Mutaciones**: clave por IP en lugar de por empresa → Q1; clave por usuario → Q1b; limiter después de decodificar y solo en los éxitos → Q2; `reactivate` sin limiter o con un cupo propio → Q4; limiter antes de `RequirePermission` → Q7; sin el cupo por IP → Q6.
+- **Green**: pasa la tabla.
+
+**T-B1006 — Implementar DD-48**. `ratelimit.KeyFunc` y `ratelimit.MiddlewareBy`; `Middleware` pasa a ser `MiddlewareBy` con la clave por IP, sin cambio de comportamiento (lo cubren T-B217 y T-B606). En `internal/app`, `tenantKey` y los dos limiters en `BuildAPIRouter`, aplicados con `With` a las dos rutas, después de `Authenticate` y `RequirePermission`. Contrato: `429` en `inviteUser` y en `reactivateUser`.
+
+**T-B1007 [T] — Cupo global de registros** · FR-001, DD-9, DD-33 R-f, DD-49
+- **Red** (HTTP + contrato, reloj falso, router real; los bodies son inválidos y responden `422` sin crear empresas, para no crear roles en el test):
+
+  | Caso | Esperado |
+  |---|---|
+  | G1 30 `POST /auth/signup` desde 30 IPs distintas (IPv4 y /64 de documentación) | `422` cada uno |
+  | G2 el 31.º, desde una IP nueva | `429 rate_limited` con `Retry-After`; `signup_global_limited_total` = 1; log `WARN` `event=signup_global_limited` con la IP y sin el email |
+  | G3 reloj + 1 min | entra uno más (`422`); el siguiente da `429` |
+  | G4 antes de G1: 6 pedidos desde una misma IP | el 6.º da `429` por IP; después, G1 y G2 dan el mismo resultado (el `429` por IP no gastó cupo global) |
+  | G5 un registro válido después de G3, con el cupo global repuesto | `201` (el cupo global no cambia el camino feliz) |
+- **Mutaciones**: clave global por IP → G2; el cupo global antes que el de IP → G4; el cupo global después de validar el body → G2; sin la métrica o sin el log → G2.
+- **Green**: pasa la tabla. El test no corre en paralelo con otros registros (convención de T-B303).
+
+**T-B1008 — Implementar DD-49**. Segundo limiter en `tenant.RegisterRoutes`, con clave constante, después del de IP (`MiddlewareBy` de T-B1006). Constantes en `BuildAPIRouter`. Métrica `signup_global_limited_total` (`expvar`) y el evento. El runbook y la alerta de ritmo ya están en el plan (§12.3 y §12.4).
+
+**T-B1009 [T] — Invitar exige email verificado** *(DD-46, opción B)* · US-3.1, FR-005, DD-4, DD-9, DD-13, DD-46 (con la enmienda H-16), INV-37
+- **Red** (integración de servicio y HTTP + contrato; V7 sigue el `validation_plan.local` de la auditoría):
+
+  | Caso | Esperado |
+  |---|---|
+  | V1 un admin recién registrado (sin verificar) invita | `ErrEmailNotVerified` / `403 email_not_verified`; ningún usuario, token, mensaje ni auditoría |
+  | V2 el mismo admin invita el email de un usuario de otra empresa | `403 email_not_verified`, no `409 email_taken` |
+  | V3 confirma su email (con el token del outbox) e invita | `201` |
+  | V4 un admin que llegó por una invitación aceptada | invita sin ningún paso más (DD-13) |
+  | V5 `ConfirmPasswordReset` de un usuario sin verificar | `email_verified_at` = reloj; `/me` con `email_verified: true`; `auth.password_reset_completed` con las mismas claves de `data` que antes |
+  | V6 `ConfirmPasswordReset` de un usuario ya verificado | `email_verified_at` sin cambios |
+  | V7 (escenario de la auditoría) A registra `v@example.test` y no verifica; intenta invitar a `x@example.test` como admin → `403`; un registro de `v@` → `409 email_already_registered`; `RequestPasswordReset(v)` encola el reset; `ConfirmPasswordReset` | la sesión de A ya no resuelve (`ResolveSession` → no autenticado); `ListUsers` de esa empresa solo tiene a `v`; `v` invita → `201` |
+  | V8a (HTTP + contrato, router de `BuildAPIRouter` con reloj falso, IPs elegidas como en T-B1005) U1 (admin de `fixture.NewCompany`, sin verificar, sesión real) manda 3 `POST /auth/email-verification/resend`, cada uno desde una IP distinta | `202` cada uno; 3 mensajes `email_verification` encolados para U1 |
+  | V8b el 4.º, desde una IP nueva | `429 rate_limited` con `Retry-After: 1200`, validado contra el contrato; ningún mensaje ni token nuevos, y el token del 3.º sigue abierto (`revoked_at` nulo) |
+  | V8c reloj + 5 min; U1 desde otra IP nueva | `429` con `Retry-After: 900` |
+  | V8d inmediatamente después, U2 (otro usuario `active` de la **misma** empresa, sin verificar, del fixture de `identity`) desde la IP de V8c | `202` y un mensaje para U2 (la clave es el usuario, no la empresa ni la IP) |
+  | V8e reloj + 15 min más (20 desde V8a); U1 | `202` y un mensaje más; el siguiente, `429` con `Retry-After: 1200` |
+  | V8f (router nuevo, limiters vacíos) la IP X gasta su cupo con 20 `POST /auth/email-verification/confirm` con un token inválido (`400`); U3 (fundador de otra empresa, sin verificar) manda el reenvío desde X | `429` con `Retry-After: 180` (el del cupo por IP) y ningún mensaje. Después, U3 manda 3 desde la IP Y: `202` cada uno y 3 mensajes (el `429` por IP no gastó el cupo por usuario); el 4.º desde Y da `429` con `Retry-After: 1200` |
+  | V8g los dos cupos agotados: U3 desde X, con el reloj de V8f | `429` con `Retry-After: 180` (manda el de IP, que corre antes de autenticar). Reloj + 3 min, U3 desde X: `429` con `Retry-After: 1020` (ahora el del usuario) |
+  | V8h U4 (usuario `active` con `email_verified_at` no nulo) manda 4 | los 3 primeros dan `202` sin encolar; el 4.º da `429` (el cupo cuenta todo pedido autenticado, no solo los envíos; contrato) |
+  | V8i U1 confirma con el token del último `202` de V8e | `204` (ningún `429` revocó un enlace) |
+  | V9 caracterización: un admin sin verificar no tiene a nadie que reactivar | en una empresa recién registrada, `ListUsers` solo lo tiene a él, y `Reactivate` de cualquier id da `404` |
+- **Mutaciones**: sin el gate → V1, V7; el gate después de `FindInvitedEmail` o del `INSERT` → V2; el reset no verifica → V5, V7; el reset pisa un `email_verified_at` existente → V6; sin el cupo por usuario del reenvío → V8b (`202`); el cupo responde `202` sin enviar (versión del 2026-10-12) → V8b; clave por IP (`ratelimit.Middleware` en lugar de `MiddlewareBy` con `userKey`) → V8b (el 4.º llega desde una IP nueva); clave por empresa o constante → V8d; `Retry-After` fijo de 20 min → V8c (espera `900`); orden `Authenticate` → cupo por usuario → cupo por IP → V8f (el `429` por IP gasta el cupo de U3 y el 3.º desde Y da `429`) y V8g (`1200` en lugar de `180`); el cupo dentro de `ResendEmailVerification` después de mirar `email_verified_at` (cuenta solo los envíos) → V8h; el `429` después de llamar al servicio (encola, o revoca el enlace vigente) → V8b, V8i.
+- **Fixtures**: todo test que invita con el admin de `fixture.NewCompany` o con el de un registro nuevo tiene que verificar antes su email (`usersFixture`, los tests HTTP de la Fase 6, los fixtures de la Fase 8 y `fixture/e2e`). Los mismos tests lo muestran como Red.
+- **Green**: pasa la tabla.
+
+**T-B1010 — Implementar DD-46** *(opción B)*. `ErrEmailNotVerified` y el gate en `Invite`, con la fila de `requireActor`, mapeado a `403 email_not_verified` (el `httpx.CodeEmailNotVerified` y su fila en `problems` ya están en `main` desde el PR fdelillo/crm#19, porque `TestProblemCodesMatchContract` exige que el código siga al contrato). `SetResetPassword` también completa `email_verified_at` si era nulo. Cupo por usuario del reenvío de la verificación (DD-46 (3) con la enmienda H-16): un `ratelimit.Limiter` de 3 de ráfaga y 1 cada 20 min, construido en `BuildAPIRouter` con los demás y pasado a `RegisterRecoveryRoutes`. Esa función lo aplica con `ratelimit.MiddlewareBy(limiter, userKey)` en `POST /auth/email-verification/resend`, **después** de `ratelimit.Middleware(verificationLimiter)` y de `identity.Authenticate`. `userKey` (`internal/app`, no exportada, como `tenantKey`) devuelve `Principal.UserID`; sin `Principal`, `ok == false` → `500` (bug de cableado). Sin cupo, el middleware responde `429 rate_limited` con `Retry-After` y el handler no corre: `ResendEmailVerification` no cambia. Depende de `MiddlewareBy` (T-B1006, paso 3). En el contrato cambia solo la descripción de `resendEmailVerification`: el `429` ya estaba declarado. Texto nuevo de `email_verification.txt` y `.html`: «Si no creaste una cuenta con este email, no abras el enlace: confirmarlo le daría acceso a quien la creó. Podés ignorar este mensaje.» Contrato v0.5.0.
+
+**Checkpoint Fase 10**: `make check` en verde + la prueba independiente. La entrada de estado reporta las mutaciones de T-B1001, T-B1003, T-B1005, T-B1007 y T-B1009, cada una con el caso que falla.
+
+---
+
 ### Trazabilidad
 
 | Requisito / criterio / decisión | Tareas |
@@ -2514,7 +2659,7 @@ de la fase y se agrega a plan §11.1 en el mismo cambio (matriz §16).
 | FR-002 Plantillas | T-B301, T-B303 |
 | FR-003 Email + contraseña, hash robusto | T-B205, T-B402, T-B404 |
 | FR-004 Recuperar contraseña | T-B501, T-B502, T-B506 |
-| FR-005 Invitar, desactivar, cambiar rol (+ reactivar, P-3) | T-B601..T-B606 |
+| FR-005 Invitar, desactivar, cambiar rol (+ reactivar, P-3) | T-B601..T-B606, T-B1001, T-B1005, T-B1009 |
 | FR-006 Aislamiento | T-B101, T-B103, T-B107..T-B112, T-B801..T-B804 |
 | FR-007 Matriz de permisos | T-B207, T-B309, T-B606, T-B705, T-B802 |
 | FR-008 Auditoría (y reactivación, P-3) | T-B209, T-B303, T-B402, T-B501, T-B601, T-B603, T-B604 |
@@ -2525,7 +2670,7 @@ de la fase y se agrega a plan §11.1 en el mismo cambio (matriz §16).
 | Casos borde (404 de otra empresa, 403 de operador) | T-B606, T-B801, T-B802 |
 | SC-001 Panel en < 3 min | T-B305 (un request), T-B905 (latencia de signup, también con registros concurrentes), T-B910 (de punta a punta en ráfagas) |
 | SC-002 0 accesos cruzados | T-B110, T-B801..T-B804 |
-| P-2 Verificación no bloqueante | T-B309, T-B504 |
+| P-2 Verificación no bloqueante (salvo invitar, DD-46) | T-B309, T-B504, T-B1009 |
 | P-3 Reactivación | T-B604, T-B605, T-B606, T-B801 |
 | P-4 `email_already_registered` + login/reset no enumerables (tiempo del reset fuera, DD-39) | T-B201, T-B305, T-B402, T-B404, T-B501, T-B506, T-B801 |
 | P-5 Sesión 24 h / 7 días | T-B002, T-B305, T-B307, T-B402, T-B404 |
@@ -2562,6 +2707,12 @@ de la fase y se agrega a plan §11.1 en el mismo cambio (matriz §16).
 | DD-36 Imagen de MinIO en desarrollo y tests (research R-30) | T-B215, T-B216 (paso 4 obligatorio al comienzo de la Fase 3, séptima revisión) |
 | ADR-014 (nota 2026-10-02) / principio VI Validación de request y response contra el contrato (séptima revisión) | T-B311, T-B312, T-B004, T-B201, T-B301, T-B305, T-B309 (y todo test HTTP de las Fases 4 a 8) |
 | Contrato v0.4.1: `413 payload_too_large` en las operaciones con body JSON (séptima revisión) | T-B201, T-B305, T-B311; T-F004 (tipos regenerados, frontend) |
+| DD-44 / INV-35 Revalidación del actor bajo el lock de la empresa (decimosexta revisión) | T-B1001, T-B1002 |
+| DD-45 / INV-36 Cupo del hasher antes de la conexión del pool (nota en ADR-007) | T-B1003, T-B1004, T-B604 (hashers instrumentados) |
+| DD-46 / INV-37 Invitar con email verificado; enmienda H-16 (`429` con `Retry-After` del cupo por usuario del reenvío) (contrato v0.5.0) | T-B1009, T-B1010 |
+| DD-47 / R-20 Reserva de un email por invitación (riesgo aceptado) | T-B601 (fija el `409` de un desactivado) |
+| DD-48 Cupos de invitación por empresa y por IP | T-B1005, T-B1006 |
+| DD-49 / R-21 Cupo global de registros y alerta de ritmo | T-B1007, T-B1008 |
 
 ---
 
@@ -2585,6 +2736,40 @@ del logo), T-F603/T-F604 (límite exacto 2 097 152), F7 (sin precondición de H-
 receta de CI y el supuesto S-12), T-F702/T-F703 (cookie real, respaldo `ignoreHTTPSErrors`),
 T-F706, pruebas independientes de F0, F1, F2 y F6 (sin Firefox ni `http://`). Hallazgo nuevo H-12
 (prueba en un celular real) en `ui.md` §27.2: no bloquea.
+**Tercera revisión 2026-10-12** (`ui.md` Revisión 3; análisis en
+[`ui-revision-3.md`](ui-revision-3.md)): realineación con el backend implementado (Fases 0 a 9 en
+`main`; plan §18, tandas 3 a 15; contrato **v0.4.3**). Tareas afectadas: tabla de dependencias
+(backend completo; lista "Dependiente de la revisión 16"), T-F004 (contrato v0.4.3,
+`method_not_allowed`, `TenantUpdate`), T-F005 (`Retry-After` en `503`, `405`), T-F007 (`Allow` en
+el `405` de la SPA), T-F008 (*stub* real, guard de T-B801, H-15), T-F101 (DD-F24, DD-F25), T-F202,
+T-F301, T-F402 (P-F7), T-F504, T-F505, T-F601, T-F602 (INV-F15, DD-F27), T-F603 (DD-F26) y
+trazabilidad. Sin tareas nuevas ni cambios de orden. Sistema visual sin cambios.
+**Cuarta revisión 2026-10-13** (`ui.md` Revisión 4): addendum al contrato **v0.5.0** (decimosexta
+revisión del backend, aprobada el 2026-10-12: DD-44 a DD-49). Cierra la lista "Dependiente de la
+revisión 16". Tareas afectadas:
+- tabla de dependencias;
+- T-F004 (contrato v0.5.0);
+- T-F101 (`email_not_verified`, `rate_limited` por contexto, DD-F29);
+- T-F104 (INV-F16; refetch de la sesión al enfocar, DD-F28);
+- T-F202 (`429` del cupo global);
+- T-F402 (P-F7 aprobada);
+- T-F404 (P-F10, DD-F30);
+- T-F405 (DD-F30; el reset confirma el email);
+- T-F406 (`useResendEmailVerification` pasa a `features/auth/session.ts`);
+- T-F501 a T-F504 (BR-F14, `429` de DD-48, `403 email_not_verified`, `401` de DD-44);
+- T-F506 (`VerifyToInviteNotice`, `useInviteBlockedReason`);
+- prueba independiente de F4 y F5, T-F702 y trazabilidad.
+
+Sin tareas nuevas ni cambios de orden. Sistema visual sin cambios.
+
+**Enmienda H-16 (2026-10-13, aprobada por el usuario)** (`ui.md` Revisión 4, enmienda H-16;
+[`revision-16-auditoria.md`](revision-16-auditoria.md) §3.7): sin cupo por usuario, el reenvío de
+la confirmación responde `429 rate_limited` con `Retry-After` (hasta 1200 s) en lugar de `202` sin
+enviar. DD-F30 queda reemplazada. Tareas afectadas: T-F101 (`Retry-After: 1200`), T-F404 y T-F405
+(sin la línea de los 20 minutos; `429` del cupo por IP o por usuario; dos cupos agotados), T-F502
+(aviso W), dependencias y prueba independiente de F4, y trazabilidad. No cambian T-F004 (el
+contrato sigue en v0.5.0 y los tipos generados son los mismos), T-F402 (P-F7: el reset sigue con
+`202`) ni T-F506. Sin tareas nuevas ni cambios de orden.
 
 ### Convenciones de esta sección
 
@@ -2644,12 +2829,22 @@ Se corren en `web/` salvo los de `make`.
 |---|---|---|
 | F0 | T-B005 (mux raíz con `RootDeps.SPA`, TLS local en `serve`) y T-B204 (middlewares comunes) para T-F007/T-F008; T-B014 (`make dev-certs`) para T-F006; T-B013 para T-F009 | H-1, H-8 y H-10 resueltos (DD-22, DD-29, DD-24) |
 | F1 | T-B310 (`/me`) | — |
-| F2 | T-B302, T-B306, T-B310 | H-3/H-10 resueltos (DD-24): HTTPS local en cualquier navegador |
+| F2 | T-B302, T-B306, T-B310; para ver el `429` del cupo global, T-B1008 (Fase 10) | H-3/H-10 resueltos (DD-24): HTTPS local en cualquier navegador. Revisión 16 incorporada (DD-49, DD-F29) |
 | F3 | T-B405 | — |
-| F4 | T-B507; `APP_LINK_*` con los defaults de DD-14 | — |
-| F5 | T-B607 | H-4, H-5 resueltos (DD-25, DD-26) |
-| F6 | T-B706 (límites de DD-31) | H-2 y H-11 resueltos (DD-23, DD-31); **H-12 abierto** (prueba en un celular real): no bloquea |
-| F7 | Todas las fases del backend hasta la 7 + `compose.yaml` + T-B014 y la receta de CI de plan §10.5.1 | H-7, H-9, H-10 resueltos (DD-28, DD-30, DD-24); supuesto S-12 se valida en T-F701 |
+| F4 | T-B507; `APP_LINK_*` con los defaults de DD-14; para el reset que confirma el email y el cupo por usuario del reenvío, T-B1010 (Fase 10) | Revisión 16 incorporada (DD-46 (2) y (3), con la enmienda H-16; DD-F30 reemplazada); P-F7 aprobada; P-F10 aprobada (sí, 2026-10-13) |
+| F5 | T-B607; para el gate de invitar y los `429`, T-B1006 y T-B1010 (Fase 10) | H-4, H-5 resueltos (DD-25, DD-26). Revisión 16 incorporada (DD-44, DD-46, DD-48; P-F8 aplicada, DD-F28); P-F11 cerrada (no, 2026-10-13) |
+| F6 | T-B706 (límites de DD-31); DD-42 y DD-43 (contrato v0.4.3) | H-2 y H-11 resueltos (DD-23, DD-31); **H-12 abierto** (prueba en un celular real): no bloquea |
+| F7 | Fases 0 a 10 del backend (en `main`) + `compose.yaml` + T-B014 y la receta de CI de plan §10.5.1 | H-7, H-9, H-10 resueltos (DD-28, DD-30, DD-24); supuesto S-12 se valida en T-F701; los flujos de invitación de T-F702 confirman antes el email del Administrador (DD-46) |
+
+**Estado del backend (2026-10-13)**: las Fases 0 a 9 están en `main` (`b945373`). La Fase 10
+(decimosexta revisión, aprobada el 2026-10-12) todavía no está implementada. Hasta que llegue a
+`main`, las pruebas independientes de F2, F4 y F5 se hacen sin el gate de invitar ni los cupos
+nuevos; las filas que los necesitan dicen "con la Fase 10" y se completan después.
+
+**Revisión 16 incorporada** (`ui.md` Revisión 4, §26): la lista "Dependiente de la revisión 16" de
+la tercera revisión queda cerrada. Todas las fases F se pueden implementar contra el contrato
+v0.5.0, porque los tests con MSW no dependen de la Fase 10 del backend. P-F10 y P-F11 tienen
+default y no bloquean.
 
 ---
 
@@ -2712,13 +2907,17 @@ respuestas de `ui.md` §21.1–21.2 (sin `Strict-Transport-Security`, porque es 
 - Si S-F2 falla: probar `happy-dom` y reportar (no cambia código de la app).
 
 **T-F004 [T] — Tipos generados del contrato y paso multi-spec** · ADR-018, ADR-014, DD-17, INV-F05, supuesto S-F1
-- **Red** (tests de tipos `src/api/schema.test-d.ts` y un spike), contra el contrato **v0.3.1**:
+- **Red** (tests de tipos `src/api/schema.test-d.ts` y un spike), contra el contrato **v0.5.0**:
 
   | Caso | Esperado |
   |---|---|
   | Tipo de la respuesta `200` de `paths['/me']['get']` | igual a `SessionInfo` |
-  | `ErrorCode` | incluye `email_already_registered`, `email_taken`, `last_admin`, `token_invalid`, `payload_too_large`, `unsupported_media_type` |
+  | `ErrorCode` | incluye `email_already_registered`, `email_taken`, `last_admin`, `token_invalid`, `payload_too_large`, `unsupported_media_type`, `method_not_allowed` (v0.4.0) y `email_not_verified` (v0.5.0) |
+  | Respuestas de `paths['/users/invitations']['post']` y de `paths['/users/{userId}/reactivate']['post']` | incluyen `429` (v0.5.0, DD-48) |
   | `User['name']` | `string \| null` |
+  | `TenantUpdate['name']` y `TenantUpdate['timezone']` | `string` opcional, sin `null` (DD-43: un `null` da `400`) |
+  | `keyof TenantUpdate` | no incluye `base_currency` (DD-15; una clave de más da `400`) |
+  | Respuestas de `paths['/auth/signup']['post']` | incluyen `413` (contrato v0.4.1) |
   | Parámetros de query de `paths['/tenant/logo']['get']` | incluyen `v?: string` |
   | Body de `paths['/tenant/logo']['put']` | `multipart/form-data` con la propiedad `file` (el test documenta el tipo generado; si no acepta un `File`, `putTenantLogo` usa `fetch` nativo, `ui.md` §11.3) |
   | `FieldErrorCode` | incluye `required` e `invalid_value` (los que usa el `422` del logo con `field: file`) |
@@ -2740,6 +2939,8 @@ respuestas de `ui.md` §21.1–21.2 (sin `Strict-Transport-Security`, porque es 
   | `422` `ValidationProblem` con 2 errores | `fieldErrors` con los 2, en orden |
   | `429 login_locked` con `Retry-After: 900` | `retryAfterSeconds: 900` |
   | `429` sin `Retry-After` | `retryAfterSeconds: null` |
+  | `503` `service_unavailable` con `Retry-After: 2` (registro, DD-33, contrato v0.4.0) | `retryAfterSeconds: 2`; `isRetryable` → `true` |
+  | `405` problem+json `method_not_allowed` con `Allow: GET` | `kind: 'problem'`, `code: 'method_not_allowed'` |
   | `500` con `instance` | `requestId` = `instance` |
   | `403` problem+json `forbidden` (como el rechazo de CSRF, DD-30) | `kind: 'problem'`, `code: 'forbidden'` |
   | `502` con cuerpo HTML | `kind: 'unexpected'`, `status: 502`, `code: null` |
@@ -2796,7 +2997,7 @@ respuestas de `ui.md` §21.1–21.2 (sin `Strict-Transport-Security`, porque es 
   | `GET /sw.js` / `GET /manifest.webmanifest` / `GET /offline.html` | `no-cache`; tipos `text/javascript` / `application/manifest+json` / `text/html` con CSP |
   | `GET /icons/icon-192.png` | `public, max-age=86400`; **sin** `Content-Encoding` aunque se pida gzip |
   | `HEAD /` | `200` sin cuerpo |
-  | `POST /login` | `405` |
+  | `POST /login` | `405` con `Allow: GET, HEAD` (RFC 9110; igual que el `405` de `/healthz` en el mux raíz) |
   | `GET /api/v1/no-existe` (mux completo) | `404` problem+json `code: not_found` (nunca `index.html`, INV-22) |
   | `GET /api/v1/me` con `Accept-Encoding: gzip` (mux completo) | **sin** `Content-Encoding: gzip` (la API no se comprime, DD-29) |
   | `GET /healthz` (mux completo) | `200` `{"status":"ok"}` del backend |
@@ -2815,6 +3016,17 @@ respuestas de `ui.md` §21.1–21.2 (sin `Strict-Transport-Security`, porque es 
   `cmd/crm`/`internal/app`, reemplazar el stub de `RootDeps.SPA` (T-B005) por
   `web.NewHandler(web.DistFS())`. `depguard`: `web` solo importa la librería estándar y `gzhttp`
   (T-B011).
+- *(Revisión 3)* El *stub* actual es `app.SPAUnavailableHandler()` (`internal/app/ops.go`), usado
+  en `cmd/crm/serve.go`; se reemplaza **dentro del literal** `app.RootDeps{…}` que ya es argumento
+  directo de `app.NewRootHandler`. El guard de `crm serve` (T-B801, reglas (1) a (6)) tiene que
+  seguir en verde: `cmd/crm` importa `web` pero no `net/http`, y no declara valores de tipo
+  `RootDeps` ni parámetros de tipo. `app.SPAUnavailableHandler` se conserva (lo usan los tests del
+  backend).
+- *(Revisión 3, H-15)* `cmd/crm/main_test.go` exige `503` en `GET /login` ("without a built
+  SPA"). Con la SPA embebida, el resultado depende de si `web/dist` tiene `index.html` al correr
+  `go test`: ajustar el test para aceptar `503` con el texto de "interfaz no compilada" si
+  `web.DistFS()` no tiene `index.html`, o `200` `text/html` si lo tiene. `make check` tiene que
+  pasar con y sin un `make web-build` previo.
 
 **T-F009 — Makefile, CI y README del frontend** · ADR-019, ADR-022, DD-24
 - Targets `web-build`, `web-check`, `build`, `check-all` (tabla de comandos). CI: job de frontend
@@ -2855,11 +3067,18 @@ cerró"; Chrome ofrece "Instalar app" sobre el binario en `https://localhost:844
   | `messageForError` para cada `code` de §12.2 en contexto `generic` | título y descripción de la tabla |
   | `token_invalid` en `resetConfirm`, `verifyEmail`, `invitationPreview` | los tres textos de §12.2 |
   | `unsupported_media_type`, `payload_too_large` y `malformed_request` en `logo` | textos del logo ("No pudimos subir el logo." con `requestId` para el `400`) |
-  | `rate_limited` con `retryAfterSeconds` 61 / 1800 / `null` | "2 minutos" / "30 minutos" / "unos minutos" |
+  | `rate_limited` con `retryAfterSeconds` 3 / 60 / 61 / 1800 / `null` | "unos segundos" / "1 minuto" / "2 minutos" / "30 minutos" / "unos minutos" (DD-F25) |
+  | `service_unavailable` con `retryAfterSeconds` 2 en `signup` / sin cabecera | "Probá de nuevo en unos segundos." + "No se creó nada: podés reintentar con los mismos datos." / "Probá de nuevo en unos minutos." |
+  | `method_not_allowed` con `requestId` | "No pudimos procesar el pedido." + "Recargá la página y probá de nuevo." + código (contrato v0.4.0) |
+  | `email_not_verified` en `invite`, `userAction` y `generic` (contrato v0.5.0; sin su fila, el mapa no compila) | "Confirmá tu email para invitar a tu equipo." + "Te mandamos un enlace cuando te registraste. Si no lo encontrás, pedí uno nuevo." |
+  | `rate_limited` en `signup` con `retryAfterSeconds` 45 / 720 | "Hubo muchos intentos de registro seguidos." + "Esperá unos segundos y probá de nuevo. No se creó nada: podés reintentar con los mismos datos." / lo mismo con "12 minutos" (DD-F29) |
+  | `rate_limited` en `invite` y en `userAction` con 360 | "Por ahora no podemos enviar más invitaciones." + "Hay un límite de invitaciones y reactivaciones seguidas para cuidar el envío de emails. Esperá 6 minutos y probá de nuevo." |
+  | `rate_limited` en `resendVerification` con 300 / 1200 | "Ya te lo mandamos hace poco." + "Esperá 5 minutos y probá de nuevo." / lo mismo con "Esperá 20 minutos y probá de nuevo." (máximo del cupo por usuario, enmienda H-16) |
   | `internal` con `requestId` | la descripción incluye el código |
   | `kind: 'network'` | "No hay conexión." y `retryable: true` |
   | `kind: 'unexpected'` con `502` / `418` | como `service_unavailable` / como `internal` |
   | `fieldErrorMessage` para cada `FieldError.code` y cada variante por campo de §12.3, incluidas `file` + `required` y `file` + `invalid_value` | textos de la tabla |
+  | `fieldErrorMessage` con `invalid_value` en `name`, `company_name`, `legal_name`, `base_currency`, `role`, `password` y en un campo sin variante; `too_long` en `password` | textos de DD-F24: "Tiene que tener entre 1 y 120 caracteres.", "Es demasiado largo (máximo 200 caracteres).", "Elegí la moneda base.", "Elegí un rol.", "Ingresá tu contraseña (hasta 128 caracteres).", "Revisá este dato.", "La contraseña puede tener hasta 128 caracteres." |
   | `logoRejectMessage` para cada `LogoRejectReason` | textos de §13.11.1 |
   | `applyServerFieldErrors` con un campo conocido y uno desconocido | `setError` en el conocido; devuelve el desconocido |
 - **Green**: pasa la tabla.
@@ -2895,6 +3114,8 @@ cerró"; Chrome ofrece "Instalar app" sobre el binario en `https://localhost:844
   | `POST /auth/login` → `401 invalid_credentials` | no navega ni limpia la caché (INV-F02) |
   | Una query responde `403 forbidden` | se vuelve a pedir `/me`; con el rol nuevo sin `settings.manage`, el guard muestra "Sin permiso" |
   | Una mutación responde `403 forbidden` (p. ej. rechazo de CSRF, DD-30) | mensaje "No tenés permiso para hacer esto."; se vuelve a pedir `/me` |
+  | Una mutación responde `403 email_not_verified` (DD-46) | no navega; no aparece "Sin permiso" ni "No tenés permiso para hacer esto."; el error llega a la pantalla (INV-F16) |
+  | Sesión con `email_verified: false`; la pestaña vuelve a enfocarse a los 10 s (antes de los 60 s de `staleTime`) / lo mismo con `email_verified: true` | se vuelve a pedir `/me` / no se pide (DD-F28) |
   | `['session']` pasa de un usuario a `null` en un refetch al enfocar la ventana | igual que un `401` global (`reason=session_expired`) |
   | Tras el `401`, botón atrás del navegador | se vuelve a pedir `/me`; no se ven datos anteriores |
 - **Green**: pasa la tabla.
@@ -2975,9 +3196,10 @@ de la cookie (T-F006) reportado para Chrome, Firefox y, si hay, Safari.
   | Enviar vacío | un error debajo de cada campo requerido (textos de §12.3); foco en "Tu nombre"; ningún request |
   | Datos válidos | `POST /auth/signup` con el body del contrato (email normalizado, `base_currency: 'ARS'` por defecto, `timezone` = la del navegador tal cual, incluso si es un valor raro como `Etc/Unknown`); luego el panel, toast "¡Listo! Tu empresa quedó creada."; atrás no vuelve al formulario |
   | `409 email_already_registered` | alerta "Ya existe un usuario con ese email." con "Recuperar contraseña" (→ `/forgot-password` con el email prellenado) y "Usar otro email" (enfoca el email) |
-  | `422` con `errors: [{field: 'company_name', code: 'too_long'}]` | error debajo de "Nombre de la empresa" y foco ahí |
-  | `429 rate_limited` con `Retry-After: 1800` | "Hiciste muchos intentos seguidos. Esperá 30 minutos y probá de nuevo." |
+  | `422` con `errors: [{field: 'company_name', code: 'invalid_value'}]` (lo que manda el servidor para un nombre vacío o largo, `ui.md` §12.3) | "Tiene que tener entre 1 y 120 caracteres." debajo de "Nombre de la empresa" y foco ahí |
+  | `429 rate_limited` con `Retry-After: 720` (cupo por IP) / con `Retry-After: 45` (cupo global, DD-49; el contrato no los distingue) | "Hubo muchos intentos de registro seguidos." + "Esperá 12 minutos y probá de nuevo. No se creó nada: podés reintentar con los mismos datos." / lo mismo con "unos segundos"; los valores siguen cargados; un solo `POST` hasta tocar "Crear cuenta" de nuevo (DD-F29) |
   | `503` / sin red | mensaje con "Reintentar"; los valores siguen cargados |
+  | `503` con `Retry-After: 2` (DD-33) | "Probá de nuevo en unos segundos. No se creó nada: podés reintentar con los mismos datos." + "Reintentar"; **ningún** reintento automático (un solo `POST` hasta tocar "Reintentar", DD-F25) |
   | Doble click en "Crear cuenta" | un solo `POST`; botón "Creando cuenta…" deshabilitado |
   | Completar todo con teclado (Tab, flechas en los radios, Enter) | se envía |
   | Visitante con sesión vigente | redirige a `/` |
@@ -3024,7 +3246,7 @@ login con "Cerraste sesión." y atrás no muestra datos.
   | `401 invalid_credentials` | "El email o la contraseña no son correctos."; email conservado; contraseña vacía y enfocada; sin navegación ni limpieza de caché |
   | `403 account_disabled` | "Tu usuario está desactivado." + "Pedile a un administrador de tu empresa que lo reactive." |
   | `429 login_locked` con `Retry-After: 900` y reloj en 14:20 | "…Podés volver a intentar a las 14:35 (en 15 minutos)…"; "Restablecer contraseña" lleva a `/forgot-password` con el email; "Volver a intentar" muestra el formulario |
-  | `429 rate_limited` | minutos de espera |
+  | `429 rate_limited` con `Retry-After: 3` (cupo por IP del login, DD-9) / con `Retry-After: 120` | "Esperá unos segundos y probá de nuevo." / "Esperá 2 minutos y probá de nuevo." (DD-F25) |
   | `reason=session_expired` / `password_changed` / `logged_out` / otro valor | el aviso correspondiente / ninguno |
   | "¿Olvidaste tu contraseña?" con un email escrito | `/forgot-password` con ese email |
   | `503` / sin red | mensaje con "Reintentar"; datos conservados |
@@ -3059,7 +3281,11 @@ aviso de verificación permite reenviar el email.
 **Prueba independiente**: con el backend (T-B507) y los `APP_LINK_*` por defecto (DD-14): pedir el
 restablecimiento, abrir el enlace de Mailpit, definir la contraseña nueva e ingresar; reabrir el
 mismo enlace → "Este enlace ya no sirve."; confirmar el email desde su enlace y ver desaparecer el
-aviso.
+aviso. Con la Fase 10 del backend: registrar otra empresa sin confirmar el email, restablecer su
+contraseña e ingresar → sin aviso (el reset confirmó el email, DD-46). Con la Fase 10 (enmienda
+H-16), con otra empresa sin confirmar: tocar "Reenviar" del aviso cuatro veces → las tres primeras
+dicen "Listo, te lo reenviamos…" y llegan tres emails a Mailpit; la cuarta dice "Ya te lo mandamos
+hace poco. Esperá 20 minutos y probá de nuevo." y no llega ninguno más.
 
 **T-F401 [T] — Token de los enlaces (`useLinkToken`)** · DD-14, DD-F2, INV-F08, `ui.md` §6.2
 - **Red**:
@@ -3078,9 +3304,9 @@ aviso.
   | Interacción | Resultado observable |
   |---|---|
   | Llegar con `state.email` | campo prellenado |
-  | Enviar → `202` | "Revisá tu email" (foco ahí) con el texto neutro de §13.3; siempre igual |
+  | Enviar → `202` | "Revisá tu email" (foco ahí) con el texto neutro de §13.3; siempre igual, e incluye "Si ya lo pediste varias veces, esperá unos 20 minutos antes de pedirlo de nuevo." (P-F7, aprobada) |
   | Email inválido | error en el campo; sin request |
-  | `429` | minutos de espera |
+  | `429` (cupo por IP compartido con Restablecer, DD-9) | minutos de espera |
   | "¿No llegó? Pedilo de nuevo" | formulario con el email cargado |
   | Sin red | mensaje con "Reintentar" |
   | Con sesión vigente | redirige a `/` |
@@ -3104,29 +3330,33 @@ aviso.
 
   | Interacción | Resultado observable |
   |---|---|
-  | Montar la pantalla con token | ningún `POST` hasta tocar "Confirmar mi email" |
+  | Montar la pantalla con token | ningún `POST` hasta tocar "Confirmar mi email"; antes del botón, "Si no creaste una cuenta con este email, no lo confirmes: confirmarlo le daría acceso a quien la creó." (P-F10) |
   | Confirmar sin sesión → `204` | "¡Listo! Tu email quedó confirmado." + "Ingresar" |
-  | Confirmar con sesión → `204` | "Ir al inicio"; `/me` pedido de nuevo (`email_verified: true`) |
-  | `400 token_invalid` con sesión | mensaje de §12.2 + "Reenviar email de confirmación" → `POST …/resend` → "Listo, te lo reenviamos…" |
+  | Confirmar con sesión → `204` | "Ir al inicio"; `/me` pedido de nuevo (`email_verified: true`); el texto de éxito no menciona invitar (el token puede ser de otra cuenta) |
+  | `400 token_invalid` con sesión | mensaje de §12.2 + "Reenviar email de confirmación" → `POST …/resend` → `202`: "Listo, te lo reenviamos. Revisá también el correo no deseado.", sin la línea de los 20 minutos (DD-F30 reemplazada, enmienda H-16) / `429` con `Retry-After: 120`: "Ya te lo mandamos hace poco." + "Esperá 2 minutos y probá de nuevo." |
   | `400 token_invalid` sin sesión | mensaje + "Ingresar" |
   | Sin token | "Este enlace está incompleto." |
 - **Green**: pasa la tabla.
 
-**T-F405 [T] — Aviso "Confirmá tu email"** · US-1.3, P-2, BR-F05, `ui.md` §13.13
+**T-F405 [T] — Aviso "Confirmá tu email"** · US-1.3, P-2, BR-F05, DD-46 (3) con la enmienda H-16, `ui.md` §13.13
 - **Red**:
 
   | Caso | Esperado |
   |---|---|
   | `email_verified: false` | aviso con el email en todas las pantallas con sesión |
   | `email_verified: true` | sin aviso |
-  | "Reenviar" → `202` | "Listo, te lo reenviamos. Revisá también el correo no deseado." anunciado en `aria-live` |
-  | "Reenviar" → `429` con `Retry-After: 300` | "Ya te lo mandamos hace poco. Esperá 5 minutos." |
+  | "Reenviar" → `202` | "Listo, te lo reenviamos. Revisá también el correo no deseado." anunciado en `aria-live`; el texto no menciona esperar 20 minutos (DD-F30 reemplazada, enmienda H-16: un `202` siempre envía) |
+  | "Reenviar" → `429` con `Retry-After: 300` (cupo por IP o por usuario; el contrato no los distingue) | "Ya te lo mandamos hace poco. Esperá 5 minutos y probá de nuevo." |
+  | "Reenviar" → `429` con `Retry-After: 1200` (cupo por usuario agotado) | "Ya te lo mandamos hace poco. Esperá 20 minutos y probá de nuevo." |
+  | "Reenviar" → `429` con `Retry-After: 180`; "Reenviar" otra vez → `429` con `Retry-After: 1200` (los dos cupos agotados) | primero "Esperá 3 minutos y probá de nuevo." y después "Esperá 20 minutos y probá de nuevo.", cada uno anunciado en `aria-live`; "Reenviar" sigue habilitado; un solo `POST` por toque |
+  | Ingresar después de restablecer la contraseña: la respuesta del login trae `email_verified: true` (DD-46 (2)) | sin aviso |
   | "Ocultar" | desaparece y sigue oculto al navegar; con `sessionStorage` vacío vuelve a aparecer |
   | Teclado | "Reenviar" y "Ocultar" alcanzables con Tab y con nombre accesible |
 - **Green**: pasa la tabla.
 
 **T-F406 — Implementar** `useLinkToken`, `ForgotPasswordPage`, `ResetPasswordPage`,
-`VerifyEmailPage`, `EmailVerificationBanner` y sus hooks.
+`VerifyEmailPage`, `EmailVerificationBanner` y sus hooks. `useResendEmailVerification` va en
+`features/auth/session.ts` (revisión 4: lo usan también S-07, S-09 y S-10, `ui.md` §15.4).
 
 **Checkpoint Fase F4**: `npm run check` en verde + prueba independiente.
 
@@ -3138,7 +3368,10 @@ aviso.
 reactiva desde el celular sin poder dejar la empresa sin administrador; el invitado acepta en una
 pantalla.
 
-**Prueba independiente**: con el backend (T-B607): invitar a un operador, reinvitarlo como
+**Prueba independiente**: con el backend (T-B607). Con la Fase 10, antes: registrar la empresa, ver
+en Usuarios "Confirmá tu email para invitar a tu equipo." con "+ Invitar" deshabilitado, confirmar
+el email desde Mailpit en otra pestaña y, al volver, ver "+ Invitar" habilitado sin recargar.
+Después: invitar a un operador, reinvitarlo como
 Administrador (el toast lo dice), abrir su enlace en otra ventana privada, aceptar y ver el panel
 con "Primeros pasos"; como un operador, `/settings/users` muestra "Sin permiso"; como admin,
 desactivar a un usuario y ver que su ventana vuelve al login con "Tu sesión se cerró"; reactivarlo.
@@ -3155,6 +3388,8 @@ desactivar a un usuario y ver que su ventana vuelve al login con "Tu sesión se 
   | `invited`+`operator` | `resendInvitation` (sin confirmación), `makeAdmin`, `deactivate` |
   | `invited`+`admin`, siendo el usuario actual el único admin activo | `makeOperator` **habilitada** (los invitados no cuentan para `last_admin`, DD-26), `resendInvitation`, `deactivate` |
   | `disabled` | solo `reactivate` (sin cambio de rol: el backend responde `invalid_state`) |
+  | `invited`+`operator` con `actorEmailVerified: false` (las filas anteriores van con `true`) | `resendInvitation` deshabilitada con `disabledReason: 'email_not_verified'`; `makeAdmin` y `deactivate` sin cambios (BR-F14) |
+  | `disabled` con `name: null` y `actorEmailVerified: false` / `disabled` con nombre y `actorEmailVerified: false` | `reactivate` deshabilitada con `disabledReason: 'email_not_verified'` (P-F8, S-F12) / `reactivate` habilitada (vuelve a `active` sin emitir invitación) |
 
   | Entrada | Esperado |
   |---|---|
@@ -3175,6 +3410,9 @@ desactivar a un usuario y ver que su ventana vuelve al login con "Tu sesión se 
   | Solo el usuario actual | "Todavía sos el único usuario." + "Invitar" |
   | `500` con `instance` | "No pudimos cargar los usuarios." + código + "Reintentar" |
   | Nombre de 120 caracteres | el texto completo está en el DOM (sin truncar) |
+  | Sesión con `email_verified: false` (revisión 4, BR-F14) | aviso "Confirmá tu email para invitar a tu equipo." con "Te mandamos un enlace a {email}…" y "Reenviar email de confirmación"; "+ Invitar" deshabilitado, con `aria-describedby` que apunta al aviso; en el estado vacío, "Invitar" también deshabilitado |
+  | "Reenviar email de confirmación" → `202` / `429` con `Retry-After: 120` / `429` con `Retry-After: 1200` | en el aviso (`role="status"`): "Listo, te lo reenviamos. Revisá también el correo no deseado." (sin la línea de los 20 minutos, enmienda H-16) / "Ya te lo mandamos hace poco." + "Esperá 2 minutos y probá de nuevo." / lo mismo con "Esperá 20 minutos y probá de nuevo." |
+  | Con el aviso visible, la pestaña vuelve a enfocarse y `/me` responde `email_verified: true` | el aviso desaparece y "+ Invitar" queda habilitado, sin recargar (DD-F28) |
 - **Green**: pasa la tabla.
 
 **T-F503 [T] — Acciones sobre usuarios** · US-3.3, US-3.4, FR-005, P-3, DD-5, DD-26, DD-F7, DD-F8, INV-F04, INV-F10, `ui.md` §13.9
@@ -3197,9 +3435,14 @@ desactivar a un usuario y ver que su ventana vuelve al login con "Tu sesión se 
   | `404 not_found` / `409 invalid_state` | mensaje de §12.2 y lista pedida de nuevo |
   | `403 forbidden` | `/me` pedido de nuevo; "Sin permiso" |
   | Doble confirmación rápida | un solo request |
+  | Sesión con `email_verified: false` y un invitado en la lista (datos anteriores a la Fase 10) | "Reenviar invitación" deshabilitado con "Confirmá tu email para invitar a tu equipo." (BR-F14) |
+  | "Reenviar invitación" → `429` con `Retry-After: 360` | toast "Por ahora no podemos enviar más invitaciones." con "Esperá 6 minutos y probá de nuevo."; la lista **no** se vuelve a pedir; un solo request (DD-48, DD-F29) |
+  | "Reactivar" → confirmar → `429` con `Retry-After: 180` | diálogo cerrado y foco de vuelta en el botón de acciones; toast con "Esperá 3 minutos…"; la tarjeta sigue "Desactivado" |
+  | "Reenviar invitación" → `403 email_not_verified` (caché vieja) | toast "Confirmá tu email para invitar a tu equipo."; `/me` pedido de nuevo; **no** aparece "Sin permiso" (INV-F16) |
+  | "Desactivar" a otro → confirmar → `401 unauthenticated` (al actor lo desactivaron mientras tanto, DD-44) | caché vacía; login con "Tu sesión se cerró." |
 - **Green**: pasa la tabla.
 
-**T-F504 [T] — Invitar** · US-3.1, DD-5, DD-21, DD-26, BR-F08, BR-F11, DD-F6, `ui.md` §13.10, §14.3
+**T-F504 [T] — Invitar** · US-3.1, DD-5, DD-21, DD-26, DD-46, DD-48, BR-F08, BR-F11, BR-F14, DD-F6, DD-F28, DD-F29, INV-F16, `ui.md` §13.7, §13.10, §14.3
 - **Red**:
 
   | Interacción | Resultado observable |
@@ -3212,6 +3455,12 @@ desactivar a un usuario y ver que su ventana vuelve al login con "Tu sesión se 
   | `200` sin `['users']` en caché | texto neutro "{email} ya estaba invitado: le reenviamos la invitación." |
   | `409 email_taken` | "Ese email ya tiene un usuario en el sistema." en el campo; si es de un desactivado de la lista, "Es de {nombre}, que está desactivado. Podés reactivarlo desde la lista." |
   | "Cancelar" | vuelve a Usuarios |
+  | `422` con `{field: 'role', code: 'invalid_value'}` | "Elegí un rol." en el grupo de rol (DD-F24) |
+  | `429` con `Retry-After: 360` (cupo por empresa compartido con "Reactivar" y con los demás Administradores, DD-48) | "Por ahora no podemos enviar más invitaciones." + "Hay un límite de invitaciones y reactivaciones seguidas para cuidar el envío de emails. Esperá 6 minutos y probá de nuevo."; lo cargado se conserva; un solo `POST` (DD-F29) |
+  | Sesión con `email_verified: false` al abrir la pantalla (BR-F14) | "Invitar a alguien" con el aviso "Confirmá tu email para invitar a tu equipo." y "Reenviar email de confirmación"; **sin** formulario; "Volver a Usuarios"; ningún `POST /users/invitations` |
+  | Con el aviso, la pestaña vuelve a enfocarse y `/me` → `email_verified: true` | aparece el formulario con "Operador" seleccionado; el foco no se mueve (DD-F28) |
+  | Enviar → `403 email_not_verified` (la caché decía confirmado) | aviso con el texto de §12.2 y "Reenviar email de confirmación"; `/me` pedido de nuevo; con `email_verified: false`, la pantalla pasa al estado sin formulario; nunca "Sin permiso" ni "No tenés permiso para hacer esto." (INV-F16) |
+  | Panel (S-07) de un Administrador con `email_verified: false` | "Invitá a tu equipo" no es un enlace: aparece deshabilitado, con el aviso y "Reenviar email de confirmación"; "Completá los datos de tu empresa" sigue siendo un enlace |
 - **Green**: pasa la tabla.
 
 **T-F505 [T] — Aceptar invitación** · US-3.2, DD-1, DD-4, DD-20, BR-F12, INV-F03, `ui.md` §13.6, §14.3
@@ -3226,13 +3475,17 @@ desactivar a un usuario y ver que su ventana vuelve al login con "Tu sesión se 
   | Contraseña igual al email de la vista previa | error; sin request |
   | Aceptar → `201` | caché vacía y sesión nueva; `/` con "¡Bienvenido/a a {empresa}!" |
   | Aceptar → `400 token_invalid` | estado "Esta invitación ya no es válida" |
-  | Aceptar → `422` | errores por campo |
+  | Aceptar → `422` con `{field: 'name', code: 'invalid_value'}` / `{field: 'password', code: 'too_short'}` | "Tiene que tener entre 1 y 120 caracteres." en "Tu nombre" / "La contraseña tiene que tener al menos 10 caracteres." en "Contraseña" |
+  | Vista previa → `429` con `Retry-After: 180` (cupo compartido con la aceptación, DD-9) | "Hiciste muchos intentos seguidos. Esperá 3 minutos y probá de nuevo." + "Reintentar"; sin formulario |
   | Con otra sesión abierta | "Tenés una sesión abierta como {email}. Si aceptás, se va a cerrar." |
 - **Green**: pasa la tabla.
 
 **T-F506 — Implementar** `UsersPage`, `UserListItem`, `UserStatusBadge`, `ConfirmDialog`,
 `InviteUserPage`, `AcceptInvitationPage`, `features/users/rules.ts`, `lib/format.ts`
-(`formatDateTime`) y los hooks de `features/users/api.ts` y de invitación.
+(`formatDateTime`) y los hooks de `features/users/api.ts` y de invitación. Revisión 4:
+`VerifyToInviteNotice`, `useInviteBlockedReason` (en `features/auth/session.ts`), el contexto
+`actorEmailVerified` de `availableUserActions` y el paso "Invitá a tu equipo" de `DashboardPage`
+con BR-F14.
 
 **Checkpoint Fase F5**: `npm run check` en verde + prueba independiente.
 
@@ -3257,7 +3510,8 @@ S-F10). Valida S-F8 y NFR-F13; si no hay forma de hacerla, se reporta como pendi
 
 **T-F601 [T] — CUIT** · DD-16, `ui.md` §13.11
 - **Red**: la **misma tabla de casos que T-B701** (con la misma fuente citada): válido con y sin
-  guiones → `true`; dígito verificador inválido → `false`; 10 dígitos o letras → `false`; casos
+  guiones (`NN-NNNNNNNN-N`) → `true`; guiones en otra posición (p. ej. `3-0123456789-1`) → `false`,
+  como el servidor (revisión 3); dígito verificador inválido → `false`; 10 dígitos o letras → `false`; casos
   del módulo 11 con resto 10 u 11 según la regla oficial.
 - **Green**: `lib/cuit.ts` (`isValidCuit`) pasa la tabla.
 
@@ -3276,7 +3530,13 @@ S-F10). Valida S-F8 y NFR-F13; si no hay forma de hacerla, se reporta como pendi
   | `200` | toast "Guardamos los datos de la empresa."; el encabezado muestra el nombre nuevo |
   | Salir con cambios sin guardar | "Tenés cambios sin guardar. ¿Salir igual?"; "Salir" navega, "Quedarme" no |
   | Zona horaria | `America/Argentina/*` primero en el selector |
+  | La zona guardada de la empresa no está en `Intl.supportedValuesOf('timeZone')` (alias, S-F11) | aparece igual, seleccionada (DD-F27) |
   | `503` al guardar | mensaje con "Reintentar"; valores intactos |
+  | `503` al guardar → "Reintentar" → `200` con el mismo `updated_at` | toast "Guardamos los datos de la empresa."; la URL del logo no cambia (DD-43 (4): reintentar es seguro) |
+  | Vaciar el nombre → Guardar | "Completá este campo."; ningún request (nunca `name: null`, INV-F15) |
+  | Cualquier `PATCH` enviado en esta tabla | el body nunca incluye `base_currency` ni `null` en `name` o `timezone` (INV-F15) |
+  | `422` con `{field: 'legal_name', code: 'invalid_value'}` / `{field: 'name', code: 'invalid_value'}` | "Es demasiado largo (máximo 200 caracteres)." en "Razón social" / "Tiene que tener entre 1 y 120 caracteres." en "Nombre de la empresa" (DD-F24) |
+  | `400 malformed_request` con `instance` | error general "No pudimos procesar el pedido." con el código |
 - **Green**: pasa la tabla.
 
 **T-F603 [T] — Logo en la pantalla y en el encabezado** · US-4, DD-11, DD-23, DD-31, DD-F11, DD-F12, DD-F22, BR-F13, INV-F14, `ui.md` §11.1, §13.11, §14.4
@@ -3298,10 +3558,12 @@ S-F10). Valida S-F8 y NFR-F13; si no hay forma de hacerla, se reporta como pendi
   | `413` / `415` del servidor | mensajes de §12.2 en el control del logo |
   | `422` con `errors: [{field: 'file', code: 'invalid_value'}]` / `[{field: 'file', code: 'required'}]` | "No pudimos leer la imagen o mide más de 2000 × 2000 px. Probá con otra imagen del logo." / "Elegí una imagen para el logo." en el control del logo (no en un campo del formulario de datos) |
   | `400 malformed_request` con `instance` | "No pudimos subir el logo." + "Recargá la página y probá de nuevo." + código |
-  | `503` / sin red al subir | mensaje con "Reintentar" en el control del logo |
+  | `503` / sin red al subir, y el `GET /tenant` posterior trae el `updated_at` de antes | mensaje con "Reintentar" en el control del logo |
+  | `503` / sin red al subir, y el `GET /tenant` posterior trae `has_logo: true` y otro `updated_at` (el `COMMIT` confirmó, DD-42) | toast "Logo actualizado."; sin mensaje de error; `src` con el `updated_at` nuevo (DD-F26) |
+  | `503` al quitar, y el `GET /tenant` posterior trae `has_logo: false` | iniciales; toast "Quitamos el logo." (DD-F26) |
   | Salir mientras se prepara o sube | pide confirmación (BR-F10) |
   | "Quitar" → confirmar → `204` | iniciales; toast "Quitamos el logo." |
-  | La imagen falla al cargar | iniciales |
+  | La imagen falla al cargar (`404` del objeto ausente o `503` del almacenamiento, DD-42) | iniciales; ningún mensaje de error |
   | Control de archivo | etiqueta accesible "Cambiar logo"; `accept="image/png,image/jpeg"`; operable con teclado |
 - **Green**: pasa la tabla.
 
@@ -3416,6 +3678,10 @@ métricas de Lighthouse y el resultado del supuesto S-12.
   | 5 contraseñas incorrectas → 6.º intento | estado Bloqueado con la hora |
   | En cada pantalla visitada | axe sin violaciones *serious*/*critical*; a 320 px de ancho, `scrollWidth ≤ innerWidth`; 0 violaciones de CSP; 0 errores de consola |
   | Cabeceras de `/` en el binario local | CSP de §10.7 presente; `Strict-Transport-Security` **ausente** (modo local, DD-24) |
+  | Registro → Usuarios ("Confirmá tu email para invitar a tu equipo.", "+ Invitar" deshabilitado) → enlace de confirmación de Mailpit en otra pestaña → volver a la primera | "+ Invitar" habilitado sin recargar; invitar → "Invitación enviada" (DD-46, DD-F28) |
+  | Registro sin confirmar el email → Olvidé mi contraseña → enlace → contraseña nueva → ingresar | panel **sin** el aviso "Confirmá tu email" (el reset confirmó el email, DD-46) |
+- Desde la Fase 10 del backend, el Administrador de los flujos de invitación confirma su email
+  (Mailpit) antes de invitar (DD-46).
 - **Green**: todos los flujos pasan en Chromium; WebKit reportado.
 
 **T-F703 [T] — PWA y service worker** · ADR-020, INV-F09, NFR-F09, NFR-F11
@@ -3487,7 +3753,7 @@ usó) reportado.
 | US-4 (1) | T-F602, T-F603, T-F604, T-F706 |
 | Casos borde (404 de otra empresa, 403 de operador) | T-F503 (404), T-F104, T-F502, T-F702 (403) |
 | SC-001 Panel en < 3 min | T-F202, T-F702, checkpoint F2 |
-| P-2 Verificación no bloqueante | T-F405 |
+| P-2 Verificación no bloqueante (salvo invitar, DD-46) | T-F405, T-F502, T-F504 |
 | P-3 Reactivación | T-F503 |
 | P-4 `email_already_registered` | T-F202, T-F702 |
 | P-5 Sesión 24 h / 7 días (401 global) | T-F104, T-F702 |
@@ -3505,4 +3771,16 @@ usó) reportado.
 | H-10 (resuelto) HTTPS local con mkcert, sin HSTS en modo local (DD-24, INV-23, DD-F23) | T-F006, T-F007, T-F009, T-F701, T-F702, T-F703 |
 | H-11 (resuelto) Límites exactos del logo (DD-31, DD-F22) | T-F004, T-F101, T-F603, T-F604, T-F706 |
 | H-12 Prueba en un celular real (abierto, no bloquea) | Checkpoint F6, T-F704, T-F705 |
+| Contrato v0.4.0 (`method_not_allowed`, `Retry-After` en `503`) | T-F004, T-F005, T-F101, T-F202 |
+| Contrato v0.4.3 / DD-43 (`PATCH /tenant`), INV-F15 | T-F004, T-F602 |
+| DD-9 (cupos compartidos), DD-F25 | T-F101, T-F202, T-F301, T-F402, T-F505 |
+| DD-39 (tiempo del reset), P-F7 | T-F402 |
+| DD-42 (logo con `COMMIT` incierto), DD-F26 | T-F603 |
+| DD-F24 (códigos de campo reales), H-13 | T-F101, T-F202, T-F504, T-F505, T-F602 |
+| DD-F27 / S-F11 (zona guardada en el selector) | T-F602, T-F705 |
+| H-15 (`main_test.go` y la SPA embebida) | T-F008 |
+| Contrato v0.5.0 / DD-46 (invitar con el email confirmado), P-F8, BR-F14, DD-F28, INV-F16 | T-F004, T-F101, T-F104, T-F501..T-F504, T-F702 |
+| DD-48 / DD-49 (cupos de invitación y cupo global del registro), DD-F29 | T-F004, T-F101, T-F202, T-F503, T-F504 |
+| DD-46 (2) y (3) (el reset confirma el email; cupo por usuario del reenvío, con `429` y `Retry-After` desde la enmienda H-16), H-16 (resuelto), DD-F30 (reemplazada), P-F10 | T-F101, T-F404, T-F405, T-F502, T-F702 |
+| DD-44 (`401` en una acción de administración) | T-F104, T-F503 |
 | NFR-F01..F13 | T-F002 (F02, F07, F08), T-F702 (F01, F06, F10, F12), T-F703 (F09, F11), T-F704 (F03..F05), T-F705 (F06..F08), T-F706 (F13) |
