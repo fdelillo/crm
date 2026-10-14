@@ -26,7 +26,8 @@ import (
 func usersFixture(t *testing.T) (*Service, db.TxRunner, authz.Principal, *loginClock) {
 	t.Helper()
 	svc, runner, company, _, c, _ := loginFixture(t, password.NewHasher(2))
-	return svc, runner, authz.Principal{TenantID: company.ID, UserID: company.UserID, Role: authz.RoleAdmin}, c
+	// DD-44: administration revalidates the session, so the Principal carries the fixture's real one.
+	return svc, runner, authz.Principal{TenantID: company.ID, UserID: company.UserID, SessionID: company.Rows["sessions"], Role: authz.RoleAdmin}, c
 }
 func inviteForTest(t *testing.T, s *Service, p authz.Principal, role authz.Role) User {
 	t.Helper()
@@ -282,17 +283,27 @@ func TestRoleChangesAndLastAdmin(t *testing.T) {
 	if _, err := s.ChangeRole(ctx, p, p.UserID, authz.RoleOperator, RequestMeta{}); !errors.Is(err, ErrLastAdmin) {
 		t.Fatalf("invited admin counted: %v", err)
 	}
-	if _, err := s.AcceptInvitation(ctx, raw, "B", "valid-password", RequestMeta{}); err != nil {
+	accepted, err := s.AcceptInvitation(ctx, raw, "B", "valid-password", RequestMeta{})
+	if err != nil {
 		t.Fatal(err)
 	}
+	second := accepted.Principal // u: active administrator since the acceptance
 	if _, err := s.ChangeRole(ctx, p, p.UserID, authz.RoleOperator, RequestMeta{}); err != nil {
 		t.Fatal(err)
 	}
 	requireUserAudit(t, runner, p, p.UserID, "user.role_changed", p.UserID, map[string]any{"from": "admin", "to": "operator", "status": "active"})
-	if _, err := s.ChangeRole(ctx, p, u.ID, authz.RoleOperator, RequestMeta{}); !errors.Is(err, ErrLastAdmin) {
+	// DD-44: p keeps the old Principal but is an operator now, so it neither counts as an actor
+	// nor can it promote itself back (this used to assert the hole).
+	if _, err := s.ChangeRole(ctx, p, u.ID, authz.RoleOperator, RequestMeta{}); !errors.Is(err, authz.ErrForbidden) {
+		t.Fatalf("demoted actor: %v", err)
+	}
+	if _, err := s.ChangeRole(ctx, p, p.UserID, authz.RoleAdmin, RequestMeta{}); !errors.Is(err, authz.ErrForbidden) {
+		t.Fatalf("self promotion: %v", err)
+	}
+	if _, err := s.ChangeRole(ctx, second, u.ID, authz.RoleOperator, RequestMeta{}); !errors.Is(err, ErrLastAdmin) {
 		t.Fatalf("last active: %v", err)
 	}
-	if _, err := s.ChangeRole(ctx, p, p.UserID, authz.RoleAdmin, RequestMeta{}); err != nil {
+	if _, err := s.ChangeRole(ctx, second, p.UserID, authz.RoleAdmin, RequestMeta{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.Deactivate(ctx, p, u.ID, RequestMeta{}); err != nil {
