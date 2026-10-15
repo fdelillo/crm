@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -39,6 +40,7 @@ func TestRootEmbeddedSPA(t *testing.T) {
 			if err := chi.Walk(api, walk); err != nil {
 				t.Fatal(err)
 			}
+			slices.Sort(before)
 			original := append([]string(nil), before...)
 			root := app.NewRootHandler(app.RootDeps{
 				API: api, Liveness: app.LivenessHandler(), Readiness: app.ReadinessPlaceholder(),
@@ -51,6 +53,7 @@ func TestRootEmbeddedSPA(t *testing.T) {
 			if err := chi.Walk(api, walk); err != nil {
 				t.Fatal(err)
 			}
+			slices.Sort(before)
 			if !reflect.DeepEqual(original, before) || len(before) == 0 {
 				t.Fatalf("API route inventory changed: before %v, after %v", original, before)
 			}
@@ -114,5 +117,24 @@ func TestRootDoesNotCompressLargeAPIResponse(t *testing.T) {
 	root.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK || rec.Body.String() != body || rec.Header().Get("Content-Encoding") != "" {
 		t.Fatalf("API was compressed: status %d headers %v body %q", rec.Code, rec.Header(), rec.Body.String())
+	}
+}
+
+// T-F007 (DD-24): build instructions also inherit common headers in both modes.
+func TestRootUnbuiltSPAHeaders(t *testing.T) {
+	for _, local := range []bool{false, true} {
+		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+		root := app.NewRootHandler(app.RootDeps{
+			API: app.NewAPIRouter(), Liveness: app.LivenessHandler(), Readiness: app.ReadinessPlaceholder(),
+			SPA: web.NewHandler(fstest.MapFS{".gitkeep": {}}),
+		}, app.NewCommonMiddleware(logger, local, nil))
+		rec := httptest.NewRecorder()
+		root.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/login", nil))
+		if rec.Code != http.StatusServiceUnavailable || rec.Header().Get("X-Request-Id") == "" || rec.Header().Get("X-Content-Type-Options") != "nosniff" || rec.Header().Get("Referrer-Policy") != "no-referrer" {
+			t.Errorf("local=%t: status %d headers %v", local, rec.Code, rec.Header())
+		}
+		if hsts := rec.Header().Get("Strict-Transport-Security"); local && hsts != "" || !local && hsts == "" {
+			t.Errorf("local=%t: HSTS = %q", local, hsts)
+		}
 	}
 }

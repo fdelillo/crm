@@ -22,6 +22,7 @@ import (
 	"github.com/fdelillo/crm/internal/platform/outbox"
 	"github.com/fdelillo/crm/internal/platform/password"
 	"github.com/fdelillo/crm/internal/tenant"
+	"github.com/fdelillo/crm/web"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -89,8 +90,7 @@ func runServe(ctx context.Context, args []string, e env) error {
 		API:       api,
 		Liveness:  app.LivenessHandler(),
 		Readiness: app.ReadinessHandler(runner, expected, logger),
-		// Until the web package embeds the built SPA (T-F008) the interface answers 503.
-		SPA: app.SPAUnavailableHandler(),
+		SPA:       web.NewHandler(web.DistFS()),
 	}, app.NewCommonMiddleware(logger, cfg.IsLocal(), cfg.TrustedProxies))
 
 	// A bad certificate pair fails here, before anything listens.

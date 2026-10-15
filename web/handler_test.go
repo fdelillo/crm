@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"io"
+	"io/fs"
 	"mime"
 	"net/http"
 	"net/http/httptest"
@@ -66,6 +67,9 @@ func TestHandlerResources(t *testing.T) {
 				t.Fatalf("status = %d body = %q, want file %s with 200", rec.Code, rec.Body.String(), tt.file)
 			}
 			mediaType, _, err := mime.ParseMediaType(rec.Header().Get("Content-Type"))
+			if tt.file == "favicon.ico" && mediaType == "image/x-icon" {
+				mediaType = "image/vnd.microsoft.icon"
+			}
 			if err != nil || mediaType != tt.mediaType {
 				t.Errorf("Content-Type = %q, want %s", rec.Header().Get("Content-Type"), tt.mediaType)
 			}
@@ -119,7 +123,11 @@ func TestHandlerMethods(t *testing.T) {
 	handler := web.NewHandler(builtFiles())
 	for _, method := range []string{http.MethodHead, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions} {
 		t.Run(method, func(t *testing.T) {
-			rec := serve(handler, method, "/login", "")
+			target := "/login"
+			if method == http.MethodHead {
+				target = "/"
+			}
+			rec := serve(handler, method, target, "")
 			if method == http.MethodHead {
 				if rec.Code != http.StatusOK || rec.Body.Len() != 0 || rec.Header().Get("Content-Security-Policy") != documentCSP {
 					t.Fatalf("HEAD: status = %d headers = %v body = %q", rec.Code, rec.Header(), rec.Body.String())
@@ -179,5 +187,16 @@ func TestHandlerCompression(t *testing.T) {
 				t.Error("response did not preserve the file contents")
 			}
 		})
+	}
+}
+
+// T-F008: all:dist embeds hidden markers and exposes the contents at the FS root.
+func TestDistFSRoot(t *testing.T) {
+	dist := web.DistFS()
+	if _, err := fs.ReadFile(dist, ".gitkeep"); err != nil {
+		t.Fatalf("embedded dist marker: %v", err)
+	}
+	if _, err := fs.Stat(dist, "dist"); err == nil {
+		t.Fatal("DistFS includes an extra dist directory instead of its contents")
 	}
 }
