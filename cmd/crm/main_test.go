@@ -6,11 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"io/fs"
 	"net/http"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/fdelillo/crm/web"
 )
 
 // safeBuffer is a bytes.Buffer safe for concurrent use: the server logs from its own goroutines.
@@ -129,9 +132,35 @@ func TestRun_ServeAnswersHealthzAndStopsOnCancel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /login: %v", err)
 	}
+	body, err = io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusServiceUnavailable {
-		t.Errorf("/login without a built SPA: status %d, want 503", resp.StatusCode)
+	if err != nil {
+		t.Fatalf("read /login: %v", err)
+	}
+	// T-F008 (H-15): serve must use the SPA embedded at Go compile time, with or without a build.
+	index, err := fs.ReadFile(web.DistFS(), "index.html")
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		if resp.StatusCode != http.StatusServiceUnavailable || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/plain") || string(body) != "La interfaz no está compilada (correr `make web-build`)" {
+			t.Errorf("/login without a built SPA: status %d headers %v body %q", resp.StatusCode, resp.Header, body)
+		}
+	case err != nil:
+		t.Fatalf("read embedded index.html: %v", err)
+	default:
+		if resp.StatusCode != http.StatusOK || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") || !bytes.Equal(body, index) {
+			t.Errorf("/login with a built SPA: status %d headers %v body %q", resp.StatusCode, resp.Header, body)
+		}
+	}
+
+	// Only web.NewHandler answers a POST on an SPA route with 405 + Allow, built or not: the
+	// unavailable stub would answer 503, so this also fails in CI where dist is not built.
+	resp, err = client.Post("http://"+addr+"/login", "application/json", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatalf("POST /login: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed || resp.Header.Get("Allow") != "GET, HEAD" {
+		t.Errorf("POST /login: status %d Allow %q, want 405 and GET, HEAD", resp.StatusCode, resp.Header.Get("Allow"))
 	}
 
 	cancel()

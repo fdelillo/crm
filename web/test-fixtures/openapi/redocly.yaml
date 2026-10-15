@@ -1,0 +1,5 @@
+apis:
+  '999':
+    root: ./999.yaml
+    x-openapi-ts:
+      output: ./generated.ts

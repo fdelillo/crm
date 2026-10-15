@@ -3092,6 +3092,8 @@ nuevas ni cambios de orden.
   | Librería | Versión fijada | Última estable (2026-10-15) | Motivo | Se revisa cuando |
   |---|---|---|---|---|
   | `typescript` | 5.9.3 | 7.0.2 | (1) `openapi-typescript` 7.13.0 (la última) declara `peerDependencies.typescript: ^5.x`; (2) `typescript-eslint` 8.71.2 (la última) declara `>=4.8.4 <6.1.0`. 5.9.3 es la última versión que satisface las dos | `openapi-typescript` y `typescript-eslint` acepten TypeScript ≥ 6: se sube a la última que acepten las dos, en un PR propio con `npm run check` en verde |
+  | `eslint` | 9.39.5 | 10.12.0 | `eslint-plugin-jsx-a11y` 6.10.2 (la última) declara `peerDependencies.eslint: ^3 \|\| ^4 \|\| ^5 \|\| ^6 \|\| ^7 \|\| ^8 \|\| ^9`; 9.39.5 es la última compatible | `eslint-plugin-jsx-a11y` acepte ESLint ≥ 10; se sube a la última compatible con `npm run check` en verde |
+  | `@eslint/js` | 9.39.5 | 10.0.1 | `@eslint/js` 10.0.1 declara `peerDependencies.eslint: ^10.0.0`; se alinea con ESLint 9.39.5, limitado por `eslint-plugin-jsx-a11y` 6.10.2 | `eslint-plugin-jsx-a11y` acepte ESLint ≥ 10; se actualiza junto con ESLint y `npm run check` en verde |
 
 ### Comandos de validación (los crea la Fase F0)
 
@@ -3137,6 +3139,8 @@ invitar y los cupos nuevos.
 la tercera revisión queda cerrada. Todas las fases F se pueden implementar contra el contrato
 v0.5.0, porque los tests con MSW no dependen de la Fase 10 del backend. P-F10 y P-F11 tienen
 default y no bloquean.
+
+- **Fase F0 completa (2026-10-15)**: T-F001 a T-F009 en `feat/001-frontend-skeleton`, desde `main` en `c96cfe0`. `make check-all` en verde. Prueba independiente hecha: binario en `https://localhost:8443` y Vite en `https://localhost:5173` sin aviso de certificado; los cinco `curl -I` sin `-k` traen las cabeceras de `ui.md` §21.1–21.2 y no traen HSTS. S-F1 y S-F2 aprobados sin respaldo. Spike de la cookie OK en Chromium y Chrome (`__Host-crm_session` con `Secure`, `HttpOnly` y `SameSite=Lax`) y también en Safari 26.6.2, probado por el usuario contra el binario en `https://localhost:8443`: `signup` 201 y `/me` 200; la cookie `__Host-crm_session` con `Secure`, `HttpOnly`, `SameSite=Lax`, dominio `localhost` y `Path=/`, y no se puede leer desde `document.cookie`. Firefox queda pendiente porque no está instalado. Excepciones de versiones: TypeScript 5.9.3, ESLint y `@eslint/js` 9.39.5. `npm audit` informa 7 vulnerabilidades altas, todas en la cadena de desarrollo del CLI de shadcn (braces/micromatch, GHSA-vfj7-8cjw-p6xm), sin dependencias de producción afectadas. Pendiente de revisión.
 
 ---
 

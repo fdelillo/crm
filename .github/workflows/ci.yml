@@ -30,9 +30,58 @@ jobs:
 
       # Docker is preinstalled on ubuntu-latest: the integration tests start postgres:18 with
       # testcontainers. `make check` needs no mkcert and no certificates (HTTP tests use
-      # httptest.NewTLSServer). The E2E job with mkcert is added by T-F009/T-F701.
+      # httptest.NewTLSServer). The E2E job with mkcert is added with the browser integration suite.
       - name: Docker version
         run: docker version
 
       - name: make check
         run: make check
+
+  web-check:
+    name: make web-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: make web-check
+        run: make web-check
+
+  build:
+    name: make build
+    needs: [check, web-check]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            tools.sum
+      - name: make build
+        run: make build
+      # A tar archive preserves the executable bit when a later E2E job downloads the artifact.
+      - name: Package binary
+        run: tar -C bin -czf bin/crm-linux-amd64.tar.gz crm
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: crm-linux-amd64
+          path: bin/crm-linux-amd64.tar.gz
+          if-no-files-found: error
+          retention-days: 7

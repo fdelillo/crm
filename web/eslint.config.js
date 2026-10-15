@@ -1,0 +1,227 @@
+import js from '@eslint/js'
+import globals from 'globals'
+import tseslint from 'typescript-eslint'
+import reactHooks from 'eslint-plugin-react-hooks'
+import jsxA11y from 'eslint-plugin-jsx-a11y'
+import { readdirSync } from 'node:fs'
+
+const networkSelectors = [
+  {
+    selector: "CallExpression[callee.name='fetch']",
+    message: 'HTTP requests belong in api/.',
+  },
+  {
+    selector: "CallExpression[callee.property.name='fetch']",
+    message: 'HTTP requests belong in api/.',
+  },
+]
+const canvasSelectors = [
+  {
+    selector: "CallExpression[callee.name='createImageBitmap']",
+    message: 'Image decoding belongs in tenant/logo/canvas.ts.',
+  },
+  {
+    selector: "CallExpression[callee.property.name='createImageBitmap']",
+    message: 'Image decoding belongs in tenant/logo/canvas.ts.',
+  },
+  {
+    selector: "CallExpression[callee.property.name='getContext']",
+    message: 'Canvas belongs in tenant/logo/canvas.ts.',
+  },
+  {
+    selector:
+      "CallExpression[callee.property.name='createElement'][arguments.0.value='canvas']",
+    message: 'Canvas belongs in tenant/logo/canvas.ts.',
+  },
+  {
+    selector: "JSXOpeningElement[name.name='canvas']",
+    message: 'Canvas belongs in tenant/logo/canvas.ts.',
+  },
+  {
+    selector: "NewExpression[callee.name='OffscreenCanvas']",
+    message: 'Canvas belongs in tenant/logo/canvas.ts.',
+  },
+]
+const forbiddenNetworkImports = {
+  name: 'openapi-fetch',
+  message: 'HTTP clients belong in api/.',
+}
+// Slashes are written as \x2f so the same source works in ESLint selectors,
+// whose regex literals cannot contain a "/".
+const rx = (source) => source.replaceAll('/', '\\x2f')
+const features = readdirSync(new URL('./src/features', import.meta.url), {
+  withFileTypes: true,
+})
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name)
+const sharedFeatureModule = 'auth/session(?:$|\\.)'
+// A ".." right after a named segment can hide the real destination.
+const hiddenParentSegment = {
+  regex: rx('(?:^|/)[^./][^/]*/\\.\\.(?:/|$)'),
+  message:
+    'Do not climb with ".." after a named segment; import the target directly.',
+}
+const componentImportRegex = rx(
+  '^(?:@/|(?:\\./)*(?:\\.\\./)+)(?:api|features|app)(?:/|$)',
+)
+const componentPatterns = [
+  {
+    regex: componentImportRegex,
+    message: 'Shared components receive data through props.',
+  },
+  hiddenParentSegment,
+]
+const featurePatterns = (feature) => [
+  {
+    regex: rx(`^@/features/(?!(?:${feature})(?:/|$)|${sharedFeatureModule})`),
+    message: 'Features may only share the auth/session module.',
+  },
+  {
+    regex: rx(
+      `^(?:\\./)*(?:\\.\\./)+(?!${feature}/|${sharedFeatureModule})(?:${features.join('|')})/`,
+    ),
+    message: 'Features may only share the auth/session module.',
+  },
+  {
+    regex: rx(
+      `^(?:\\./)*(?:\\.\\./)+features/(?!(?:${feature})(?:/|$)|${sharedFeatureModule})`,
+    ),
+    message: 'Features may only share the auth/session module.',
+  },
+  hiddenParentSegment,
+]
+const dynamicImport = (regex, message) => ({
+  selector: `ImportExpression[source.value=/${regex}/]`,
+  message,
+})
+const dynamicImports = (patterns) =>
+  patterns.map(({ regex, message }) => dynamicImport(regex, message))
+const dynamicClientImport = dynamicImport(
+  rx('^openapi-fetch$'),
+  'HTTP clients belong in api/.',
+)
+const syntaxRule = (...groups) => ['error', ...groups.flat()]
+const noRestrictedImports = (patterns) => [
+  'error',
+  { paths: [forbiddenNetworkImports], patterns },
+]
+const testFiles = ['**/*.test.*', 'src/test/**']
+export default tseslint.config(
+  {
+    ignores: [
+      'dist/**',
+      'node_modules/**',
+      'src/api/generated/**',
+      'test-fixtures/openapi/generated.ts',
+      '.api-bundle/**',
+    ],
+  },
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
+  {
+    files: ['**/*.{js,mjs,ts,tsx}'],
+    languageOptions: { globals: globals.browser },
+    rules: { 'no-console': 'error' },
+  },
+  {
+    files: ['*.config.*', 'e2e/**/*.{js,mjs,ts}', 'scripts/**/*.{js,mjs,ts}'],
+    languageOptions: { globals: { ...globals.browser, ...globals.node } },
+  },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    plugins: { 'react-hooks': reactHooks, 'jsx-a11y': jsxA11y },
+    rules: {
+      ...reactHooks.configs.recommended.rules,
+      ...jsxA11y.configs.recommended.rules,
+    },
+  },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/api/**', ...testFiles],
+    rules: {
+      'no-restricted-imports': ['error', { paths: [forbiddenNetworkImports] }],
+      'no-restricted-syntax': syntaxRule(
+        networkSelectors,
+        canvasSelectors,
+        dynamicClientImport,
+      ),
+    },
+  },
+  {
+    files: ['src/api/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.*'],
+    rules: { 'no-restricted-syntax': syntaxRule(canvasSelectors) },
+  },
+  {
+    files: ['src/components/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': noRestrictedImports(componentPatterns),
+      'no-restricted-syntax': syntaxRule(
+        dynamicClientImport,
+        dynamicImports(componentPatterns),
+      ),
+    },
+  },
+  {
+    files: ['src/components/**/*.{ts,tsx}'],
+    ignores: testFiles,
+    rules: {
+      'no-restricted-syntax': syntaxRule(
+        networkSelectors,
+        canvasSelectors,
+        dynamicClientImport,
+        dynamicImports(componentPatterns),
+      ),
+    },
+  },
+  ...features.flatMap((feature) => {
+    const patterns = featurePatterns(feature)
+    const dir = `src/features/${feature}`
+    return [
+      {
+        files: [`${dir}/**/*.{ts,tsx}`],
+        rules: {
+          'no-restricted-imports': noRestrictedImports(patterns),
+          'no-restricted-syntax': syntaxRule(
+            dynamicClientImport,
+            dynamicImports(patterns),
+          ),
+        },
+      },
+      {
+        files: [`${dir}/**/*.{ts,tsx}`],
+        ignores: testFiles,
+        rules: {
+          'no-restricted-syntax': syntaxRule(
+            networkSelectors,
+            canvasSelectors,
+            dynamicClientImport,
+            dynamicImports(patterns),
+          ),
+        },
+      },
+    ]
+  }),
+  // The tenant HTTP module may call fetch; the logo module is the only canvas user.
+  {
+    files: ['src/features/tenant/api.ts'],
+    ignores: ['**/*.test.*'],
+    rules: {
+      'no-restricted-syntax': syntaxRule(
+        canvasSelectors,
+        dynamicClientImport,
+        dynamicImports(featurePatterns('tenant')),
+      ),
+    },
+  },
+  {
+    files: ['src/features/tenant/logo/canvas.ts'],
+    rules: {
+      'no-restricted-syntax': syntaxRule(
+        networkSelectors,
+        dynamicClientImport,
+        dynamicImports(featurePatterns('tenant')),
+      ),
+    },
+  },
+)
