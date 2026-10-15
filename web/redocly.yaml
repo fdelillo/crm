@@ -1,0 +1,5 @@
+apis:
+  '001':
+    root: ../specs/001-empresas-usuarios/contracts/openapi.yaml
+    x-openapi-ts:
+      output: ./src/api/generated/001.ts

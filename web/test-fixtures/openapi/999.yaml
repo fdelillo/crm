@@ -1,0 +1,14 @@
+openapi: 3.1.0
+info:
+  title: External problem reference fixture
+  version: 1.0.0
+paths:
+  /external-problem:
+    get:
+      responses:
+        '400':
+          description: Shared problem
+          content:
+            application/problem+json:
+              schema:
+                $ref: '../../../specs/001-empresas-usuarios/contracts/openapi.yaml#/components/schemas/Problem'

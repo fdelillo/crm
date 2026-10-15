@@ -3,3 +3,4 @@ node_modules
 src/api/generated
 .api-bundle
 package-lock.json
+test-fixtures/openapi/generated.ts

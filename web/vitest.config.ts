@@ -10,7 +10,10 @@ export default defineConfig({
     environmentOptions: { jsdom: { url: 'https://localhost:5173/' } },
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
-    typecheck: { include: ['src/**/*.test-d.ts'] },
+    typecheck: {
+      tsconfig: 'tsconfig.app.json',
+      include: ['src/**/*.test-d.ts'],
+    },
     clearMocks: true,
     restoreMocks: true,
   },
