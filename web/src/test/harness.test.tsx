@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { QueryClient } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { Button } from '@/components/ui/button'
@@ -11,8 +12,11 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { server } from './msw/server'
 import { createTestQueryClient } from './queryClient'
+import { assertNoUnhandledRequests } from './unhandledRequests'
 
 const origin = window.location.origin
+// Survives between tests on purpose: the next test checks that setup cleared it.
+let cacheFromPreviousTest: QueryClient | undefined
 
 // T-F003 (S-F2): real Request/fetch and Radix controls work in the browser test harness.
 describe('browser test harness', () => {
@@ -26,17 +30,20 @@ describe('browser test harness', () => {
     expect(await response.json()).toEqual({ name: 'Persona ficticia' })
   })
   it('reports the method and URL for an unhandled request', async () => {
-    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
     await expect(
       fetch(
         new Request(`${origin}/api/v1/missing-handler`, { method: 'POST' }),
       ),
     ).rejects.toThrow()
-    expect(log.mock.calls.flat().join(' ')).toContain('POST')
-    expect(log.mock.calls.flat().join(' ')).toContain('/api/v1/missing-handler')
+    // The same check runs in afterEach, so a caught network error cannot hide it.
+    expect(assertNoUnhandledRequests).toThrow(
+      /POST .*\/api\/v1\/missing-handler/,
+    )
   })
   it('can populate a test cache, override a handler and save a temporary flag', () => {
-    createTestQueryClient().setQueryData(['session'], {
+    cacheFromPreviousTest = createTestQueryClient()
+    cacheFromPreviousTest.setQueryData(['session'], {
       name: 'Persona ficticia',
     })
     sessionStorage.setItem('test-flag', 'yes')
@@ -47,11 +54,12 @@ describe('browser test harness', () => {
     )
   })
   it('starts the next test with clean cache, handlers and session storage', async () => {
-    expect(createTestQueryClient().getQueryData(['session'])).toBeUndefined()
+    expect(cacheFromPreviousTest).toBeDefined()
+    expect(cacheFromPreviousTest?.getQueryData(['session'])).toBeUndefined()
     expect(sessionStorage.length).toBe(0)
-    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
     await expect(fetch(`${origin}/api/v1/isolation`)).rejects.toThrow()
-    expect(log).toHaveBeenCalled()
+    expect(assertNoUnhandledRequests).toThrow(/api\/v1\/isolation/)
   })
   it('delivers user clicks to a shadcn button', async () => {
     const clicked = vi.fn()

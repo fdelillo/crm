@@ -9,9 +9,10 @@ export default defineConfig(({ command, isPreview }) => {
   const cert = new URL('../.certs/localhost.pem', import.meta.url)
   const key = new URL('../.certs/localhost-key.pem', import.meta.url)
   if (development && (!existsSync(cert) || !existsSync(key))) {
-    throw new Error(
-      'Faltan los certificados de desarrollo: corré `make dev-certs` (ver README).',
+    process.stderr.write(
+      'Faltan los certificados de desarrollo: corré `make dev-certs` (ver README).\n',
     )
+    process.exit(1)
   }
   return {
     plugins: [
