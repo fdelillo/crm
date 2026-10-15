@@ -144,3 +144,27 @@ no sumar servicios externos ni salir de la convención de `tools.mod`.
   - Las herramientas y npm quedan fuera.
   - Si el repo es público, GitHub desactiva la corrida programada después de 60 días sin actividad
     en el repo, sin avisar. Hay que reactivarla a mano.
+
+## Nota 2026-10-14: la versión exacta de Go y la protección de `main` (revisión del PR #24)
+
+1. **I-2 no se cumplía sola.** `actions/setup-go` v5 toma solo la línea `go 1.27` de `go.mod` e
+   instala la última 1.27.x, y con `GOTOOLCHAIN=auto` la línea `toolchain` es un mínimo: si el Go
+   instalado es más nuevo, se usa ese. Con el próximo *patch* de seguridad, la corrida diaria
+   escanearía la librería estándar nueva y daría verde mientras `go.mod` sigue en la vieja (un verde
+   en falso, justo el caso que la corrida diaria tiene que ver). **Decisión**: el `Makefile` lee la
+   línea `toolchain` de `go.mod` y exporta `GOTOOLCHAIN=<esa versión>` para **todos** sus targets
+   (`go` la descarga si hace falta), así `make check`, `make build` y `make vuln` usan exactamente esa
+   versión, en CI y en local. Un guard falla (antes de correr nada) si `tools.mod` tiene otra línea
+   `toolchain` o si `go.mod` no tiene ninguna. El comentario de `ci.yml` que decía que la versión sale
+   de "go + toolchain" se corrige. Alternativa descartada: `actions/setup-go` v6 (lee `toolchain`),
+   porque no cubre la corrida local y obliga a cambiar el SHA en los dos workflows; se puede sumar
+   después, sin cambiar esta decisión.
+2. **`VULN_DIR`** se fija con `=` y no con `?=`: el valor por línea de comandos (`make vuln
+   VULN_DIR=…`) lo pisa, el del entorno no, para que una variable exportada después de los controles
+   no haga escanear otro módulo en silencio.
+3. **El bloqueo es de GitHub, no solo de convención.** `main` no tenía protección. Desde el
+   2026-10-14 un ruleset de `main` (decisión del usuario) exige PR, prohíbe el push directo, el
+   *force-push* y el borrado, y requiere el check `make check`; `make vuln` se suma como requerido
+   cuando este workflow está en `main` (si se exigiera antes, un PR sin el workflow nunca lo
+   reportaría).
+

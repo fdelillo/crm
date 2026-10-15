@@ -71,7 +71,7 @@ las decisiones base del proyecto (ADR-001 a ADR-014).
 
 | Aspecto | Decisión | Fuente |
 |---|---|---|
-| Lenguaje | Go **1.27** (estable actual; 1.27.1 del 2026-09-01) | Constitución + verificación |
+| Lenguaje | Go **1.27**; la versión exacta es la línea `toolchain` de `go.mod` (go1.27.2 desde el 2026-10-14, por las vulnerabilidades de la librería estándar que encontró T-B1101), que el `Makefile` fuerza con `GOTOOLCHAIN` (ADR-026, nota 2026-10-14) | Constitución + verificación |
 | Base de datos | PostgreSQL **18**, último *minor* (debe incluir el arreglo de CVE-2026-14666; el comportamiento de DD-34 se observó en 18.6) | ADR-005 |
 | Router HTTP | `github.com/go-chi/chi/v5` (v5.3.2) para la API (`/api/`); mux raíz de la librería estándar que reparte entre API, ops y SPA | ADR-002 (decisión del usuario), DD-22 |
 | Acceso a datos | `sqlc` (generador) + `github.com/jackc/pgx/v5` (`pgxpool`) | ADR-003 (decisión del usuario) |
