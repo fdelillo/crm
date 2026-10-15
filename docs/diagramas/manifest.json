@@ -588,5 +588,13 @@
         ".specify/memory/constitution.md"
       ]
     }
-  ]
+  ],
+  "pr_review": {
+    "base_commit": "9e6fc311b81221ea051710dc5af08ad244475170",
+    "source_snapshot_unchanged": true,
+    "pending_before_merge": [
+      "Actualizar CI: ADR-026, workflow vulncheck y toolchain",
+      "Actualizar frontend: DD-F31, relectura de /me tras 202 de reenvío"
+    ]
+  }
 }

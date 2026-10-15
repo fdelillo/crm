@@ -18,6 +18,10 @@ Abrir `index.html` en un navegador o servir la carpeta como sitio estático. Cad
 - Sin JavaScript, con movimiento reducido o al imprimir: figura completa.
 - Captura estática: agregar `?motion=static` a una página con recorrido.
 
+## Revisión para el PR
+
+La revisión fuente del atlas es c7692bd. Al preparar el PR, main ya incluía #23 (DD-F31: releer /me tras reenviar confirmación) y #24 (ADR-026: govulncheck y toolchain actualizado). Esos cambios posteriores requieren actualizar las vistas de CI y frontend antes de integrar; las copias de fuentes conservan la revisión documentada.
+
 ## Estado y alcance
 
 - **Actual**: respaldado por código y migraciones de la revisión fija del manifest.

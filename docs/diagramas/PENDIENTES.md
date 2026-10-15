@@ -9,3 +9,7 @@ Al retomarlo, mantener pausa, vista estática completa, movimiento reducido, imp
 ## Actualización continua
 
 El catálogo inicial de 33 temas quedó cubierto. Las siguientes actualizaciones acompañarán el código real, la aprobación de specs/ADR y las decisiones pendientes de hosting y operación. Las vistas Especificado deberán revisarse cuando se implemente cada módulo.
+
+## Antes de integrar el PR
+
+Actualizar CI con ADR-026 / workflow vulncheck / toolchain y el frontend con DD-F31, incorporados en main después de la revisión fuente c7692bd. Revalidar las vistas afectadas.

@@ -25,3 +25,9 @@ Los modos sin JavaScript, impresión y movimiento reducido se comprobaron estruc
 Las specs en borrador y los detalles Proposed conservan ese estado. Hosting, backups operativos y RPO/RTO no se presentan como ya resueltos. Las máquinas de estados de negocio son representativas y no reemplazan los planes futuros.
 
 La reproducción automática continua sigue pendiente por indicación del usuario.
+
+## Alcance al preparar el PR
+
+La revisión fuente del atlas es c7692bd. Al preparar el PR, main ya incluía #23 (DD-F31: releer /me tras reenviar confirmación) y #24 (ADR-026: govulncheck y toolchain actualizado). Esos cambios posteriores requieren actualizar las vistas de CI y frontend antes de integrar; las copias de fuentes conservan la revisión documentada.
+
+La rama de documentación se rebasó sobre `9e6fc31` sin conflictos. Esa integración de Git no cambia la revisión fuente de las figuras ni extiende su validación semántica a los cambios posteriores.
