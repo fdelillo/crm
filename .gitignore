@@ -15,3 +15,11 @@ graphify-out/
 
 # Local HTTPS development certificate (make dev-certs, mkcert)
 .certs/
+
+# Frontend
+web/node_modules/
+web/dist/*
+!web/dist/.gitkeep
+web/.api-bundle/
+web/playwright-report/
+web/test-results/
