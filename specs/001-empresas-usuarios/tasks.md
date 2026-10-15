@@ -2804,7 +2804,7 @@ La concurrencia de DD-44 y DD-45 la prueban T-B1001 y T-B1003; no se reproduce a
   4. README: fila `make vuln` en "Comandos" y govulncheck en la frase de herramientas que no se instalan.
   5. **Primera corrida e informe** (se hace una vez y va en la entrada de estado):
      - (a) `make vuln`;
-     - (b) el nivel módulo de la app: `go tool -modfile=tools.mod govulncheck -scan module ./...`, solo como informe;
+     - (b) el nivel módulo de la app, solo como informe: `-scan module` no acepta patrones (`./...` da código 2) y en la raíz del repo, que no tiene archivos Go, falla con código 1; se corre sobre una copia del árbol en un directorio temporal, con un `main.go` en la raíz que importa en blanco los paquetes no-`main`, con `go tool -modfile=<repo>/tools.mod govulncheck -C <copia> -scan module` (*aclaración del 2026-10-14, tras la primera corrida*);
      - (c) las herramientas: compilar `sqlc` y `golangci-lint` desde `tools.mod` en un directorio temporal y correr `govulncheck -mode binary` sobre cada una, solo como informe.
 
      Lo que aparezca se trata según ADR-026 §4. Un hallazgo alcanzable con corrección se arregla en este PR: si es de la librería estándar, se sube `toolchain` en los dos archivos; si es de un módulo, se sube a la versión corregida y se corre `go mod tidy`. Si no tiene corrección, **frenar** y reportar. Los hallazgos de nivel módulo o paquete, y los de las herramientas, solo se informan.
@@ -2817,7 +2817,7 @@ La concurrencia de DD-44 y DD-45 la prueban T-B1001 y T-B1003; no se reproduce a
   | V3 versión corregida | Como V1, pero con la última `golang.org/x/text` | Termina en 0. Así se ve que lo que falla en V1 es la vulnerabilidad, no el armado del módulo |
   | V4 base inalcanzable | V1, con los módulos ya en caché y `HTTPS_PROXY=http://127.0.0.1:9` | Termina con `Error 1` y un error de conexión; nunca en 0 (I-1) |
   | V5 árbol | `make vuln` en la raíz | Termina en 0 después del paso 5; `-show version` muestra govulncheck v1.9.0 y la versión de Go de `toolchain` |
-- **Mutaciones** (se aplican al target, se ve fallar el caso y se restauran): `-format json` → V1 termina en 0 (por eso el target usa texto, I-1); `-scan module` → V2 termina con un código distinto de 0; sin `-C $(VULN_DIR)` → V1 termina en 0, porque analiza el árbol y no el módulo de prueba.
+- **Mutaciones** (se aplican al target, se ve fallar el caso y se restauran): `-format json` → V1 termina en 0 (por eso el target usa texto, I-1); `-scan module` (sin `./...`, porque ese modo no acepta patrones) → V2 termina con `Error 3`; sin `-C $(VULN_DIR)` → V1 termina en 0, porque analiza el árbol y no el módulo de prueba.
 - **CI**: en el PR, el job `govulncheck` corre `make vuln` y su log muestra las versiones de govulncheck, de Go y de la base. El cableado de la falla se revisa leyendo el workflow (sin `continue-on-error` ni `|| true`). No se prueba con un commit vulnerable en el PR, por I-4.
 
 **Checkpoint Fase 11**:
