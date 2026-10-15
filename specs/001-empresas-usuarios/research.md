@@ -846,7 +846,7 @@ uniforme entre plataformas, ~20–40 KB por peso, estimación no medida). Se eli
 
 | Opción | A favor | En contra | Veredicto |
 |---|---|---|---|
-| **React Router v7, variante *data* (`createBrowserRouter`), sin loaders para datos** | `useBlocker`, `ErrorBoundary` y `lazy` por ruta incluidos; el server state queda en TanStack Query | Configuración en objetos (menos intuitiva que JSX); hay que evitar loaders por convención | **Elegida** (modo SPA: usuario; variante: arquitecto) |
+| **React Router, variante *data* (`createBrowserRouter`), sin loaders para datos** (v7 al diseñar; **v8 desde el 2026-10-15**, decisión del usuario, nota de ADR-017) | `useBlocker`, `ErrorBoundary` y `lazy` por ruta incluidos; el server state queda en TanStack Query | Configuración en objetos (menos intuitiva que JSX); hay que evitar loaders por convención | **Elegida** (modo SPA: usuario; variante: arquitecto) |
 | React Router declarativo (`<BrowserRouter>`) | Lo más simple | Sin `useBlocker` ni `ErrorBoundary` por ruta; *code splitting* manual | Descartada |
 | React Router con loaders como capa de datos | Una librería menos | Sin caché compartida ni invalidación por clave; dos cachés si se combina con Query | Descartada |
 | TanStack Router | Rutas tipadas | Menos difundido; el usuario eligió React Router | Descartada |
@@ -1124,6 +1124,7 @@ llegue. `localhost` no sirve desde el celular y DD-24 solo permite TLS propio co
 - Vite 8 y `build.target` por defecto (`baseline-widely-available`): <https://vite.dev/blog/announcing-vite8>, <https://vite.dev/config/build-options>
 - Vite, `vite:preloadError`: <https://vite.dev/guide/build#load-error-handling>
 - React Router, modos: <https://reactrouter.com/start/modes>
+- React Router, guía de v7 a v8 y changelog: <https://reactrouter.com/upgrading/v7>, <https://reactrouter.com/changelog>
 - shadcn/ui con React Hook Form y `Field`: <https://ui.shadcn.com/docs/forms/react-hook-form>
 - `@hookform/resolvers` 5.1 con Zod 4: <https://github.com/react-hook-form/resolvers/releases>
 - openapi-typescript, varias APIs con `redocly.yaml`: <https://openapi-ts.dev/cli>

@@ -1,8 +1,48 @@
-# ADR-017: Router con React Router v7 en modo SPA (librería), variante *data*
+# ADR-017: Router con React Router v8 en modo SPA (librería), variante *data*
 
-**Status**: Accepted (React Router en modo SPA/librería: decisión del usuario) · variante *data* sin loaders ni actions: Proposed
+**Status**: Accepted (React Router en modo SPA/librería: decisión del usuario; versión v8 desde el 2026-10-15: decisión del usuario, ver nota) · variante *data* sin loaders ni actions: Proposed
 **Fecha**: 2026-09-29
 **Origen**: spec 001 (`ui.md` §5, §6)
+
+> **Nota 2026-10-15 (versión mayor; decisión del usuario; no cambia la decisión)**: al arrancar la
+> Fase F0, la última estable de React Router es **8.4.0** (v8.0.0 salió el 2026-06-17; v7 sigue
+> recibiendo parches) y el usuario decidió usar **v8** en lugar de v7. El título pasó de "v7" a
+> "v8"; donde el resto de este ADR dice "v7" (Contexto y primera viñeta de la Decisión) se lee
+> "v8", y el texto original se conserva abajo sin editar. Es la misma librería, el mismo paquete
+> (`react-router`) y el mismo modo *data*: `createBrowserRouter`, `lazy`, `ErrorBoundary`,
+> `useBlocker`, `<ScrollRestoration />` y `createMemoryRouter` siguen en v8 con la misma forma de
+> uso. Lo que cambia en v8 y cómo toca a este diseño:
+>
+> 1. **Pisos**: `react`/`react-dom` ≥ 19.2.7 y Node ≥ 22.22.0 (`engines` del paquete). El stack
+>    de F0 (React 19.3.1, Node 24 LTS) cumple.
+> 2. **Solo ESM** (`"type": "module"`) y `target`/`lib` ES2022. `web/` ya es un proyecto ESM
+>    (Vite); `tsconfig.app.json` usa `lib` ES2022 o posterior. Que Vitest con jsdom navegue con el
+>    router lo verifica el test de humo de T-F006.
+> 3. **`react-router-dom` ya no existe**: todo se importa de `react-router`, salvo `RouterProvider`,
+>    que se importa de `react-router/dom` (conecta `flushSync` de React DOM). Vale para `main.tsx`
+>    y para los tests con `createMemoryRouter`.
+> 4. **Middleware siempre activo**: el `context` de `loader`/`action`/`middleware` es siempre un
+>    `RouterContextProvider` y desaparecen los *future flags* (`v8_middleware` era el único que
+>    aplicaba al modo *data*). Sin efecto acá: no hay `loader`, `action` ni `middleware`, y los
+>    routers se crean sin `future` ni `getContext`. **Los guards tampoco pasan a `middleware`**
+>    (detalle `Proposed`, como el resto de la variante), por la misma razón que no se usan
+>    loaders: la sesión vive en la caché de TanStack Query (`['session']`, ADR-018) y los guards de
+>    layout la leen con su estado de carga; un middleware de autenticación sería un segundo lugar
+>    que decide la redirección. La revisión de código lo señala igual que un loader.
+> 5. **Sin efecto en este diseño**: se elimina `hasErrorBoundary` de los objetos de ruta (acá se
+>    usa `ErrorBoundary`); el campo `data` de `meta`/`useMatches` y los adaptadores de servidor
+>    son de modo framework; 8.3.0 deja de codificar `$ & + , ; = : @` en `href`/`generatePath` (el
+>    diseño no los usa); 8.4.0 reorganiza contextos internos `UNSAFE_` (no se usan). 8.3.1 corrige
+>    que `<ScrollRestoration>` dejara `history.scrollRestoration` en `auto` tras volver desde el
+>    *bfcache*.
+>
+> Alternativa descartada: quedarse en 7.18.x, que sigue con parches. Contradice la regla de
+> versiones de F0 (`tasks.md`, Frontend, convenciones) sin una incompatibilidad que lo justifique,
+> y obliga a migrar después con código ya escrito. Trade-off: una versión mayor con cuatro meses
+> en el mercado, con menos ejemplos que v7; para este diseño solo cambian los imports y la
+> configuración de arriba. Fuentes: <https://reactrouter.com/upgrading/v7>,
+> <https://reactrouter.com/changelog> (v8.0.0 a v8.4.0),
+> <https://reactrouter.com/api/data-routers/RouterProvider>.
 
 ## Contexto
 

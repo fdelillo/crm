@@ -1,7 +1,7 @@
 # UI (frontend): Empresas, usuarios y roles
 
 **Spec**: [`spec.md`](spec.md) · **Rama**: `001-empresas-usuarios` · **Fecha**: 2026-09-29
-**Autor**: `frontend-architect` · **Estado**: Revisión 3 aprobada por el usuario el 2026-10-12; Revisión 4 aprobada por el usuario el 2026-10-13 (P-F10: sí; P-F11: no); enmienda H-16 a la Revisión 4 aprobada por el usuario el 2026-10-13; enmienda DD-F31 *Accepted*, aprobada por el usuario el 2026-10-14
+**Autor**: `frontend-architect` · **Estado**: Revisión 3 aprobada por el usuario el 2026-10-12; Revisión 4 aprobada por el usuario el 2026-10-13 (P-F10: sí; P-F11: no); enmienda H-16 a la Revisión 4 aprobada por el usuario el 2026-10-13; enmienda DD-F31 *Accepted*, aprobada por el usuario el 2026-10-14; enmienda de versiones del 2026-10-15: React Router 8 por decisión del usuario, regla de versiones y excepción de TypeScript confirmadas por el usuario el 2026-10-15 (P-F12)
 **Contrato consumido**: [`contracts/openapi.yaml`](contracts/openapi.yaml) **v0.5.0** (**canónico**; el diseño original se hizo contra v0.3.1; la Revisión 3, contra v0.4.3)
 **Revisión 1 (2026-09-29)**: respuestas del usuario a P-F1 a P-F5 (§26) y resolución de los
 hallazgos H-1 a H-9 por el backend (`plan.md` §18, DD-22 a DD-30, §10.7, contrato v0.3.0). Cambios:
@@ -60,6 +60,20 @@ pedir `/me` y el texto sale de esa lectura; S-05 no ofrece reenviar si el email 
 (DD-F31, INV-F17; §10.3, §11.1, §13.5, §13.9, §13.13, §15). Sin cambios en el backend ni en el
 contrato. Además, el backend tiene las Fases 0 a 10 en `main` (`c7692bd`): §0, §11.1, §26, §27.1 y
 RF-16 dejan de decir que la Fase 10 falta.
+**Enmienda de versiones (2026-10-15)**: al arrancar la Fase F0, la regla "la última estable de
+cada librería" chocó con dos *peer dependencies*. (1) **React Router 8** (8.4.0): el usuario
+decidió adoptarlo en lugar de v7 (nota 2026-10-15 de ADR-017). Es la misma librería y el mismo
+modo *data*, con las mismas APIs que usa este documento (`createBrowserRouter`, `lazy`,
+`ErrorBoundary`, `useBlocker`, `<ScrollRestoration />`, `createMemoryRouter`). `RouterProvider` se
+importa de `react-router/dom` y `react-router-dom` ya no existe. El middleware siempre activo y el
+`context` nuevo de los loaders no tocan este diseño, que no usa `loader`, `action` ni `middleware`.
+Pide React ≥ 19.2.7, Node ≥ 22.22.0 y `lib` ES2022, y el stack los cumple. (2) **TypeScript 5.9.3**
+en lugar de 7.0.2: `openapi-typescript` 7.13.0 pide `typescript ^5.x` y `typescript-eslint` 8.71.2
+pide `>=4.8.4 <6.1.0`. La regla pasa a "la última estable compatible con las *peer dependencies*
+del conjunto, sin `--force` ni `--legacy-peer-deps`", con la excepción registrada en `tasks.md`
+(Frontend, convenciones). Cambian §0, §22, §26 (P-F12, con default), §28 (RF-1), §29 y §30.
+Ninguna pantalla, estado, regla ni caso de test cambia; T-F001 y T-F006 suman verificaciones.
+Sistema visual sin cambios.
 
 | Archivo | Contenido |
 |---|---|
@@ -83,10 +97,10 @@ propuestos, cada uno con su ADR):
 
 | Aspecto | Decisión | ADR |
 |---|---|---|
-| Lenguaje | React + TypeScript (constitución) | — |
+| Lenguaje | React + TypeScript (constitución). TypeScript **5.9.3**, excepción a la regla de versiones mientras `openapi-typescript` y `typescript-eslint` no acepten TS ≥ 6 (enmienda de versiones, 2026-10-15; `tasks.md`, Frontend, convenciones) | — |
 | Build | Vite (última estable, ≥ 8), SPA sin SSR, código en `web/` | ADR-015 |
 | Componentes y estilos | **shadcn/ui (sobre Radix) + Tailwind CSS v4 (u)** | ADR-016 |
-| Router | **React Router v7 en modo SPA/librería (u)**, variante *data* (`createBrowserRouter`) | ADR-017 |
+| Router | **React Router v8 en modo SPA/librería (u)**, variante *data* (`createBrowserRouter`; `RouterProvider` de `react-router/dom`). v8 desde el 2026-10-15 (u); el diseño original era sobre v7 | ADR-017 (nota 2026-10-15) |
 | Server state y cliente | **TanStack Query v5 + openapi-fetch, tipos con openapi-typescript (u)** | ADR-018 |
 | Distribución | **SPA embebida en el binario Go (`go:embed`), mismo origen que `/api/v1`; proxy de Vite en desarrollo (u)**; montaje, cabeceras y gzip aprobados (plan DD-22, DD-29); **desarrollo y E2E sobre HTTPS local con mkcert (u, H-10, plan DD-24)** | ADR-019 |
 | PWA | Manifest + service worker mínimo escrito a mano, sin offline | ADR-020 |
@@ -2282,7 +2296,7 @@ web/                            # también es el paquete Go `web` (embed.go)
 ├── index.html                  # documento base (lang, viewport, manifest, theme-color, noscript)
 ├── package.json                # scripts: dev, gen:api, lint, typecheck, test, build, check, e2e
 ├── vite.config.ts              # server.https con ../.certs, strictPort, proxy /api → https://localhost:8443 (sin changeOrigin), build.target, alias @/
-├── tsconfig*.json              # strict, noUncheckedIndexedAccess, alias @/*
+├── tsconfig*.json              # strict, noUncheckedIndexedAccess, alias @/*, target/lib ES2022 o posterior (React Router 8)
 ├── eslint.config.js            # typescript-eslint, react-hooks, jsx-a11y, no-restricted-imports (§9.1)
 ├── components.json             # configuración de shadcn (Radix, lucide, alias)
 ├── redocly.yaml                # una entrada por spec → src/api/generated/NNN.ts (§11.4)
@@ -2298,7 +2312,7 @@ web/                            # también es el paquete Go `web` (embed.go)
 ├── e2e/                        # Playwright: flujos críticos + axe + PWA + logo
 │   └── fixtures/               # imágenes de prueba del logo (sin datos reales)
 └── src/
-    ├── main.tsx                # wiring: QueryClient + RouterProvider + registro del SW
+    ├── main.tsx                # wiring: QueryClient + RouterProvider (de react-router/dom) + registro del SW
     ├── styles/globals.css      # Tailwind + tokens (§19)
     ├── app/                    # router.tsx (árbol §6.1), queryClient.ts, RootLayout, AppShell, guards/, ErrorBoundary
     ├── api/                    # client.ts, errors.ts, errorMessages.ts, queryKeys.ts, types.ts, schema.ts
@@ -2421,6 +2435,12 @@ Preguntas de la revisión 4 (2026-10-13):
 | P-F10 | ¿S-05 (Confirmar email) repite antes del botón el aviso que DD-46 (4) agrega al email: "Si no creaste una cuenta con este email, no lo confirmes: confirmarlo le daría acceso a quien la creó."? La confirmación pide un toque (DD-F3), así que esa pantalla es la última oportunidad de no confirmar una cuenta ajena | **Cerrada 2026-10-13**: sí (default) | **Sí**, con ese texto (ya escrito en §13.5) |
 | P-F11 | Con el email sin confirmar, S-07, S-09 y S-10 muestran el aviso W de BR-F14 y, arriba, el aviso C-01 del shell: quedan dos botones de reenvío en la misma pantalla. ¿Se oculta C-01 en esas pantallas? | **Cerrada 2026-10-13**: no (default) | **No**: se dejan los dos. Para ocultarlo, el shell tendría que saber qué pantalla tiene el aviso (un `handle` por ruta), y el estado dura hasta que el fundador hace un clic. Además, C-01 se puede ocultar a mano |
 
+Preguntas de la enmienda de versiones (2026-10-15):
+
+| ID | Pregunta | Estado | Default propuesto |
+|---|---|---|---|
+| P-F12 | ¿Se confirma la regla de versiones "la última estable compatible con las *peer dependencies* del conjunto, sin `--force` ni `--legacy-peer-deps`" y su excepción, TypeScript 5.9.3 en lugar de 7.0.2, hasta que `openapi-typescript` y `typescript-eslint` acepten TS ≥ 6? | **Cerrada: sí** (el usuario, 2026-10-15) | **Sí**. La alternativa es forzar la instalación: la generación de tipos del contrato y el lint correrían sobre un compilador que sus autores no soportan, y los tipos del contrato son la garantía principal entre frontend y backend (ADR-015). Cambiar `openapi-typescript` por otro generador reabre ADR-018 sin beneficio visible |
+
 **Revisión 16 del backend: cerrada para la UI** (la lista "Dependiente de la revisión 16" de la
 Revisión 3 queda resuelta en la Revisión 4):
 - S-01 y §14.2: `429` del cupo global (DD-49, DD-F29); sin prueba anti-bots (P-F9).
@@ -2512,7 +2532,7 @@ Otros puntos menores (los dos **resueltos** al 2026-10-12, revisión 3: el índi
 
 | ID | Riesgo | Prob. | Impacto | Mitigación |
 |---|---|:---:|:---:|---|
-| RF-1 | Versiones del ecosistema (Vite 8, Tailwind v4, shadcn con `Field`, Zod 4 + resolvers) con incompatibilidades puntuales de tipos | Media | Bajo | Versiones fijadas en `package-lock.json`; T-F001/T-F002 verifican la combinación |
+| RF-1 | Versiones del ecosistema (Vite 8, React Router 8, Tailwind v4, shadcn con `Field`, Zod 4 + resolvers) con incompatibilidades puntuales de tipos o de *peer dependencies*. TypeScript queda en 5.9.3 mientras `openapi-typescript` y `typescript-eslint` no acepten ≥ 6 | Media | Bajo | Versiones fijadas en `package-lock.json`, sin `--force` ni `--legacy-peer-deps`; T-F001/T-F002 verifican la combinación (`npm ci` y `npm ls --all` sin conflictos); el test de humo de T-F006 verifica el router en jsdom; la tabla de excepciones de `tasks.md` se revisa en cada actualización de dependencias |
 | RF-2 | Tras un deploy, pestañas abiertas piden chunks que ya no existen | Alta | Bajo | `vite:preloadError` → recarga única; `index.html` `no-cache` |
 | RF-3 | El usuario (nivel básico en React) se pierde entre librerías | Media | Medio | Pocas abstracciones propias, firmas en este documento, ADR con el porqué |
 | RF-4 | La CSP rompe algo que en desarrollo funcionaba (Vite dev no aplica CSP) | Media | Medio | E2E contra el binario falla ante cualquier violación de CSP (NFR-F10) |
@@ -2554,6 +2574,7 @@ La actualización va **en el mismo cambio** que el código.
 | El service worker o el manifest | §20 + ADR-020 + T-F703 |
 | Una decisión de ADR-015..023 | ADR nuevo que la reemplace o nota fechada si es una aclaración (nunca reescribir uno aceptado) |
 | Cómo se construye o corre el frontend | README (sección de desarrollo) + §21.3 + comandos de `tasks.md` |
+| Una versión mayor de una librería con ADR (p. ej. React Router 8), o una versión fijada por debajo de su última estable (hoy, TypeScript 5.9.3) | Nota fechada en su ADR + §0 + RF-1 + tabla de excepciones de `tasks.md` (Frontend, convenciones) + las tareas afectadas + `package-lock.json` en el mismo PR |
 
 ## 30. Fuentes consultadas
 
@@ -2561,6 +2582,8 @@ La actualización va **en el mismo cambio** que el código.
 - Vite 8 (Rolldown) y `build.target` por defecto: <https://vite.dev/blog/announcing-vite8>, <https://vite.dev/config/build-options>
 - Vite, manejo de errores de carga (`vite:preloadError`): <https://vite.dev/guide/build#load-error-handling>
 - React Router, modos (declarativo, data, framework): <https://reactrouter.com/start/modes>
+- React Router 8: guía de actualización desde v7, changelog (v8.0.0 a v8.4.0) y `RouterProvider` de `react-router/dom`: <https://reactrouter.com/upgrading/v7>, <https://reactrouter.com/changelog>, <https://reactrouter.com/api/data-routers/RouterProvider>
+- *Peer dependencies* y `engines` (registro de npm, 2026-10-15): `react-router` 8.4.0 (`react`/`react-dom` ≥ 19.2.7, Node ≥ 22.22.0, ESM), `openapi-typescript` 7.13.0 (`typescript ^5.x`), `typescript-eslint` 8.71.2 (`typescript >=4.8.4 <6.1.0`): <https://registry.npmjs.org/react-router/latest>, <https://registry.npmjs.org/openapi-typescript/latest>, <https://registry.npmjs.org/typescript-eslint/latest>
 - shadcn/ui, formularios con `Field` + React Hook Form: <https://ui.shadcn.com/docs/forms/react-hook-form>
 - `@hookform/resolvers` con Zod 4 (desde 5.1.0): <https://github.com/react-hook-form/resolvers/releases>
 - openapi-typescript con `redocly.yaml` (varias APIs): <https://openapi-ts.dev/cli>
