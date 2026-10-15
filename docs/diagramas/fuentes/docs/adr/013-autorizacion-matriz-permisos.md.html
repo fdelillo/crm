@@ -1,0 +1,66 @@
+<!doctype html><html lang="es-AR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>docs/adr/013-autorizacion-matriz-permisos.md · Fuente CRM</title><style>
+*{box-sizing:border-box} :root{--color-paper:#F8FAFC;--color-ink:#0F172A;--color-muted:#475569;--color-soft:#475569;--color-accent:#2563EB;--color-rule:#E2E8F0;--font-sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;--font-serif:var(--font-sans);--font-mono:ui-monospace,SFMono-Regular,Consolas,monospace;--motion-fast:160ms;--motion-step:480ms;--motion-hold:720ms;--motion-total:5760ms;--motion-ease:cubic-bezier(.2,.8,.2,1)}
+body{margin:0;background:var(--color-paper);color:var(--color-ink);font:16px/1.65 var(--font-sans)} a{color:#1E40AF;text-underline-offset:3px}a:hover{color:#2563EB}a:focus-visible,summary:focus-visible{outline:3px solid #2563EB;outline-offset:4px}
+header{border-bottom:1px solid #E2E8F0;background:white}header .bar{max-width:1360px;margin:auto;padding:16px 28px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px}.brand{text-decoration:none;color:#0F172A;font-weight:600;letter-spacing:-.02em}.brand b{color:#2563EB}nav{display:flex;gap:8px;flex-wrap:wrap}nav a{min-height:44px;display:inline-flex;align-items:center;padding:0 12px;text-decoration:none;border:1px solid #E2E8F0;border-radius:6px;background:white;font-size:14px}
+main{max-width:1360px;margin:auto;padding:40px 28px 64px;min-width:0}h1{overflow-wrap:anywhere;font:600 32px/1.2 var(--font-sans);letter-spacing:-.03em;margin:12px 0 16px}h2{font:600 22px/1.3 var(--font-sans);margin:0 0 8px}h3{font-size:18px;margin:20px 0 8px}p{margin:8px 0 16px}.eyebrow{font:500 12px/1.5 var(--font-mono);letter-spacing:.1em;text-transform:uppercase;color:#475569}.intro{max-width:850px;color:#475569;font-size:18px}.meta{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 28px}.tag{padding:4px 10px;border:1px solid #E2E8F0;background:#FFF;border-radius:4px;font-size:13px;color:#475569}.tag.current{color:#047857;background:#ECFDF5;border-color:#047857}.tag.planned{color:#92400E;background:#FFFBEB;border-color:#92400E}
+.figure{margin:28px 0;padding:24px;background:white;border:1px solid #E2E8F0;border-radius:8px;max-width:100%;min-width:0}.figure>p{color:#475569;max-width:1000px;font-size:15px}.diagram-container{width:100%;overflow-x:auto;margin:20px 0 0;border:1px solid #E2E8F0;border-radius:6px;background:#F8FAFC}svg{display:block;width:100%;min-width:1280px}.caption{font-size:14px;color:#475569;margin-top:16px}.note{border-left:3px solid #2563EB;padding:12px 18px;background:#EFF6FF}.reading{max-width:1050px}.reading li{margin:8px 0}details{border:1px solid #E2E8F0;border-radius:6px;background:white;margin:12px 0;padding:16px}summary{cursor:pointer;font-weight:600;min-height:28px}.sources{font-size:14px}.sources li{margin:8px 0;overflow-wrap:anywhere}code,pre{font-family:var(--font-mono);font-size:13px}pre{overflow:auto;background:#F1F5F9;padding:16px;border-radius:4px}footer{margin-top:40px;padding-top:20px;border-top:1px solid #E2E8F0;color:#475569;font-size:13px}.catalog{list-style:none;margin:28px 0;padding:0;border-top:1px solid #E2E8F0}.catalog li{display:grid;grid-template-columns:64px 1fr 180px;align-items:start;gap:20px;padding:22px 0;border-bottom:1px solid #E2E8F0}.catalog .number{font:500 24px var(--font-mono);color:#475569}.catalog a{display:block;min-height:44px;font-size:20px;font-weight:600;text-decoration:none}.catalog p{margin:5px 0 0;color:#475569}.catalog .kind{font:12px var(--font-mono);color:#475569;padding-top:8px}.roadmap{display:grid;grid-template-columns:1.15fr 1fr;gap:24px;margin-top:32px}.panel{border:1px solid #E2E8F0;border-radius:8px;padding:24px;background:white}.facts{display:flex;flex-wrap:wrap;gap:28px;margin:24px 0}.facts strong{font-size:26px;display:block;color:#0F172A}.facts span{font-size:14px;color:#475569}table{border-collapse:collapse;width:100%;font-size:14px}th,td{text-align:left;padding:10px;border-bottom:1px solid #E2E8F0}th{background:#F1F5F9}.table-wrap{overflow:auto}.table-wrap td a{display:block;min-height:44px}svg .name{font-family:var(--font-sans);font-size:12px;font-weight:600;fill:#0F172A}svg .sub{font-family:var(--font-mono);font-size:9px;fill:#475569}svg .tiny{font-family:var(--font-mono);font-size:8px;fill:#475569}
+@media(max-width:700px){main{padding:28px 16px 40px}header .bar{padding:12px 16px}h1{font-size:26px}.figure{padding:16px}.catalog li{grid-template-columns:40px 1fr;gap:12px}.catalog .kind{grid-column:2}.roadmap{grid-template-columns:1fr}.intro{font-size:16px}}
+@media print{header,nav{display:none}main{padding:0}.figure{break-inside:avoid;padding:12px}.diagram-container{overflow-x:visible}svg{min-width:0}.roadmap{display:block}details{break-inside:avoid}body{background:white}.sources a{color:#0F172A}}
+ .line{color:#475569;text-decoration:none}pre span:target{background:#EFF6FF}</style></head><body><main><nav><a href="../../../index.html">← Índice del atlas</a></nav><p class="eyebrow">Copia de referencia · 2026-10-14</p><h1>docs/adr/013-autorizacion-matriz-permisos.md</h1><p>Revisión: <code>c7692bd7b7a0d8e07e18d3c9ec1738b169dc032f</code>. Esta copia documenta las fuentes usadas; no se actualiza automáticamente.</p><pre><span id="L1"><a href="#L1" class="line">   1</a> # ADR-013: Autorización con una matriz estática de permisos por rol</span>
+<span id="L2"><a href="#L2" class="line">   2</a> </span>
+<span id="L3"><a href="#L3" class="line">   3</a> **Status**: Accepted (aprobado por el usuario con el plan de 001, 2026-09-29)</span>
+<span id="L4"><a href="#L4" class="line">   4</a> **Fecha**: 2026-09-27</span>
+<span id="L5"><a href="#L5" class="line">   5</a> **Origen**: spec 001 (FR-007); lo usan todas las specs</span>
+<span id="L6"><a href="#L6" class="line">   6</a> </span>
+<span id="L7"><a href="#L7" class="line">   7</a> ## Contexto</span>
+<span id="L8"><a href="#L8" class="line">   8</a> </span>
+<span id="L9"><a href="#L9" class="line">   9</a> FR-007 define qué puede hacer cada rol (Administrador, Operador) en 15 áreas funcionales. En 001</span>
+<span id="L10"><a href="#L10" class="line">  10</a> solo se aplica &quot;Configuración y usuarios&quot;, pero cada spec siguiente va a proteger sus endpoints</span>
+<span id="L11"><a href="#L11" class="line">  11</a> con esta matriz. Los roles no son configurables en el MVP (visión, &quot;Fuera del MVP&quot;). La spec pide</span>
+<span id="L12"><a href="#L12" class="line">  12</a> `403` para un Operador en un recurso restringido y `404` (no `403`) para un recurso de otra</span>
+<span id="L13"><a href="#L13" class="line">  13</a> empresa.</span>
+<span id="L14"><a href="#L14" class="line">  14</a> </span>
+<span id="L15"><a href="#L15" class="line">  15</a> ## Decisión</span>
+<span id="L16"><a href="#L16" class="line">  16</a> </span>
+<span id="L17"><a href="#L17" class="line">  17</a> - Paquete `internal/authz` con:</span>
+<span id="L18"><a href="#L18" class="line">  18</a>   - `Role` (`admin`, `operator`) y `Permission`: **un permiso por fila de FR-007**</span>
+<span id="L19"><a href="#L19" class="line">  19</a>     (`customers.manage`, `projects.manage`, `quotes.manage`, `customer_receipts.create`,</span>
+<span id="L20"><a href="#L20" class="line">  20</a>     `balances.view`, `project_costs.view`, `suppliers.view_contact`, `party_finances.manage`,</span>
+<span id="L21"><a href="#L21" class="line">  21</a>     `money_accounts.manage`, `financial_operations.manage`, `checks.manage`,</span>
+<span id="L22"><a href="#L22" class="line">  22</a>     `bank_statements.import`, `reports.view`, `settings.manage`, `movements.void`).</span>
+<span id="L23"><a href="#L23" class="line">  23</a>   - Una tabla estática `rol → conjunto de permisos` y `Can(role, permission) bool`.</span>
+<span id="L24"><a href="#L24" class="line">  24</a>   - `Principal{TenantID, UserID, SessionID, Role}` en el `context`, puesto por el middleware de</span>
+<span id="L25"><a href="#L25" class="line">  25</a>     sesión.</span>
+<span id="L26"><a href="#L26" class="line">  26</a>   - Middleware `RequirePermission(p)` que se aplica **por grupo de rutas** en chi.</span>
+<span id="L27"><a href="#L27" class="line">  27</a> - La decisión de permiso se toma **antes** de buscar el recurso y no depende de su existencia:</span>
+<span id="L28"><a href="#L28" class="line">  28</a>   un Operador recibe `403` en `/users/{id}` sea cual sea el id. Un Administrador que pide un id de</span>
+<span id="L29"><a href="#L29" class="line">  29</a>   otra empresa recibe `404` (la RLS no encuentra la fila).</span>
+<span id="L30"><a href="#L30" class="line">  30</a> - Reglas más finas que un permiso (p. ej. en 004 &quot;el autor o un Administrador borra un adjunto&quot;)</span>
+<span id="L31"><a href="#L31" class="line">  31</a>   se implementan en el servicio del módulo, **además** del permiso de ruta, y se documentan en su</span>
+<span id="L32"><a href="#L32" class="line">  32</a>   plan.</span>
+<span id="L33"><a href="#L33" class="line">  33</a> - `/me` devuelve la lista de permisos del rol para que la UI oculte lo que no corresponde; eso es</span>
+<span id="L34"><a href="#L34" class="line">  34</a>   UX: la autorización real siempre la hace el servidor.</span>
+<span id="L35"><a href="#L35" class="line">  35</a> </span>
+<span id="L36"><a href="#L36" class="line">  36</a> ## Fundamento</span>
+<span id="L37"><a href="#L37" class="line">  37</a> </span>
+<span id="L38"><a href="#L38" class="line">  38</a> - Trazabilidad 1:1 con la spec: un test de tabla compara la matriz del código con FR-007 y con el</span>
+<span id="L39"><a href="#L39" class="line">  39</a>   enum del contrato.</span>
+<span id="L40"><a href="#L40" class="line">  40</a> - Declarar el permiso en el grupo de rutas lo hace visible y verificable (el test de permisos por</span>
+<span id="L41"><a href="#L41" class="line">  41</a>   endpoint recorre todas las rutas).</span>
+<span id="L42"><a href="#L42" class="line">  42</a> - Decidir antes de buscar evita que el status revele si un recurso existe.</span>
+<span id="L43"><a href="#L43" class="line">  43</a> </span>
+<span id="L44"><a href="#L44" class="line">  44</a> ## Alternativas consideradas</span>
+<span id="L45"><a href="#L45" class="line">  45</a> </span>
+<span id="L46"><a href="#L46" class="line">  46</a> - **`if role == admin` dentro de cada handler**: rápido de escribir, imposible de auditar, fácil</span>
+<span id="L47"><a href="#L47" class="line">  47</a>   de olvidar en un endpoint nuevo.</span>
+<span id="L48"><a href="#L48" class="line">  48</a> - **Motor de políticas (Casbin, OPA)**: flexible, pero desproporcionado para dos roles fijos y</span>
+<span id="L49"><a href="#L49" class="line">  49</a>   15 permisos.</span>
+<span id="L50"><a href="#L50" class="line">  50</a> - **Permisos en la base, editables**: los roles configurables están fuera del MVP.</span>
+<span id="L51"><a href="#L51" class="line">  51</a> - **Permisos por endpoint en lugar de por área funcional**: más granular de lo que pide la spec;</span>
+<span id="L52"><a href="#L52" class="line">  52</a>   la matriz dejaría de leerse como FR-007.</span>
+<span id="L53"><a href="#L53" class="line">  53</a> </span>
+<span id="L54"><a href="#L54" class="line">  54</a> ## Consecuencias</span>
+<span id="L55"><a href="#L55" class="line">  55</a> </span>
+<span id="L56"><a href="#L56" class="line">  56</a> - Ganás: una matriz auditable, un único middleware, tests que cubren todas las rutas.</span>
+<span id="L57"><a href="#L57" class="line">  57</a> - Aceptás: cambiar la matriz exige cambiar código, contrato y spec (FR-007) juntos; roles</span>
+<span id="L58"><a href="#L58" class="line">  58</a>   configurables en el futuro requerirán un ADR nuevo que reemplace a este.</span></pre></main></body></html>

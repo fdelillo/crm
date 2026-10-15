@@ -1,0 +1,289 @@
+<!doctype html><html lang="es-AR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>internal/platform/config/config.go · Fuente CRM</title><style>
+*{box-sizing:border-box} :root{--color-paper:#F8FAFC;--color-ink:#0F172A;--color-muted:#475569;--color-soft:#475569;--color-accent:#2563EB;--color-rule:#E2E8F0;--font-sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;--font-serif:var(--font-sans);--font-mono:ui-monospace,SFMono-Regular,Consolas,monospace;--motion-fast:160ms;--motion-step:480ms;--motion-hold:720ms;--motion-total:5760ms;--motion-ease:cubic-bezier(.2,.8,.2,1)}
+body{margin:0;background:var(--color-paper);color:var(--color-ink);font:16px/1.65 var(--font-sans)} a{color:#1E40AF;text-underline-offset:3px}a:hover{color:#2563EB}a:focus-visible,summary:focus-visible{outline:3px solid #2563EB;outline-offset:4px}
+header{border-bottom:1px solid #E2E8F0;background:white}header .bar{max-width:1360px;margin:auto;padding:16px 28px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px}.brand{text-decoration:none;color:#0F172A;font-weight:600;letter-spacing:-.02em}.brand b{color:#2563EB}nav{display:flex;gap:8px;flex-wrap:wrap}nav a{min-height:44px;display:inline-flex;align-items:center;padding:0 12px;text-decoration:none;border:1px solid #E2E8F0;border-radius:6px;background:white;font-size:14px}
+main{max-width:1360px;margin:auto;padding:40px 28px 64px;min-width:0}h1{overflow-wrap:anywhere;font:600 32px/1.2 var(--font-sans);letter-spacing:-.03em;margin:12px 0 16px}h2{font:600 22px/1.3 var(--font-sans);margin:0 0 8px}h3{font-size:18px;margin:20px 0 8px}p{margin:8px 0 16px}.eyebrow{font:500 12px/1.5 var(--font-mono);letter-spacing:.1em;text-transform:uppercase;color:#475569}.intro{max-width:850px;color:#475569;font-size:18px}.meta{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 28px}.tag{padding:4px 10px;border:1px solid #E2E8F0;background:#FFF;border-radius:4px;font-size:13px;color:#475569}.tag.current{color:#047857;background:#ECFDF5;border-color:#047857}.tag.planned{color:#92400E;background:#FFFBEB;border-color:#92400E}
+.figure{margin:28px 0;padding:24px;background:white;border:1px solid #E2E8F0;border-radius:8px;max-width:100%;min-width:0}.figure>p{color:#475569;max-width:1000px;font-size:15px}.diagram-container{width:100%;overflow-x:auto;margin:20px 0 0;border:1px solid #E2E8F0;border-radius:6px;background:#F8FAFC}svg{display:block;width:100%;min-width:1280px}.caption{font-size:14px;color:#475569;margin-top:16px}.note{border-left:3px solid #2563EB;padding:12px 18px;background:#EFF6FF}.reading{max-width:1050px}.reading li{margin:8px 0}details{border:1px solid #E2E8F0;border-radius:6px;background:white;margin:12px 0;padding:16px}summary{cursor:pointer;font-weight:600;min-height:28px}.sources{font-size:14px}.sources li{margin:8px 0;overflow-wrap:anywhere}code,pre{font-family:var(--font-mono);font-size:13px}pre{overflow:auto;background:#F1F5F9;padding:16px;border-radius:4px}footer{margin-top:40px;padding-top:20px;border-top:1px solid #E2E8F0;color:#475569;font-size:13px}.catalog{list-style:none;margin:28px 0;padding:0;border-top:1px solid #E2E8F0}.catalog li{display:grid;grid-template-columns:64px 1fr 180px;align-items:start;gap:20px;padding:22px 0;border-bottom:1px solid #E2E8F0}.catalog .number{font:500 24px var(--font-mono);color:#475569}.catalog a{display:block;min-height:44px;font-size:20px;font-weight:600;text-decoration:none}.catalog p{margin:5px 0 0;color:#475569}.catalog .kind{font:12px var(--font-mono);color:#475569;padding-top:8px}.roadmap{display:grid;grid-template-columns:1.15fr 1fr;gap:24px;margin-top:32px}.panel{border:1px solid #E2E8F0;border-radius:8px;padding:24px;background:white}.facts{display:flex;flex-wrap:wrap;gap:28px;margin:24px 0}.facts strong{font-size:26px;display:block;color:#0F172A}.facts span{font-size:14px;color:#475569}table{border-collapse:collapse;width:100%;font-size:14px}th,td{text-align:left;padding:10px;border-bottom:1px solid #E2E8F0}th{background:#F1F5F9}.table-wrap{overflow:auto}.table-wrap td a{display:block;min-height:44px}svg .name{font-family:var(--font-sans);font-size:12px;font-weight:600;fill:#0F172A}svg .sub{font-family:var(--font-mono);font-size:9px;fill:#475569}svg .tiny{font-family:var(--font-mono);font-size:8px;fill:#475569}
+@media(max-width:700px){main{padding:28px 16px 40px}header .bar{padding:12px 16px}h1{font-size:26px}.figure{padding:16px}.catalog li{grid-template-columns:40px 1fr;gap:12px}.catalog .kind{grid-column:2}.roadmap{grid-template-columns:1fr}.intro{font-size:16px}}
+@media print{header,nav{display:none}main{padding:0}.figure{break-inside:avoid;padding:12px}.diagram-container{overflow-x:visible}svg{min-width:0}.roadmap{display:block}details{break-inside:avoid}body{background:white}.sources a{color:#0F172A}}
+ .line{color:#475569;text-decoration:none}pre span:target{background:#EFF6FF}</style></head><body><main><nav><a href="../../../../index.html">← Índice del atlas</a></nav><p class="eyebrow">Copia de referencia · 2026-10-14</p><h1>internal/platform/config/config.go</h1><p>Revisión: <code>c7692bd7b7a0d8e07e18d3c9ec1738b169dc032f</code>. Esta copia documenta las fuentes usadas; no se actualiza automáticamente.</p><pre><span id="L1"><a href="#L1" class="line">   1</a> package config</span>
+<span id="L2"><a href="#L2" class="line">   2</a> </span>
+<span id="L3"><a href="#L3" class="line">   3</a> import (</span>
+<span id="L4"><a href="#L4" class="line">   4</a> 	&quot;encoding/base64&quot;</span>
+<span id="L5"><a href="#L5" class="line">   5</a> 	&quot;errors&quot;</span>
+<span id="L6"><a href="#L6" class="line">   6</a> 	&quot;fmt&quot;</span>
+<span id="L7"><a href="#L7" class="line">   7</a> 	&quot;net/netip&quot;</span>
+<span id="L8"><a href="#L8" class="line">   8</a> 	&quot;net/url&quot;</span>
+<span id="L9"><a href="#L9" class="line">   9</a> 	&quot;strconv&quot;</span>
+<span id="L10"><a href="#L10" class="line">  10</a> 	&quot;strings&quot;</span>
+<span id="L11"><a href="#L11" class="line">  11</a> 	&quot;time&quot;</span>
+<span id="L12"><a href="#L12" class="line">  12</a> )</span>
+<span id="L13"><a href="#L13" class="line">  13</a> </span>
+<span id="L14"><a href="#L14" class="line">  14</a> const minHMACKeyBytes = 32</span>
+<span id="L15"><a href="#L15" class="line">  15</a> </span>
+<span id="L16"><a href="#L16" class="line">  16</a> // TLSFiles are the paths of the local development certificate (TLS_CERT_FILE, TLS_KEY_FILE).</span>
+<span id="L17"><a href="#L17" class="line">  17</a> // Load does not read the files; `crm serve` checks them before listening (DD-24).</span>
+<span id="L18"><a href="#L18" class="line">  18</a> type TLSFiles struct {</span>
+<span id="L19"><a href="#L19" class="line">  19</a> 	CertFile string // TLS_CERT_FILE</span>
+<span id="L20"><a href="#L20" class="line">  20</a> 	KeyFile  string // TLS_KEY_FILE</span>
+<span id="L21"><a href="#L21" class="line">  21</a> }</span>
+<span id="L22"><a href="#L22" class="line">  22</a> </span>
+<span id="L23"><a href="#L23" class="line">  23</a> // Config is the typed configuration of the binary (plan §10.5, §11.1).</span>
+<span id="L24"><a href="#L24" class="line">  24</a> //</span>
+<span id="L25"><a href="#L25" class="line">  25</a> // There is deliberately no field that could weaken the session cookie: it is always Secure</span>
+<span id="L26"><a href="#L26" class="line">  26</a> // (INV-23, DD-24).</span>
+<span id="L27"><a href="#L27" class="line">  27</a> type Config struct {</span>
+<span id="L28"><a href="#L28" class="line">  28</a> 	DatabaseURL          string // DATABASE_URL (role crm_app). Secret.</span>
+<span id="L29"><a href="#L29" class="line">  29</a> 	DatabaseMigrationURL string // DATABASE_MIGRATION_URL (role crm_owner); only `crm migrate` needs it. Secret.</span>
+<span id="L30"><a href="#L30" class="line">  30</a> 	AuthHMACKey          []byte // AUTH_HMAC_KEY, standard base64, at least 32 bytes decoded. Secret.</span>
+<span id="L31"><a href="#L31" class="line">  31</a> 	AppBaseURL           *url.URL</span>
+<span id="L32"><a href="#L32" class="line">  32</a> 	AppLinkReset         string</span>
+<span id="L33"><a href="#L33" class="line">  33</a> 	AppLinkVerify        string</span>
+<span id="L34"><a href="#L34" class="line">  34</a> 	AppLinkInvitation    string</span>
+<span id="L35"><a href="#L35" class="line">  35</a> 	SessionIdle          time.Duration</span>
+<span id="L36"><a href="#L36" class="line">  36</a> 	SessionAbsolute      time.Duration</span>
+<span id="L37"><a href="#L37" class="line">  37</a> 	SMTPHost             string</span>
+<span id="L38"><a href="#L38" class="line">  38</a> 	SMTPPort             int</span>
+<span id="L39"><a href="#L39" class="line">  39</a> 	SMTPUsername         string</span>
+<span id="L40"><a href="#L40" class="line">  40</a> 	SMTPPassword         string</span>
+<span id="L41"><a href="#L41" class="line">  41</a> 	SMTPFrom             string</span>
+<span id="L42"><a href="#L42" class="line">  42</a> 	S3Endpoint           string</span>
+<span id="L43"><a href="#L43" class="line">  43</a> 	S3Bucket             string</span>
+<span id="L44"><a href="#L44" class="line">  44</a> 	S3AccessKey          string</span>
+<span id="L45"><a href="#L45" class="line">  45</a> 	S3SecretKey          string</span>
+<span id="L46"><a href="#L46" class="line">  46</a> 	S3UseSSL             bool</span>
+<span id="L47"><a href="#L47" class="line">  47</a> 	HTTPAddr             string</span>
+<span id="L48"><a href="#L48" class="line">  48</a> 	MetricsAddr          string</span>
+<span id="L49"><a href="#L49" class="line">  49</a> 	TLS                  *TLSFiles // nil except in local mode with TLS_* set</span>
+<span id="L50"><a href="#L50" class="line">  50</a> 	// TrustedProxies are the proxies whose X-Forwarded-For is believed (TRUSTED_PROXIES, DD-32).</span>
+<span id="L51"><a href="#L51" class="line">  51</a> 	// Empty (the default) trusts nobody: the client IP is then always RemoteAddr.</span>
+<span id="L52"><a href="#L52" class="line">  52</a> 	TrustedProxies []netip.Prefix</span>
+<span id="L53"><a href="#L53" class="line">  53</a> }</span>
+<span id="L54"><a href="#L54" class="line">  54</a> </span>
+<span id="L55"><a href="#L55" class="line">  55</a> // Load reads the environment through getenv and validates the rules of plan §10.5.</span>
+<span id="L56"><a href="#L56" class="line">  56</a> // It never reads files. Errors name the offending variable and never include the value of a</span>
+<span id="L57"><a href="#L57" class="line">  57</a> // secret one.</span>
+<span id="L58"><a href="#L58" class="line">  58</a> func Load(getenv func(string) string) (Config, error) {</span>
+<span id="L59"><a href="#L59" class="line">  59</a> 	var c Config</span>
+<span id="L60"><a href="#L60" class="line">  60</a> 	var err error</span>
+<span id="L61"><a href="#L61" class="line">  61</a> </span>
+<span id="L62"><a href="#L62" class="line">  62</a> 	if c.DatabaseURL, err = required(getenv, &quot;DATABASE_URL&quot;); err != nil {</span>
+<span id="L63"><a href="#L63" class="line">  63</a> 		return Config{}, err</span>
+<span id="L64"><a href="#L64" class="line">  64</a> 	}</span>
+<span id="L65"><a href="#L65" class="line">  65</a> 	c.DatabaseMigrationURL = getenv(&quot;DATABASE_MIGRATION_URL&quot;)</span>
+<span id="L66"><a href="#L66" class="line">  66</a> 	if c.AuthHMACKey, err = hmacKey(getenv(&quot;AUTH_HMAC_KEY&quot;)); err != nil {</span>
+<span id="L67"><a href="#L67" class="line">  67</a> 		return Config{}, err</span>
+<span id="L68"><a href="#L68" class="line">  68</a> 	}</span>
+<span id="L69"><a href="#L69" class="line">  69</a> 	if c.AppBaseURL, err = baseURL(getenv(&quot;APP_BASE_URL&quot;)); err != nil {</span>
+<span id="L70"><a href="#L70" class="line">  70</a> 		return Config{}, err</span>
+<span id="L71"><a href="#L71" class="line">  71</a> 	}</span>
+<span id="L72"><a href="#L72" class="line">  72</a> 	if c.TLS, err = tlsFiles(getenv, c.AppBaseURL); err != nil {</span>
+<span id="L73"><a href="#L73" class="line">  73</a> 		return Config{}, err</span>
+<span id="L74"><a href="#L74" class="line">  74</a> 	}</span>
+<span id="L75"><a href="#L75" class="line">  75</a> 	links := []struct {</span>
+<span id="L76"><a href="#L76" class="line">  76</a> 		dst      *string</span>
+<span id="L77"><a href="#L77" class="line">  77</a> 		name     string</span>
+<span id="L78"><a href="#L78" class="line">  78</a> 		fallback string</span>
+<span id="L79"><a href="#L79" class="line">  79</a> 	}{</span>
+<span id="L80"><a href="#L80" class="line">  80</a> 		{&amp;c.AppLinkReset, &quot;APP_LINK_RESET&quot;, &quot;/reset-password&quot;},</span>
+<span id="L81"><a href="#L81" class="line">  81</a> 		{&amp;c.AppLinkVerify, &quot;APP_LINK_VERIFY&quot;, &quot;/verify-email&quot;},</span>
+<span id="L82"><a href="#L82" class="line">  82</a> 		{&amp;c.AppLinkInvitation, &quot;APP_LINK_INVITATION&quot;, &quot;/accept-invitation&quot;},</span>
+<span id="L83"><a href="#L83" class="line">  83</a> 	}</span>
+<span id="L84"><a href="#L84" class="line">  84</a> 	for _, l := range links {</span>
+<span id="L85"><a href="#L85" class="line">  85</a> 		if *l.dst, err = appLink(l.name, getenv(l.name), l.fallback); err != nil {</span>
+<span id="L86"><a href="#L86" class="line">  86</a> 			return Config{}, err</span>
+<span id="L87"><a href="#L87" class="line">  87</a> 		}</span>
+<span id="L88"><a href="#L88" class="line">  88</a> 	}</span>
+<span id="L89"><a href="#L89" class="line">  89</a> 	if c.SessionIdle, err = duration(getenv, &quot;SESSION_IDLE&quot;, 24*time.Hour); err != nil {</span>
+<span id="L90"><a href="#L90" class="line">  90</a> 		return Config{}, err</span>
+<span id="L91"><a href="#L91" class="line">  91</a> 	}</span>
+<span id="L92"><a href="#L92" class="line">  92</a> 	if c.SessionAbsolute, err = duration(getenv, &quot;SESSION_ABSOLUTE&quot;, 168*time.Hour); err != nil {</span>
+<span id="L93"><a href="#L93" class="line">  93</a> 		return Config{}, err</span>
+<span id="L94"><a href="#L94" class="line">  94</a> 	}</span>
+<span id="L95"><a href="#L95" class="line">  95</a> 	if c.SessionIdle &gt; c.SessionAbsolute {</span>
+<span id="L96"><a href="#L96" class="line">  96</a> 		return Config{}, errors.New(&quot;config: SESSION_IDLE must not be greater than SESSION_ABSOLUTE&quot;)</span>
+<span id="L97"><a href="#L97" class="line">  97</a> 	}</span>
+<span id="L98"><a href="#L98" class="line">  98</a> 	c.SMTPHost = getenv(&quot;SMTP_HOST&quot;)</span>
+<span id="L99"><a href="#L99" class="line">  99</a> 	c.SMTPFrom = getenv(&quot;SMTP_FROM&quot;)</span>
+<span id="L100"><a href="#L100" class="line"> 100</a> 	if c.IsLocal() {</span>
+<span id="L101"><a href="#L101" class="line"> 101</a> 		c.SMTPHost = orDefault(c.SMTPHost, &quot;localhost&quot;)</span>
+<span id="L102"><a href="#L102" class="line"> 102</a> 		c.SMTPFrom = orDefault(c.SMTPFrom, &quot;no-reply@crm.local&quot;)</span>
+<span id="L103"><a href="#L103" class="line"> 103</a> 	}</span>
+<span id="L104"><a href="#L104" class="line"> 104</a> 	if rawPort := getenv(&quot;SMTP_PORT&quot;); rawPort != &quot;&quot; {</span>
+<span id="L105"><a href="#L105" class="line"> 105</a> 		c.SMTPPort, err = strconv.Atoi(rawPort)</span>
+<span id="L106"><a href="#L106" class="line"> 106</a> 		if err != nil || c.SMTPPort &lt; 1 || c.SMTPPort &gt; 65535 {</span>
+<span id="L107"><a href="#L107" class="line"> 107</a> 			return Config{}, errors.New(&quot;config: SMTP_PORT must be between 1 and 65535&quot;)</span>
+<span id="L108"><a href="#L108" class="line"> 108</a> 		}</span>
+<span id="L109"><a href="#L109" class="line"> 109</a> 	} else if c.IsLocal() {</span>
+<span id="L110"><a href="#L110" class="line"> 110</a> 		c.SMTPPort = 1025</span>
+<span id="L111"><a href="#L111" class="line"> 111</a> 	}</span>
+<span id="L112"><a href="#L112" class="line"> 112</a> 	c.SMTPUsername, c.SMTPPassword = getenv(&quot;SMTP_USERNAME&quot;), getenv(&quot;SMTP_PASSWORD&quot;)</span>
+<span id="L113"><a href="#L113" class="line"> 113</a> 	c.S3Endpoint, c.S3Bucket = getenv(&quot;S3_ENDPOINT&quot;), getenv(&quot;S3_BUCKET&quot;)</span>
+<span id="L114"><a href="#L114" class="line"> 114</a> 	c.S3AccessKey, c.S3SecretKey = getenv(&quot;S3_ACCESS_KEY&quot;), getenv(&quot;S3_SECRET_KEY&quot;)</span>
+<span id="L115"><a href="#L115" class="line"> 115</a> 	if rawSSL := getenv(&quot;S3_USE_SSL&quot;); rawSSL != &quot;&quot; {</span>
+<span id="L116"><a href="#L116" class="line"> 116</a> 		c.S3UseSSL, err = strconv.ParseBool(rawSSL)</span>
+<span id="L117"><a href="#L117" class="line"> 117</a> 		if err != nil {</span>
+<span id="L118"><a href="#L118" class="line"> 118</a> 			return Config{}, errors.New(&quot;config: S3_USE_SSL must be a boolean&quot;)</span>
+<span id="L119"><a href="#L119" class="line"> 119</a> 		}</span>
+<span id="L120"><a href="#L120" class="line"> 120</a> 	}</span>
+<span id="L121"><a href="#L121" class="line"> 121</a> 	if c.IsLocal() {</span>
+<span id="L122"><a href="#L122" class="line"> 122</a> 		c.S3Endpoint = orDefault(c.S3Endpoint, &quot;localhost:9000&quot;)</span>
+<span id="L123"><a href="#L123" class="line"> 123</a> 		c.S3Bucket = orDefault(c.S3Bucket, &quot;crm-dev&quot;)</span>
+<span id="L124"><a href="#L124" class="line"> 124</a> 		c.S3AccessKey = orDefault(c.S3AccessKey, &quot;minio_dev&quot;)</span>
+<span id="L125"><a href="#L125" class="line"> 125</a> 		c.S3SecretKey = orDefault(c.S3SecretKey, &quot;minio_dev_secret&quot;)</span>
+<span id="L126"><a href="#L126" class="line"> 126</a> 	}</span>
+<span id="L127"><a href="#L127" class="line"> 127</a> 	if c.TrustedProxies, err = trustedProxies(getenv(&quot;TRUSTED_PROXIES&quot;)); err != nil {</span>
+<span id="L128"><a href="#L128" class="line"> 128</a> 		return Config{}, err</span>
+<span id="L129"><a href="#L129" class="line"> 129</a> 	}</span>
+<span id="L130"><a href="#L130" class="line"> 130</a> 	c.HTTPAddr = orDefault(getenv(&quot;HTTP_ADDR&quot;), &quot;:8080&quot;)</span>
+<span id="L131"><a href="#L131" class="line"> 131</a> 	c.MetricsAddr = orDefault(getenv(&quot;METRICS_ADDR&quot;), &quot;127.0.0.1:9090&quot;)</span>
+<span id="L132"><a href="#L132" class="line"> 132</a> 	return c, nil</span>
+<span id="L133"><a href="#L133" class="line"> 133</a> }</span>
+<span id="L134"><a href="#L134" class="line"> 134</a> </span>
+<span id="L135"><a href="#L135" class="line"> 135</a> // IsLocal reports whether APP_BASE_URL points at this machine: the host is exactly localhost</span>
+<span id="L136"><a href="#L136" class="line"> 136</a> // or 127.0.0.1 (any port). It is the only place that decides &quot;local mode&quot;, used for TLS and</span>
+<span id="L137"><a href="#L137" class="line"> 137</a> // HSTS (DD-24).</span>
+<span id="L138"><a href="#L138" class="line"> 138</a> func (c Config) IsLocal() bool {</span>
+<span id="L139"><a href="#L139" class="line"> 139</a> 	if c.AppBaseURL == nil {</span>
+<span id="L140"><a href="#L140" class="line"> 140</a> 		return false</span>
+<span id="L141"><a href="#L141" class="line"> 141</a> 	}</span>
+<span id="L142"><a href="#L142" class="line"> 142</a> 	switch strings.ToLower(c.AppBaseURL.Hostname()) {</span>
+<span id="L143"><a href="#L143" class="line"> 143</a> 	case &quot;localhost&quot;, &quot;127.0.0.1&quot;:</span>
+<span id="L144"><a href="#L144" class="line"> 144</a> 		return true</span>
+<span id="L145"><a href="#L145" class="line"> 145</a> 	}</span>
+<span id="L146"><a href="#L146" class="line"> 146</a> 	return false</span>
+<span id="L147"><a href="#L147" class="line"> 147</a> }</span>
+<span id="L148"><a href="#L148" class="line"> 148</a> </span>
+<span id="L149"><a href="#L149" class="line"> 149</a> func required(getenv func(string) string, name string) (string, error) {</span>
+<span id="L150"><a href="#L150" class="line"> 150</a> 	v := getenv(name)</span>
+<span id="L151"><a href="#L151" class="line"> 151</a> 	if v == &quot;&quot; {</span>
+<span id="L152"><a href="#L152" class="line"> 152</a> 		return &quot;&quot;, fmt.Errorf(&quot;config: %s is required&quot;, name)</span>
+<span id="L153"><a href="#L153" class="line"> 153</a> 	}</span>
+<span id="L154"><a href="#L154" class="line"> 154</a> 	return v, nil</span>
+<span id="L155"><a href="#L155" class="line"> 155</a> }</span>
+<span id="L156"><a href="#L156" class="line"> 156</a> </span>
+<span id="L157"><a href="#L157" class="line"> 157</a> func orDefault(v, fallback string) string {</span>
+<span id="L158"><a href="#L158" class="line"> 158</a> 	if v == &quot;&quot; {</span>
+<span id="L159"><a href="#L159" class="line"> 159</a> 		return fallback</span>
+<span id="L160"><a href="#L160" class="line"> 160</a> 	}</span>
+<span id="L161"><a href="#L161" class="line"> 161</a> 	return v</span>
+<span id="L162"><a href="#L162" class="line"> 162</a> }</span>
+<span id="L163"><a href="#L163" class="line"> 163</a> </span>
+<span id="L164"><a href="#L164" class="line"> 164</a> // hmacKey decodes AUTH_HMAC_KEY. The error never includes the value.</span>
+<span id="L165"><a href="#L165" class="line"> 165</a> func hmacKey(raw string) ([]byte, error) {</span>
+<span id="L166"><a href="#L166" class="line"> 166</a> 	if raw == &quot;&quot; {</span>
+<span id="L167"><a href="#L167" class="line"> 167</a> 		return nil, errors.New(&quot;config: AUTH_HMAC_KEY is required&quot;)</span>
+<span id="L168"><a href="#L168" class="line"> 168</a> 	}</span>
+<span id="L169"><a href="#L169" class="line"> 169</a> 	key, err := base64.StdEncoding.DecodeString(raw)</span>
+<span id="L170"><a href="#L170" class="line"> 170</a> 	if err != nil {</span>
+<span id="L171"><a href="#L171" class="line"> 171</a> 		return nil, errors.New(&quot;config: AUTH_HMAC_KEY must be standard base64&quot;)</span>
+<span id="L172"><a href="#L172" class="line"> 172</a> 	}</span>
+<span id="L173"><a href="#L173" class="line"> 173</a> 	if len(key) &lt; minHMACKeyBytes {</span>
+<span id="L174"><a href="#L174" class="line"> 174</a> 		return nil, fmt.Errorf(&quot;config: AUTH_HMAC_KEY must decode to at least %d bytes&quot;, minHMACKeyBytes)</span>
+<span id="L175"><a href="#L175" class="line"> 175</a> 	}</span>
+<span id="L176"><a href="#L176" class="line"> 176</a> 	return key, nil</span>
+<span id="L177"><a href="#L177" class="line"> 177</a> }</span>
+<span id="L178"><a href="#L178" class="line"> 178</a> </span>
+<span id="L179"><a href="#L179" class="line"> 179</a> // baseURL validates APP_BASE_URL: always https (H-10, DD-24), origin only (email links are</span>
+<span id="L180"><a href="#L180" class="line"> 180</a> // APP_BASE_URL + APP_LINK_*), and normalized without a trailing slash.</span>
+<span id="L181"><a href="#L181" class="line"> 181</a> func baseURL(raw string) (*url.URL, error) {</span>
+<span id="L182"><a href="#L182" class="line"> 182</a> 	if raw == &quot;&quot; {</span>
+<span id="L183"><a href="#L183" class="line"> 183</a> 		return nil, errors.New(&quot;config: APP_BASE_URL is required&quot;)</span>
+<span id="L184"><a href="#L184" class="line"> 184</a> 	}</span>
+<span id="L185"><a href="#L185" class="line"> 185</a> 	u, err := url.Parse(raw)</span>
+<span id="L186"><a href="#L186" class="line"> 186</a> 	if err != nil || u.Scheme != &quot;https&quot; || u.Hostname() == &quot;&quot; {</span>
+<span id="L187"><a href="#L187" class="line"> 187</a> 		return nil, errors.New(&quot;config: APP_BASE_URL must be an absolute https:// URL&quot;)</span>
+<span id="L188"><a href="#L188" class="line"> 188</a> 	}</span>
+<span id="L189"><a href="#L189" class="line"> 189</a> 	if u.User != nil || u.RawQuery != &quot;&quot; || u.ForceQuery || u.Fragment != &quot;&quot; ||</span>
+<span id="L190"><a href="#L190" class="line"> 190</a> 		strings.ContainsAny(raw, &quot;?#&quot;) || (u.Path != &quot;&quot; &amp;&amp; u.Path != &quot;/&quot;) {</span>
+<span id="L191"><a href="#L191" class="line"> 191</a> 		return nil, errors.New(&quot;config: APP_BASE_URL must be only scheme, host and optional port (no user info, path, query or fragment)&quot;)</span>
+<span id="L192"><a href="#L192" class="line"> 192</a> 	}</span>
+<span id="L193"><a href="#L193" class="line"> 193</a> 	u.Path, u.RawPath = &quot;&quot;, &quot;&quot;</span>
+<span id="L194"><a href="#L194" class="line"> 194</a> 	return u, nil</span>
+<span id="L195"><a href="#L195" class="line"> 195</a> }</span>
+<span id="L196"><a href="#L196" class="line"> 196</a> </span>
+<span id="L197"><a href="#L197" class="line"> 197</a> // tlsFiles validates TLS_CERT_FILE / TLS_KEY_FILE: both or none, and only in local mode.</span>
+<span id="L198"><a href="#L198" class="line"> 198</a> func tlsFiles(getenv func(string) string, base *url.URL) (*TLSFiles, error) {</span>
+<span id="L199"><a href="#L199" class="line"> 199</a> 	cert, key := getenv(&quot;TLS_CERT_FILE&quot;), getenv(&quot;TLS_KEY_FILE&quot;)</span>
+<span id="L200"><a href="#L200" class="line"> 200</a> 	if cert == &quot;&quot; &amp;&amp; key == &quot;&quot; {</span>
+<span id="L201"><a href="#L201" class="line"> 201</a> 		return nil, nil</span>
+<span id="L202"><a href="#L202" class="line"> 202</a> 	}</span>
+<span id="L203"><a href="#L203" class="line"> 203</a> 	if !(Config{AppBaseURL: base}).IsLocal() {</span>
+<span id="L204"><a href="#L204" class="line"> 204</a> 		return nil, errors.New(&quot;config: TLS_CERT_FILE/TLS_KEY_FILE are only accepted in local mode (APP_BASE_URL host localhost or 127.0.0.1): in production TLS is terminated by the hosting&quot;)</span>
+<span id="L205"><a href="#L205" class="line"> 205</a> 	}</span>
+<span id="L206"><a href="#L206" class="line"> 206</a> 	if cert == &quot;&quot; {</span>
+<span id="L207"><a href="#L207" class="line"> 207</a> 		return nil, errors.New(&quot;config: TLS_CERT_FILE is required when TLS_KEY_FILE is set&quot;)</span>
+<span id="L208"><a href="#L208" class="line"> 208</a> 	}</span>
+<span id="L209"><a href="#L209" class="line"> 209</a> 	if key == &quot;&quot; {</span>
+<span id="L210"><a href="#L210" class="line"> 210</a> 		return nil, errors.New(&quot;config: TLS_KEY_FILE is required when TLS_CERT_FILE is set&quot;)</span>
+<span id="L211"><a href="#L211" class="line"> 211</a> 	}</span>
+<span id="L212"><a href="#L212" class="line"> 212</a> 	return &amp;TLSFiles{CertFile: cert, KeyFile: key}, nil</span>
+<span id="L213"><a href="#L213" class="line"> 213</a> }</span>
+<span id="L214"><a href="#L214" class="line"> 214</a> </span>
+<span id="L215"><a href="#L215" class="line"> 215</a> // appLink validates a path used to build email links: it starts with &quot;/&quot; and has no query or</span>
+<span id="L216"><a href="#L216" class="line"> 216</a> // fragment (the token goes in the fragment, appended later, DD-14).</span>
+<span id="L217"><a href="#L217" class="line"> 217</a> func appLink(name, raw, fallback string) (string, error) {</span>
+<span id="L218"><a href="#L218" class="line"> 218</a> 	v := orDefault(raw, fallback)</span>
+<span id="L219"><a href="#L219" class="line"> 219</a> 	if !strings.HasPrefix(v, &quot;/&quot;) || strings.ContainsAny(v, &quot;#?&quot;) {</span>
+<span id="L220"><a href="#L220" class="line"> 220</a> 		return &quot;&quot;, fmt.Errorf(&quot;config: %s must start with &#x27;/&#x27; and contain no &#x27;#&#x27; or &#x27;?&#x27;&quot;, name)</span>
+<span id="L221"><a href="#L221" class="line"> 221</a> 	}</span>
+<span id="L222"><a href="#L222" class="line"> 222</a> 	return v, nil</span>
+<span id="L223"><a href="#L223" class="line"> 223</a> }</span>
+<span id="L224"><a href="#L224" class="line"> 224</a> </span>
+<span id="L225"><a href="#L225" class="line"> 225</a> func duration(getenv func(string) string, name string, fallback time.Duration) (time.Duration, error) {</span>
+<span id="L226"><a href="#L226" class="line"> 226</a> 	raw := getenv(name)</span>
+<span id="L227"><a href="#L227" class="line"> 227</a> 	if raw == &quot;&quot; {</span>
+<span id="L228"><a href="#L228" class="line"> 228</a> 		return fallback, nil</span>
+<span id="L229"><a href="#L229" class="line"> 229</a> 	}</span>
+<span id="L230"><a href="#L230" class="line"> 230</a> 	d, err := time.ParseDuration(raw)</span>
+<span id="L231"><a href="#L231" class="line"> 231</a> 	if err != nil || d &lt;= 0 {</span>
+<span id="L232"><a href="#L232" class="line"> 232</a> 		return 0, fmt.Errorf(&quot;config: %s must be a positive duration such as 24h&quot;, name)</span>
+<span id="L233"><a href="#L233" class="line"> 233</a> 	}</span>
+<span id="L234"><a href="#L234" class="line"> 234</a> 	return d, nil</span>
+<span id="L235"><a href="#L235" class="line"> 235</a> }</span>
+<span id="L236"><a href="#L236" class="line"> 236</a> </span>
+<span id="L237"><a href="#L237" class="line"> 237</a> // trustedProxies parses TRUSTED_PROXIES: CIDRs or bare addresses separated by commas (blanks around</span>
+<span id="L238"><a href="#L238" class="line"> 238</a> // them are fine; empty items are skipped). A bare address is a /32 or /128. Trusting every address</span>
+<span id="L239"><a href="#L239" class="line"> 239</a> // (0.0.0.0/0, ::/0) would let any client forge its IP, so it is a startup error, and so is anything</span>
+<span id="L240"><a href="#L240" class="line"> 240</a> // that does not parse; the error names the variable and the item&#x27;s position, not more.</span>
+<span id="L241"><a href="#L241" class="line"> 241</a> func trustedProxies(raw string) ([]netip.Prefix, error) {</span>
+<span id="L242"><a href="#L242" class="line"> 242</a> 	var out []netip.Prefix</span>
+<span id="L243"><a href="#L243" class="line"> 243</a> 	pos := 0</span>
+<span id="L244"><a href="#L244" class="line"> 244</a> 	for _, item := range strings.Split(raw, &quot;,&quot;) {</span>
+<span id="L245"><a href="#L245" class="line"> 245</a> 		item = strings.TrimSpace(item)</span>
+<span id="L246"><a href="#L246" class="line"> 246</a> 		if item == &quot;&quot; {</span>
+<span id="L247"><a href="#L247" class="line"> 247</a> 			continue</span>
+<span id="L248"><a href="#L248" class="line"> 248</a> 		}</span>
+<span id="L249"><a href="#L249" class="line"> 249</a> 		pos++</span>
+<span id="L250"><a href="#L250" class="line"> 250</a> 		p, err := netip.ParsePrefix(item)</span>
+<span id="L251"><a href="#L251" class="line"> 251</a> 		if err != nil {</span>
+<span id="L252"><a href="#L252" class="line"> 252</a> 			addr, addrErr := netip.ParseAddr(item)</span>
+<span id="L253"><a href="#L253" class="line"> 253</a> 			if addrErr != nil {</span>
+<span id="L254"><a href="#L254" class="line"> 254</a> 				return nil, fmt.Errorf(&quot;config: TRUSTED_PROXIES item #%d is not a CIDR or an IP address&quot;, pos)</span>
+<span id="L255"><a href="#L255" class="line"> 255</a> 			}</span>
+<span id="L256"><a href="#L256" class="line"> 256</a> 			p = netip.PrefixFrom(addr, addr.BitLen())</span>
+<span id="L257"><a href="#L257" class="line"> 257</a> 		}</span>
+<span id="L258"><a href="#L258" class="line"> 258</a> 		if p.Addr().Is4In6() {</span>
+<span id="L259"><a href="#L259" class="line"> 259</a> 			return nil, mappedProxyError(pos, p)</span>
+<span id="L260"><a href="#L260" class="line"> 260</a> 		}</span>
+<span id="L261"><a href="#L261" class="line"> 261</a> 		if p.Bits() == 0 {</span>
+<span id="L262"><a href="#L262" class="line"> 262</a> 			return nil, fmt.Errorf(&quot;config: TRUSTED_PROXIES item #%d (%s) would trust every address: the client IP could be forged&quot;, pos, p)</span>
+<span id="L263"><a href="#L263" class="line"> 263</a> 		}</span>
+<span id="L264"><a href="#L264" class="line"> 264</a> 		out = append(out, p.Masked())</span>
+<span id="L265"><a href="#L265" class="line"> 265</a> 	}</span>
+<span id="L266"><a href="#L266" class="line"> 266</a> 	return out, nil</span>
+<span id="L267"><a href="#L267" class="line"> 267</a> }</span>
+<span id="L268"><a href="#L268" class="line"> 268</a> </span>
+<span id="L269"><a href="#L269" class="line"> 269</a> // mappedProxyError rejects an IPv4-mapped IPv6 prefix (::ffff:a.b.c.d/n). A client address is compared</span>
+<span id="L270"><a href="#L270" class="line"> 270</a> // unmapped, so such an entry would not mean what it says, and ::ffff:0.0.0.0/96 would be a disguised</span>
+<span id="L271"><a href="#L271" class="line"> 271</a> // 0.0.0.0/0. The error suggests the IPv4 form when there is one.</span>
+<span id="L272"><a href="#L272" class="line"> 272</a> func mappedProxyError(pos int, p netip.Prefix) error {</span>
+<span id="L273"><a href="#L273" class="line"> 273</a> 	if p.Bits() &lt; 96 {</span>
+<span id="L274"><a href="#L274" class="line"> 274</a> 		return fmt.Errorf(&quot;config: TRUSTED_PROXIES item #%d (%s) is an IPv4-mapped IPv6 prefix: write the IPv4 directly&quot;, pos, p)</span>
+<span id="L275"><a href="#L275" class="line"> 275</a> 	}</span>
+<span id="L276"><a href="#L276" class="line"> 276</a> 	v4 := netip.PrefixFrom(p.Addr().Unmap(), p.Bits()-96)</span>
+<span id="L277"><a href="#L277" class="line"> 277</a> 	if v4.Bits() == 0 {</span>
+<span id="L278"><a href="#L278" class="line"> 278</a> 		return fmt.Errorf(&quot;config: TRUSTED_PROXIES item #%d (%s) is an IPv4-mapped IPv6 prefix that would trust every address: the client IP could be forged&quot;, pos, p)</span>
+<span id="L279"><a href="#L279" class="line"> 279</a> 	}</span>
+<span id="L280"><a href="#L280" class="line"> 280</a> 	return fmt.Errorf(&quot;config: TRUSTED_PROXIES item #%d (%s) is an IPv4-mapped IPv6 prefix: write the IPv4 directly (%s)&quot;, pos, p, v4.Masked())</span>
+<span id="L281"><a href="#L281" class="line"> 281</a> }</span></pre></main></body></html>

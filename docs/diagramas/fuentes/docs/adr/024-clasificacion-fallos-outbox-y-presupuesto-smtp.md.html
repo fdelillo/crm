@@ -1,0 +1,316 @@
+<!doctype html><html lang="es-AR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>docs/adr/024-clasificacion-fallos-outbox-y-presupuesto-smtp.md · Fuente CRM</title><style>
+*{box-sizing:border-box} :root{--color-paper:#F8FAFC;--color-ink:#0F172A;--color-muted:#475569;--color-soft:#475569;--color-accent:#2563EB;--color-rule:#E2E8F0;--font-sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;--font-serif:var(--font-sans);--font-mono:ui-monospace,SFMono-Regular,Consolas,monospace;--motion-fast:160ms;--motion-step:480ms;--motion-hold:720ms;--motion-total:5760ms;--motion-ease:cubic-bezier(.2,.8,.2,1)}
+body{margin:0;background:var(--color-paper);color:var(--color-ink);font:16px/1.65 var(--font-sans)} a{color:#1E40AF;text-underline-offset:3px}a:hover{color:#2563EB}a:focus-visible,summary:focus-visible{outline:3px solid #2563EB;outline-offset:4px}
+header{border-bottom:1px solid #E2E8F0;background:white}header .bar{max-width:1360px;margin:auto;padding:16px 28px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px}.brand{text-decoration:none;color:#0F172A;font-weight:600;letter-spacing:-.02em}.brand b{color:#2563EB}nav{display:flex;gap:8px;flex-wrap:wrap}nav a{min-height:44px;display:inline-flex;align-items:center;padding:0 12px;text-decoration:none;border:1px solid #E2E8F0;border-radius:6px;background:white;font-size:14px}
+main{max-width:1360px;margin:auto;padding:40px 28px 64px;min-width:0}h1{overflow-wrap:anywhere;font:600 32px/1.2 var(--font-sans);letter-spacing:-.03em;margin:12px 0 16px}h2{font:600 22px/1.3 var(--font-sans);margin:0 0 8px}h3{font-size:18px;margin:20px 0 8px}p{margin:8px 0 16px}.eyebrow{font:500 12px/1.5 var(--font-mono);letter-spacing:.1em;text-transform:uppercase;color:#475569}.intro{max-width:850px;color:#475569;font-size:18px}.meta{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 28px}.tag{padding:4px 10px;border:1px solid #E2E8F0;background:#FFF;border-radius:4px;font-size:13px;color:#475569}.tag.current{color:#047857;background:#ECFDF5;border-color:#047857}.tag.planned{color:#92400E;background:#FFFBEB;border-color:#92400E}
+.figure{margin:28px 0;padding:24px;background:white;border:1px solid #E2E8F0;border-radius:8px;max-width:100%;min-width:0}.figure>p{color:#475569;max-width:1000px;font-size:15px}.diagram-container{width:100%;overflow-x:auto;margin:20px 0 0;border:1px solid #E2E8F0;border-radius:6px;background:#F8FAFC}svg{display:block;width:100%;min-width:1280px}.caption{font-size:14px;color:#475569;margin-top:16px}.note{border-left:3px solid #2563EB;padding:12px 18px;background:#EFF6FF}.reading{max-width:1050px}.reading li{margin:8px 0}details{border:1px solid #E2E8F0;border-radius:6px;background:white;margin:12px 0;padding:16px}summary{cursor:pointer;font-weight:600;min-height:28px}.sources{font-size:14px}.sources li{margin:8px 0;overflow-wrap:anywhere}code,pre{font-family:var(--font-mono);font-size:13px}pre{overflow:auto;background:#F1F5F9;padding:16px;border-radius:4px}footer{margin-top:40px;padding-top:20px;border-top:1px solid #E2E8F0;color:#475569;font-size:13px}.catalog{list-style:none;margin:28px 0;padding:0;border-top:1px solid #E2E8F0}.catalog li{display:grid;grid-template-columns:64px 1fr 180px;align-items:start;gap:20px;padding:22px 0;border-bottom:1px solid #E2E8F0}.catalog .number{font:500 24px var(--font-mono);color:#475569}.catalog a{display:block;min-height:44px;font-size:20px;font-weight:600;text-decoration:none}.catalog p{margin:5px 0 0;color:#475569}.catalog .kind{font:12px var(--font-mono);color:#475569;padding-top:8px}.roadmap{display:grid;grid-template-columns:1.15fr 1fr;gap:24px;margin-top:32px}.panel{border:1px solid #E2E8F0;border-radius:8px;padding:24px;background:white}.facts{display:flex;flex-wrap:wrap;gap:28px;margin:24px 0}.facts strong{font-size:26px;display:block;color:#0F172A}.facts span{font-size:14px;color:#475569}table{border-collapse:collapse;width:100%;font-size:14px}th,td{text-align:left;padding:10px;border-bottom:1px solid #E2E8F0}th{background:#F1F5F9}.table-wrap{overflow:auto}.table-wrap td a{display:block;min-height:44px}svg .name{font-family:var(--font-sans);font-size:12px;font-weight:600;fill:#0F172A}svg .sub{font-family:var(--font-mono);font-size:9px;fill:#475569}svg .tiny{font-family:var(--font-mono);font-size:8px;fill:#475569}
+@media(max-width:700px){main{padding:28px 16px 40px}header .bar{padding:12px 16px}h1{font-size:26px}.figure{padding:16px}.catalog li{grid-template-columns:40px 1fr;gap:12px}.catalog .kind{grid-column:2}.roadmap{grid-template-columns:1fr}.intro{font-size:16px}}
+@media print{header,nav{display:none}main{padding:0}.figure{break-inside:avoid;padding:12px}.diagram-container{overflow-x:visible}svg{min-width:0}.roadmap{display:block}details{break-inside:avoid}body{background:white}.sources a{color:#0F172A}}
+ .line{color:#475569;text-decoration:none}pre span:target{background:#EFF6FF}</style></head><body><main><nav><a href="../../../index.html">← Índice del atlas</a></nav><p class="eyebrow">Copia de referencia · 2026-10-14</p><h1>docs/adr/024-clasificacion-fallos-outbox-y-presupuesto-smtp.md</h1><p>Revisión: <code>c7692bd7b7a0d8e07e18d3c9ec1738b169dc032f</code>. Esta copia documenta las fuentes usadas; no se actualiza automáticamente.</p><pre><span id="L1"><a href="#L1" class="line">   1</a> # ADR-024: Clasificación de fallos de entrega del outbox, presupuesto de tiempo del envío SMTP y aislamiento de fallos por mensaje</span>
+<span id="L2"><a href="#L2" class="line">   2</a> </span>
+<span id="L3"><a href="#L3" class="line">   3</a> **Status**: Accepted (aprobado por el usuario 2026-10-01). [ADR-025](025-saneamiento-last-error-y-codigo-extendido.md) (*Accepted*) reemplaza el último párrafo de §2 y partes de §3 (ver nota 2026-10-01 (b)).</span>
+<span id="L4"><a href="#L4" class="line">   4</a> **Fecha**: 2026-10-01</span>
+<span id="L5"><a href="#L5" class="line">   5</a> **Origen**: revisión del PR fdelillo/crm#8 (Fase 2 de la spec 001): hallazgos I1, I2, M1 y M7</span>
+<span id="L6"><a href="#L6" class="line">   6</a> **Relación**: reemplaza **solo** la viñeta &quot;Reintentos&quot; de [ADR-010](010-email-outbox-transaccional.md)</span>
+<span id="L7"><a href="#L7" class="line">   7</a> en lo que dice sobre qué error es definitivo. El resto de ADR-010 (outbox transaccional, worker en</span>
+<span id="L8"><a href="#L8" class="line">   8</a> el binario, entrega al menos una vez, borrado del payload, puerto `Mailer` con go-mail) sigue</span>
+<span id="L9"><a href="#L9" class="line">   9</a> vigente y no cambia.</span>
+<span id="L10"><a href="#L10" class="line">  10</a> </span>
+<span id="L11"><a href="#L11" class="line">  11</a> &gt; **Nota 2026-10-01 (b) (reemplazo parcial, *Accepted*)**, por la tercera revisión del</span>
+<span id="L12"><a href="#L12" class="line">  12</a> &gt; PR fdelillo/crm#8: [ADR-025](025-saneamiento-last-error-y-codigo-extendido.md) reemplaza</span>
+<span id="L13"><a href="#L13" class="line">  13</a> &gt; (1) el último párrafo de §2 (el código extendido se lee también del comienzo del texto, en todas</span>
+<span id="L14"><a href="#L14" class="line">  14</a> &gt; las fases, con control de clase), (2) en §3, la viñeta **Detalle** para las respuestas de la fase</span>
+<span id="L15"><a href="#L15" class="line">  15</a> &gt; `data` (detalle fijo `response text omitted`) y (3) el punto (1) del **Saneamiento obligatorio**</span>
+<span id="L16"><a href="#L16" class="line">  16</a> &gt; (se redactan también los campos con `://` o con 20 o más caracteres seguidos de</span>
+<span id="L17"><a href="#L17" class="line">  17</a> &gt; `[A-Za-z0-9+/=_-]`). En esas tres piezas rige ADR-025. El resto (§1,</span>
+<span id="L18"><a href="#L18" class="line">  18</a> &gt; §4, §5, §6 y el formato de §3) no cambia.</span>
+<span id="L19"><a href="#L19" class="line">  19</a> </span>
+<span id="L20"><a href="#L20" class="line">  20</a> ## Contexto</span>
+<span id="L21"><a href="#L21" class="line">  21</a> </span>
+<span id="L22"><a href="#L22" class="line">  22</a> ADR-010 y el plan de 001 (§9.4) dicen &quot;respuestas SMTP `5xx` → definitivo&quot;, con ejemplos que son</span>
+<span id="L23"><a href="#L23" class="line">  23</a> todos del destinatario. La implementación de la Fase 2 aplicó la regla a cualquier `5xx`, incluidos</span>
+<span id="L24"><a href="#L24" class="line">  24</a> los de la conexión: un saludo `554 5.7.1 client host blocked` (la IP del servidor está en una lista</span>
+<span id="L25"><a href="#L25" class="line">  25</a> de bloqueo) o un `535` de `AUTH` (credenciales SMTP vencidas) pasan **toda la cola** a `failed` y</span>
+<span id="L26"><a href="#L26" class="line">  26</a> borran los payloads con los tokens. Es irrecuperable y la causa es nuestra configuración, no los</span>
+<span id="L27"><a href="#L27" class="line">  27</a> mensajes. La revisión lo reprodujo con un SMTP falso.</span>
+<span id="L28"><a href="#L28" class="line">  28</a> </span>
+<span id="L29"><a href="#L29" class="line">  29</a> Tres problemas vecinos salieron en la misma revisión:</span>
+<span id="L30"><a href="#L30" class="line">  30</a> </span>
+<span id="L31"><a href="#L31" class="line">  31</a> - **`last_error` no sirve para diagnosticar** (M1): siempre `delivery_failure` o</span>
+<span id="L32"><a href="#L32" class="line">  32</a>   `invalid_payload`; el modelo de datos pedía &quot;código SMTP y mensaje del proveedor truncado&quot; sin</span>
+<span id="L33"><a href="#L33" class="line">  33</a>   fijar formato. Además, el `Error()` de go-mail (`*mail.SendError`) incluye</span>
+<span id="L34"><a href="#L34" class="line">  34</a>   `affected recipient(s): &lt;email&gt;`, así que loguear o guardar el error tal cual filtra el</span>
+<span id="L35"><a href="#L35" class="line">  35</a>   destinatario.</span>
+<span id="L36"><a href="#L36" class="line">  36</a> - **El envío corre con la transacción del worker abierta** (M7) y `crm_app` tiene</span>
+<span id="L37"><a href="#L37" class="line">  37</a>   `idle_in_transaction_session_timeout = 30s` (bootstrap). Verificado en el código de go-mail</span>
+<span id="L38"><a href="#L38" class="line">  38</a>   v0.8.1 (`client.go`): el `context` solo acota el *dial* TCP/TLS; el resto de la conversación lo</span>
+<span id="L39"><a href="#L39" class="line">  39</a>   acotan *deadlines* de conexión que se renuevan en cada etapa (`WithTimeout`). Con el valor actual</span>
+<span id="L40"><a href="#L40" class="line">  40</a>   (10 s) y el `RSET` por defecto hay hasta **5 ventanas** (*dial*, saludo, EHLO+STARTTLS+AUTH,</span>
+<span id="L41"><a href="#L41" class="line">  41</a>   MAIL+RCPT+DATA, RSET+QUIT): hasta 50 s. Si PostgreSQL corta la sesión por inactividad, el</span>
+<span id="L42"><a href="#L42" class="line">  42</a>   `MarkSent` falla, el mensaje queda `pending` **sin sumar `attempts`** y se reenvía en el ciclo</span>
+<span id="L43"><a href="#L43" class="line">  43</a>   siguiente: un SMTP lento genera reenvíos sin fin que nunca consumen intentos.</span>
+<span id="L44"><a href="#L44" class="line">  44</a> - **Un mensaje bloquea a todos** (I1): el worker toma siempre el pendiente más viejo; si</span>
+<span id="L45"><a href="#L45" class="line">  45</a>   `AsTenant` o `GetMessage` fallan para ese mensaje (p. ej. una empresa restaurada sin su rol,</span>
+<span id="L46"><a href="#L46" class="line">  46</a>   plan §12.4), el ciclo corta y el siguiente toma el mismo mensaje. Nadie más recibe emails.</span>
+<span id="L47"><a href="#L47" class="line">  47</a> </span>
+<span id="L48"><a href="#L48" class="line">  48</a> Fuerzas en tensión: no perder mensajes por fallas que no son del mensaje; no reintentar para</span>
+<span id="L49"><a href="#L49" class="line">  49</a> siempre algo que nunca va a funcionar (el payload con el token vive en la base mientras está</span>
+<span id="L50"><a href="#L50" class="line">  50</a> pendiente); no filtrar datos personales en logs ni en la base; mantener el modelo de ADR-010 (un</span>
+<span id="L51"><a href="#L51" class="line">  51</a> mensaje por transacción, `FOR UPDATE SKIP LOCKED`) sin agregar infraestructura.</span>
+<span id="L52"><a href="#L52" class="line">  52</a> </span>
+<span id="L53"><a href="#L53" class="line">  53</a> ## Decisión</span>
+<span id="L54"><a href="#L54" class="line">  54</a> </span>
+<span id="L55"><a href="#L55" class="line">  55</a> ### 1. Un solo concepto: la **causa** del fallo</span>
+<span id="L56"><a href="#L56" class="line">  56</a> </span>
+<span id="L57"><a href="#L57" class="line">  57</a> Todo fallo de entrega que no sea una cancelación se describe con un `*outbox.DeliveryError` que</span>
+<span id="L58"><a href="#L58" class="line">  58</a> lleva una **causa** (`outbox.Cause`) y la **fase** donde ocurrió (`outbox.Phase`). La causa</span>
+<span id="L59"><a href="#L59" class="line">  59</a> determina a la vez si el fallo es definitivo y con qué nivel se loguea. Reemplaza a</span>
+<span id="L60"><a href="#L60" class="line">  60</a> `*outbox.PermanentError`.</span>
+<span id="L61"><a href="#L61" class="line">  61</a> </span>
+<span id="L62"><a href="#L62" class="line">  62</a> | Causa | Clase | Log por intento | Cuándo |</span>
+<span id="L63"><a href="#L63" class="line">  63</a> |---|---|---|---|</span>
+<span id="L64"><a href="#L64" class="line">  64</a> | `network` | Recuperable | `WARN` | Timeout de una etapa o del presupuesto de envío; conexión rechazada, cortada o cerrada (EOF); fallo de DNS; el `NOOP` de control de go-mail falla; cualquier `SendError` de go-mail sin código SMTP (`ErrorCode() == 0`) salvo los casos de §2 |</span>
+<span id="L65"><a href="#L65" class="line">  65</a> | `transient` | Recuperable | `WARN` | Cualquier respuesta SMTP `4xx`, en **cualquier** fase (p. ej. `421` en el saludo, `454` en AUTH, `451`/`452` en MAIL, RCPT o DATA) |</span>
+<span id="L66"><a href="#L66" class="line">  66</a> | `config` | Recuperable | **`ERROR`** | Problema nuestro o de la cuenta del proveedor, que afecta a todos los mensajes: **cualquier `5xx` en la fase de conexión** (saludo `554`, EHLO, STARTTLS, AUTH `530`/`534`/`535`/`538`); STARTTLS no ofrecido con TLS obligatorio; ningún mecanismo de AUTH compatible; error de certificado o de *handshake* TLS; **cualquier `5xx` en MAIL FROM** (el remitente es configuración); un `5xx` en RCPT TO o DATA que **no** identifica al destinatario (ver regla de abajo); una respuesta con un código que no es `4xx` ni `5xx`; cualquier error que el adaptador o el `Dispatcher` no sepan clasificar |</span>
+<span id="L67"><a href="#L67" class="line">  67</a> | `recipient` | **Definitivo** | `WARN` | El destinatario es inválido o no existe (regla de abajo), o su dirección no pasa la validación local antes de conectar |</span>
+<span id="L68"><a href="#L68" class="line">  68</a> | `bug` | **Definitivo** | **`ERROR`** | Plantilla inexistente, payload ilegible o incompleto, asunto con salto de línea: un error de programación que reintentar no arregla |</span>
+<span id="L69"><a href="#L69" class="line">  69</a> </span>
+<span id="L70"><a href="#L70" class="line">  70</a> **Regla del destinatario** (la única forma de que una respuesta SMTP sea definitiva): la fase es</span>
+<span id="L71"><a href="#L71" class="line">  71</a> RCPT TO o DATA, el código es `5xx`, y además</span>
+<span id="L72"><a href="#L72" class="line">  72</a> </span>
+<span id="L73"><a href="#L73" class="line">  73</a> - el código extendido (RFC 3463) es `5.1.x` (dirección) o `5.2.x` (buzón), **o**</span>
+<span id="L74"><a href="#L74" class="line">  74</a> - no hay código extendido, la fase es RCPT TO y el código básico es `550`, `551` o `553`.</span>
+<span id="L75"><a href="#L75" class="line">  75</a> </span>
+<span id="L76"><a href="#L76" class="line">  76</a> Todo otro `5xx` es `config`. Ante la duda se elige recuperable: un falso recuperable cuesta 8</span>
+<span id="L77"><a href="#L77" class="line">  77</a> intentos en ~19 h y termina igual en `failed`; un falso definitivo pierde el mensaje (y, si la</span>
+<span id="L78"><a href="#L78" class="line">  78</a> causa es común a todos, la cola entera).</span>
+<span id="L79"><a href="#L79" class="line">  79</a> </span>
+<span id="L80"><a href="#L80" class="line">  80</a> Al 8.º intento recuperable fallido el mensaje pasa a `failed` (sin cambios respecto de ADR-010),</span>
+<span id="L81"><a href="#L81" class="line">  81</a> con log `ERROR`. Esto vale también para la causa `config` (ver §4).</span>
+<span id="L82"><a href="#L82" class="line">  82</a> </span>
+<span id="L83"><a href="#L83" class="line">  83</a> ### 2. Fases</span>
+<span id="L84"><a href="#L84" class="line">  84</a> </span>
+<span id="L85"><a href="#L85" class="line">  85</a> | Fase (`outbox.Phase`) | Qué cubre | Cómo la determina el adaptador SMTP |</span>
+<span id="L86"><a href="#L86" class="line">  86</a> |---|---|---|</span>
+<span id="L87"><a href="#L87" class="line">  87</a> | `compose` | Antes de conectar: plantilla, payload, validación de direcciones y asunto | La asigna el handler o el adaptador antes de llamar a go-mail |</span>
+<span id="L88"><a href="#L88" class="line">  88</a> | `connection` | TCP, TLS (puerto 465), saludo `220`, EHLO/HELO, STARTTLS, AUTH | Todo error de `DialAndSendWithContext` que **no** es `*mail.SendError` (go-mail envuelve todos los errores de esa etapa como `dial failed: %w`) |</span>
+<span id="L89"><a href="#L89" class="line">  89</a> | `mail_from` | Comando MAIL FROM | `SendError.Reason == ErrSMTPMailFrom` |</span>
+<span id="L90"><a href="#L90" class="line">  90</a> | `rcpt_to` | Comando RCPT TO | `SendError.Reason == ErrSMTPRcptTo` |</span>
+<span id="L91"><a href="#L91" class="line">  91</a> | `data` | Comando DATA, envío del contenido y respuesta de fin de datos | `SendError.Reason` ∈ {`ErrSMTPData`, `ErrWriteContent`, `ErrSMTPDataClose`} |</span>
+<span id="L92"><a href="#L92" class="line">  92</a> | `unknown` | Errores del handler que no son `DeliveryError` y `SendError` con otro `Reason` | — |</span>
+<span id="L93"><a href="#L93" class="line">  93</a> </span>
+<span id="L94"><a href="#L94" class="line">  94</a> Casos particulares de `SendError`: `ErrConnCheck` → fase `connection`, causa `network`;</span>
+<span id="L95"><a href="#L95" class="line">  95</a> `ErrGetRcpts` → `compose`, `recipient`; `ErrGetSender` → `compose`, `config`; `ErrNoUnencoded` y</span>
+<span id="L96"><a href="#L96" class="line">  96</a> `ErrAmbiguous` → `unknown`, `config`.</span>
+<span id="L97"><a href="#L97" class="line">  97</a> </span>
+<span id="L98"><a href="#L98" class="line">  98</a> Errores de la fase `connection` que no son respuestas SMTP: timeout (`net.Error` con `Timeout()`,</span>
+<span id="L99"><a href="#L99" class="line">  99</a> `context.DeadlineExceeded`, `os.ErrDeadlineExceeded`) → `network`; `*net.DNSError` → `network`;</span>
+<span id="L100"><a href="#L100" class="line"> 100</a> conexión rechazada, cortada o cerrada (`ECONNREFUSED`, `ECONNRESET`, `io.EOF`,</span>
+<span id="L101"><a href="#L101" class="line"> 101</a> `io.ErrUnexpectedEOF`, `net.ErrClosed`) → `network`; otro `*net.OpError` → `network`; errores de</span>
+<span id="L102"><a href="#L102" class="line"> 102</a> certificado o de TLS (`*tls.CertificateVerificationError`, errores de `crypto/x509`,</span>
+<span id="L103"><a href="#L103" class="line"> 103</a> `tls.AlertError`, `tls.RecordHeaderError`) → `config`; cualquier otro (p. ej. &quot;STARTTLS no</span>
+<span id="L104"><a href="#L104" class="line"> 104</a> soportado&quot;, &quot;server does not support SMTP AUTH&quot;, ningún mecanismo de AUTH compatible) → `config`.</span>
+<span id="L105"><a href="#L105" class="line"> 105</a> </span>
+<span id="L106"><a href="#L106" class="line"> 106</a> Código SMTP y código extendido: en la fase `connection` salen del `*textproto.Error` de la cadena</span>
+<span id="L107"><a href="#L107" class="line"> 107</a> (`errors.As`; el código extendido, del comienzo del mensaje si tiene la forma `d.d.d`); en las</span>
+<span id="L108"><a href="#L108" class="line"> 108</a> demás, de `SendError.ErrorCode()` y `SendError.EnhancedStatusCode()` (go-mail solo lo informa si el</span>
+<span id="L109"><a href="#L109" class="line"> 109</a> servidor anuncia `ENHANCEDSTATUSCODES`; si no, la regla del destinatario usa el código básico).</span>
+<span id="L110"><a href="#L110" class="line"> 110</a> </span>
+<span id="L111"><a href="#L111" class="line"> 111</a> ### 3. `last_error` y logs: formato único, saneado, sin destinatario</span>
+<span id="L112"><a href="#L112" class="line"> 112</a> </span>
+<span id="L113"><a href="#L113" class="line"> 113</a> ```</span>
+<span id="L114"><a href="#L114" class="line"> 114</a> &lt;causa&gt; &lt;fase&gt;[ &lt;código SMTP&gt;[ &lt;código extendido&gt;]]: &lt;detalle&gt;</span>
+<span id="L115"><a href="#L115" class="line"> 115</a> ```</span>
+<span id="L116"><a href="#L116" class="line"> 116</a> </span>
+<span id="L117"><a href="#L117" class="line"> 117</a> Ejemplos (los valores son ilustrativos de la forma, no datos reales):</span>
+<span id="L118"><a href="#L118" class="line"> 118</a> </span>
+<span id="L119"><a href="#L119" class="line"> 119</a> ```</span>
+<span id="L120"><a href="#L120" class="line"> 120</a> config connection 535 5.7.8: Authentication credentials invalid</span>
+<span id="L121"><a href="#L121" class="line"> 121</a> config connection 554 5.7.1: client host blocked</span>
+<span id="L122"><a href="#L122" class="line"> 122</a> transient rcpt_to 452 4.2.2: Mailbox full</span>
+<span id="L123"><a href="#L123" class="line"> 123</a> recipient rcpt_to 550 5.1.1: [redacted] User unknown</span>
+<span id="L124"><a href="#L124" class="line"> 124</a> network connection: timeout</span>
+<span id="L125"><a href="#L125" class="line"> 125</a> network data: timeout</span>
+<span id="L126"><a href="#L126" class="line"> 126</a> config connection: server does not support SMTP AUTH</span>
+<span id="L127"><a href="#L127" class="line"> 127</a> bug compose: unknown email template</span>
+<span id="L128"><a href="#L128" class="line"> 128</a> bug compose: invalid payload</span>
+<span id="L129"><a href="#L129" class="line"> 129</a> ```</span>
+<span id="L130"><a href="#L130" class="line"> 130</a> </span>
+<span id="L131"><a href="#L131" class="line"> 131</a> - **Detalle**: para una respuesta SMTP, el texto del proveedor sin el código básico ni el extendido</span>
+<span id="L132"><a href="#L132" class="line"> 132</a>   (que ya están en el prefijo). Para `SendError`, como no expone la respuesta original (no tiene</span>
+<span id="L133"><a href="#L133" class="line"> 133</a>   `Unwrap`), se toma su `Error()` y se le quitan el prefijo de la razón (hasta el primer `&quot;: &quot;`), el</span>
+<span id="L134"><a href="#L134" class="line"> 134</a>   código y el código extendido del comienzo, y los sufijos `, affected recipient(s): …` y</span>
+<span id="L135"><a href="#L135" class="line"> 135</a>   `, affected message ID: …`. Para errores de red, un vocabulario fijo: `timeout`,</span>
+<span id="L136"><a href="#L136" class="line"> 136</a>   `connection refused`, `connection closed`, `dns lookup failed`, `network error`; para TLS,</span>
+<span id="L137"><a href="#L137" class="line"> 137</a>   `tls handshake failed`. Para los demás errores de conexión no clasificados, el texto del error</span>
+<span id="L138"><a href="#L138" class="line"> 138</a>   (go-mail usa textos fijos sin datos del mensaje). Para `bug`, textos fijos del handler (nunca</span>
+<span id="L139"><a href="#L139" class="line"> 139</a>   valores del payload).</span>
+<span id="L140"><a href="#L140" class="line"> 140</a> - **Saneamiento obligatorio**, en un único lugar (`DeliveryError.LastError()`), aplicado también a</span>
+<span id="L141"><a href="#L141" class="line"> 141</a>   lo que va al log: (1) todo token separado por espacios que contenga `@` se reemplaza por</span>
+<span id="L142"><a href="#L142" class="line"> 142</a>   `[redacted]` (cubre al destinatario aunque el proveedor lo repita, al remitente y a los</span>
+<span id="L143"><a href="#L143" class="line"> 143</a>   *message-id*); (2) caracteres de control (incluidos `\r`, `\n`, `\t`) → espacio, espacios</span>
+<span id="L144"><a href="#L144" class="line"> 144</a>   repetidos → uno, sin espacios en los extremos; (3) se trunca a **1000 caracteres** (runas, no</span>
+<span id="L145"><a href="#L145" class="line"> 145</a>   bytes: es el `CHECK (char_length(last_error) &lt;= 1000)` de la migración 00006), terminando en `…`</span>
+<span id="L146"><a href="#L146" class="line"> 146</a>   si se cortó.</span>
+<span id="L147"><a href="#L147" class="line"> 147</a> - **Nunca** se loguea ni se guarda el `error` original de una entrega (`DeliveryError.Err`): puede</span>
+<span id="L148"><a href="#L148" class="line"> 148</a>   contener el destinatario. Los logs del worker llevan `error_cause`, `smtp_phase`, `smtp_code` y</span>
+<span id="L149"><a href="#L149" class="line"> 149</a>   `last_error` (el texto saneado).</span>
+<span id="L150"><a href="#L150" class="line"> 150</a> - `last_error` se escribe al reprogramar (`retry`) y al pasar a `failed`; `MarkSent` lo deja en</span>
+<span id="L151"><a href="#L151" class="line"> 151</a>   `NULL` (como hoy). No cambia al aplazar por un fallo del `Dispatcher` (§6; `crm_worker` no tiene</span>
+<span id="L152"><a href="#L152" class="line"> 152</a>   ese privilegio y no hubo intento de entrega) ni al cancelar.</span>
+<span id="L153"><a href="#L153" class="line"> 153</a> </span>
+<span id="L154"><a href="#L154" class="line"> 154</a> ### 4. Error de configuración persistente (p. ej. `535` por credenciales vencidas)</span>
+<span id="L155"><a href="#L155" class="line"> 155</a> </span>
+<span id="L156"><a href="#L156" class="line"> 156</a> - Es **recuperable** y **consume intentos** como cualquier otro: con el backoff vigente (1, 5, 15,</span>
+<span id="L157"><a href="#L157" class="line"> 157</a>   60 min y 6 h), el 8.º intento ocurre unas **19 h 21 min** después del primero y el mensaje pasa a</span>
+<span id="L158"><a href="#L158" class="line"> 158</a>   `failed`.</span>
+<span id="L159"><a href="#L159" class="line"> 159</a> - Cada intento se loguea en **`ERROR`** (`error_cause=config`), y la métrica</span>
+<span id="L160"><a href="#L160" class="line"> 160</a>   `outbox_delivery_errors_total{cause}` (Fase 9) permite alertar sobre `cause=&quot;config&quot;`. La señal de</span>
+<span id="L161"><a href="#L161" class="line"> 161</a>   &quot;nadie recibe emails&quot; (`outbox_oldest_pending_seconds &gt; 600`) ya existe en el runbook.</span>
+<span id="L162"><a href="#L162" class="line"> 162</a> - **Corte del ciclo**: si un fallo ocurre en la fase `connection` (cualquier causa), el</span>
+<span id="L163"><a href="#L163" class="line"> 163</a>   `Dispatcher` registra ese mensaje y termina el ciclo sin intentar el resto del lote. Los demás</span>
+<span id="L164"><a href="#L164" class="line"> 164</a>   fallarían igual, y cada `AUTH` con credenciales inválidas cuenta para el bloqueo de la cuenta en el</span>
+<span id="L165"><a href="#L165" class="line"> 165</a>   proveedor. El ciclo siguiente (2 s después) sigue con el próximo mensaje vencido.</span>
+<span id="L166"><a href="#L166" class="line"> 166</a> - No se agrega un *circuit breaker* en memoria ni un canal de alerta propio (ver Alternativas).</span>
+<span id="L167"><a href="#L167" class="line"> 167</a> </span>
+<span id="L168"><a href="#L168" class="line"> 168</a> ### 5. Presupuesto de tiempo del envío (acoplado a `idle_in_transaction_session_timeout`)</span>
+<span id="L169"><a href="#L169" class="line"> 169</a> </span>
+<span id="L170"><a href="#L170" class="line"> 170</a> | Elemento | Valor | Dónde |</span>
+<span id="L171"><a href="#L171" class="line"> 171</a> |---|---|---|</span>
+<span id="L172"><a href="#L172" class="line"> 172</a> | `idle_in_transaction_session_timeout` de `crm_app` | 30 s | `db/bootstrap/001_roles_and_database.sql` |</span>
+<span id="L173"><a href="#L173" class="line"> 173</a> | Presupuesto total de `Handle` (`outbox.SendBudget`) | **20 s** | `context.WithTimeout` que el `Dispatcher` pone alrededor de `Handle` |</span>
+<span id="L174"><a href="#L174" class="line"> 174</a> | Timeout por etapa de go-mail (`WithTimeout`) | **5 s** | Adaptador SMTP |</span>
+<span id="L175"><a href="#L175" class="line"> 175</a> | Ventanas de *deadline* de una conversación, con `WithoutRset()` | **4**: *dial*; saludo; EHLO + STARTTLS + AUTH + NOOP; MAIL + RCPT + DATA + fin de datos + QUIT | go-mail v0.8.1 (`DialToSMTPClientWithContext`, `checkConn`) |</span>
+<span id="L176"><a href="#L176" class="line"> 176</a> | Peor caso de la conversación | 4 × 5 s = 20 s ≤ `SendBudget` | — |</span>
+<span id="L177"><a href="#L177" class="line"> 177</a> | Margen para las sentencias de la transacción | 10 s | — |</span>
+<span id="L178"><a href="#L178" class="line"> 178</a> </span>
+<span id="L179"><a href="#L179" class="line"> 179</a> Reglas:</span>
+<span id="L180"><a href="#L180" class="line"> 180</a> </span>
+<span id="L181"><a href="#L181" class="line"> 181</a> - El adaptador usa `gomail.WithTimeout(5 * time.Second)` y `gomail.WithoutRset()` (el `RSET` después</span>
+<span id="L182"><a href="#L182" class="line"> 182</a>   de entregar el único mensaje de la conexión no aporta nada y agrega una ventana).</span>
+<span id="L183"><a href="#L183" class="line"> 183</a> - `SendBudget + 10 s ≤ idle_in_transaction_session_timeout`. Un test de integración lo verifica</span>
+<span id="L184"><a href="#L184" class="line"> 184</a>   leyendo el valor real como `crm_app`; otro test unitario verifica `4 × timeout por etapa ≤</span>
+<span id="L185"><a href="#L185" class="line"> 185</a>   SendBudget`. Cambiar cualquiera de los tres valores, o subir de versión go-mail, obliga a revisar</span>
+<span id="L186"><a href="#L186" class="line"> 186</a>   esta tabla (matriz del plan §16).</span>
+<span id="L187"><a href="#L187" class="line"> 187</a> - Un `Handle` que termina por el presupuesto (`context.DeadlineExceeded` con el contexto del ciclo</span>
+<span id="L188"><a href="#L188" class="line"> 188</a>   todavía vivo) es causa `network`, detalle `timeout`.</span>
+<span id="L189"><a href="#L189" class="line"> 189</a> - **Entrega ya hecha**: si `DialAndSendWithContext` devuelve error pero `Msg.IsDelivered()` es</span>
+<span id="L190"><a href="#L190" class="line"> 190</a>   `true` (el servidor aceptó el fin de datos y falló el `QUIT`), el adaptador devuelve `nil`.</span>
+<span id="L191"><a href="#L191" class="line"> 191</a> - **Apagado**: go-mail no corta la conversación cuando se cancela el contexto (solo el *dial*), así</span>
+<span id="L192"><a href="#L192" class="line"> 192</a>   que `Handle` puede tardar hasta `SendBudget` en volver. La transacción del mensaje usa</span>
+<span id="L193"><a href="#L193" class="line"> 193</a>   `context.WithoutCancel` del contexto del ciclo (sus sentencias ya están acotadas por</span>
+<span id="L194"><a href="#L194" class="line"> 194</a>   `statement_timeout` e `idle_in_transaction_session_timeout`) y solo `Handle` recibe el contexto</span>
+<span id="L195"><a href="#L195" class="line"> 195</a>   cancelable. Así: si `Handle` vuelve con `context.Canceled`, el mensaje queda exactamente como</span>
+<span id="L196"><a href="#L196" class="line"> 196</a>   estaba (como hasta ahora); si vuelve con éxito durante el apagado, se marca `sent` y no se</span>
+<span id="L197"><a href="#L197" class="line"> 197</a>   reenvía. El timeout de apagado del proceso debe ser **≥ 25 s** (`SendBudget` + 5 s).</span>
+<span id="L198"><a href="#L198" class="line"> 198</a> </span>
+<span id="L199"><a href="#L199" class="line"> 199</a> ### 6. Aislamiento de fallos por mensaje en el `Dispatcher`</span>
+<span id="L200"><a href="#L200" class="line"> 200</a> </span>
+<span id="L201"><a href="#L201" class="line"> 201</a> Un fallo atribuible a **un** mensaje nunca frena a los demás. Paso por paso (cada mensaje sigue</span>
+<span id="L202"><a href="#L202" class="line"> 202</a> en su propia transacción `InSystemTx(crm_worker)` → `AsTenant`, como en ADR-010):</span>
+<span id="L203"><a href="#L203" class="line"> 203</a> </span>
+<span id="L204"><a href="#L204" class="line"> 204</a> | Paso que falla | Error | Qué hace el `Dispatcher` | Log |</span>
+<span id="L205"><a href="#L205" class="line"> 205</a> |---|---|---|---|</span>
+<span id="L206"><a href="#L206" class="line"> 206</a> | `LockDueMessage` | cualquiera salvo cancelación | Termina el ciclo (no es de un mensaje: la base no responde) | `ERROR` `event=outbox_cycle_failed` con `err` |</span>
+<span id="L207"><a href="#L207" class="line"> 207</a> | `AsTenant`, `GetMessage` | `db.ErrUnavailable` | Termina el ciclo, sin aplazar | `ERROR` `event=outbox_cycle_failed` con `err` |</span>
+<span id="L208"><a href="#L208" class="line"> 208</a> | `AsTenant`, `GetMessage` | cualquier otro (`db.ErrPrivilege`, rol inexistente `22023`, `db.ErrNotFound`, …) | `ROLLBACK`; **aplaza** el mensaje en una transacción aparte y **sigue con el lote** | `ERROR` `outcome=deferred`, `step`, `message_id`, `tenant_id`, `defer_seconds`, `err`; si es `db.ErrPrivilege`, además `security_event=rls_violation` (INV-19) |</span>
+<span id="L209"><a href="#L209" class="line"> 209</a> | Payload ilegible (JSON) | — | `failed` con `bug compose: invalid payload` | `ERROR` `outcome=failed` |</span>
+<span id="L210"><a href="#L210" class="line"> 210</a> | `Handle` | `DeliveryError` / otro | Según la causa (§1); si la fase es `connection`, termina el ciclo después de registrar el fallo (§4) | Según la causa |</span>
+<span id="L211"><a href="#L211" class="line"> 211</a> | `MarkSent`, `MarkRecoverable`, `MarkFailed` | `db.ErrUnavailable` | Termina el ciclo (el mensaje queda `pending`; si ya se entregó, se reenvía: al menos una vez) | `ERROR` `event=outbox_cycle_failed` con `err` |</span>
+<span id="L212"><a href="#L212" class="line"> 212</a> | `MarkSent`, `MarkRecoverable`, `MarkFailed` | cualquier otro | `ROLLBACK`; aplaza en una transacción aparte y sigue con el lote. Evita reenviar cada 2 s un mensaje que no se puede marcar | `ERROR` `outcome=deferred`, `step=mark`, `err` |</span>
+<span id="L213"><a href="#L213" class="line"> 213</a> | El aplazamiento mismo | cualquiera | Termina el ciclo (evita volver a tomar el mismo mensaje dentro del lote) | `ERROR` `event=outbox_cycle_failed` con `err` |</span>
+<span id="L214"><a href="#L214" class="line"> 214</a> | Cualquiera | cancelación (`context.Canceled`, `db.ErrCanceled`) | Termina sin tocar el mensaje | `INFO` `outcome=canceled` |</span>
+<span id="L215"><a href="#L215" class="line"> 215</a> </span>
+<span id="L216"><a href="#L216" class="line"> 216</a> - **Aplazar** es una actualización como `crm_worker` que cambia **solo** `next_attempt_at` del</span>
+<span id="L217"><a href="#L217" class="line"> 217</a>   mensaje, con tres condiciones: el `id`, `status = &#x27;pending&#x27;` y que `next_attempt_at` siga siendo</span>
+<span id="L218"><a href="#L218" class="line"> 218</a>   el valor leído por `LockDueMessage`. Usa el privilegio `UPDATE (next_attempt_at)` y la política</span>
+<span id="L219"><a href="#L219" class="line"> 219</a>   `worker_lock` que **ya existen** (no hay privilegios nuevos). Si otro worker ya lo procesó,</span>
+<span id="L220"><a href="#L220" class="line"> 220</a>   afecta 0 filas y no es error. No suma `attempts` ni escribe `last_error`: no hubo intento de</span>
+<span id="L221"><a href="#L221" class="line"> 221</a>   entrega.</span>
+<span id="L222"><a href="#L222" class="line"> 222</a> - **Demora del aplazamiento**: `clamp(edad del mensaje, 10 s, 15 min)`, con `edad = now −</span>
+<span id="L223"><a href="#L223" class="line"> 223</a>   created_at`. Sin columnas nuevas ni estado en memoria, la espera se duplica en cada aplazamiento</span>
+<span id="L224"><a href="#L224" class="line"> 224</a>   (10 s, 20 s, 40 s, …) hasta 15 min. El caso transitorio de DD-34 (primer `SET ROLE` a una empresa</span>
+<span id="L225"><a href="#L225" class="line"> 225</a>   recién registrada) se reintenta a los 10 s; una empresa sin rol se reintenta cada 15 min hasta que</span>
+<span id="L226"><a href="#L226" class="line"> 226</a>   se corre `crm tenants reprovision-roles` (plan §12.4).</span>
+<span id="L227"><a href="#L227" class="line"> 227</a> - Un mensaje aplazado indefinidamente sigue `pending` (y su payload, en la base) hasta que el</span>
+<span id="L228"><a href="#L228" class="line"> 228</a>   problema se resuelve; lo hacen visible `outbox_oldest_pending_seconds` y el runbook.</span>
+<span id="L229"><a href="#L229" class="line"> 229</a> </span>
+<span id="L230"><a href="#L230" class="line"> 230</a> ## Fundamento</span>
+<span id="L231"><a href="#L231" class="line"> 231</a> </span>
+<span id="L232"><a href="#L232" class="line"> 232</a> - Separar &quot;¿es culpa del mensaje?&quot; de &quot;¿es culpa nuestra o del proveedor?&quot; es lo único que decide</span>
+<span id="L233"><a href="#L233" class="line"> 233</a>   bien qué es definitivo: un fallo común a todos los mensajes nunca puede ser definitivo para cada</span>
+<span id="L234"><a href="#L234" class="line"> 234</a>   uno. Las fases de go-mail permiten esa separación sin analizar textos: lo que ocurre dentro del</span>
+<span id="L235"><a href="#L235" class="line"> 235</a>   *dial* (conexión, TLS, saludo, AUTH) nunca es del mensaje.</span>
+<span id="L236"><a href="#L236" class="line"> 236</a> - Una sola causa determina clase y nivel de log: no hay combinaciones inconsistentes posibles, y el</span>
+<span id="L237"><a href="#L237" class="line"> 237</a>   operador ve en `ERROR` exactamente lo que requiere su intervención (configuración y bugs).</span>
+<span id="L238"><a href="#L238" class="line"> 238</a> - El sesgo hacia &quot;recuperable&quot; está acotado por los 8 intentos: el peor caso de clasificar mal un</span>
+<span id="L239"><a href="#L239" class="line"> 239</a>   definitivo es un mensaje que falla 19 h después, no una cola perdida.</span>
+<span id="L240"><a href="#L240" class="line"> 240</a> - Un formato fijo y saneado en un solo lugar hace que `last_error` y los logs sean útiles para el</span>
+<span id="L241"><a href="#L241" class="line"> 241</a>   diagnóstico (código, fase, texto del proveedor) sin depender de que cada llamador se acuerde de</span>
+<span id="L242"><a href="#L242" class="line"> 242</a>   quitar el destinatario.</span>
+<span id="L243"><a href="#L243" class="line"> 243</a> - El presupuesto de tiempo se apoya en lo que go-mail realmente hace (verificado en su código), no</span>
+<span id="L244"><a href="#L244" class="line"> 244</a>   en lo que se esperaba (que respetara el `context` en toda la conversación). Con `WithoutRset` y</span>
+<span id="L245"><a href="#L245" class="line"> 245</a>   5 s por etapa, el peor caso entra en el presupuesto con margen.</span>
+<span id="L246"><a href="#L246" class="line"> 246</a> - El aplazamiento reusa un privilegio y una política que ya existen; la demora derivada de la edad</span>
+<span id="L247"><a href="#L247" class="line"> 247</a>   evita una columna nueva y da un *backoff* exponencial sin estado.</span>
+<span id="L248"><a href="#L248" class="line"> 248</a> </span>
+<span id="L249"><a href="#L249" class="line"> 249</a> ## Alternativas consideradas</span>
+<span id="L250"><a href="#L250" class="line"> 250</a> </span>
+<span id="L251"><a href="#L251" class="line"> 251</a> - **Mantener &quot;todo `5xx` es definitivo&quot;**: es la causa del hallazgo; un problema propio de</span>
+<span id="L252"><a href="#L252" class="line"> 252</a>   configuración destruye la cola.</span>
+<span id="L253"><a href="#L253" class="line"> 253</a> - **Definitivo solo con `SendError` (MAIL FROM, RCPT TO, DATA), como sugería la revisión**: mejor,</span>
+<span id="L254"><a href="#L254" class="line"> 254</a>   pero sigue tratando como definitivos rechazos que son de configuración y afectan a todos (remitente</span>
+<span id="L255"><a href="#L255" class="line"> 255</a>   no verificado en MAIL FROM, *relay* denegado `5.7.1` en RCPT TO, rechazo de contenido en DATA).</span>
+<span id="L256"><a href="#L256" class="line"> 256</a>   Se toma la idea y se acota a la regla del destinatario.</span>
+<span id="L257"><a href="#L257" class="line"> 257</a> - **Usar `SendError.IsTemp()` de go-mail como criterio**: solo mira si el código empieza con `4`; no</span>
+<span id="L258"><a href="#L258" class="line"> 258</a>   distingue destinatario de configuración y no existe para los errores del *dial*.</span>
+<span id="L259"><a href="#L259" class="line"> 259</a> - **Que un error `config` no consuma intentos** (reintentar sin límite hasta que se arregle): el</span>
+<span id="L260"><a href="#L260" class="line"> 260</a>   payload con el token quedaría pendiente sin plazo y los mensajes nunca terminarían; los tokens de</span>
+<span id="L261"><a href="#L261" class="line"> 261</a>   reset (1 h) y de verificación (48 h) vencen igual, y una invitación se puede reemitir (DD-5). Se</span>
+<span id="L262"><a href="#L262" class="line"> 262</a>   prefiere un final acotado y visible.</span>
+<span id="L263"><a href="#L263" class="line"> 263</a> - ***Circuit breaker* en memoria que pausa todo el worker ante un error de conexión**: más estado y</span>
+<span id="L264"><a href="#L264" class="line"> 264</a>   más casos de test; no reduce el total de intentos (cada mensaje igual hace los suyos). El corte del</span>
+<span id="L265"><a href="#L265" class="line"> 265</a>   ciclo da el alivio inmediato sin estado.</span>
+<span id="L266"><a href="#L266" class="line"> 266</a> - **Alerta activa propia (email o *pager*) ante `config`**: no hay infraestructura de alertas en el</span>
+<span id="L267"><a href="#L267" class="line"> 267</a>   alcance de 001, y avisar por email justo cuando el SMTP no funciona no sirve. Queda en logs</span>
+<span id="L268"><a href="#L268" class="line"> 268</a>   `ERROR`, métrica y runbook.</span>
+<span id="L269"><a href="#L269" class="line"> 269</a> - **Subir `idle_in_transaction_session_timeout` de `crm_app`**: protege a toda la aplicación de</span>
+<span id="L270"><a href="#L270" class="line"> 270</a>   transacciones olvidadas abiertas; subirlo para el worker debilita esa protección en todos los</span>
+<span id="L271"><a href="#L271" class="line"> 271</a>   caminos.</span>
+<span id="L272"><a href="#L272" class="line"> 272</a> - **Sacar el envío de la transacción** (reservar el mensaje moviendo `next_attempt_at` como</span>
+<span id="L273"><a href="#L273" class="line"> 273</a>   *lease*, enviar sin transacción abierta y marcar en otra): elimina el acoplamiento con</span>
+<span id="L274"><a href="#L274" class="line"> 274</a>   `idle_in_transaction_session_timeout` y libera la conexión del *pool* durante el envío, pero</span>
+<span id="L275"><a href="#L275" class="line"> 275</a>   cambia el modelo de reclamo de ADR-010 y la semántica de cancelación ya diseñada y probada</span>
+<span id="L276"><a href="#L276" class="line"> 276</a>   (T-B211); un apagado dejaría el mensaje reservado hasta que venza el *lease*. A esta escala, un</span>
+<span id="L277"><a href="#L277" class="line"> 277</a>   presupuesto fijo vigilado por tests resuelve el problema con menos cambio. Queda como salida si el</span>
+<span id="L278"><a href="#L278" class="line"> 278</a>   presupuesto resultara corto para el proveedor elegido.</span>
+<span id="L279"><a href="#L279" class="line"> 279</a> - **Hacer que go-mail respete el `context` con un `DialContextFunc` propio que cierre la conexión al</span>
+<span id="L280"><a href="#L280" class="line"> 280</a>   cancelarse**: con un *dialer* propio go-mail deja de hacer TLS implícito (puerto 465) y considera</span>
+<span id="L281"><a href="#L281" class="line"> 281</a>   la conexión no cifrada, con lo que el autodescubrimiento de AUTH descarta `PLAIN`/`LOGIN`</span>
+<span id="L282"><a href="#L282" class="line"> 282</a>   (verificado en `client.go` v0.8.1). Demasiado frágil.</span>
+<span id="L283"><a href="#L283" class="line"> 283</a> - **Excluir los ids fallidos dentro del ciclo en vez de aplazarlos** (alternativa de la revisión):</span>
+<span id="L284"><a href="#L284" class="line"> 284</a>   arregla el ciclo actual pero no el siguiente; el mensaje vuelve a ocupar el primer lugar del lote</span>
+<span id="L285"><a href="#L285" class="line"> 285</a>   en cada ciclo y genera un `ERROR` cada 2 s.</span>
+<span id="L286"><a href="#L286" class="line"> 286</a> - **Aplazar con un `SAVEPOINT` en la misma transacción**: evita la segunda transacción, pero exige</span>
+<span id="L287"><a href="#L287" class="line"> 287</a>   ampliar la interfaz `db.Tx` con *savepoints*. La segunda transacción usa la API existente y su</span>
+<span id="L288"><a href="#L288" class="line"> 288</a>   condición sobre `next_attempt_at` cubre la carrera con otro worker.</span>
+<span id="L289"><a href="#L289" class="line"> 289</a> - **Contar los aplazamientos en una columna nueva**: daría un *backoff* exacto, pero exige una</span>
+<span id="L290"><a href="#L290" class="line"> 290</a>   migración y un privilegio nuevo para `crm_worker`; la edad del mensaje da el mismo efecto sin</span>
+<span id="L291"><a href="#L291" class="line"> 291</a>   tocar el esquema.</span>
+<span id="L292"><a href="#L292" class="line"> 292</a> </span>
+<span id="L293"><a href="#L293" class="line"> 293</a> ## Consecuencias</span>
+<span id="L294"><a href="#L294" class="line"> 294</a> </span>
+<span id="L295"><a href="#L295" class="line"> 295</a> - Ganás: un problema de configuración o de reputación del servidor (credenciales, IP bloqueada,</span>
+<span id="L296"><a href="#L296" class="line"> 296</a>   remitente no verificado) ya no destruye la cola: los mensajes esperan y salen solos al</span>
+<span id="L297"><a href="#L297" class="line"> 297</a>   arreglarlo, si es dentro de ~19 h. Un mensaje roto o de una empresa sin rol ya no bloquea a los</span>
+<span id="L298"><a href="#L298" class="line"> 298</a>   demás. `last_error` y los logs dicen fase, código y texto del proveedor sin datos personales. El</span>
+<span id="L299"><a href="#L299" class="line"> 299</a>   envío no puede exceder el tiempo que PostgreSQL tolera con la transacción abierta.</span>
+<span id="L300"><a href="#L300" class="line"> 300</a> - Aceptás: algunos rechazos definitivos reales (p. ej. un `5.7.1` de política del destinatario) se</span>
+<span id="L301"><a href="#L301" class="line"> 301</a>   reintentan 8 veces antes de fallar; una caída de configuración de más de ~19 h hace fallar los</span>
+<span id="L302"><a href="#L302" class="line"> 302</a>   mensajes de ese período (los usuarios vuelven a pedir el enlace o el Administrador reinvita); un</span>
+<span id="L303"><a href="#L303" class="line"> 303</a>   proveedor que tarde más de 5 s en una etapa produce un reintento (y, si ya había aceptado el</span>
+<span id="L304"><a href="#L304" class="line"> 304</a>   mensaje, un duplicado, aceptado por ADR-010); el apagado puede esperar hasta 20 s un envío en</span>
+<span id="L305"><a href="#L305" class="line"> 305</a>   curso; el worker ahora sí escribe como `crm_worker` (solo `next_attempt_at`, con el privilegio que</span>
+<span id="L306"><a href="#L306" class="line"> 306</a>   ya tenía).</span>
+<span id="L307"><a href="#L307" class="line"> 307</a> - Operación: métricas `outbox_delivery_errors_total{cause}` y `outbox_deferred_total`, y filas</span>
+<span id="L308"><a href="#L308" class="line"> 308</a>   nuevas del runbook (plan §12.3).</span></pre></main></body></html>

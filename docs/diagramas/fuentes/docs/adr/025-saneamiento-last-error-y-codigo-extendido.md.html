@@ -1,0 +1,174 @@
+<!doctype html><html lang="es-AR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>docs/adr/025-saneamiento-last-error-y-codigo-extendido.md · Fuente CRM</title><style>
+*{box-sizing:border-box} :root{--color-paper:#F8FAFC;--color-ink:#0F172A;--color-muted:#475569;--color-soft:#475569;--color-accent:#2563EB;--color-rule:#E2E8F0;--font-sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;--font-serif:var(--font-sans);--font-mono:ui-monospace,SFMono-Regular,Consolas,monospace;--motion-fast:160ms;--motion-step:480ms;--motion-hold:720ms;--motion-total:5760ms;--motion-ease:cubic-bezier(.2,.8,.2,1)}
+body{margin:0;background:var(--color-paper);color:var(--color-ink);font:16px/1.65 var(--font-sans)} a{color:#1E40AF;text-underline-offset:3px}a:hover{color:#2563EB}a:focus-visible,summary:focus-visible{outline:3px solid #2563EB;outline-offset:4px}
+header{border-bottom:1px solid #E2E8F0;background:white}header .bar{max-width:1360px;margin:auto;padding:16px 28px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px}.brand{text-decoration:none;color:#0F172A;font-weight:600;letter-spacing:-.02em}.brand b{color:#2563EB}nav{display:flex;gap:8px;flex-wrap:wrap}nav a{min-height:44px;display:inline-flex;align-items:center;padding:0 12px;text-decoration:none;border:1px solid #E2E8F0;border-radius:6px;background:white;font-size:14px}
+main{max-width:1360px;margin:auto;padding:40px 28px 64px;min-width:0}h1{overflow-wrap:anywhere;font:600 32px/1.2 var(--font-sans);letter-spacing:-.03em;margin:12px 0 16px}h2{font:600 22px/1.3 var(--font-sans);margin:0 0 8px}h3{font-size:18px;margin:20px 0 8px}p{margin:8px 0 16px}.eyebrow{font:500 12px/1.5 var(--font-mono);letter-spacing:.1em;text-transform:uppercase;color:#475569}.intro{max-width:850px;color:#475569;font-size:18px}.meta{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 28px}.tag{padding:4px 10px;border:1px solid #E2E8F0;background:#FFF;border-radius:4px;font-size:13px;color:#475569}.tag.current{color:#047857;background:#ECFDF5;border-color:#047857}.tag.planned{color:#92400E;background:#FFFBEB;border-color:#92400E}
+.figure{margin:28px 0;padding:24px;background:white;border:1px solid #E2E8F0;border-radius:8px;max-width:100%;min-width:0}.figure>p{color:#475569;max-width:1000px;font-size:15px}.diagram-container{width:100%;overflow-x:auto;margin:20px 0 0;border:1px solid #E2E8F0;border-radius:6px;background:#F8FAFC}svg{display:block;width:100%;min-width:1280px}.caption{font-size:14px;color:#475569;margin-top:16px}.note{border-left:3px solid #2563EB;padding:12px 18px;background:#EFF6FF}.reading{max-width:1050px}.reading li{margin:8px 0}details{border:1px solid #E2E8F0;border-radius:6px;background:white;margin:12px 0;padding:16px}summary{cursor:pointer;font-weight:600;min-height:28px}.sources{font-size:14px}.sources li{margin:8px 0;overflow-wrap:anywhere}code,pre{font-family:var(--font-mono);font-size:13px}pre{overflow:auto;background:#F1F5F9;padding:16px;border-radius:4px}footer{margin-top:40px;padding-top:20px;border-top:1px solid #E2E8F0;color:#475569;font-size:13px}.catalog{list-style:none;margin:28px 0;padding:0;border-top:1px solid #E2E8F0}.catalog li{display:grid;grid-template-columns:64px 1fr 180px;align-items:start;gap:20px;padding:22px 0;border-bottom:1px solid #E2E8F0}.catalog .number{font:500 24px var(--font-mono);color:#475569}.catalog a{display:block;min-height:44px;font-size:20px;font-weight:600;text-decoration:none}.catalog p{margin:5px 0 0;color:#475569}.catalog .kind{font:12px var(--font-mono);color:#475569;padding-top:8px}.roadmap{display:grid;grid-template-columns:1.15fr 1fr;gap:24px;margin-top:32px}.panel{border:1px solid #E2E8F0;border-radius:8px;padding:24px;background:white}.facts{display:flex;flex-wrap:wrap;gap:28px;margin:24px 0}.facts strong{font-size:26px;display:block;color:#0F172A}.facts span{font-size:14px;color:#475569}table{border-collapse:collapse;width:100%;font-size:14px}th,td{text-align:left;padding:10px;border-bottom:1px solid #E2E8F0}th{background:#F1F5F9}.table-wrap{overflow:auto}.table-wrap td a{display:block;min-height:44px}svg .name{font-family:var(--font-sans);font-size:12px;font-weight:600;fill:#0F172A}svg .sub{font-family:var(--font-mono);font-size:9px;fill:#475569}svg .tiny{font-family:var(--font-mono);font-size:8px;fill:#475569}
+@media(max-width:700px){main{padding:28px 16px 40px}header .bar{padding:12px 16px}h1{font-size:26px}.figure{padding:16px}.catalog li{grid-template-columns:40px 1fr;gap:12px}.catalog .kind{grid-column:2}.roadmap{grid-template-columns:1fr}.intro{font-size:16px}}
+@media print{header,nav{display:none}main{padding:0}.figure{break-inside:avoid;padding:12px}.diagram-container{overflow-x:visible}svg{min-width:0}.roadmap{display:block}details{break-inside:avoid}body{background:white}.sources a{color:#0F172A}}
+ .line{color:#475569;text-decoration:none}pre span:target{background:#EFF6FF}</style></head><body><main><nav><a href="../../../index.html">← Índice del atlas</a></nav><p class="eyebrow">Copia de referencia · 2026-10-14</p><h1>docs/adr/025-saneamiento-last-error-y-codigo-extendido.md</h1><p>Revisión: <code>c7692bd7b7a0d8e07e18d3c9ec1738b169dc032f</code>. Esta copia documenta las fuentes usadas; no se actualiza automáticamente.</p><pre><span id="L1"><a href="#L1" class="line">   1</a> # ADR-025: `last_error` sin texto del proveedor después del contenido, redacción de secuencias tipo secreto y código extendido leído del texto en todas las fases</span>
+<span id="L2"><a href="#L2" class="line">   2</a> </span>
+<span id="L3"><a href="#L3" class="line">   3</a> **Status**: Accepted</span>
+<span id="L4"><a href="#L4" class="line">   4</a> **Fecha**: 2026-10-01</span>
+<span id="L5"><a href="#L5" class="line">   5</a> **Origen**: tercera revisión del PR fdelillo/crm#8 (Fase 2 de la spec 001), HEAD 31fb773: hallazgo P2</span>
+<span id="L6"><a href="#L6" class="line">   6</a> (un token puede llegar a `last_error` y a los logs) y la observación sobre el código extendido sin</span>
+<span id="L7"><a href="#L7" class="line">   7</a> `ENHANCEDSTATUSCODES`.</span>
+<span id="L8"><a href="#L8" class="line">   8</a> **Relación**: reemplaza **solo** tres piezas de</span>
+<span id="L9"><a href="#L9" class="line">   9</a> [ADR-024](024-clasificacion-fallos-outbox-y-presupuesto-smtp.md): el último párrafo de §2 (de dónde</span>
+<span id="L10"><a href="#L10" class="line">  10</a> sale el código extendido), la viñeta **Detalle** de §3 en lo que dice sobre las respuestas de la</span>
+<span id="L11"><a href="#L11" class="line">  11</a> fase `data`, y el punto (1) del **Saneamiento obligatorio** de §3. Todo lo demás de ADR-024 (causas,</span>
+<span id="L12"><a href="#L12" class="line">  12</a> regla del destinatario, fases, formato `&lt;causa&gt; &lt;fase&gt;[ &lt;código&gt;[ &lt;extendido&gt;]]: &lt;detalle&gt;`, puntos</span>
+<span id="L13"><a href="#L13" class="line">  13</a> (2) y (3) del saneamiento, error de configuración persistente, presupuesto de tiempo y aislamiento</span>
+<span id="L14"><a href="#L14" class="line">  14</a> por mensaje) sigue vigente sin cambios.</span>
+<span id="L15"><a href="#L15" class="line">  15</a> </span>
+<span id="L16"><a href="#L16" class="line">  16</a> ## Contexto</span>
+<span id="L17"><a href="#L17" class="line">  17</a> </span>
+<span id="L18"><a href="#L18" class="line">  18</a> ADR-024 §3 sanea `last_error` y los logs del worker con una sola regla de contenido: todo campo</span>
+<span id="L19"><a href="#L19" class="line">  19</a> separado por espacios que contenga `@` se reemplaza por `[redacted]`. Cubre lo que el servidor SMTP</span>
+<span id="L20"><a href="#L20" class="line">  20</a> conoce del **sobre** (remitente, destinatario, *message-id*), pero no lo que conoce del **contenido**.</span>
+<span id="L21"><a href="#L21" class="line">  21</a> Los emails de 001 llevan un enlace con el token en el fragmento</span>
+<span id="L22"><a href="#L22" class="line">  22</a> (`{APP_BASE_URL}/reset-password#token=…`, DD-14). Un proveedor que rechaza el mensaje por su</span>
+<span id="L23"><a href="#L23" class="line">  23</a> contenido puede citar la URL o el token en su respuesta al fin de datos (p. ej. un filtro de URLs:</span>
+<span id="L24"><a href="#L24" class="line">  24</a> &quot;Message rejected, URL … listed&quot;). Ese texto llega a `DeliveryError.Detail`, pasa el saneamiento</span>
+<span id="L25"><a href="#L25" class="line">  25</a> intacto, se guarda en `outbox_messages.last_error` (que sobrevive al borrado del payload) y se</span>
+<span id="L26"><a href="#L26" class="line">  26</a> loguea. INV-30 afirma que eso no puede pasar; con la regla actual no se cumple. Verificado en</span>
+<span id="L27"><a href="#L27" class="line">  27</a> `internal/platform/outbox/outbox.go` (`sanitizeDetail` solo mira `@`) y en</span>
+<span id="L28"><a href="#L28" class="line">  28</a> `internal/platform/mailer/smtp.go` (`sendErrorDetail` pasa el texto del proveedor tal cual).</span>
+<span id="L29"><a href="#L29" class="line">  29</a> </span>
+<span id="L30"><a href="#L30" class="line">  30</a> Segundo problema, vecino: en la fase `connection` el adaptador lee el código extendido (RFC 3463) del</span>
+<span id="L31"><a href="#L31" class="line">  31</a> comienzo del texto de la respuesta; en las demás fases usa `SendError.EnhancedStatusCode()`, que</span>
+<span id="L32"><a href="#L32" class="line">  32</a> go-mail solo completa si el servidor anuncia `ENHANCEDSTATUSCODES` (verificado en go-mail v0.8.1,</span>
+<span id="L33"><a href="#L33" class="line">  33</a> `senderror.go`: `enhancedStatusCode(err, supported)` devuelve `&quot;&quot;` si `!supported`). Sin ese anuncio,</span>
+<span id="L34"><a href="#L34" class="line">  34</a> una respuesta `550 5.7.1 Relay access denied` en RCPT TO no tiene código extendido y la regla del</span>
+<span id="L35"><a href="#L35" class="line">  35</a> destinatario la clasifica como `recipient` (**definitiva**) por el `550`, aunque el texto dice que es</span>
+<span id="L36"><a href="#L36" class="line">  36</a> un problema de política o configuración que afecta a todos los mensajes. Es justo el caso que</span>
+<span id="L37"><a href="#L37" class="line">  37</a> ADR-024 quiso evitar (&quot;ante la duda, recuperable&quot;).</span>
+<span id="L38"><a href="#L38" class="line">  38</a> </span>
+<span id="L39"><a href="#L39" class="line">  39</a> Fuerzas en tensión: que `last_error` siga sirviendo para diagnosticar (código y texto del proveedor);</span>
+<span id="L40"><a href="#L40" class="line">  40</a> que nunca guarde ni loguee el token; que la garantía no dependa solo de una heurística; que la</span>
+<span id="L41"><a href="#L41" class="line">  41</a> clasificación no dependa de si el servidor anuncia una extensión opcional.</span>
+<span id="L42"><a href="#L42" class="line">  42</a> </span>
+<span id="L43"><a href="#L43" class="line">  43</a> ## Decisión</span>
+<span id="L44"><a href="#L44" class="line">  44</a> </span>
+<span id="L45"><a href="#L45" class="line">  45</a> ### 1. Sin texto del proveedor en la fase `data`</span>
+<span id="L46"><a href="#L46" class="line">  46</a> </span>
+<span id="L47"><a href="#L47" class="line">  47</a> En `DeliveryError.LastError()` (el único lugar que arma el texto, INV-30): si `Phase == data` y</span>
+<span id="L48"><a href="#L48" class="line">  48</a> `SMTPCode != 0`, el detalle es el texto fijo **`response text omitted`**, sea cual sea `Detail`.</span>
+<span id="L49"><a href="#L49" class="line">  49</a> Los fallos de red de la fase `data` (`SMTPCode == 0`) conservan su detalle del vocabulario fijo</span>
+<span id="L50"><a href="#L50" class="line">  50</a> (`timeout`, `connection closed`, …).</span>
+<span id="L51"><a href="#L51" class="line">  51</a> </span>
+<span id="L52"><a href="#L52" class="line">  52</a> Fundamento: `data` es la **única** fase en la que el servidor ya recibió el contenido. Antes del</span>
+<span id="L53"><a href="#L53" class="line">  53</a> comando DATA solo conoce el sobre, que la regla del `@` ya cubre; el token solo viaja en el cuerpo.</span>
+<span id="L54"><a href="#L54" class="line">  54</a> Omitir el texto en esa fase es una garantía estructural, no heurística: no depende de cómo el</span>
+<span id="L55"><a href="#L55" class="line">  55</a> proveedor cite la URL (entera, cortada, codificada en *quoted-printable*, entre comillas).</span>
+<span id="L56"><a href="#L56" class="line">  56</a> </span>
+<span id="L57"><a href="#L57" class="line">  57</a> La regla vive en `LastError()` y no en el adaptador: vale para cualquier implementación futura de</span>
+<span id="L58"><a href="#L58" class="line">  58</a> `Mailer`. El código básico y el extendido se conservan, y son los que dicen la causa del rechazo</span>
+<span id="L59"><a href="#L59" class="line">  59</a> (`5.7.1` política, `5.6.x` contenido, `5.3.4` tamaño, `5.1.x` dirección).</span>
+<span id="L60"><a href="#L60" class="line">  60</a> </span>
+<span id="L61"><a href="#L61" class="line">  61</a> Ejemplos (ilustrativos de la forma):</span>
+<span id="L62"><a href="#L62" class="line">  62</a> </span>
+<span id="L63"><a href="#L63" class="line">  63</a> ```</span>
+<span id="L64"><a href="#L64" class="line">  64</a> config data 554 5.7.1: response text omitted</span>
+<span id="L65"><a href="#L65" class="line">  65</a> recipient data 550 5.1.1: response text omitted</span>
+<span id="L66"><a href="#L66" class="line">  66</a> network data: timeout</span>
+<span id="L67"><a href="#L67" class="line">  67</a> ```</span>
+<span id="L68"><a href="#L68" class="line">  68</a> </span>
+<span id="L69"><a href="#L69" class="line">  69</a> ### 2. Redacción ampliada, en todas las fases</span>
+<span id="L70"><a href="#L70" class="line">  70</a> </span>
+<span id="L71"><a href="#L71" class="line">  71</a> El punto (1) del saneamiento de ADR-024 §3 pasa a ser: después de convertir los caracteres de</span>
+<span id="L72"><a href="#L72" class="line">  72</a> control en espacios, cada campo separado por espacios se reemplaza por `[redacted]` si cumple</span>
+<span id="L73"><a href="#L73" class="line">  73</a> **cualquiera** de estas condiciones:</span>
+<span id="L74"><a href="#L74" class="line">  74</a> </span>
+<span id="L75"><a href="#L75" class="line">  75</a> | Condición | Qué cubre |</span>
+<span id="L76"><a href="#L76" class="line">  76</a> |---|---|</span>
+<span id="L77"><a href="#L77" class="line">  77</a> | Contiene `@` | Sin cambios respecto de ADR-024: destinatario, remitente, *message-id* |</span>
+<span id="L78"><a href="#L78" class="line">  78</a> | Contiene `://` | Toda URL con esquema (enlaces de ayuda del proveedor, enlaces del mensaje) |</span>
+<span id="L79"><a href="#L79" class="line">  79</a> | Contiene una secuencia de **20 o más** caracteres seguidos del conjunto `[A-Za-z0-9+/=_-]` | Tokens de `securetoken` (43 caracteres base64url), fragmentos `#token=…` sin esquema, JWT, claves y otros identificadores largos en base64, base64url o hexadecimal |</span>
+<span id="L80"><a href="#L80" class="line">  80</a> </span>
+<span id="L81"><a href="#L81" class="line">  81</a> Los puntos (2) y (3) de ADR-024 §3 (una línea, espacios simples, ≤ 1000 runas con `…`) no cambian.</span>
+<span id="L82"><a href="#L82" class="line">  82</a> </span>
+<span id="L83"><a href="#L83" class="line">  83</a> Este punto es **defensa en profundidad** para las fases anteriores a `data` y para los textos de</span>
+<span id="L84"><a href="#L84" class="line">  84</a> go-mail: no se espera que el token aparezca ahí (el servidor no lo conoce), pero el costo de</span>
+<span id="L85"><a href="#L85" class="line">  85</a> redactar un campo de más es nulo frente al de guardar un secreto en una columna que sobrevive al</span>
+<span id="L86"><a href="#L86" class="line">  86</a> borrado del payload.</span>
+<span id="L87"><a href="#L87" class="line">  87</a> </span>
+<span id="L88"><a href="#L88" class="line">  88</a> ### 3. Código extendido: del servidor o del comienzo del texto, en todas las fases</span>
+<span id="L89"><a href="#L89" class="line">  89</a> </span>
+<span id="L90"><a href="#L90" class="line">  90</a> Reemplaza el último párrafo de ADR-024 §2. Para toda respuesta SMTP con código básico `c`:</span>
+<span id="L91"><a href="#L91" class="line">  91</a> </span>
+<span id="L92"><a href="#L92" class="line">  92</a> 1. Si go-mail informa un código extendido (`SendError.EnhancedStatusCode() != &quot;&quot;`), se usa ese.</span>
+<span id="L93"><a href="#L93" class="line">  93</a> 2. Si no (fase `connection`, o servidor sin `ENHANCEDSTATUSCODES`), se lee del **comienzo** del</span>
+<span id="L94"><a href="#L94" class="line">  94</a>    texto de la respuesta, ya sin el código básico: debe tener la forma `^[245]\.\d{1,3}\.\d{1,3}`</span>
+<span id="L95"><a href="#L95" class="line">  95</a>    seguida de un espacio o del final del texto.</span>
+<span id="L96"><a href="#L96" class="line">  96</a> 3. El código leído del texto se usa **solo si su primer dígito coincide con el primero de `c`**</span>
+<span id="L97"><a href="#L97" class="line">  97</a>    (RFC 3463: la clase del código extendido corresponde a la del básico). Si no coincide, se ignora</span>
+<span id="L98"><a href="#L98" class="line">  98</a>    y queda como parte del texto.</span>
+<span id="L99"><a href="#L99" class="line">  99</a> 4. Cuando se usa, se quita del comienzo del detalle (ya está en el prefijo de `last_error`).</span>
+<span id="L100"><a href="#L100" class="line"> 100</a> </span>
+<span id="L101"><a href="#L101" class="line"> 101</a> La regla del destinatario de ADR-024 §1 no cambia: ahora simplemente ve el código extendido en más</span>
+<span id="L102"><a href="#L102" class="line"> 102</a> casos. Efecto sobre respuestas sin `ENHANCEDSTATUSCODES`:</span>
+<span id="L103"><a href="#L103" class="line"> 103</a> </span>
+<span id="L104"><a href="#L104" class="line"> 104</a> | Respuesta | Fase | Antes (ADR-024) | Ahora |</span>
+<span id="L105"><a href="#L105" class="line"> 105</a> |---|---|---|---|</span>
+<span id="L106"><a href="#L106" class="line"> 106</a> | `550 5.7.1 Relay access denied` | `rcpt_to` | `recipient` (definitiva, por el `550`) | `config` (recuperable) |</span>
+<span id="L107"><a href="#L107" class="line"> 107</a> | `550 5.1.1 User unknown` | `rcpt_to` | `recipient` | `recipient` (sin cambios) |</span>
+<span id="L108"><a href="#L108" class="line"> 108</a> | `550 User unknown` | `rcpt_to` | `recipient` | `recipient` (sin cambios: sin extendido, decide el básico) |</span>
+<span id="L109"><a href="#L109" class="line"> 109</a> | `554 5.1.1 Unknown user` | `rcpt_to` | `config` | `recipient` |</span>
+<span id="L110"><a href="#L110" class="line"> 110</a> | `550 5.1.1 Recipient rejected` | `data` | `config` | `recipient` |</span>
+<span id="L111"><a href="#L111" class="line"> 111</a> | `550 4.2.2 Mailbox full` (clase incoherente) | `rcpt_to` | `recipient` | `recipient` (el extendido se ignora; decide el básico) |</span>
+<span id="L112"><a href="#L112" class="line"> 112</a> | `554 4.7.1 blocked` (clase incoherente) | `connection` | `config 554 4.7.1` | `config 554` con `4.7.1 blocked` en el detalle |</span>
+<span id="L113"><a href="#L113" class="line"> 113</a> </span>
+<span id="L114"><a href="#L114" class="line"> 114</a> ## Fundamento</span>
+<span id="L115"><a href="#L115" class="line"> 115</a> </span>
+<span id="L116"><a href="#L116" class="line"> 116</a> - La omisión por fase convierte INV-30 en una propiedad que se puede demostrar (&quot;el servidor no</span>
+<span id="L117"><a href="#L117" class="line"> 117</a>   conoce el token antes de DATA, y después de DATA no se guarda su texto&quot;), en vez de una que</span>
+<span id="L118"><a href="#L118" class="line"> 118</a>   depende de adivinar el formato con el que un proveedor cita una URL.</span>
+<span id="L119"><a href="#L119" class="line"> 119</a> - Se pierde poco diagnóstico: el texto de la fase `data` es justo el más propenso a citar el</span>
+<span id="L120"><a href="#L120" class="line"> 120</a>   contenido, y los códigos que se conservan dicen la causa. En las fases donde el texto es más útil</span>
+<span id="L121"><a href="#L121" class="line"> 121</a>   para el operador (credenciales, IP bloqueada, remitente no verificado) se conserva.</span>
+<span id="L122"><a href="#L122" class="line"> 122</a> - La redacción ampliada es barata y uniforme, y cubre lo que la omisión no alcanza (un texto de</span>
+<span id="L123"><a href="#L123" class="line"> 123</a>   go-mail o de una fase previa con una URL o un identificador largo).</span>
+<span id="L124"><a href="#L124" class="line"> 124</a> - Leer el código extendido del texto en todas las fases hace que la clasificación no dependa de una</span>
+<span id="L125"><a href="#L125" class="line"> 125</a>   extensión opcional del servidor, y aplica la misma regla que ya se usaba en la fase `connection`.</span>
+<span id="L126"><a href="#L126" class="line"> 126</a>   Los casos que pasan a definitivos (`5.1.x`/`5.2.x` explícitos en el texto) son exactamente la</span>
+<span id="L127"><a href="#L127" class="line"> 127</a>   evidencia que ADR-024 ya acepta como concluyente cuando el servidor anuncia la extensión. El</span>
+<span id="L128"><a href="#L128" class="line"> 128</a>   control de clase evita decidir con un código que contradice al básico.</span>
+<span id="L129"><a href="#L129" class="line"> 129</a> </span>
+<span id="L130"><a href="#L130" class="line"> 130</a> ## Alternativas consideradas</span>
+<span id="L131"><a href="#L131" class="line"> 131</a> </span>
+<span id="L132"><a href="#L132" class="line"> 132</a> - **Solo redacción por patrones, sin omisión por fase** (lo mínimo que pedía la revisión): es una</span>
+<span id="L133"><a href="#L133" class="line"> 133</a>   heurística. Un token cortado por un salto de línea *quoted-printable* en trozos de menos de 20</span>
+<span id="L134"><a href="#L134" class="line"> 134</a>   caracteres, o citado con otra codificación, pasaría. Se adopta como segunda capa, no como única.</span>
+<span id="L135"><a href="#L135" class="line"> 135</a> - **Nunca guardar texto del proveedor (solo causa, fase y códigos)**: la garantía más fuerte, pero</span>
+<span id="L136"><a href="#L136" class="line"> 136</a>   pierde el texto de las fases `connection`, `mail_from` y `rcpt_to`, que es el que distingue, por</span>
+<span id="L137"><a href="#L137" class="line"> 137</a>   ejemplo, &quot;client host blocked&quot; de otro `554` en el saludo, y que nunca puede contener el token.</span>
+<span id="L138"><a href="#L138" class="line"> 138</a> - **Redactar por coincidencia exacta con los valores del payload** (el `Dispatcher` conoce el token</span>
+<span id="L139"><a href="#L139" class="line"> 139</a>   y el enlace): exacta para el valor tal cual, pero no para formas transformadas (*quoted-printable*</span>
+<span id="L140"><a href="#L140" class="line"> 140</a>   con `=\r\n`, codificación de URL, truncado), y acopla `LastError()` con el payload de cada</span>
+<span id="L141"><a href="#L141" class="line"> 141</a>   plantilla. La omisión por fase cubre lo mismo sin ese acoplamiento.</span>
+<span id="L142"><a href="#L142" class="line"> 142</a> - **Guardar el texto completo cifrado o en otra tabla con acceso restringido**: infraestructura y una</span>
+<span id="L143"><a href="#L143" class="line"> 143</a>   clave nueva para un dato de diagnóstico; desproporcionado a la escala de 001.</span>
+<span id="L144"><a href="#L144" class="line"> 144</a> - **Mantener el código extendido solo cuando lo informa go-mail**: deja `550 5.7.1` sin</span>
+<span id="L145"><a href="#L145" class="line"> 145</a>   `ENHANCEDSTATUSCODES` como definitivo; si la causa es de configuración, se pierde un mensaje por</span>
+<span id="L146"><a href="#L146" class="line"> 146</a>   intento (y la cola entera si es común a todos), contra el criterio de ADR-024.</span>
+<span id="L147"><a href="#L147" class="line"> 147</a> - **Buscar el código extendido en cualquier parte del texto** (como hace go-mail con `FindString`):</span>
+<span id="L148"><a href="#L148" class="line"> 148</a>   podría tomar un número con forma `d.d.d` del medio del texto (una versión, una dirección); se lee</span>
+<span id="L149"><a href="#L149" class="line"> 149</a>   solo al comienzo, donde lo pone RFC 3463.</span>
+<span id="L150"><a href="#L150" class="line"> 150</a> - **Leerlo del texto sin controlar la clase**: un `550 4.2.2` decidiría con un código que contradice</span>
+<span id="L151"><a href="#L151" class="line"> 151</a>   al básico; ante la contradicción, se usa la regla del código básico de ADR-024.</span>
+<span id="L152"><a href="#L152" class="line"> 152</a> </span>
+<span id="L153"><a href="#L153" class="line"> 153</a> ## Consecuencias</span>
+<span id="L154"><a href="#L154" class="line"> 154</a> </span>
+<span id="L155"><a href="#L155" class="line"> 155</a> - Ganás: INV-30 se cumple por construcción para el token; los textos de ayuda del proveedor con URL</span>
+<span id="L156"><a href="#L156" class="line"> 156</a>   y los identificadores largos no llegan a la base; la clasificación de un rechazo no depende de que</span>
+<span id="L157"><a href="#L157" class="line"> 157</a>   el servidor anuncie `ENHANCEDSTATUSCODES` (el `5.7.1` sin anuncio deja de ser definitivo).</span>
+<span id="L158"><a href="#L158" class="line"> 158</a> - Aceptás: en la fase `data` el operador ve solo los códigos y, para el detalle, tiene que mirar el</span>
+<span id="L159"><a href="#L159" class="line"> 159</a>   panel o los logs del proveedor por fecha y hora (fila nueva del runbook, plan §12.3); algunos</span>
+<span id="L160"><a href="#L160" class="line"> 160</a>   campos inocuos de 20 o más caracteres (nombres de host con guiones, identificadores de cola) se</span>
+<span id="L161"><a href="#L161" class="line"> 161</a>   redactan; unos pocos rechazos sin `ENHANCEDSTATUSCODES` pasan a definitivos (`554 5.1.1` en RCPT</span>
+<span id="L162"><a href="#L162" class="line"> 162</a>   TO, `550 5.1.1` en DATA), con la misma evidencia que ya se aceptaba con el anuncio.</span>
+<span id="L163"><a href="#L163" class="line"> 163</a> - Operación: sin métricas nuevas. El runbook suma la lectura de `response text omitted`.</span>
+<span id="L164"><a href="#L164" class="line"> 164</a> - Mantenimiento: cambiar el conjunto o el umbral de la redacción, o la regla de la fase `data`,</span>
+<span id="L165"><a href="#L165" class="line"> 165</a>   obliga a actualizar este ADR (o uno nuevo si cambia la decisión), INV-30, plan §9.4/§12.1,</span>
+<span id="L166"><a href="#L166" class="line"> 166</a>   `data-model.md` §2.5 y los casos de T-B211/T-B213 (matriz del plan §16).</span></pre></main></body></html>

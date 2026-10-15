@@ -1,0 +1,1597 @@
+<!doctype html><html lang="es-AR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>specs/001-empresas-usuarios/contracts/openapi.yaml · Fuente CRM</title><style>
+*{box-sizing:border-box} :root{--color-paper:#F8FAFC;--color-ink:#0F172A;--color-muted:#475569;--color-soft:#475569;--color-accent:#2563EB;--color-rule:#E2E8F0;--font-sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;--font-serif:var(--font-sans);--font-mono:ui-monospace,SFMono-Regular,Consolas,monospace;--motion-fast:160ms;--motion-step:480ms;--motion-hold:720ms;--motion-total:5760ms;--motion-ease:cubic-bezier(.2,.8,.2,1)}
+body{margin:0;background:var(--color-paper);color:var(--color-ink);font:16px/1.65 var(--font-sans)} a{color:#1E40AF;text-underline-offset:3px}a:hover{color:#2563EB}a:focus-visible,summary:focus-visible{outline:3px solid #2563EB;outline-offset:4px}
+header{border-bottom:1px solid #E2E8F0;background:white}header .bar{max-width:1360px;margin:auto;padding:16px 28px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px}.brand{text-decoration:none;color:#0F172A;font-weight:600;letter-spacing:-.02em}.brand b{color:#2563EB}nav{display:flex;gap:8px;flex-wrap:wrap}nav a{min-height:44px;display:inline-flex;align-items:center;padding:0 12px;text-decoration:none;border:1px solid #E2E8F0;border-radius:6px;background:white;font-size:14px}
+main{max-width:1360px;margin:auto;padding:40px 28px 64px;min-width:0}h1{overflow-wrap:anywhere;font:600 32px/1.2 var(--font-sans);letter-spacing:-.03em;margin:12px 0 16px}h2{font:600 22px/1.3 var(--font-sans);margin:0 0 8px}h3{font-size:18px;margin:20px 0 8px}p{margin:8px 0 16px}.eyebrow{font:500 12px/1.5 var(--font-mono);letter-spacing:.1em;text-transform:uppercase;color:#475569}.intro{max-width:850px;color:#475569;font-size:18px}.meta{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 28px}.tag{padding:4px 10px;border:1px solid #E2E8F0;background:#FFF;border-radius:4px;font-size:13px;color:#475569}.tag.current{color:#047857;background:#ECFDF5;border-color:#047857}.tag.planned{color:#92400E;background:#FFFBEB;border-color:#92400E}
+.figure{margin:28px 0;padding:24px;background:white;border:1px solid #E2E8F0;border-radius:8px;max-width:100%;min-width:0}.figure>p{color:#475569;max-width:1000px;font-size:15px}.diagram-container{width:100%;overflow-x:auto;margin:20px 0 0;border:1px solid #E2E8F0;border-radius:6px;background:#F8FAFC}svg{display:block;width:100%;min-width:1280px}.caption{font-size:14px;color:#475569;margin-top:16px}.note{border-left:3px solid #2563EB;padding:12px 18px;background:#EFF6FF}.reading{max-width:1050px}.reading li{margin:8px 0}details{border:1px solid #E2E8F0;border-radius:6px;background:white;margin:12px 0;padding:16px}summary{cursor:pointer;font-weight:600;min-height:28px}.sources{font-size:14px}.sources li{margin:8px 0;overflow-wrap:anywhere}code,pre{font-family:var(--font-mono);font-size:13px}pre{overflow:auto;background:#F1F5F9;padding:16px;border-radius:4px}footer{margin-top:40px;padding-top:20px;border-top:1px solid #E2E8F0;color:#475569;font-size:13px}.catalog{list-style:none;margin:28px 0;padding:0;border-top:1px solid #E2E8F0}.catalog li{display:grid;grid-template-columns:64px 1fr 180px;align-items:start;gap:20px;padding:22px 0;border-bottom:1px solid #E2E8F0}.catalog .number{font:500 24px var(--font-mono);color:#475569}.catalog a{display:block;min-height:44px;font-size:20px;font-weight:600;text-decoration:none}.catalog p{margin:5px 0 0;color:#475569}.catalog .kind{font:12px var(--font-mono);color:#475569;padding-top:8px}.roadmap{display:grid;grid-template-columns:1.15fr 1fr;gap:24px;margin-top:32px}.panel{border:1px solid #E2E8F0;border-radius:8px;padding:24px;background:white}.facts{display:flex;flex-wrap:wrap;gap:28px;margin:24px 0}.facts strong{font-size:26px;display:block;color:#0F172A}.facts span{font-size:14px;color:#475569}table{border-collapse:collapse;width:100%;font-size:14px}th,td{text-align:left;padding:10px;border-bottom:1px solid #E2E8F0}th{background:#F1F5F9}.table-wrap{overflow:auto}.table-wrap td a{display:block;min-height:44px}svg .name{font-family:var(--font-sans);font-size:12px;font-weight:600;fill:#0F172A}svg .sub{font-family:var(--font-mono);font-size:9px;fill:#475569}svg .tiny{font-family:var(--font-mono);font-size:8px;fill:#475569}
+@media(max-width:700px){main{padding:28px 16px 40px}header .bar{padding:12px 16px}h1{font-size:26px}.figure{padding:16px}.catalog li{grid-template-columns:40px 1fr;gap:12px}.catalog .kind{grid-column:2}.roadmap{grid-template-columns:1fr}.intro{font-size:16px}}
+@media print{header,nav{display:none}main{padding:0}.figure{break-inside:avoid;padding:12px}.diagram-container{overflow-x:visible}svg{min-width:0}.roadmap{display:block}details{break-inside:avoid}body{background:white}.sources a{color:#0F172A}}
+ .line{color:#475569;text-decoration:none}pre span:target{background:#EFF6FF}</style></head><body><main><nav><a href="../../../../index.html">← Índice del atlas</a></nav><p class="eyebrow">Copia de referencia · 2026-10-14</p><h1>specs/001-empresas-usuarios/contracts/openapi.yaml</h1><p>Revisión: <code>c7692bd7b7a0d8e07e18d3c9ec1738b169dc032f</code>. Esta copia documenta las fuentes usadas; no se actualiza automáticamente.</p><pre><span id="L1"><a href="#L1" class="line">   1</a> openapi: 3.1.0</span>
+<span id="L2"><a href="#L2" class="line">   2</a> info:</span>
+<span id="L3"><a href="#L3" class="line">   3</a>   title: CRM - API 001 Empresas, usuarios y roles</span>
+<span id="L4"><a href="#L4" class="line">   4</a>   version: 0.5.0</span>
+<span id="L5"><a href="#L5" class="line">   5</a>   summary: Registro de empresas, autenticación, sesiones, invitaciones, usuarios y datos de la empresa.</span>
+<span id="L6"><a href="#L6" class="line">   6</a>   description: |</span>
+<span id="L7"><a href="#L7" class="line">   7</a>     Contrato **canónico** de la spec 001 (`specs/001-empresas-usuarios/spec.md`).</span>
+<span id="L8"><a href="#L8" class="line">   8</a>     Los tipos del cliente se derivan de este archivo. Los handlers Go se escriben a mano y los</span>
+<span id="L9"><a href="#L9" class="line">   9</a>     tests de contrato validan cada request y response contra este documento (ADR-014).</span>
+<span id="L10"><a href="#L10" class="line">  10</a> </span>
+<span id="L11"><a href="#L11" class="line">  11</a>     Convenciones:</span>
+<span id="L12"><a href="#L12" class="line">  12</a>     - Base: `/api/v1`. JSON en `snake_case`. Fechas ISO 8601 en UTC.</span>
+<span id="L13"><a href="#L13" class="line">  13</a>     - Autenticación: cookie de sesión `__Host-crm_session` (HttpOnly, Secure, SameSite=Lax).</span>
+<span id="L14"><a href="#L14" class="line">  14</a>       El cliente no la lee ni la manipula: el navegador la envía sola. La sesión vence tras</span>
+<span id="L15"><a href="#L15" class="line">  15</a>       24 h sin uso o 7 días desde el inicio, lo primero que ocurra (DD-10). La cookie lleva</span>
+<span id="L16"><a href="#L16" class="line">  16</a>       `Secure` en todos los entornos: la API solo se usa por HTTPS, también en desarrollo y en</span>
+<span id="L17"><a href="#L17" class="line">  17</a>       los E2E (HTTPS local con un certificado de mkcert, DD-24).</span>
+<span id="L18"><a href="#L18" class="line">  18</a>     - Todo endpoint con body JSON exige `Content-Type: application/json` (si no, 415).</span>
+<span id="L19"><a href="#L19" class="line">  19</a>     - Todo body JSON puede tener hasta 65 536 bytes (64 KiB); uno más grande responde</span>
+<span id="L20"><a href="#L20" class="line">  20</a>       `413 payload_too_large` (declarado en cada operación con body JSON).</span>
+<span id="L21"><a href="#L21" class="line">  21</a>     - Errores: RFC 9457 `application/problem+json` con el campo `code` estable (ADR-009) y,</span>
+<span id="L22"><a href="#L22" class="line">  22</a>       cuando corresponde, `suggested_action`. El frontend decide el texto a mostrar a partir de</span>
+<span id="L23"><a href="#L23" class="line">  23</a>       `code`.</span>
+<span id="L24"><a href="#L24" class="line">  24</a>     - Un recurso de otra empresa responde 404, nunca 403 (INV-12).</span>
+<span id="L25"><a href="#L25" class="line">  25</a>     - Caché: **todas** las respuestas de `/api/v1` llevan `Cache-Control: no-store` (DD-28), salvo</span>
+<span id="L26"><a href="#L26" class="line">  26</a>       `GET /tenant/logo`, que usa `private, no-cache` con `ETag` (DD-23).</span>
+<span id="L27"><a href="#L27" class="line">  27</a>     - Un método no seguro (POST, PUT, PATCH, DELETE) de origen cruzado recibe `403` con</span>
+<span id="L28"><a href="#L28" class="line">  28</a>       `code: forbidden` (protección CSRF, DD-30), en cualquier ruta.</span>
+<span id="L29"><a href="#L29" class="line">  29</a>     - Un método que la ruta no admite (p. ej. `DELETE` sobre una ruta que solo tiene `GET`)</span>
+<span id="L30"><a href="#L30" class="line">  30</a>       recibe `405` con `code: method_not_allowed` y la cabecera `Allow` con la lista de métodos</span>
+<span id="L31"><a href="#L31" class="line">  31</a>       que esa ruta sí admite (RFC 9110). Vale para **todas** las rutas de `/api/v1` y no se</span>
+<span id="L32"><a href="#L32" class="line">  32</a>       repite en cada operación. Una ruta inexistente responde `404` con `code: not_found`.</span>
+<span id="L33"><a href="#L33" class="line">  33</a>     - Cualquier operación puede responder `503 service_unavailable` (dependencia no disponible);</span>
+<span id="L34"><a href="#L34" class="line">  34</a>       cuando el servidor sabe cuánto esperar, agrega `Retry-After` (p. ej. el registro con muchos</span>
+<span id="L35"><a href="#L35" class="line">  35</a>       pedidos simultáneos, DD-33).</span>
+<span id="L36"><a href="#L36" class="line">  36</a>     - Solo `/api/`, `/healthz` y `/readyz` son del backend; el resto de las rutas del mismo origen</span>
+<span id="L37"><a href="#L37" class="line">  37</a>       las sirve la SPA embebida (ADR-019) y no forman parte de este contrato.</span>
+<span id="L38"><a href="#L38" class="line">  38</a>     - Los componentes `Problem`, `ValidationProblem`, `ErrorCode`, `SuggestedAction`, `Role` y</span>
+<span id="L39"><a href="#L39" class="line">  39</a>       `Permission` son la fuente para las specs siguientes, que los referencian con `$ref` (DD-17).</span>
+<span id="L40"><a href="#L40" class="line">  40</a> </span>
+<span id="L41"><a href="#L41" class="line">  41</a>     Historial:</span>
+<span id="L42"><a href="#L42" class="line">  42</a>     - 0.2.0: respuestas P-2 a P-5 (`email_already_registered`, `suggested_action`, reactivación</span>
+<span id="L43"><a href="#L43" class="line">  43</a>       confirmada, reset para invitados, duración de sesión).</span>
+<span id="L44"><a href="#L44" class="line">  44</a>     - 0.3.0: hallazgos del frontend (plan §18): caché del logo (`v`, `If-None-Match`, `ETag`,</span>
+<span id="L45"><a href="#L45" class="line">  45</a>       `304`), `no-store` en toda la API, `invitation_expires_at` aunque haya vencido, cambio de</span>
+<span id="L46"><a href="#L46" class="line">  46</a>       rol de invitados y por reinvitación, zona horaria del registro con default, `403` de CSRF.</span>
+<span id="L47"><a href="#L47" class="line">  47</a>     - 0.3.1: límites exactos de `PUT /tenant/logo` (H-11): archivo de hasta 2 097 152 bytes,</span>
+<span id="L48"><a href="#L48" class="line">  48</a>       cuerpo multipart de hasta 2 162 688 bytes, una sola parte `file`, y qué error corresponde a</span>
+<span id="L49"><a href="#L49" class="line">  49</a>       cada caso; la cookie es `Secure` en todos los entornos (H-10). Son precisiones: el único</span>
+<span id="L50"><a href="#L50" class="line">  50</a>       cambio de esquema es `additionalProperties: false` en el cuerpo multipart de</span>
+<span id="L51"><a href="#L51" class="line">  51</a>       `PUT /tenant/logo`, que declara la regla de una sola parte.</span>
+<span id="L52"><a href="#L52" class="line">  52</a>     - 0.4.0: `method_not_allowed` agregado a `ErrorCode` (`405` con cabecera `Allow`, regla</span>
+<span id="L53"><a href="#L53" class="line">  53</a>       global); `Retry-After` opcional en `ServerError` (registro con muchos pedidos simultáneos,</span>
+<span id="L54"><a href="#L54" class="line">  54</a>       DD-33). Es *minor* y no *patch*: un valor nuevo en un enum obliga a los clientes con</span>
+<span id="L55"><a href="#L55" class="line">  55</a>       manejo exhaustivo de `ErrorCode` (el mapa de mensajes del frontend) a agregar su texto.</span>
+<span id="L56"><a href="#L56" class="line">  56</a>     - 0.4.1: `413 payload_too_large` declarado en todas las operaciones con body JSON (límite de</span>
+<span id="L57"><a href="#L57" class="line">  57</a>       65 536 bytes, que el servidor ya aplicaba sin declararlo; plan §18, séptima tanda). Es</span>
+<span id="L58"><a href="#L58" class="line">  58</a>       *patch*: no agrega valores a ningún enum ni cambia esquemas; declara una respuesta que ya</span>
+<span id="L59"><a href="#L59" class="line">  59</a>       existía y cuyo `code` ya estaba en `ErrorCode`.</span>
+<span id="L60"><a href="#L60" class="line">  60</a>     - 0.4.2: texto del rate limit de `POST /auth/signup`: es una ráfaga de 5 más una reposición</span>
+<span id="L61"><a href="#L61" class="line">  61</a>       cada 12 minutos, no un máximo de 5 por hora (DD-9; revisión del PR #12). Es *patch*: solo</span>
+<span id="L62"><a href="#L62" class="line">  62</a>       cambia una descripción.</span>
+<span id="L63"><a href="#L63" class="line">  63</a>     - 0.4.3: semántica de `PATCH /tenant` (plan DD-43; revisión del PR #15): un texto vacío en un</span>
+<span id="L64"><a href="#L64" class="line">  64</a>       campo opcional equivale a `null`; `null` en `name` o `timezone` responde `400`; `Local` es</span>
+<span id="L65"><a href="#L65" class="line">  65</a>       una zona inválida; un `PATCH` sin cambios no modifica `updated_at`. Es *patch*: solo cambian</span>
+<span id="L66"><a href="#L66" class="line">  66</a>       descripciones, no esquemas ni enums.</span>
+<span id="L67"><a href="#L67" class="line">  67</a>     - 0.5.0: decimosexta revisión del plan (auditoría de seguridad). `email_not_verified` agregado</span>
+<span id="L68"><a href="#L68" class="line">  68</a>       a `ErrorCode`: un Administrador sin el email verificado no puede invitar (`403`, DD-46).</span>
+<span id="L69"><a href="#L69" class="line">  69</a>       `429 rate_limited` en `POST /users/invitations` y `POST /users/{userId}/reactivate` (cupos por</span>
+<span id="L70"><a href="#L70" class="line">  70</a>       empresa y por IP, DD-48). Descripciones: cupo global del registro (DD-49), el reset confirmado</span>
+<span id="L71"><a href="#L71" class="line">  71</a>       verifica el email y el reenvío de la verificación tiene un cupo por usuario (sin cupo,</span>
+<span id="L72"><a href="#L72" class="line">  72</a>       `429 rate_limited` con `Retry-After`, ya declarado). Es *minor* porque agrega un valor a un</span>
+<span id="L73"><a href="#L73" class="line">  73</a>       enum (como 0.4.0). Enmienda H-16 (2026-10-13): el reenvío sin cupo por usuario respondía</span>
+<span id="L74"><a href="#L74" class="line">  74</a>       `202` sin enviar. El cambio queda dentro de 0.5.0 porque esta versión todavía no se había</span>
+<span id="L75"><a href="#L75" class="line">  75</a>       publicado, y no toca esquemas ni enums.</span>
+<span id="L76"><a href="#L76" class="line">  76</a> servers:</span>
+<span id="L77"><a href="#L77" class="line">  77</a>   - url: /api/v1</span>
+<span id="L78"><a href="#L78" class="line">  78</a> tags:</span>
+<span id="L79"><a href="#L79" class="line">  79</a>   - name: catalog</span>
+<span id="L80"><a href="#L80" class="line">  80</a>     description: Datos públicos para el registro</span>
+<span id="L81"><a href="#L81" class="line">  81</a>   - name: auth</span>
+<span id="L82"><a href="#L82" class="line">  82</a>     description: Registro, sesión, contraseña, verificación de email e invitaciones (lado invitado)</span>
+<span id="L83"><a href="#L83" class="line">  83</a>   - name: me</span>
+<span id="L84"><a href="#L84" class="line">  84</a>     description: Sesión actual</span>
+<span id="L85"><a href="#L85" class="line">  85</a>   - name: tenant</span>
+<span id="L86"><a href="#L86" class="line">  86</a>     description: Datos de la empresa</span>
+<span id="L87"><a href="#L87" class="line">  87</a>   - name: users</span>
+<span id="L88"><a href="#L88" class="line">  88</a>     description: Gestión de usuarios (Administrador)</span>
+<span id="L89"><a href="#L89" class="line">  89</a>   - name: ops</span>
+<span id="L90"><a href="#L90" class="line">  90</a>     description: Salud del servicio</span>
+<span id="L91"><a href="#L91" class="line">  91</a> </span>
+<span id="L92"><a href="#L92" class="line">  92</a> paths:</span>
+<span id="L93"><a href="#L93" class="line">  93</a>   /industry-templates:</span>
+<span id="L94"><a href="#L94" class="line">  94</a>     get:</span>
+<span id="L95"><a href="#L95" class="line">  95</a>       tags: [catalog]</span>
+<span id="L96"><a href="#L96" class="line">  96</a>       operationId: listIndustryTemplates</span>
+<span id="L97"><a href="#L97" class="line">  97</a>       summary: Listar plantillas de rubro (FR-002)</span>
+<span id="L98"><a href="#L98" class="line">  98</a>       security: []</span>
+<span id="L99"><a href="#L99" class="line">  99</a>       responses:</span>
+<span id="L100"><a href="#L100" class="line"> 100</a>         &#x27;200&#x27;:</span>
+<span id="L101"><a href="#L101" class="line"> 101</a>           description: Plantillas disponibles</span>
+<span id="L102"><a href="#L102" class="line"> 102</a>           content:</span>
+<span id="L103"><a href="#L103" class="line"> 103</a>             application/json:</span>
+<span id="L104"><a href="#L104" class="line"> 104</a>               schema:</span>
+<span id="L105"><a href="#L105" class="line"> 105</a>                 type: object</span>
+<span id="L106"><a href="#L106" class="line"> 106</a>                 required: [items]</span>
+<span id="L107"><a href="#L107" class="line"> 107</a>                 additionalProperties: false</span>
+<span id="L108"><a href="#L108" class="line"> 108</a>                 properties:</span>
+<span id="L109"><a href="#L109" class="line"> 109</a>                   items:</span>
+<span id="L110"><a href="#L110" class="line"> 110</a>                     type: array</span>
+<span id="L111"><a href="#L111" class="line"> 111</a>                     items:</span>
+<span id="L112"><a href="#L112" class="line"> 112</a>                       $ref: &#x27;#/components/schemas/IndustryTemplate&#x27;</span>
+<span id="L113"><a href="#L113" class="line"> 113</a>         &#x27;429&#x27;:</span>
+<span id="L114"><a href="#L114" class="line"> 114</a>           $ref: &#x27;#/components/responses/RateLimited&#x27;</span>
+<span id="L115"><a href="#L115" class="line"> 115</a>         5XX:</span>
+<span id="L116"><a href="#L116" class="line"> 116</a>           $ref: &#x27;#/components/responses/ServerError&#x27;</span>
+<span id="L117"><a href="#L117" class="line"> 117</a> </span>
+<span id="L118"><a href="#L118" class="line"> 118</a>   /auth/signup:</span>
+<span id="L119"><a href="#L119" class="line"> 119</a>     post:</span>
+<span id="L120"><a href="#L120" class="line"> 120</a>       tags: [auth]</span>
+<span id="L121"><a href="#L121" class="line"> 121</a>       operationId: signup</span>
+<span id="L122"><a href="#L122" class="line"> 122</a>       summary: Registrar empresa y primer Administrador (Historia 1, FR-001, FR-002)</span>
+<span id="L123"><a href="#L123" class="line"> 123</a>       description: |</span>
+<span id="L124"><a href="#L124" class="line"> 124</a>         Crea la empresa, su rol de base de datos, el usuario Administrador, aplica la plantilla,</span>
+<span id="L125"><a href="#L125" class="line"> 125</a>         encola el email de verificación e inicia sesión, todo en una transacción (INV-14).</span>
+<span id="L126"><a href="#L126" class="line"> 126</a> </span>
+<span id="L127"><a href="#L127" class="line"> 127</a>         Si `timezone` falta o no es una zona IANA conocida, la empresa se crea con</span>
+<span id="L128"><a href="#L128" class="line"> 128</a>         `America/Argentina/Buenos_Aires` (no hay `422` por la zona horaria en el registro, DD-27).</span>
+<span id="L129"><a href="#L129" class="line"> 129</a> </span>
+<span id="L130"><a href="#L130" class="line"> 130</a>         Si ya existe un usuario con ese email (en cualquier empresa y en cualquier estado)</span>
+<span id="L131"><a href="#L131" class="line"> 131</a>         responde 409 `email_already_registered` con `suggested_action: password_reset`. La</span>
+<span id="L132"><a href="#L132" class="line"> 132</a>         respuesta confirma que el email existe (enumeración aceptada, DD-19) pero **no** incluye</span>
+<span id="L133"><a href="#L133" class="line"> 133</a>         empresa, nombre, estado ni ningún otro dato de la cuenta (INV-20).</span>
+<span id="L134"><a href="#L134" class="line"> 134</a> </span>
+<span id="L135"><a href="#L135" class="line"> 135</a>         Los registros se procesan de a uno en la base (DD-33). Si hay tantos simultáneos que uno</span>
+<span id="L136"><a href="#L136" class="line"> 136</a>         espera más de 2 segundos, responde `503 service_unavailable` con `Retry-After` y no crea</span>
+<span id="L137"><a href="#L137" class="line"> 137</a>         nada: se puede reintentar con los mismos datos.</span>
+<span id="L138"><a href="#L138" class="line"> 138</a> </span>
+<span id="L139"><a href="#L139" class="line"> 139</a>         Rate limit por IP, contando éxitos y rechazos (DD-9): 5 intentos de una vez y después uno</span>
+<span id="L140"><a href="#L140" class="line"> 140</a>         cada 12 minutos (unos 5 por hora sostenidos; en una hora pueden entrar hasta 10). Además</span>
+<span id="L141"><a href="#L141" class="line"> 141</a>         hay un cupo global para todas las IPs (DD-49): 30 de una vez y después uno por minuto.</span>
+<span id="L142"><a href="#L142" class="line"> 142</a>         Excedido, responde 429 `rate_limited` con `Retry-After` aunque la IP tenga cupo.</span>
+<span id="L143"><a href="#L143" class="line"> 143</a>       security: []</span>
+<span id="L144"><a href="#L144" class="line"> 144</a>       requestBody:</span>
+<span id="L145"><a href="#L145" class="line"> 145</a>         required: true</span>
+<span id="L146"><a href="#L146" class="line"> 146</a>         content:</span>
+<span id="L147"><a href="#L147" class="line"> 147</a>           application/json:</span>
+<span id="L148"><a href="#L148" class="line"> 148</a>             schema:</span>
+<span id="L149"><a href="#L149" class="line"> 149</a>               $ref: &#x27;#/components/schemas/SignupRequest&#x27;</span>
+<span id="L150"><a href="#L150" class="line"> 150</a>       responses:</span>
+<span id="L151"><a href="#L151" class="line"> 151</a>         &#x27;201&#x27;:</span>
+<span id="L152"><a href="#L152" class="line"> 152</a>           description: Empresa creada y sesión iniciada</span>
+<span id="L153"><a href="#L153" class="line"> 153</a>           headers:</span>
+<span id="L154"><a href="#L154" class="line"> 154</a>             Set-Cookie:</span>
+<span id="L155"><a href="#L155" class="line"> 155</a>               $ref: &#x27;#/components/headers/SetSessionCookie&#x27;</span>
+<span id="L156"><a href="#L156" class="line"> 156</a>           content:</span>
+<span id="L157"><a href="#L157" class="line"> 157</a>             application/json:</span>
+<span id="L158"><a href="#L158" class="line"> 158</a>               schema:</span>
+<span id="L159"><a href="#L159" class="line"> 159</a>                 $ref: &#x27;#/components/schemas/SessionInfo&#x27;</span>
+<span id="L160"><a href="#L160" class="line"> 160</a>         &#x27;400&#x27;:</span>
+<span id="L161"><a href="#L161" class="line"> 161</a>           $ref: &#x27;#/components/responses/MalformedRequest&#x27;</span>
+<span id="L162"><a href="#L162" class="line"> 162</a>         &#x27;403&#x27;:</span>
+<span id="L163"><a href="#L163" class="line"> 163</a>           $ref: &#x27;#/components/responses/Forbidden&#x27;</span>
+<span id="L164"><a href="#L164" class="line"> 164</a>         &#x27;409&#x27;:</span>
+<span id="L165"><a href="#L165" class="line"> 165</a>           description: |</span>
+<span id="L166"><a href="#L166" class="line"> 166</a>             Ya existe un usuario con ese email (`code` = `email_already_registered`).</span>
+<span id="L167"><a href="#L167" class="line"> 167</a>             `title`: &quot;Ya existe un usuario con ese email&quot;.</span>
+<span id="L168"><a href="#L168" class="line"> 168</a>             `detail`: &quot;Ya existe un usuario con ese email. ¿Querés recuperar la contraseña?&quot;.</span>
+<span id="L169"><a href="#L169" class="line"> 169</a>             La UI usa `suggested_action` para ofrecer el flujo de `POST /auth/password-reset`</span>
+<span id="L170"><a href="#L170" class="line"> 170</a>             con el email que el visitante ya escribió.</span>
+<span id="L171"><a href="#L171" class="line"> 171</a>           content:</span>
+<span id="L172"><a href="#L172" class="line"> 172</a>             application/problem+json:</span>
+<span id="L173"><a href="#L173" class="line"> 173</a>               schema:</span>
+<span id="L174"><a href="#L174" class="line"> 174</a>                 $ref: &#x27;#/components/schemas/EmailAlreadyRegisteredProblem&#x27;</span>
+<span id="L175"><a href="#L175" class="line"> 175</a>         &#x27;413&#x27;:</span>
+<span id="L176"><a href="#L176" class="line"> 176</a>           $ref: &#x27;#/components/responses/PayloadTooLarge&#x27;</span>
+<span id="L177"><a href="#L177" class="line"> 177</a>         &#x27;415&#x27;:</span>
+<span id="L178"><a href="#L178" class="line"> 178</a>           $ref: &#x27;#/components/responses/UnsupportedMediaType&#x27;</span>
+<span id="L179"><a href="#L179" class="line"> 179</a>         &#x27;422&#x27;:</span>
+<span id="L180"><a href="#L180" class="line"> 180</a>           $ref: &#x27;#/components/responses/ValidationFailed&#x27;</span>
+<span id="L181"><a href="#L181" class="line"> 181</a>         &#x27;429&#x27;:</span>
+<span id="L182"><a href="#L182" class="line"> 182</a>           $ref: &#x27;#/components/responses/RateLimited&#x27;</span>
+<span id="L183"><a href="#L183" class="line"> 183</a>         5XX:</span>
+<span id="L184"><a href="#L184" class="line"> 184</a>           $ref: &#x27;#/components/responses/ServerError&#x27;</span>
+<span id="L185"><a href="#L185" class="line"> 185</a> </span>
+<span id="L186"><a href="#L186" class="line"> 186</a>   /auth/login:</span>
+<span id="L187"><a href="#L187" class="line"> 187</a>     post:</span>
+<span id="L188"><a href="#L188" class="line"> 188</a>       tags: [auth]</span>
+<span id="L189"><a href="#L189" class="line"> 189</a>       operationId: login</span>
+<span id="L190"><a href="#L190" class="line"> 190</a>       summary: Iniciar sesión (Historia 2, FR-003)</span>
+<span id="L191"><a href="#L191" class="line"> 191</a>       description: |</span>
+<span id="L192"><a href="#L192" class="line"> 192</a>         Mismo status y cuerpo exista o no el email (INV-13; se mantiene aunque el registro</span>
+<span id="L193"><a href="#L193" class="line"> 193</a>         confirme la existencia de un email, DD-19). Tras 5 fallos seguidos el siguiente intento</span>
+<span id="L194"><a href="#L194" class="line"> 194</a>         responde 429 `login_locked` durante 15 minutos, exista o no la cuenta.</span>
+<span id="L195"><a href="#L195" class="line"> 195</a>         Un usuario desactivado con contraseña correcta recibe 403 `account_disabled` (DD-8).</span>
+<span id="L196"><a href="#L196" class="line"> 196</a>       security: []</span>
+<span id="L197"><a href="#L197" class="line"> 197</a>       requestBody:</span>
+<span id="L198"><a href="#L198" class="line"> 198</a>         required: true</span>
+<span id="L199"><a href="#L199" class="line"> 199</a>         content:</span>
+<span id="L200"><a href="#L200" class="line"> 200</a>           application/json:</span>
+<span id="L201"><a href="#L201" class="line"> 201</a>             schema:</span>
+<span id="L202"><a href="#L202" class="line"> 202</a>               $ref: &#x27;#/components/schemas/LoginRequest&#x27;</span>
+<span id="L203"><a href="#L203" class="line"> 203</a>       responses:</span>
+<span id="L204"><a href="#L204" class="line"> 204</a>         &#x27;200&#x27;:</span>
+<span id="L205"><a href="#L205" class="line"> 205</a>           description: Sesión iniciada</span>
+<span id="L206"><a href="#L206" class="line"> 206</a>           headers:</span>
+<span id="L207"><a href="#L207" class="line"> 207</a>             Set-Cookie:</span>
+<span id="L208"><a href="#L208" class="line"> 208</a>               $ref: &#x27;#/components/headers/SetSessionCookie&#x27;</span>
+<span id="L209"><a href="#L209" class="line"> 209</a>           content:</span>
+<span id="L210"><a href="#L210" class="line"> 210</a>             application/json:</span>
+<span id="L211"><a href="#L211" class="line"> 211</a>               schema:</span>
+<span id="L212"><a href="#L212" class="line"> 212</a>                 $ref: &#x27;#/components/schemas/SessionInfo&#x27;</span>
+<span id="L213"><a href="#L213" class="line"> 213</a>         &#x27;400&#x27;:</span>
+<span id="L214"><a href="#L214" class="line"> 214</a>           $ref: &#x27;#/components/responses/MalformedRequest&#x27;</span>
+<span id="L215"><a href="#L215" class="line"> 215</a>         &#x27;401&#x27;:</span>
+<span id="L216"><a href="#L216" class="line"> 216</a>           description: Email o contraseña incorrectos (`code` = `invalid_credentials`)</span>
+<span id="L217"><a href="#L217" class="line"> 217</a>           content:</span>
+<span id="L218"><a href="#L218" class="line"> 218</a>             application/problem+json:</span>
+<span id="L219"><a href="#L219" class="line"> 219</a>               schema:</span>
+<span id="L220"><a href="#L220" class="line"> 220</a>                 $ref: &#x27;#/components/schemas/Problem&#x27;</span>
+<span id="L221"><a href="#L221" class="line"> 221</a>         &#x27;403&#x27;:</span>
+<span id="L222"><a href="#L222" class="line"> 222</a>           description: |</span>
+<span id="L223"><a href="#L223" class="line"> 223</a>             Usuario desactivado (`code` = `account_disabled`), o request de origen cruzado</span>
+<span id="L224"><a href="#L224" class="line"> 224</a>             (`code` = `forbidden`, DD-30)</span>
+<span id="L225"><a href="#L225" class="line"> 225</a>           content:</span>
+<span id="L226"><a href="#L226" class="line"> 226</a>             application/problem+json:</span>
+<span id="L227"><a href="#L227" class="line"> 227</a>               schema:</span>
+<span id="L228"><a href="#L228" class="line"> 228</a>                 $ref: &#x27;#/components/schemas/Problem&#x27;</span>
+<span id="L229"><a href="#L229" class="line"> 229</a>         &#x27;413&#x27;:</span>
+<span id="L230"><a href="#L230" class="line"> 230</a>           $ref: &#x27;#/components/responses/PayloadTooLarge&#x27;</span>
+<span id="L231"><a href="#L231" class="line"> 231</a>         &#x27;415&#x27;:</span>
+<span id="L232"><a href="#L232" class="line"> 232</a>           $ref: &#x27;#/components/responses/UnsupportedMediaType&#x27;</span>
+<span id="L233"><a href="#L233" class="line"> 233</a>         &#x27;422&#x27;:</span>
+<span id="L234"><a href="#L234" class="line"> 234</a>           $ref: &#x27;#/components/responses/ValidationFailed&#x27;</span>
+<span id="L235"><a href="#L235" class="line"> 235</a>         &#x27;429&#x27;:</span>
+<span id="L236"><a href="#L236" class="line"> 236</a>           description: Bloqueo temporal (`login_locked`) o límite por IP (`rate_limited`)</span>
+<span id="L237"><a href="#L237" class="line"> 237</a>           headers:</span>
+<span id="L238"><a href="#L238" class="line"> 238</a>             Retry-After:</span>
+<span id="L239"><a href="#L239" class="line"> 239</a>               $ref: &#x27;#/components/headers/RetryAfter&#x27;</span>
+<span id="L240"><a href="#L240" class="line"> 240</a>           content:</span>
+<span id="L241"><a href="#L241" class="line"> 241</a>             application/problem+json:</span>
+<span id="L242"><a href="#L242" class="line"> 242</a>               schema:</span>
+<span id="L243"><a href="#L243" class="line"> 243</a>                 $ref: &#x27;#/components/schemas/Problem&#x27;</span>
+<span id="L244"><a href="#L244" class="line"> 244</a>         5XX:</span>
+<span id="L245"><a href="#L245" class="line"> 245</a>           $ref: &#x27;#/components/responses/ServerError&#x27;</span>
+<span id="L246"><a href="#L246" class="line"> 246</a> </span>
+<span id="L247"><a href="#L247" class="line"> 247</a>   /auth/logout:</span>
+<span id="L248"><a href="#L248" class="line"> 248</a>     post:</span>
+<span id="L249"><a href="#L249" class="line"> 249</a>       tags: [auth]</span>
+<span id="L250"><a href="#L250" class="line"> 250</a>       operationId: logout</span>
+<span id="L251"><a href="#L251" class="line"> 251</a>       summary: Cerrar la sesión actual</span>
+<span id="L252"><a href="#L252" class="line"> 252</a>       description: Idempotente. Revoca la sesión de la cookie si existe y borra la cookie. Siempre 204.</span>
+<span id="L253"><a href="#L253" class="line"> 253</a>       security:</span>
+<span id="L254"><a href="#L254" class="line"> 254</a>         - {}</span>
+<span id="L255"><a href="#L255" class="line"> 255</a>         - sessionCookie: []</span>
+<span id="L256"><a href="#L256" class="line"> 256</a>       responses:</span>
+<span id="L257"><a href="#L257" class="line"> 257</a>         &#x27;204&#x27;:</span>
+<span id="L258"><a href="#L258" class="line"> 258</a>           description: Sesión cerrada (o no había sesión)</span>
+<span id="L259"><a href="#L259" class="line"> 259</a>           headers:</span>
+<span id="L260"><a href="#L260" class="line"> 260</a>             Set-Cookie:</span>
+<span id="L261"><a href="#L261" class="line"> 261</a>               $ref: &#x27;#/components/headers/ClearSessionCookie&#x27;</span>
+<span id="L262"><a href="#L262" class="line"> 262</a>         &#x27;403&#x27;:</span>
+<span id="L263"><a href="#L263" class="line"> 263</a>           $ref: &#x27;#/components/responses/Forbidden&#x27;</span>
+<span id="L264"><a href="#L264" class="line"> 264</a>         5XX:</span>
+<span id="L265"><a href="#L265" class="line"> 265</a>           $ref: &#x27;#/components/responses/ServerError&#x27;</span>
+<span id="L266"><a href="#L266" class="line"> 266</a> </span>
+<span id="L267"><a href="#L267" class="line"> 267</a>   /auth/password-reset:</span>
+<span id="L268"><a href="#L268" class="line"> 268</a>     post:</span>
+<span id="L269"><a href="#L269" class="line"> 269</a>       tags: [auth]</span>
+<span id="L270"><a href="#L270" class="line"> 270</a>       operationId: requestPasswordReset</span>
+<span id="L271"><a href="#L271" class="line"> 271</a>       summary: Pedir enlace para restablecer la contraseña (Historia 2.3, FR-004)</span>
+<span id="L272"><a href="#L272" class="line"> 272</a>       description: |</span>
+<span id="L273"><a href="#L273" class="line"> 273</a>         Siempre 202 con cuerpo vacío, exista o no el email y cualquiera sea su estado (INV-13).</span>
+<span id="L274"><a href="#L274" class="line"> 274</a>         - Usuario activo: se envía un enlace de un solo uso válido por 1 hora.</span>
+<span id="L275"><a href="#L275" class="line"> 275</a>         - Usuario invitado (nunca aceptó): se reemite su invitación por 7 días y se le envía el</span>
+<span id="L276"><a href="#L276" class="line"> 276</a>           email de invitación (DD-20).</span>
+<span id="L277"><a href="#L277" class="line"> 277</a>         - Usuario desactivado o email inexistente: no se envía nada.</span>
+<span id="L278"><a href="#L278" class="line"> 278</a>       security: []</span>
+<span id="L279"><a href="#L279" class="line"> 279</a>       requestBody:</span>
+<span id="L280"><a href="#L280" class="line"> 280</a>         required: true</span>
+<span id="L281"><a href="#L281" class="line"> 281</a>         content:</span>
+<span id="L282"><a href="#L282" class="line"> 282</a>           application/json:</span>
+<span id="L283"><a href="#L283" class="line"> 283</a>             schema:</span>
+<span id="L284"><a href="#L284" class="line"> 284</a>               $ref: &#x27;#/components/schemas/PasswordResetRequest&#x27;</span>
+<span id="L285"><a href="#L285" class="line"> 285</a>       responses:</span>
+<span id="L286"><a href="#L286" class="line"> 286</a>         &#x27;202&#x27;:</span>
+<span id="L287"><a href="#L287" class="line"> 287</a>           description: Pedido aceptado</span>
+<span id="L288"><a href="#L288" class="line"> 288</a>         &#x27;400&#x27;:</span>
+<span id="L289"><a href="#L289" class="line"> 289</a>           $ref: &#x27;#/components/responses/MalformedRequest&#x27;</span>
+<span id="L290"><a href="#L290" class="line"> 290</a>         &#x27;403&#x27;:</span>
+<span id="L291"><a href="#L291" class="line"> 291</a>           $ref: &#x27;#/components/responses/Forbidden&#x27;</span>
+<span id="L292"><a href="#L292" class="line"> 292</a>         &#x27;413&#x27;:</span>
+<span id="L293"><a href="#L293" class="line"> 293</a>           $ref: &#x27;#/components/responses/PayloadTooLarge&#x27;</span>
+<span id="L294"><a href="#L294" class="line"> 294</a>         &#x27;415&#x27;:</span>
+<span id="L295"><a href="#L295" class="line"> 295</a>           $ref: &#x27;#/components/responses/UnsupportedMediaType&#x27;</span>
+<span id="L296"><a href="#L296" class="line"> 296</a>         &#x27;422&#x27;:</span>
+<span id="L297"><a href="#L297" class="line"> 297</a>           $ref: &#x27;#/components/responses/ValidationFailed&#x27;</span>
+<span id="L298"><a href="#L298" class="line"> 298</a>         &#x27;429&#x27;:</span>
+<span id="L299"><a href="#L299" class="line"> 299</a>           $ref: &#x27;#/components/responses/RateLimited&#x27;</span>
+<span id="L300"><a href="#L300" class="line"> 300</a>         5XX:</span>
+<span id="L301"><a href="#L301" class="line"> 301</a>           $ref: &#x27;#/components/responses/ServerError&#x27;</span>
+<span id="L302"><a href="#L302" class="line"> 302</a> </span>
+<span id="L303"><a href="#L303" class="line"> 303</a>   /auth/password-reset/confirm:</span>
+<span id="L304"><a href="#L304" class="line"> 304</a>     post:</span>
+<span id="L305"><a href="#L305" class="line"> 305</a>       tags: [auth]</span>
+<span id="L306"><a href="#L306" class="line"> 306</a>       operationId: confirmPasswordReset</span>
+<span id="L307"><a href="#L307" class="line"> 307</a>       summary: Definir una nueva contraseña con el token recibido por email</span>
+<span id="L308"><a href="#L308" class="line"> 308</a>       description: |</span>
+<span id="L309"><a href="#L309" class="line"> 309</a>         Consume el token, cambia la contraseña, cierra todas las sesiones del usuario y levanta el</span>
+<span id="L310"><a href="#L310" class="line"> 310</a>         bloqueo por intentos. Si el email no estaba verificado, queda verificado (el enlace llegó a</span>
+<span id="L311"><a href="#L311" class="line"> 311</a>         esa dirección, DD-46). No inicia sesión.</span>
+<span id="L312"><a href="#L312" class="line"> 312</a>       security: []</span>
+<span id="L313"><a href="#L313" class="line"> 313</a>       requestBody:</span>
+<span id="L314"><a href="#L314" class="line"> 314</a>         required: true</span>
+<span id="L315"><a href="#L315" class="line"> 315</a>         content:</span>
+<span id="L316"><a href="#L316" class="line"> 316</a>           application/json:</span>
+<span id="L317"><a href="#L317" class="line"> 317</a>             schema:</span>
+<span id="L318"><a href="#L318" class="line"> 318</a>               $ref: &#x27;#/components/schemas/PasswordResetConfirmRequest&#x27;</span>
+<span id="L319"><a href="#L319" class="line"> 319</a>       responses:</span>
+<span id="L320"><a href="#L320" class="line"> 320</a>         &#x27;204&#x27;:</span>
+<span id="L321"><a href="#L321" class="line"> 321</a>           description: Contraseña cambiada</span>
+<span id="L322"><a href="#L322" class="line"> 322</a>         &#x27;400&#x27;:</span>
+<span id="L323"><a href="#L323" class="line"> 323</a>           $ref: &#x27;#/components/responses/TokenInvalidOrMalformed&#x27;</span>
+<span id="L324"><a href="#L324" class="line"> 324</a>         &#x27;403&#x27;:</span>
+<span id="L325"><a href="#L325" class="line"> 325</a>           $ref: &#x27;#/components/responses/Forbidden&#x27;</span>
+<span id="L326"><a href="#L326" class="line"> 326</a>         &#x27;413&#x27;:</span>
+<span id="L327"><a href="#L327" class="line"> 327</a>           $ref: &#x27;#/components/responses/PayloadTooLarge&#x27;</span>
+<span id="L328"><a href="#L328" class="line"> 328</a>         &#x27;415&#x27;:</span>
+<span id="L329"><a href="#L329" class="line"> 329</a>           $ref: &#x27;#/components/responses/UnsupportedMediaType&#x27;</span>
+<span id="L330"><a href="#L330" class="line"> 330</a>         &#x27;422&#x27;:</span>
+<span id="L331"><a href="#L331" class="line"> 331</a>           $ref: &#x27;#/components/responses/ValidationFailed&#x27;</span>
+<span id="L332"><a href="#L332" class="line"> 332</a>         &#x27;429&#x27;:</span>
+<span id="L333"><a href="#L333" class="line"> 333</a>           $ref: &#x27;#/components/responses/RateLimited&#x27;</span>
+<span id="L334"><a href="#L334" class="line"> 334</a>         5XX:</span>
+<span id="L335"><a href="#L335" class="line"> 335</a>           $ref: &#x27;#/components/responses/ServerError&#x27;</span>
+<span id="L336"><a href="#L336" class="line"> 336</a> </span>
+<span id="L337"><a href="#L337" class="line"> 337</a>   /auth/email-verification/confirm:</span>
+<span id="L338"><a href="#L338" class="line"> 338</a>     post:</span>
+<span id="L339"><a href="#L339" class="line"> 339</a>       tags: [auth]</span>
+<span id="L340"><a href="#L340" class="line"> 340</a>       operationId: confirmEmailVerification</span>
+<span id="L341"><a href="#L341" class="line"> 341</a>       summary: Verificar el email con el token recibido (Historia 1.3)</span>
+<span id="L342"><a href="#L342" class="line"> 342</a>       description: |</span>
+<span id="L343"><a href="#L343" class="line"> 343</a>         Verificar el email habilita invitar usuarios (DD-46); el resto de la aplicación no depende</span>
+<span id="L344"><a href="#L344" class="line"> 344</a>         de la verificación (P-2). También quita el aviso de la UI.</span>
+<span id="L345"><a href="#L345" class="line"> 345</a>       security: []</span>
+<span id="L346"><a href="#L346" class="line"> 346</a>       requestBody:</span>
+<span id="L347"><a href="#L347" class="line"> 347</a>         required: true</span>
+<span id="L348"><a href="#L348" class="line"> 348</a>         content:</span>
+<span id="L349"><a href="#L349" class="line"> 349</a>           application/json:</span>
+<span id="L350"><a href="#L350" class="line"> 350</a>             schema:</span>
+<span id="L351"><a href="#L351" class="line"> 351</a>               $ref: &#x27;#/components/schemas/TokenRequest&#x27;</span>
+<span id="L352"><a href="#L352" class="line"> 352</a>       responses:</span>
+<span id="L353"><a href="#L353" class="line"> 353</a>         &#x27;204&#x27;:</span>
+<span id="L354"><a href="#L354" class="line"> 354</a>           description: Email verificado</span>
+<span id="L355"><a href="#L355" class="line"> 355</a>         &#x27;400&#x27;:</span>
+<span id="L356"><a href="#L356" class="line"> 356</a>           $ref: &#x27;#/components/responses/TokenInvalidOrMalformed&#x27;</span>
+<span id="L357"><a href="#L357" class="line"> 357</a>         &#x27;403&#x27;:</span>
+<span id="L358"><a href="#L358" class="line"> 358</a>           $ref: &#x27;#/components/responses/Forbidden&#x27;</span>
+<span id="L359"><a href="#L359" class="line"> 359</a>         &#x27;413&#x27;:</span>
+<span id="L360"><a href="#L360" class="line"> 360</a>           $ref: &#x27;#/components/responses/PayloadTooLarge&#x27;</span>
+<span id="L361"><a href="#L361" class="line"> 361</a>         &#x27;415&#x27;:</span>
+<span id="L362"><a href="#L362" class="line"> 362</a>           $ref: &#x27;#/components/responses/UnsupportedMediaType&#x27;</span>
+<span id="L363"><a href="#L363" class="line"> 363</a>         &#x27;429&#x27;:</span>
+<span id="L364"><a href="#L364" class="line"> 364</a>           $ref: &#x27;#/components/responses/RateLimited&#x27;</span>
+<span id="L365"><a href="#L365" class="line"> 365</a>         5XX:</span>
+<span id="L366"><a href="#L366" class="line"> 366</a>           $ref: &#x27;#/components/responses/ServerError&#x27;</span>
+<span id="L367"><a href="#L367" class="line"> 367</a> </span>
+<span id="L368"><a href="#L368" class="line"> 368</a>   /auth/email-verification/resend:</span>
+<span id="L369"><a href="#L369" class="line"> 369</a>     post:</span>
+<span id="L370"><a href="#L370" class="line"> 370</a>       tags: [auth]</span>
+<span id="L371"><a href="#L371" class="line"> 371</a>       operationId: resendEmailVerification</span>
+<span id="L372"><a href="#L372" class="line"> 372</a>       summary: Reenviar el email de verificación al usuario de la sesión</span>
+<span id="L373"><a href="#L373" class="line"> 373</a>       description: |</span>
+<span id="L374"><a href="#L374" class="line"> 374</a>         Si el email ya está verificado no envía nada y responde 202. Tiene dos cupos, en este</span>
+<span id="L375"><a href="#L375" class="line"> 375</a>         orden:</span>
+<span id="L376"><a href="#L376" class="line"> 376</a>         - por IP, antes de autenticar, compartido con `POST /auth/email-verification/confirm`: 20</span>
+<span id="L377"><a href="#L377" class="line"> 377</a>           pedidos de una vez y después uno cada 3 minutos (DD-9);</span>
+<span id="L378"><a href="#L378" class="line"> 378</a>         - por usuario de la sesión, después de autenticar: 3 pedidos de una vez y después uno cada</span>
+<span id="L379"><a href="#L379" class="line"> 379</a>           20 minutos (DD-46). Cuenta todo pedido que llega hasta él, también el de un email ya</span>
+<span id="L380"><a href="#L380" class="line"> 380</a>           verificado.</span>
+<span id="L381"><a href="#L381" class="line"> 381</a>         Si se excede cualquiera de los dos, responde 429 `rate_limited` con `Retry-After` (segundos</span>
+<span id="L382"><a href="#L382" class="line"> 382</a>         hasta que ese cupo vuelve a admitir un pedido), sin enviar nada ni invalidar el último</span>
+<span id="L383"><a href="#L383" class="line"> 383</a>         enlace enviado. Si se agotaron los dos, responde el de IP; al reintentar después de su</span>
+<span id="L384"><a href="#L384" class="line"> 384</a>         `Retry-After`, puede llegar el del usuario.</span>
+<span id="L385"><a href="#L385" class="line"> 385</a>       security:</span>
+<span id="L386"><a href="#L386" class="line"> 386</a>         - sessionCookie: []</span>
+<span id="L387"><a href="#L387" class="line"> 387</a>       responses:</span>
+<span id="L388"><a href="#L388" class="line"> 388</a>         &#x27;202&#x27;:</span>
+<span id="L389"><a href="#L389" class="line"> 389</a>           description: Pedido aceptado</span>
+<span id="L390"><a href="#L390" class="line"> 390</a>         &#x27;401&#x27;:</span>
+<span id="L391"><a href="#L391" class="line"> 391</a>           $ref: &#x27;#/components/responses/Unauthenticated&#x27;</span>
+<span id="L392"><a href="#L392" class="line"> 392</a>         &#x27;403&#x27;:</span>
+<span id="L393"><a href="#L393" class="line"> 393</a>           $ref: &#x27;#/components/responses/Forbidden&#x27;</span>
+<span id="L394"><a href="#L394" class="line"> 394</a>         &#x27;429&#x27;:</span>
+<span id="L395"><a href="#L395" class="line"> 395</a>           $ref: &#x27;#/components/responses/RateLimited&#x27;</span>
+<span id="L396"><a href="#L396" class="line"> 396</a>         5XX:</span>
+<span id="L397"><a href="#L397" class="line"> 397</a>           $ref: &#x27;#/components/responses/ServerError&#x27;</span>
+<span id="L398"><a href="#L398" class="line"> 398</a> </span>
+<span id="L399"><a href="#L399" class="line"> 399</a>   /auth/invitations/preview:</span>
+<span id="L400"><a href="#L400" class="line"> 400</a>     post:</span>
+<span id="L401"><a href="#L401" class="line"> 401</a>       tags: [auth]</span>
+<span id="L402"><a href="#L402" class="line"> 402</a>       operationId: previewInvitation</span>
+<span id="L403"><a href="#L403" class="line"> 403</a>       summary: Ver los datos de una invitación antes de aceptarla</span>
+<span id="L404"><a href="#L404" class="line"> 404</a>       description: El token viaja en el body (no en la URL) para que no quede en logs.</span>
+<span id="L405"><a href="#L405" class="line"> 405</a>       security: []</span>
+<span id="L406"><a href="#L406" class="line"> 406</a>       requestBody:</span>
+<span id="L407"><a href="#L407" class="line"> 407</a>         required: true</span>
+<span id="L408"><a href="#L408" class="line"> 408</a>         content:</span>
+<span id="L409"><a href="#L409" class="line"> 409</a>           application/json:</span>
+<span id="L410"><a href="#L410" class="line"> 410</a>             schema:</span>
+<span id="L411"><a href="#L411" class="line"> 411</a>               $ref: &#x27;#/components/schemas/TokenRequest&#x27;</span>
+<span id="L412"><a href="#L412" class="line"> 412</a>       responses:</span>
+<span id="L413"><a href="#L413" class="line"> 413</a>         &#x27;200&#x27;:</span>
+<span id="L414"><a href="#L414" class="line"> 414</a>           description: Invitación vigente</span>
+<span id="L415"><a href="#L415" class="line"> 415</a>           content:</span>
+<span id="L416"><a href="#L416" class="line"> 416</a>             application/json:</span>
+<span id="L417"><a href="#L417" class="line"> 417</a>               schema:</span>
+<span id="L418"><a href="#L418" class="line"> 418</a>                 $ref: &#x27;#/components/schemas/InvitationPreview&#x27;</span>
+<span id="L419"><a href="#L419" class="line"> 419</a>         &#x27;400&#x27;:</span>
+<span id="L420"><a href="#L420" class="line"> 420</a>           $ref: &#x27;#/components/responses/TokenInvalidOrMalformed&#x27;</span>
+<span id="L421"><a href="#L421" class="line"> 421</a>         &#x27;403&#x27;:</span>
+<span id="L422"><a href="#L422" class="line"> 422</a>           $ref: &#x27;#/components/responses/Forbidden&#x27;</span>
+<span id="L423"><a href="#L423" class="line"> 423</a>         &#x27;413&#x27;:</span>
+<span id="L424"><a href="#L424" class="line"> 424</a>           $ref: &#x27;#/components/responses/PayloadTooLarge&#x27;</span>
+<span id="L425"><a href="#L425" class="line"> 425</a>         &#x27;415&#x27;:</span>
+<span id="L426"><a href="#L426" class="line"> 426</a>           $ref: &#x27;#/components/responses/UnsupportedMediaType&#x27;</span>
+<span id="L427"><a href="#L427" class="line"> 427</a>         &#x27;429&#x27;:</span>
+<span id="L428"><a href="#L428" class="line"> 428</a>           $ref: &#x27;#/components/responses/RateLimited&#x27;</span>
+<span id="L429"><a href="#L429" class="line"> 429</a>         5XX:</span>
+<span id="L430"><a href="#L430" class="line"> 430</a>           $ref: &#x27;#/components/responses/ServerError&#x27;</span>
+<span id="L431"><a href="#L431" class="line"> 431</a> </span>
+<span id="L432"><a href="#L432" class="line"> 432</a>   /auth/invitations/accept:</span>
+<span id="L433"><a href="#L433" class="line"> 433</a>     post:</span>
+<span id="L434"><a href="#L434" class="line"> 434</a>       tags: [auth]</span>
+<span id="L435"><a href="#L435" class="line"> 435</a>       operationId: acceptInvitation</span>
+<span id="L436"><a href="#L436" class="line"> 436</a>       summary: Aceptar una invitación y definir nombre y contraseña (Historia 3.2)</span>
+<span id="L437"><a href="#L437" class="line"> 437</a>       description: Activa al usuario, marca su email como verificado e inicia sesión.</span>
+<span id="L438"><a href="#L438" class="line"> 438</a>       security: []</span>
+<span id="L439"><a href="#L439" class="line"> 439</a>       requestBody:</span>
+<span id="L440"><a href="#L440" class="line"> 440</a>         required: true</span>
+<span id="L441"><a href="#L441" class="line"> 441</a>         content:</span>
+<span id="L442"><a href="#L442" class="line"> 442</a>           application/json:</span>
+<span id="L443"><a href="#L443" class="line"> 443</a>             schema:</span>
+<span id="L444"><a href="#L444" class="line"> 444</a>               $ref: &#x27;#/components/schemas/InvitationAcceptRequest&#x27;</span>
+<span id="L445"><a href="#L445" class="line"> 445</a>       responses:</span>
+<span id="L446"><a href="#L446" class="line"> 446</a>         &#x27;201&#x27;:</span>
+<span id="L447"><a href="#L447" class="line"> 447</a>           description: Invitación aceptada y sesión iniciada</span>
+<span id="L448"><a href="#L448" class="line"> 448</a>           headers:</span>
+<span id="L449"><a href="#L449" class="line"> 449</a>             Set-Cookie:</span>
+<span id="L450"><a href="#L450" class="line"> 450</a>               $ref: &#x27;#/components/headers/SetSessionCookie&#x27;</span>
+<span id="L451"><a href="#L451" class="line"> 451</a>           content:</span>
+<span id="L452"><a href="#L452" class="line"> 452</a>             application/json:</span>
+<span id="L453"><a href="#L453" class="line"> 453</a>               schema:</span>
+<span id="L454"><a href="#L454" class="line"> 454</a>                 $ref: &#x27;#/components/schemas/SessionInfo&#x27;</span>
+<span id="L455"><a href="#L455" class="line"> 455</a>         &#x27;400&#x27;:</span>
+<span id="L456"><a href="#L456" class="line"> 456</a>           $ref: &#x27;#/components/responses/TokenInvalidOrMalformed&#x27;</span>
+<span id="L457"><a href="#L457" class="line"> 457</a>         &#x27;403&#x27;:</span>
+<span id="L458"><a href="#L458" class="line"> 458</a>           $ref: &#x27;#/components/responses/Forbidden&#x27;</span>
+<span id="L459"><a href="#L459" class="line"> 459</a>         &#x27;413&#x27;:</span>
+<span id="L460"><a href="#L460" class="line"> 460</a>           $ref: &#x27;#/components/responses/PayloadTooLarge&#x27;</span>
+<span id="L461"><a href="#L461" class="line"> 461</a>         &#x27;415&#x27;:</span>
+<span id="L462"><a href="#L462" class="line"> 462</a>           $ref: &#x27;#/components/responses/UnsupportedMediaType&#x27;</span>
+<span id="L463"><a href="#L463" class="line"> 463</a>         &#x27;422&#x27;:</span>
+<span id="L464"><a href="#L464" class="line"> 464</a>           $ref: &#x27;#/components/responses/ValidationFailed&#x27;</span>
+<span id="L465"><a href="#L465" class="line"> 465</a>         &#x27;429&#x27;:</span>
+<span id="L466"><a href="#L466" class="line"> 466</a>           $ref: &#x27;#/components/responses/RateLimited&#x27;</span>
+<span id="L467"><a href="#L467" class="line"> 467</a>         5XX:</span>
+<span id="L468"><a href="#L468" class="line"> 468</a>           $ref: &#x27;#/components/responses/ServerError&#x27;</span>
+<span id="L469"><a href="#L469" class="line"> 469</a> </span>
+<span id="L470"><a href="#L470" class="line"> 470</a>   /me:</span>
+<span id="L471"><a href="#L471" class="line"> 471</a>     get:</span>
+<span id="L472"><a href="#L472" class="line"> 472</a>       tags: [me]</span>
+<span id="L473"><a href="#L473" class="line"> 473</a>       operationId: getMe</span>
+<span id="L474"><a href="#L474" class="line"> 474</a>       summary: Usuario, empresa y permisos de la sesión actual</span>
+<span id="L475"><a href="#L475" class="line"> 475</a>       description: |</span>
+<span id="L476"><a href="#L476" class="line"> 476</a>         `permissions` es la lista de FR-007 que corresponde al rol. El frontend la usa solo para</span>
+<span id="L477"><a href="#L477" class="line"> 477</a>         mostrar u ocultar opciones (UX); la autorización real la hace el servidor en cada endpoint.</span>
+<span id="L478"><a href="#L478" class="line"> 478</a>         `user.email_verified` = false indica a la UI que muestre el aviso de verificación (P-2) y</span>
+<span id="L479"><a href="#L479" class="line"> 479</a>         que invitar está deshabilitado hasta verificar (DD-46).</span>
+<span id="L480"><a href="#L480" class="line"> 480</a>       security:</span>
+<span id="L481"><a href="#L481" class="line"> 481</a>         - sessionCookie: []</span>
+<span id="L482"><a href="#L482" class="line"> 482</a>       responses:</span>
+<span id="L483"><a href="#L483" class="line"> 483</a>         &#x27;200&#x27;:</span>
+<span id="L484"><a href="#L484" class="line"> 484</a>           description: Sesión vigente</span>
+<span id="L485"><a href="#L485" class="line"> 485</a>           content:</span>
+<span id="L486"><a href="#L486" class="line"> 486</a>             application/json:</span>
+<span id="L487"><a href="#L487" class="line"> 487</a>               schema:</span>
+<span id="L488"><a href="#L488" class="line"> 488</a>                 $ref: &#x27;#/components/schemas/SessionInfo&#x27;</span>
+<span id="L489"><a href="#L489" class="line"> 489</a>         &#x27;401&#x27;:</span>
+<span id="L490"><a href="#L490" class="line"> 490</a>           $ref: &#x27;#/components/responses/Unauthenticated&#x27;</span>
+<span id="L491"><a href="#L491" class="line"> 491</a>         5XX:</span>
+<span id="L492"><a href="#L492" class="line"> 492</a>           $ref: &#x27;#/components/responses/ServerError&#x27;</span>
+<span id="L493"><a href="#L493" class="line"> 493</a> </span>
+<span id="L494"><a href="#L494" class="line"> 494</a>   /tenant:</span>
+<span id="L495"><a href="#L495" class="line"> 495</a>     get:</span>
+<span id="L496"><a href="#L496" class="line"> 496</a>       tags: [tenant]</span>
+<span id="L497"><a href="#L497" class="line"> 497</a>       operationId: getTenant</span>
+<span id="L498"><a href="#L498" class="line"> 498</a>       summary: Datos de la empresa de la sesión</span>
+<span id="L499"><a href="#L499" class="line"> 499</a>       description: Disponible para cualquier rol (el encabezado de la app muestra nombre y logo).</span>
+<span id="L500"><a href="#L500" class="line"> 500</a>       security:</span>
+<span id="L501"><a href="#L501" class="line"> 501</a>         - sessionCookie: []</span>
+<span id="L502"><a href="#L502" class="line"> 502</a>       responses:</span>
+<span id="L503"><a href="#L503" class="line"> 503</a>         &#x27;200&#x27;:</span>
+<span id="L504"><a href="#L504" class="line"> 504</a>           description: Datos de la empresa</span>
+<span id="L505"><a href="#L505" class="line"> 505</a>           content:</span>
+<span id="L506"><a href="#L506" class="line"> 506</a>             application/json:</span>
+<span id="L507"><a href="#L507" class="line"> 507</a>               schema:</span>
+<span id="L508"><a href="#L508" class="line"> 508</a>                 $ref: &#x27;#/components/schemas/Tenant&#x27;</span>
+<span id="L509"><a href="#L509" class="line"> 509</a>         &#x27;401&#x27;:</span>
+<span id="L510"><a href="#L510" class="line"> 510</a>           $ref: &#x27;#/components/responses/Unauthenticated&#x27;</span>
+<span id="L511"><a href="#L511" class="line"> 511</a>         5XX:</span>
+<span id="L512"><a href="#L512" class="line"> 512</a>           $ref: &#x27;#/components/responses/ServerError&#x27;</span>
+<span id="L513"><a href="#L513" class="line"> 513</a>     patch:</span>
+<span id="L514"><a href="#L514" class="line"> 514</a>       tags: [tenant]</span>
+<span id="L515"><a href="#L515" class="line"> 515</a>       operationId: updateTenant</span>
+<span id="L516"><a href="#L516" class="line"> 516</a>       summary: Editar datos de la empresa (Historia 4)</span>
+<span id="L517"><a href="#L517" class="line"> 517</a>       description: |</span>
+<span id="L518"><a href="#L518" class="line"> 518</a>         Requiere `settings.manage`. Solo se modifican los campos presentes. En los campos</span>
+<span id="L519"><a href="#L519" class="line"> 519</a>         opcionales, `null` los borra, y un texto vacío o solo con espacios también (se guarda</span>
+<span id="L520"><a href="#L520" class="line"> 520</a>         `null`). `name` y `timezone` no admiten `null`: un `null` ahí responde `400` con</span>
+<span id="L521"><a href="#L521" class="line"> 521</a>         `malformed_request`, como cualquier valor de otro tipo. Los textos se guardan sin los</span>
+<span id="L522"><a href="#L522" class="line"> 522</a>         espacios de los extremos. `base_currency` no es editable (DD-15). Una `timezone`</span>
+<span id="L523"><a href="#L523" class="line"> 523</a>         desconocida, vacía o `Local` (no es un nombre IANA) responde `422` con</span>
+<span id="L524"><a href="#L524" class="line"> 524</a>         `invalid_timezone` (a diferencia del registro, acá el campo es visible para el usuario).</span>
+<span id="L525"><a href="#L525" class="line"> 525</a>         Si los valores enviados son iguales a los guardados, no cambia nada: la respuesta es</span>
+<span id="L526"><a href="#L526" class="line"> 526</a>         `200` con la empresa tal cual, sin modificar `updated_at`.</span>
+<span id="L527"><a href="#L527" class="line"> 527</a>       security:</span>
+<span id="L528"><a href="#L528" class="line"> 528</a>         - sessionCookie: []</span>
+<span id="L529"><a href="#L529" class="line"> 529</a>       requestBody:</span>
+<span id="L530"><a href="#L530" class="line"> 530</a>         required: true</span>
+<span id="L531"><a href="#L531" class="line"> 531</a>         content:</span>
+<span id="L532"><a href="#L532" class="line"> 532</a>           application/json:</span>
+<span id="L533"><a href="#L533" class="line"> 533</a>             schema:</span>
+<span id="L534"><a href="#L534" class="line"> 534</a>               $ref: &#x27;#/components/schemas/TenantUpdate&#x27;</span>
+<span id="L535"><a href="#L535" class="line"> 535</a>       responses:</span>
+<span id="L536"><a href="#L536" class="line"> 536</a>         &#x27;200&#x27;:</span>
+<span id="L537"><a href="#L537" class="line"> 537</a>           description: Datos actualizados</span>
+<span id="L538"><a href="#L538" class="line"> 538</a>           content:</span>
+<span id="L539"><a href="#L539" class="line"> 539</a>             application/json:</span>
+<span id="L540"><a href="#L540" class="line"> 540</a>               schema:</span>
+<span id="L541"><a href="#L541" class="line"> 541</a>                 $ref: &#x27;#/components/schemas/Tenant&#x27;</span>
+<span id="L542"><a href="#L542" class="line"> 542</a>         &#x27;400&#x27;:</span>
+<span id="L543"><a href="#L543" class="line"> 543</a>           $ref: &#x27;#/components/responses/MalformedRequest&#x27;</span>
+<span id="L544"><a href="#L544" class="line"> 544</a>         &#x27;401&#x27;:</span>
+<span id="L545"><a href="#L545" class="line"> 545</a>           $ref: &#x27;#/components/responses/Unauthenticated&#x27;</span>
+<span id="L546"><a href="#L546" class="line"> 546</a>         &#x27;403&#x27;:</span>
+<span id="L547"><a href="#L547" class="line"> 547</a>           $ref: &#x27;#/components/responses/Forbidden&#x27;</span>
+<span id="L548"><a href="#L548" class="line"> 548</a>         &#x27;413&#x27;:</span>
+<span id="L549"><a href="#L549" class="line"> 549</a>           $ref: &#x27;#/components/responses/PayloadTooLarge&#x27;</span>
+<span id="L550"><a href="#L550" class="line"> 550</a>         &#x27;415&#x27;:</span>
+<span id="L551"><a href="#L551" class="line"> 551</a>           $ref: &#x27;#/components/responses/UnsupportedMediaType&#x27;</span>
+<span id="L552"><a href="#L552" class="line"> 552</a>         &#x27;422&#x27;:</span>
+<span id="L553"><a href="#L553" class="line"> 553</a>           $ref: &#x27;#/components/responses/ValidationFailed&#x27;</span>
+<span id="L554"><a href="#L554" class="line"> 554</a>         5XX:</span>
+<span id="L555"><a href="#L555" class="line"> 555</a>           $ref: &#x27;#/components/responses/ServerError&#x27;</span>
+<span id="L556"><a href="#L556" class="line"> 556</a> </span>
+<span id="L557"><a href="#L557" class="line"> 557</a>   /tenant/logo:</span>
+<span id="L558"><a href="#L558" class="line"> 558</a>     get:</span>
+<span id="L559"><a href="#L559" class="line"> 559</a>       tags: [tenant]</span>
+<span id="L560"><a href="#L560" class="line"> 560</a>       operationId: getTenantLogo</span>
+<span id="L561"><a href="#L561" class="line"> 561</a>       summary: Imagen del logo de la empresa</span>
+<span id="L562"><a href="#L562" class="line"> 562</a>       description: |</span>
+<span id="L563"><a href="#L563" class="line"> 563</a>         Se sirve por el backend con tipo fijo y `X-Content-Type-Options: nosniff` (DD-11). Los</span>
+<span id="L564"><a href="#L564" class="line"> 564</a>         bytes son exactamente los que se subieron y validaron: el servidor no los modifica (no</span>
+<span id="L565"><a href="#L565" class="line"> 565</a>         quita metadatos ni aplica la orientación EXIF).</span>
+<span id="L566"><a href="#L566" class="line"> 566</a> </span>
+<span id="L567"><a href="#L567" class="line"> 567</a>         Caché (DD-23): la URL es la misma para todas las empresas, así que la respuesta lleva</span>
+<span id="L568"><a href="#L568" class="line"> 568</a>         `Cache-Control: private, no-cache` (el navegador revalida en cada uso) y un `ETag` que</span>
+<span id="L569"><a href="#L569" class="line"> 569</a>         identifica el objeto (cambia en cada subida y nunca coincide entre empresas). Con</span>
+<span id="L570"><a href="#L570" class="line"> 570</a>         `If-None-Match` igual al `ETag` vigente de la empresa de la sesión responde `304` sin</span>
+<span id="L571"><a href="#L571" class="line"> 571</a>         cuerpo. El parámetro `v` no cambia la respuesta: la UI lo usa para forzar una URL nueva</span>
+<span id="L572"><a href="#L572" class="line"> 572</a>         cuando cambia el logo (`?v={id}-{updated_at}`).</span>
+<span id="L573"><a href="#L573" class="line"> 573</a>       security:</span>
+<span id="L574"><a href="#L574" class="line"> 574</a>         - sessionCookie: []</span>
+<span id="L575"><a href="#L575" class="line"> 575</a>       parameters:</span>
+<span id="L576"><a href="#L576" class="line"> 576</a>         - name: v</span>
+<span id="L577"><a href="#L577" class="line"> 577</a>           in: query</span>
+<span id="L578"><a href="#L578" class="line"> 578</a>           required: false</span>
+<span id="L579"><a href="#L579" class="line"> 579</a>           description: Versión elegida por el cliente para invalidar su caché. El servidor lo ignora.</span>
+<span id="L580"><a href="#L580" class="line"> 580</a>           schema:</span>
+<span id="L581"><a href="#L581" class="line"> 581</a>             type: string</span>
+<span id="L582"><a href="#L582" class="line"> 582</a>             maxLength: 100</span>
+<span id="L583"><a href="#L583" class="line"> 583</a>         - name: If-None-Match</span>
+<span id="L584"><a href="#L584" class="line"> 584</a>           in: header</span>
+<span id="L585"><a href="#L585" class="line"> 585</a>           required: false</span>
+<span id="L586"><a href="#L586" class="line"> 586</a>           description: &#x27;`ETag` recibido antes; si coincide con el vigente, la respuesta es `304`.&#x27;</span>
+<span id="L587"><a href="#L587" class="line"> 587</a>           schema:</span>
+<span id="L588"><a href="#L588" class="line"> 588</a>             type: string</span>
+<span id="L589"><a href="#L589" class="line"> 589</a>             maxLength: 200</span>
+<span id="L590"><a href="#L590" class="line"> 590</a>       responses:</span>
+<span id="L591"><a href="#L591" class="line"> 591</a>         &#x27;200&#x27;:</span>
+<span id="L592"><a href="#L592" class="line"> 592</a>           description: Imagen</span>
+<span id="L593"><a href="#L593" class="line"> 593</a>           headers:</span>
+<span id="L594"><a href="#L594" class="line"> 594</a>             Cache-Control:</span>
+<span id="L595"><a href="#L595" class="line"> 595</a>               $ref: &#x27;#/components/headers/LogoCacheControl&#x27;</span>
+<span id="L596"><a href="#L596" class="line"> 596</a>             ETag:</span>
+<span id="L597"><a href="#L597" class="line"> 597</a>               $ref: &#x27;#/components/headers/LogoETag&#x27;</span>
+<span id="L598"><a href="#L598" class="line"> 598</a>           content:</span>
+<span id="L599"><a href="#L599" class="line"> 599</a>             image/png:</span>
+<span id="L600"><a href="#L600" class="line"> 600</a>               schema:</span>
+<span id="L601"><a href="#L601" class="line"> 601</a>                 type: string</span>
+<span id="L602"><a href="#L602" class="line"> 602</a>                 contentMediaType: image/png</span>
+<span id="L603"><a href="#L603" class="line"> 603</a>             image/jpeg:</span>
+<span id="L604"><a href="#L604" class="line"> 604</a>               schema:</span>
+<span id="L605"><a href="#L605" class="line"> 605</a>                 type: string</span>
+<span id="L606"><a href="#L606" class="line"> 606</a>                 contentMediaType: image/jpeg</span>
+<span id="L607"><a href="#L607" class="line"> 607</a>         &#x27;304&#x27;:</span>
+<span id="L608"><a href="#L608" class="line"> 608</a>           description: El logo no cambió desde el `ETag` enviado (sin cuerpo)</span>
+<span id="L609"><a href="#L609" class="line"> 609</a>           headers:</span>
+<span id="L610"><a href="#L610" class="line"> 610</a>             Cache-Control:</span>
+<span id="L611"><a href="#L611" class="line"> 611</a>               $ref: &#x27;#/components/headers/LogoCacheControl&#x27;</span>
+<span id="L612"><a href="#L612" class="line"> 612</a>             ETag:</span>
+<span id="L613"><a href="#L613" class="line"> 613</a>               $ref: &#x27;#/components/headers/LogoETag&#x27;</span>
+<span id="L614"><a href="#L614" class="line"> 614</a>         &#x27;401&#x27;:</span>
+<span id="L615"><a href="#L615" class="line"> 615</a>           $ref: &#x27;#/components/responses/Unauthenticated&#x27;</span>
+<span id="L616"><a href="#L616" class="line"> 616</a>         &#x27;404&#x27;:</span>
+<span id="L617"><a href="#L617" class="line"> 617</a>           $ref: &#x27;#/components/responses/NotFound&#x27;</span>
+<span id="L618"><a href="#L618" class="line"> 618</a>         5XX:</span>
+<span id="L619"><a href="#L619" class="line"> 619</a>           $ref: &#x27;#/components/responses/ServerError&#x27;</span>
+<span id="L620"><a href="#L620" class="line"> 620</a>     put:</span>
+<span id="L621"><a href="#L621" class="line"> 621</a>       tags: [tenant]</span>
+<span id="L622"><a href="#L622" class="line"> 622</a>       operationId: putTenantLogo</span>
+<span id="L623"><a href="#L623" class="line"> 623</a>       summary: Subir o reemplazar el logo (Historia 4)</span>
+<span id="L624"><a href="#L624" class="line"> 624</a>       description: |</span>
+<span id="L625"><a href="#L625" class="line"> 625</a>         Requiere `settings.manage`. Límites (DD-11, DD-31); son la autoridad aunque la UI achique</span>
+<span id="L626"><a href="#L626" class="line"> 626</a>         y vuelva a codificar la imagen antes de subirla:</span>
+<span id="L627"><a href="#L627" class="line"> 627</a> </span>
+<span id="L628"><a href="#L628" class="line"> 628</a>         - **Archivo**: PNG o JPEG (detectado por los primeros bytes, no por la extensión ni por el</span>
+<span id="L629"><a href="#L629" class="line"> 629</a>           `Content-Type` de la parte), de hasta **2 097 152 bytes** (2 MiB) medidos sobre el</span>
+<span id="L630"><a href="#L630" class="line"> 630</a>           contenido de la parte `file`, y de hasta 2000 x 2000 px (leídos del encabezado).</span>
+<span id="L631"><a href="#L631" class="line"> 631</a>         - **Cuerpo** `multipart/form-data` completo (*boundary*, encabezados de la parte y</span>
+<span id="L632"><a href="#L632" class="line"> 632</a>           archivo): hasta **2 162 688 bytes** (2 MiB + 64 KiB).</span>
+<span id="L633"><a href="#L633" class="line"> 633</a>         - Exactamente **una** parte, llamada `file`.</span>
+<span id="L634"><a href="#L634" class="line"> 634</a> </span>
+<span id="L635"><a href="#L635" class="line"> 635</a>         Errores:</span>
+<span id="L636"><a href="#L636" class="line"> 636</a>         - `413 payload_too_large`: el archivo supera 2 097 152 bytes o el cuerpo supera</span>
+<span id="L637"><a href="#L637" class="line"> 637</a>           2 162 688 bytes. El servidor deja de leer al superar el límite.</span>
+<span id="L638"><a href="#L638" class="line"> 638</a>         - `415 unsupported_media_type`: el archivo no es PNG ni JPEG (p. ej. GIF, WebP, SVG),</span>
+<span id="L639"><a href="#L639" class="line"> 639</a>           o el request no es `multipart/form-data`.</span>
+<span id="L640"><a href="#L640" class="line"> 640</a>         - `422 validation_failed` con `errors[].field = file`: `code = required` si falta la</span>
+<span id="L641"><a href="#L641" class="line"> 641</a>           parte `file` o está vacía; `code = invalid_value` si la imagen no se puede leer o</span>
+<span id="L642"><a href="#L642" class="line"> 642</a>           supera 2000 x 2000 px.</span>
+<span id="L643"><a href="#L643" class="line"> 643</a>         - `400 malformed_request`: cuerpo multipart mal formado, una parte con otro nombre o</span>
+<span id="L644"><a href="#L644" class="line"> 644</a>           más de una parte `file`.</span>
+<span id="L645"><a href="#L645" class="line"> 645</a> </span>
+<span id="L646"><a href="#L646" class="line"> 646</a>         Los bytes validados se guardan sin modificar (el servidor no quita metadatos EXIF).</span>
+<span id="L647"><a href="#L647" class="line"> 647</a>       security:</span>
+<span id="L648"><a href="#L648" class="line"> 648</a>         - sessionCookie: []</span>
+<span id="L649"><a href="#L649" class="line"> 649</a>       requestBody:</span>
+<span id="L650"><a href="#L650" class="line"> 650</a>         required: true</span>
+<span id="L651"><a href="#L651" class="line"> 651</a>         content:</span>
+<span id="L652"><a href="#L652" class="line"> 652</a>           multipart/form-data:</span>
+<span id="L653"><a href="#L653" class="line"> 653</a>             schema:</span>
+<span id="L654"><a href="#L654" class="line"> 654</a>               type: object</span>
+<span id="L655"><a href="#L655" class="line"> 655</a>               required: [file]</span>
+<span id="L656"><a href="#L656" class="line"> 656</a>               additionalProperties: false</span>
+<span id="L657"><a href="#L657" class="line"> 657</a>               properties:</span>
+<span id="L658"><a href="#L658" class="line"> 658</a>                 file:</span>
+<span id="L659"><a href="#L659" class="line"> 659</a>                   type: string</span>
+<span id="L660"><a href="#L660" class="line"> 660</a>                   contentMediaType: application/octet-stream</span>
+<span id="L661"><a href="#L661" class="line"> 661</a>                   description: Archivo de imagen PNG o JPEG de hasta 2 097 152 bytes y 2000 x 2000 px</span>
+<span id="L662"><a href="#L662" class="line"> 662</a>             encoding:</span>
+<span id="L663"><a href="#L663" class="line"> 663</a>               file:</span>
+<span id="L664"><a href="#L664" class="line"> 664</a>                 contentType: image/png, image/jpeg</span>
+<span id="L665"><a href="#L665" class="line"> 665</a>       responses:</span>
+<span id="L666"><a href="#L666" class="line"> 666</a>         &#x27;200&#x27;:</span>
+<span id="L667"><a href="#L667" class="line"> 667</a>           description: Logo guardado</span>
+<span id="L668"><a href="#L668" class="line"> 668</a>           content:</span>
+<span id="L669"><a href="#L669" class="line"> 669</a>             application/json:</span>
+<span id="L670"><a href="#L670" class="line"> 670</a>               schema:</span>
+<span id="L671"><a href="#L671" class="line"> 671</a>                 $ref: &#x27;#/components/schemas/Tenant&#x27;</span>
+<span id="L672"><a href="#L672" class="line"> 672</a>         &#x27;400&#x27;:</span>
+<span id="L673"><a href="#L673" class="line"> 673</a>           $ref: &#x27;#/components/responses/MalformedRequest&#x27;</span>
+<span id="L674"><a href="#L674" class="line"> 674</a>         &#x27;401&#x27;:</span>
+<span id="L675"><a href="#L675" class="line"> 675</a>           $ref: &#x27;#/components/responses/Unauthenticated&#x27;</span>
+<span id="L676"><a href="#L676" class="line"> 676</a>         &#x27;403&#x27;:</span>
+<span id="L677"><a href="#L677" class="line"> 677</a>           $ref: &#x27;#/components/responses/Forbidden&#x27;</span>
+<span id="L678"><a href="#L678" class="line"> 678</a>         &#x27;413&#x27;:</span>
+<span id="L679"><a href="#L679" class="line"> 679</a>           $ref: &#x27;#/components/responses/PayloadTooLarge&#x27;</span>
+<span id="L680"><a href="#L680" class="line"> 680</a>         &#x27;415&#x27;:</span>
+<span id="L681"><a href="#L681" class="line"> 681</a>           $ref: &#x27;#/components/responses/UnsupportedMediaType&#x27;</span>
+<span id="L682"><a href="#L682" class="line"> 682</a>         &#x27;422&#x27;:</span>
+<span id="L683"><a href="#L683" class="line"> 683</a>           description: |</span>
+<span id="L684"><a href="#L684" class="line"> 684</a>             Falta la parte `file` (`errors[].code` = `required`) o la imagen no se puede leer o</span>
+<span id="L685"><a href="#L685" class="line"> 685</a>             supera 2000 x 2000 px (`errors[].code` = `invalid_value`); en ambos casos</span>
+<span id="L686"><a href="#L686" class="line"> 686</a>             `errors[].field` = `file`</span>
+<span id="L687"><a href="#L687" class="line"> 687</a>           content:</span>
+<span id="L688"><a href="#L688" class="line"> 688</a>             application/problem+json:</span>
+<span id="L689"><a href="#L689" class="line"> 689</a>               schema:</span>
+<span id="L690"><a href="#L690" class="line"> 690</a>                 $ref: &#x27;#/components/schemas/ValidationProblem&#x27;</span>
+<span id="L691"><a href="#L691" class="line"> 691</a>         5XX:</span>
+<span id="L692"><a href="#L692" class="line"> 692</a>           $ref: &#x27;#/components/responses/ServerError&#x27;</span>
+<span id="L693"><a href="#L693" class="line"> 693</a>     delete:</span>
+<span id="L694"><a href="#L694" class="line"> 694</a>       tags: [tenant]</span>
+<span id="L695"><a href="#L695" class="line"> 695</a>       operationId: deleteTenantLogo</span>
+<span id="L696"><a href="#L696" class="line"> 696</a>       summary: Quitar el logo</span>
+<span id="L697"><a href="#L697" class="line"> 697</a>       description: Requiere `settings.manage`. Idempotente.</span>
+<span id="L698"><a href="#L698" class="line"> 698</a>       security:</span>
+<span id="L699"><a href="#L699" class="line"> 699</a>         - sessionCookie: []</span>
+<span id="L700"><a href="#L700" class="line"> 700</a>       responses:</span>
+<span id="L701"><a href="#L701" class="line"> 701</a>         &#x27;204&#x27;:</span>
+<span id="L702"><a href="#L702" class="line"> 702</a>           description: Logo quitado (o no había)</span>
+<span id="L703"><a href="#L703" class="line"> 703</a>         &#x27;401&#x27;:</span>
+<span id="L704"><a href="#L704" class="line"> 704</a>           $ref: &#x27;#/components/responses/Unauthenticated&#x27;</span>
+<span id="L705"><a href="#L705" class="line"> 705</a>         &#x27;403&#x27;:</span>
+<span id="L706"><a href="#L706" class="line"> 706</a>           $ref: &#x27;#/components/responses/Forbidden&#x27;</span>
+<span id="L707"><a href="#L707" class="line"> 707</a>         5XX:</span>
+<span id="L708"><a href="#L708" class="line"> 708</a>           $ref: &#x27;#/components/responses/ServerError&#x27;</span>
+<span id="L709"><a href="#L709" class="line"> 709</a> </span>
+<span id="L710"><a href="#L710" class="line"> 710</a>   /users:</span>
+<span id="L711"><a href="#L711" class="line"> 711</a>     get:</span>
+<span id="L712"><a href="#L712" class="line"> 712</a>       tags: [users]</span>
+<span id="L713"><a href="#L713" class="line"> 713</a>       operationId: listUsers</span>
+<span id="L714"><a href="#L714" class="line"> 714</a>       summary: Listar los usuarios de la empresa</span>
+<span id="L715"><a href="#L715" class="line"> 715</a>       description: Requiere `settings.manage`. Incluye invitados y desactivados. Orden por alta.</span>
+<span id="L716"><a href="#L716" class="line"> 716</a>       security:</span>
+<span id="L717"><a href="#L717" class="line"> 717</a>         - sessionCookie: []</span>
+<span id="L718"><a href="#L718" class="line"> 718</a>       responses:</span>
+<span id="L719"><a href="#L719" class="line"> 719</a>         &#x27;200&#x27;:</span>
+<span id="L720"><a href="#L720" class="line"> 720</a>           description: Usuarios de la empresa</span>
+<span id="L721"><a href="#L721" class="line"> 721</a>           content:</span>
+<span id="L722"><a href="#L722" class="line"> 722</a>             application/json:</span>
+<span id="L723"><a href="#L723" class="line"> 723</a>               schema:</span>
+<span id="L724"><a href="#L724" class="line"> 724</a>                 type: object</span>
+<span id="L725"><a href="#L725" class="line"> 725</a>                 required: [items]</span>
+<span id="L726"><a href="#L726" class="line"> 726</a>                 additionalProperties: false</span>
+<span id="L727"><a href="#L727" class="line"> 727</a>                 properties:</span>
+<span id="L728"><a href="#L728" class="line"> 728</a>                   items:</span>
+<span id="L729"><a href="#L729" class="line"> 729</a>                     type: array</span>
+<span id="L730"><a href="#L730" class="line"> 730</a>                     items:</span>
+<span id="L731"><a href="#L731" class="line"> 731</a>                       $ref: &#x27;#/components/schemas/User&#x27;</span>
+<span id="L732"><a href="#L732" class="line"> 732</a>         &#x27;401&#x27;:</span>
+<span id="L733"><a href="#L733" class="line"> 733</a>           $ref: &#x27;#/components/responses/Unauthenticated&#x27;</span>
+<span id="L734"><a href="#L734" class="line"> 734</a>         &#x27;403&#x27;:</span>
+<span id="L735"><a href="#L735" class="line"> 735</a>           $ref: &#x27;#/components/responses/Forbidden&#x27;</span>
+<span id="L736"><a href="#L736" class="line"> 736</a>         5XX:</span>
+<span id="L737"><a href="#L737" class="line"> 737</a>           $ref: &#x27;#/components/responses/ServerError&#x27;</span>
+<span id="L738"><a href="#L738" class="line"> 738</a> </span>
+<span id="L739"><a href="#L739" class="line"> 739</a>   /users/invitations:</span>
+<span id="L740"><a href="#L740" class="line"> 740</a>     post:</span>
+<span id="L741"><a href="#L741" class="line"> 741</a>       tags: [users]</span>
+<span id="L742"><a href="#L742" class="line"> 742</a>       operationId: inviteUser</span>
+<span id="L743"><a href="#L743" class="line"> 743</a>       summary: Invitar un usuario, o reinvitar si ya está invitado en esta empresa (Historia 3.1, FR-005)</span>
+<span id="L744"><a href="#L744" class="line"> 744</a>       description: |</span>
+<span id="L745"><a href="#L745" class="line"> 745</a>         Requiere `settings.manage`. Crea el usuario en estado `invited` y envía una invitación</span>
+<span id="L746"><a href="#L746" class="line"> 746</a>         válida por 7 días (201). Si el email ya está `invited` en esta misma empresa, revoca la</span>
+<span id="L747"><a href="#L747" class="line"> 747</a>         invitación anterior y envía una nueva (200, DD-5); si además el `role` pedido es distinto</span>
+<span id="L748"><a href="#L748" class="line"> 748</a>         del actual, **cambia el rol** y lo audita como cambio de rol (DD-26). Si el email ya</span>
+<span id="L749"><a href="#L749" class="line"> 749</a>         pertenece a un usuario activo o desactivado de cualquier empresa, responde 409</span>
+<span id="L750"><a href="#L750" class="line"> 750</a>         `email_taken` (sin `suggested_action`: el Administrador no puede recuperar la cuenta de</span>
+<span id="L751"><a href="#L751" class="line"> 751</a>         otra persona, DD-21).</span>
+<span id="L752"><a href="#L752" class="line"> 752</a> </span>
+<span id="L753"><a href="#L753" class="line"> 753</a>         El Administrador tiene que tener el email verificado: si no, responde 403</span>
+<span id="L754"><a href="#L754" class="line"> 754</a>         `email_not_verified` sin buscar el email ni crear nada (DD-46). La UI ofrece reenviar la</span>
+<span id="L755"><a href="#L755" class="line"> 755</a>         verificación (`POST /auth/email-verification/resend`).</span>
+<span id="L756"><a href="#L756" class="line"> 756</a> </span>
+<span id="L757"><a href="#L757" class="line"> 757</a>         Comparte el cupo con `POST /users/{userId}/reactivate` (DD-48) y cuenta éxitos y rechazos:</span>
+<span id="L758"><a href="#L758" class="line"> 758</a>         por empresa, 10 de una vez y después una cada 6 minutos; por IP, 20 de una vez y después</span>
+<span id="L759"><a href="#L759" class="line"> 759</a>         una cada 3 minutos. Excedido: 429 `rate_limited` con `Retry-After`.</span>
+<span id="L760"><a href="#L760" class="line"> 760</a>       security:</span>
+<span id="L761"><a href="#L761" class="line"> 761</a>         - sessionCookie: []</span>
+<span id="L762"><a href="#L762" class="line"> 762</a>       requestBody:</span>
+<span id="L763"><a href="#L763" class="line"> 763</a>         required: true</span>
+<span id="L764"><a href="#L764" class="line"> 764</a>         content:</span>
+<span id="L765"><a href="#L765" class="line"> 765</a>           application/json:</span>
+<span id="L766"><a href="#L766" class="line"> 766</a>             schema:</span>
+<span id="L767"><a href="#L767" class="line"> 767</a>               $ref: &#x27;#/components/schemas/InvitationRequest&#x27;</span>
+<span id="L768"><a href="#L768" class="line"> 768</a>       responses:</span>
+<span id="L769"><a href="#L769" class="line"> 769</a>         &#x27;201&#x27;:</span>
+<span id="L770"><a href="#L770" class="line"> 770</a>           description: Usuario invitado</span>
+<span id="L771"><a href="#L771" class="line"> 771</a>           content:</span>
+<span id="L772"><a href="#L772" class="line"> 772</a>             application/json:</span>
+<span id="L773"><a href="#L773" class="line"> 773</a>               schema:</span>
+<span id="L774"><a href="#L774" class="line"> 774</a>                 $ref: &#x27;#/components/schemas/User&#x27;</span>
+<span id="L775"><a href="#L775" class="line"> 775</a>         &#x27;200&#x27;:</span>
+<span id="L776"><a href="#L776" class="line"> 776</a>           description: Invitación reemitida (con el rol pedido)</span>
+<span id="L777"><a href="#L777" class="line"> 777</a>           content:</span>
+<span id="L778"><a href="#L778" class="line"> 778</a>             application/json:</span>
+<span id="L779"><a href="#L779" class="line"> 779</a>               schema:</span>
+<span id="L780"><a href="#L780" class="line"> 780</a>                 $ref: &#x27;#/components/schemas/User&#x27;</span>
+<span id="L781"><a href="#L781" class="line"> 781</a>         &#x27;400&#x27;:</span>
+<span id="L782"><a href="#L782" class="line"> 782</a>           $ref: &#x27;#/components/responses/MalformedRequest&#x27;</span>
+<span id="L783"><a href="#L783" class="line"> 783</a>         &#x27;401&#x27;:</span>
+<span id="L784"><a href="#L784" class="line"> 784</a>           $ref: &#x27;#/components/responses/Unauthenticated&#x27;</span>
+<span id="L785"><a href="#L785" class="line"> 785</a>         &#x27;403&#x27;:</span>
+<span id="L786"><a href="#L786" class="line"> 786</a>           description: |</span>
+<span id="L787"><a href="#L787" class="line"> 787</a>             El rol no tiene `settings.manage`, o la protección CSRF rechazó un método no seguro de</span>
+<span id="L788"><a href="#L788" class="line"> 788</a>             otro origen (`code` = `forbidden`, DD-30); o el Administrador todavía no verificó su</span>
+<span id="L789"><a href="#L789" class="line"> 789</a>             email (`code` = `email_not_verified`, DD-46)</span>
+<span id="L790"><a href="#L790" class="line"> 790</a>           content:</span>
+<span id="L791"><a href="#L791" class="line"> 791</a>             application/problem+json:</span>
+<span id="L792"><a href="#L792" class="line"> 792</a>               schema:</span>
+<span id="L793"><a href="#L793" class="line"> 793</a>                 $ref: &#x27;#/components/schemas/Problem&#x27;</span>
+<span id="L794"><a href="#L794" class="line"> 794</a>         &#x27;409&#x27;:</span>
+<span id="L795"><a href="#L795" class="line"> 795</a>           description: El email ya está en uso (`code` = `email_taken`)</span>
+<span id="L796"><a href="#L796" class="line"> 796</a>           content:</span>
+<span id="L797"><a href="#L797" class="line"> 797</a>             application/problem+json:</span>
+<span id="L798"><a href="#L798" class="line"> 798</a>               schema:</span>
+<span id="L799"><a href="#L799" class="line"> 799</a>                 $ref: &#x27;#/components/schemas/Problem&#x27;</span>
+<span id="L800"><a href="#L800" class="line"> 800</a>         &#x27;413&#x27;:</span>
+<span id="L801"><a href="#L801" class="line"> 801</a>           $ref: &#x27;#/components/responses/PayloadTooLarge&#x27;</span>
+<span id="L802"><a href="#L802" class="line"> 802</a>         &#x27;415&#x27;:</span>
+<span id="L803"><a href="#L803" class="line"> 803</a>           $ref: &#x27;#/components/responses/UnsupportedMediaType&#x27;</span>
+<span id="L804"><a href="#L804" class="line"> 804</a>         &#x27;422&#x27;:</span>
+<span id="L805"><a href="#L805" class="line"> 805</a>           $ref: &#x27;#/components/responses/ValidationFailed&#x27;</span>
+<span id="L806"><a href="#L806" class="line"> 806</a>         &#x27;429&#x27;:</span>
+<span id="L807"><a href="#L807" class="line"> 807</a>           $ref: &#x27;#/components/responses/RateLimited&#x27;</span>
+<span id="L808"><a href="#L808" class="line"> 808</a>         5XX:</span>
+<span id="L809"><a href="#L809" class="line"> 809</a>           $ref: &#x27;#/components/responses/ServerError&#x27;</span>
+<span id="L810"><a href="#L810" class="line"> 810</a> </span>
+<span id="L811"><a href="#L811" class="line"> 811</a>   /users/{userId}/role:</span>
+<span id="L812"><a href="#L812" class="line"> 812</a>     parameters:</span>
+<span id="L813"><a href="#L813" class="line"> 813</a>       - $ref: &#x27;#/components/parameters/UserId&#x27;</span>
+<span id="L814"><a href="#L814" class="line"> 814</a>     put:</span>
+<span id="L815"><a href="#L815" class="line"> 815</a>       tags: [users]</span>
+<span id="L816"><a href="#L816" class="line"> 816</a>       operationId: changeUserRole</span>
+<span id="L817"><a href="#L817" class="line"> 817</a>       summary: Cambiar el rol de un usuario invitado o activo (FR-005, FR-008)</span>
+<span id="L818"><a href="#L818" class="line"> 818</a>       description: |</span>
+<span id="L819"><a href="#L819" class="line"> 819</a>         Requiere `settings.manage`. Vale para usuarios `invited` y `active` (DD-26); para un</span>
+<span id="L820"><a href="#L820" class="line"> 820</a>         usuario `disabled` responde 409 `invalid_state` (se reactiva primero). Rechaza bajar a</span>
+<span id="L821"><a href="#L821" class="line"> 821</a>         Operador al último Administrador **activo** (409 `last_admin`, Historia 3.4); los</span>
+<span id="L822"><a href="#L822" class="line"> 822</a>         invitados no cuentan como Administradores activos. Asignar el mismo rol que ya tiene es un</span>
+<span id="L823"><a href="#L823" class="line"> 823</a>         no-op (200, sin auditoría). No cierra sesiones: el rol se lee en cada request. Auditado</span>
+<span id="L824"><a href="#L824" class="line"> 824</a>         (`user.role_changed`).</span>
+<span id="L825"><a href="#L825" class="line"> 825</a>       security:</span>
+<span id="L826"><a href="#L826" class="line"> 826</a>         - sessionCookie: []</span>
+<span id="L827"><a href="#L827" class="line"> 827</a>       requestBody:</span>
+<span id="L828"><a href="#L828" class="line"> 828</a>         required: true</span>
+<span id="L829"><a href="#L829" class="line"> 829</a>         content:</span>
+<span id="L830"><a href="#L830" class="line"> 830</a>           application/json:</span>
+<span id="L831"><a href="#L831" class="line"> 831</a>             schema:</span>
+<span id="L832"><a href="#L832" class="line"> 832</a>               $ref: &#x27;#/components/schemas/RoleChangeRequest&#x27;</span>
+<span id="L833"><a href="#L833" class="line"> 833</a>       responses:</span>
+<span id="L834"><a href="#L834" class="line"> 834</a>         &#x27;200&#x27;:</span>
+<span id="L835"><a href="#L835" class="line"> 835</a>           description: Rol actualizado</span>
+<span id="L836"><a href="#L836" class="line"> 836</a>           content:</span>
+<span id="L837"><a href="#L837" class="line"> 837</a>             application/json:</span>
+<span id="L838"><a href="#L838" class="line"> 838</a>               schema:</span>
+<span id="L839"><a href="#L839" class="line"> 839</a>                 $ref: &#x27;#/components/schemas/User&#x27;</span>
+<span id="L840"><a href="#L840" class="line"> 840</a>         &#x27;400&#x27;:</span>
+<span id="L841"><a href="#L841" class="line"> 841</a>           $ref: &#x27;#/components/responses/MalformedRequest&#x27;</span>
+<span id="L842"><a href="#L842" class="line"> 842</a>         &#x27;401&#x27;:</span>
+<span id="L843"><a href="#L843" class="line"> 843</a>           $ref: &#x27;#/components/responses/Unauthenticated&#x27;</span>
+<span id="L844"><a href="#L844" class="line"> 844</a>         &#x27;403&#x27;:</span>
+<span id="L845"><a href="#L845" class="line"> 845</a>           $ref: &#x27;#/components/responses/Forbidden&#x27;</span>
+<span id="L846"><a href="#L846" class="line"> 846</a>         &#x27;404&#x27;:</span>
+<span id="L847"><a href="#L847" class="line"> 847</a>           $ref: &#x27;#/components/responses/NotFound&#x27;</span>
+<span id="L848"><a href="#L848" class="line"> 848</a>         &#x27;409&#x27;:</span>
+<span id="L849"><a href="#L849" class="line"> 849</a>           $ref: &#x27;#/components/responses/Conflict&#x27;</span>
+<span id="L850"><a href="#L850" class="line"> 850</a>         &#x27;413&#x27;:</span>
+<span id="L851"><a href="#L851" class="line"> 851</a>           $ref: &#x27;#/components/responses/PayloadTooLarge&#x27;</span>
+<span id="L852"><a href="#L852" class="line"> 852</a>         &#x27;415&#x27;:</span>
+<span id="L853"><a href="#L853" class="line"> 853</a>           $ref: &#x27;#/components/responses/UnsupportedMediaType&#x27;</span>
+<span id="L854"><a href="#L854" class="line"> 854</a>         &#x27;422&#x27;:</span>
+<span id="L855"><a href="#L855" class="line"> 855</a>           $ref: &#x27;#/components/responses/ValidationFailed&#x27;</span>
+<span id="L856"><a href="#L856" class="line"> 856</a>         5XX:</span>
+<span id="L857"><a href="#L857" class="line"> 857</a>           $ref: &#x27;#/components/responses/ServerError&#x27;</span>
+<span id="L858"><a href="#L858" class="line"> 858</a> </span>
+<span id="L859"><a href="#L859" class="line"> 859</a>   /users/{userId}/deactivate:</span>
+<span id="L860"><a href="#L860" class="line"> 860</a>     parameters:</span>
+<span id="L861"><a href="#L861" class="line"> 861</a>       - $ref: &#x27;#/components/parameters/UserId&#x27;</span>
+<span id="L862"><a href="#L862" class="line"> 862</a>     post:</span>
+<span id="L863"><a href="#L863" class="line"> 863</a>       tags: [users]</span>
+<span id="L864"><a href="#L864" class="line"> 864</a>       operationId: deactivateUser</span>
+<span id="L865"><a href="#L865" class="line"> 865</a>       summary: Desactivar un usuario y cerrar sus sesiones (Historia 3.3 y 3.4)</span>
+<span id="L866"><a href="#L866" class="line"> 866</a>       description: |</span>
+<span id="L867"><a href="#L867" class="line"> 867</a>         Requiere `settings.manage`. Revoca todas las sesiones y tokens pendientes del usuario en</span>
+<span id="L868"><a href="#L868" class="line"> 868</a>         la misma transacción. Rechaza desactivar al último Administrador activo (409 `last_admin`).</span>
+<span id="L869"><a href="#L869" class="line"> 869</a>         Desactivar un usuario ya desactivado responde 409 `invalid_state`. Auditado</span>
+<span id="L870"><a href="#L870" class="line"> 870</a>         (`user.deactivated`).</span>
+<span id="L871"><a href="#L871" class="line"> 871</a>       security:</span>
+<span id="L872"><a href="#L872" class="line"> 872</a>         - sessionCookie: []</span>
+<span id="L873"><a href="#L873" class="line"> 873</a>       responses:</span>
+<span id="L874"><a href="#L874" class="line"> 874</a>         &#x27;200&#x27;:</span>
+<span id="L875"><a href="#L875" class="line"> 875</a>           description: Usuario desactivado</span>
+<span id="L876"><a href="#L876" class="line"> 876</a>           content:</span>
+<span id="L877"><a href="#L877" class="line"> 877</a>             application/json:</span>
+<span id="L878"><a href="#L878" class="line"> 878</a>               schema:</span>
+<span id="L879"><a href="#L879" class="line"> 879</a>                 $ref: &#x27;#/components/schemas/User&#x27;</span>
+<span id="L880"><a href="#L880" class="line"> 880</a>         &#x27;401&#x27;:</span>
+<span id="L881"><a href="#L881" class="line"> 881</a>           $ref: &#x27;#/components/responses/Unauthenticated&#x27;</span>
+<span id="L882"><a href="#L882" class="line"> 882</a>         &#x27;403&#x27;:</span>
+<span id="L883"><a href="#L883" class="line"> 883</a>           $ref: &#x27;#/components/responses/Forbidden&#x27;</span>
+<span id="L884"><a href="#L884" class="line"> 884</a>         &#x27;404&#x27;:</span>
+<span id="L885"><a href="#L885" class="line"> 885</a>           $ref: &#x27;#/components/responses/NotFound&#x27;</span>
+<span id="L886"><a href="#L886" class="line"> 886</a>         &#x27;409&#x27;:</span>
+<span id="L887"><a href="#L887" class="line"> 887</a>           $ref: &#x27;#/components/responses/Conflict&#x27;</span>
+<span id="L888"><a href="#L888" class="line"> 888</a>         5XX:</span>
+<span id="L889"><a href="#L889" class="line"> 889</a>           $ref: &#x27;#/components/responses/ServerError&#x27;</span>
+<span id="L890"><a href="#L890" class="line"> 890</a> </span>
+<span id="L891"><a href="#L891" class="line"> 891</a>   /users/{userId}/reactivate:</span>
+<span id="L892"><a href="#L892" class="line"> 892</a>     parameters:</span>
+<span id="L893"><a href="#L893" class="line"> 893</a>       - $ref: &#x27;#/components/parameters/UserId&#x27;</span>
+<span id="L894"><a href="#L894" class="line"> 894</a>     post:</span>
+<span id="L895"><a href="#L895" class="line"> 895</a>       tags: [users]</span>
+<span id="L896"><a href="#L896" class="line"> 896</a>       operationId: reactivateUser</span>
+<span id="L897"><a href="#L897" class="line"> 897</a>       summary: Reactivar un usuario desactivado (FR-005, decisión P-3)</span>
+<span id="L898"><a href="#L898" class="line"> 898</a>       description: |</span>
+<span id="L899"><a href="#L899" class="line"> 899</a>         Solo Administrador (`settings.manage`). Si el usuario tenía contraseña vuelve a `active`</span>
+<span id="L900"><a href="#L900" class="line"> 900</a>         (debe iniciar sesión de nuevo: las sesiones revocadas no se reabren); si nunca aceptó su</span>
+<span id="L901"><a href="#L901" class="line"> 901</a>         invitación vuelve a `invited` con una invitación nueva de 7 días.</span>
+<span id="L902"><a href="#L902" class="line"> 902</a>         Reactivar un usuario que no está `disabled` responde 409 `invalid_state`.</span>
+<span id="L903"><a href="#L903" class="line"> 903</a>         Auditado en la misma transacción (`user.reactivated`, con `data.to_status`).</span>
+<span id="L904"><a href="#L904" class="line"> 904</a>         Comparte con `POST /users/invitations` el cupo por empresa y por IP (DD-48): excedido, 429</span>
+<span id="L905"><a href="#L905" class="line"> 905</a>         `rate_limited` con `Retry-After`.</span>
+<span id="L906"><a href="#L906" class="line"> 906</a>       security:</span>
+<span id="L907"><a href="#L907" class="line"> 907</a>         - sessionCookie: []</span>
+<span id="L908"><a href="#L908" class="line"> 908</a>       responses:</span>
+<span id="L909"><a href="#L909" class="line"> 909</a>         &#x27;200&#x27;:</span>
+<span id="L910"><a href="#L910" class="line"> 910</a>           description: Usuario reactivado (`status` = `active` o `invited`)</span>
+<span id="L911"><a href="#L911" class="line"> 911</a>           content:</span>
+<span id="L912"><a href="#L912" class="line"> 912</a>             application/json:</span>
+<span id="L913"><a href="#L913" class="line"> 913</a>               schema:</span>
+<span id="L914"><a href="#L914" class="line"> 914</a>                 $ref: &#x27;#/components/schemas/User&#x27;</span>
+<span id="L915"><a href="#L915" class="line"> 915</a>         &#x27;401&#x27;:</span>
+<span id="L916"><a href="#L916" class="line"> 916</a>           $ref: &#x27;#/components/responses/Unauthenticated&#x27;</span>
+<span id="L917"><a href="#L917" class="line"> 917</a>         &#x27;403&#x27;:</span>
+<span id="L918"><a href="#L918" class="line"> 918</a>           $ref: &#x27;#/components/responses/Forbidden&#x27;</span>
+<span id="L919"><a href="#L919" class="line"> 919</a>         &#x27;404&#x27;:</span>
+<span id="L920"><a href="#L920" class="line"> 920</a>           $ref: &#x27;#/components/responses/NotFound&#x27;</span>
+<span id="L921"><a href="#L921" class="line"> 921</a>         &#x27;409&#x27;:</span>
+<span id="L922"><a href="#L922" class="line"> 922</a>           $ref: &#x27;#/components/responses/Conflict&#x27;</span>
+<span id="L923"><a href="#L923" class="line"> 923</a>         &#x27;429&#x27;:</span>
+<span id="L924"><a href="#L924" class="line"> 924</a>           $ref: &#x27;#/components/responses/RateLimited&#x27;</span>
+<span id="L925"><a href="#L925" class="line"> 925</a>         5XX:</span>
+<span id="L926"><a href="#L926" class="line"> 926</a>           $ref: &#x27;#/components/responses/ServerError&#x27;</span>
+<span id="L927"><a href="#L927" class="line"> 927</a> </span>
+<span id="L928"><a href="#L928" class="line"> 928</a>   /healthz:</span>
+<span id="L929"><a href="#L929" class="line"> 929</a>     servers:</span>
+<span id="L930"><a href="#L930" class="line"> 930</a>       - url: /</span>
+<span id="L931"><a href="#L931" class="line"> 931</a>     get:</span>
+<span id="L932"><a href="#L932" class="line"> 932</a>       tags: [ops]</span>
+<span id="L933"><a href="#L933" class="line"> 933</a>       operationId: liveness</span>
+<span id="L934"><a href="#L934" class="line"> 934</a>       summary: Liveness (no consulta la base)</span>
+<span id="L935"><a href="#L935" class="line"> 935</a>       description: En el mux raíz, fuera de `/api/` y de la SPA (DD-22).</span>
+<span id="L936"><a href="#L936" class="line"> 936</a>       security: []</span>
+<span id="L937"><a href="#L937" class="line"> 937</a>       responses:</span>
+<span id="L938"><a href="#L938" class="line"> 938</a>         &#x27;200&#x27;:</span>
+<span id="L939"><a href="#L939" class="line"> 939</a>           description: El proceso atiende</span>
+<span id="L940"><a href="#L940" class="line"> 940</a>           content:</span>
+<span id="L941"><a href="#L941" class="line"> 941</a>             application/json:</span>
+<span id="L942"><a href="#L942" class="line"> 942</a>               schema:</span>
+<span id="L943"><a href="#L943" class="line"> 943</a>                 $ref: &#x27;#/components/schemas/Health&#x27;</span>
+<span id="L944"><a href="#L944" class="line"> 944</a> </span>
+<span id="L945"><a href="#L945" class="line"> 945</a>   /readyz:</span>
+<span id="L946"><a href="#L946" class="line"> 946</a>     servers:</span>
+<span id="L947"><a href="#L947" class="line"> 947</a>       - url: /</span>
+<span id="L948"><a href="#L948" class="line"> 948</a>     get:</span>
+<span id="L949"><a href="#L949" class="line"> 949</a>       tags: [ops]</span>
+<span id="L950"><a href="#L950" class="line"> 950</a>       operationId: readiness</span>
+<span id="L951"><a href="#L951" class="line"> 951</a>       summary: Readiness (base alcanzable y migraciones al día)</span>
+<span id="L952"><a href="#L952" class="line"> 952</a>       description: En el mux raíz, fuera de `/api/` y de la SPA (DD-22).</span>
+<span id="L953"><a href="#L953" class="line"> 953</a>       security: []</span>
+<span id="L954"><a href="#L954" class="line"> 954</a>       responses:</span>
+<span id="L955"><a href="#L955" class="line"> 955</a>         &#x27;200&#x27;:</span>
+<span id="L956"><a href="#L956" class="line"> 956</a>           description: Listo para recibir tráfico</span>
+<span id="L957"><a href="#L957" class="line"> 957</a>           content:</span>
+<span id="L958"><a href="#L958" class="line"> 958</a>             application/json:</span>
+<span id="L959"><a href="#L959" class="line"> 959</a>               schema:</span>
+<span id="L960"><a href="#L960" class="line"> 960</a>                 $ref: &#x27;#/components/schemas/Health&#x27;</span>
+<span id="L961"><a href="#L961" class="line"> 961</a>         &#x27;503&#x27;:</span>
+<span id="L962"><a href="#L962" class="line"> 962</a>           description: No listo</span>
+<span id="L963"><a href="#L963" class="line"> 963</a>           content:</span>
+<span id="L964"><a href="#L964" class="line"> 964</a>             application/json:</span>
+<span id="L965"><a href="#L965" class="line"> 965</a>               schema:</span>
+<span id="L966"><a href="#L966" class="line"> 966</a>                 $ref: &#x27;#/components/schemas/Health&#x27;</span>
+<span id="L967"><a href="#L967" class="line"> 967</a> </span>
+<span id="L968"><a href="#L968" class="line"> 968</a> components:</span>
+<span id="L969"><a href="#L969" class="line"> 969</a>   securitySchemes:</span>
+<span id="L970"><a href="#L970" class="line"> 970</a>     sessionCookie:</span>
+<span id="L971"><a href="#L971" class="line"> 971</a>       type: apiKey</span>
+<span id="L972"><a href="#L972" class="line"> 972</a>       in: cookie</span>
+<span id="L973"><a href="#L973" class="line"> 973</a>       name: __Host-crm_session</span>
+<span id="L974"><a href="#L974" class="line"> 974</a>       description: |</span>
+<span id="L975"><a href="#L975" class="line"> 975</a>         Token opaco de sesión. HttpOnly, Secure, SameSite=Lax, Path=/ (ADR-006).</span>
+<span id="L976"><a href="#L976" class="line"> 976</a>         Vence tras 24 h sin uso o 7 días desde el inicio de sesión. `Secure` en todos los</span>
+<span id="L977"><a href="#L977" class="line"> 977</a>         entornos (no hay configuración que lo quite, DD-24).</span>
+<span id="L978"><a href="#L978" class="line"> 978</a> </span>
+<span id="L979"><a href="#L979" class="line"> 979</a>   parameters:</span>
+<span id="L980"><a href="#L980" class="line"> 980</a>     UserId:</span>
+<span id="L981"><a href="#L981" class="line"> 981</a>       name: userId</span>
+<span id="L982"><a href="#L982" class="line"> 982</a>       in: path</span>
+<span id="L983"><a href="#L983" class="line"> 983</a>       required: true</span>
+<span id="L984"><a href="#L984" class="line"> 984</a>       schema:</span>
+<span id="L985"><a href="#L985" class="line"> 985</a>         type: string</span>
+<span id="L986"><a href="#L986" class="line"> 986</a>         format: uuid</span>
+<span id="L987"><a href="#L987" class="line"> 987</a> </span>
+<span id="L988"><a href="#L988" class="line"> 988</a>   headers:</span>
+<span id="L989"><a href="#L989" class="line"> 989</a>     SetSessionCookie:</span>
+<span id="L990"><a href="#L990" class="line"> 990</a>       description: &#x27;`__Host-crm_session=&lt;token&gt;; Path=/; Max-Age=&lt;segundos hasta el vencimiento absoluto&gt;; HttpOnly; Secure; SameSite=Lax` (604800 segundos por defecto; además vence tras el plazo de inactividad)&#x27;</span>
+<span id="L991"><a href="#L991" class="line"> 991</a>       schema:</span>
+<span id="L992"><a href="#L992" class="line"> 992</a>         type: string</span>
+<span id="L993"><a href="#L993" class="line"> 993</a>     ClearSessionCookie:</span>
+<span id="L994"><a href="#L994" class="line"> 994</a>       description: &#x27;`__Host-crm_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`&#x27;</span>
+<span id="L995"><a href="#L995" class="line"> 995</a>       schema:</span>
+<span id="L996"><a href="#L996" class="line"> 996</a>         type: string</span>
+<span id="L997"><a href="#L997" class="line"> 997</a>     RetryAfter:</span>
+<span id="L998"><a href="#L998" class="line"> 998</a>       description: Segundos a esperar antes de reintentar</span>
+<span id="L999"><a href="#L999" class="line"> 999</a>       schema:</span>
+<span id="L1000"><a href="#L1000" class="line">1000</a>         type: integer</span>
+<span id="L1001"><a href="#L1001" class="line">1001</a>         minimum: 1</span>
+<span id="L1002"><a href="#L1002" class="line">1002</a>     LogoCacheControl:</span>
+<span id="L1003"><a href="#L1003" class="line">1003</a>       description: &#x27;`private, no-cache` (DD-23)&#x27;</span>
+<span id="L1004"><a href="#L1004" class="line">1004</a>       schema:</span>
+<span id="L1005"><a href="#L1005" class="line">1005</a>         type: string</span>
+<span id="L1006"><a href="#L1006" class="line">1006</a>         const: private, no-cache</span>
+<span id="L1007"><a href="#L1007" class="line">1007</a>     LogoETag:</span>
+<span id="L1008"><a href="#L1008" class="line">1008</a>       description: &#x27;Validador fuerte del objeto del logo, entre comillas (p. ej. `&quot;&lt;uuid&gt;&quot;`)&#x27;</span>
+<span id="L1009"><a href="#L1009" class="line">1009</a>       schema:</span>
+<span id="L1010"><a href="#L1010" class="line">1010</a>         type: string</span>
+<span id="L1011"><a href="#L1011" class="line">1011</a> </span>
+<span id="L1012"><a href="#L1012" class="line">1012</a>   responses:</span>
+<span id="L1013"><a href="#L1013" class="line">1013</a>     MalformedRequest:</span>
+<span id="L1014"><a href="#L1014" class="line">1014</a>       description: JSON inválido o con campos desconocidos, o cuerpo multipart mal formado (`code` = `malformed_request`)</span>
+<span id="L1015"><a href="#L1015" class="line">1015</a>       content:</span>
+<span id="L1016"><a href="#L1016" class="line">1016</a>         application/problem+json:</span>
+<span id="L1017"><a href="#L1017" class="line">1017</a>           schema:</span>
+<span id="L1018"><a href="#L1018" class="line">1018</a>             $ref: &#x27;#/components/schemas/Problem&#x27;</span>
+<span id="L1019"><a href="#L1019" class="line">1019</a>     TokenInvalidOrMalformed:</span>
+<span id="L1020"><a href="#L1020" class="line">1020</a>       description: |</span>
+<span id="L1021"><a href="#L1021" class="line">1021</a>         Token inexistente, vencido, usado o revocado (`code` = `token_invalid`, un solo código para</span>
+<span id="L1022"><a href="#L1022" class="line">1022</a>         no revelar cuál), o JSON inválido (`code` = `malformed_request`)</span>
+<span id="L1023"><a href="#L1023" class="line">1023</a>       content:</span>
+<span id="L1024"><a href="#L1024" class="line">1024</a>         application/problem+json:</span>
+<span id="L1025"><a href="#L1025" class="line">1025</a>           schema:</span>
+<span id="L1026"><a href="#L1026" class="line">1026</a>             $ref: &#x27;#/components/schemas/Problem&#x27;</span>
+<span id="L1027"><a href="#L1027" class="line">1027</a>     Unauthenticated:</span>
+<span id="L1028"><a href="#L1028" class="line">1028</a>       description: Sin sesión o sesión inválida, vencida o revocada (`code` = `unauthenticated`). Borra la cookie.</span>
+<span id="L1029"><a href="#L1029" class="line">1029</a>       headers:</span>
+<span id="L1030"><a href="#L1030" class="line">1030</a>         Set-Cookie:</span>
+<span id="L1031"><a href="#L1031" class="line">1031</a>           $ref: &#x27;#/components/headers/ClearSessionCookie&#x27;</span>
+<span id="L1032"><a href="#L1032" class="line">1032</a>       content:</span>
+<span id="L1033"><a href="#L1033" class="line">1033</a>         application/problem+json:</span>
+<span id="L1034"><a href="#L1034" class="line">1034</a>           schema:</span>
+<span id="L1035"><a href="#L1035" class="line">1035</a>             $ref: &#x27;#/components/schemas/Problem&#x27;</span>
+<span id="L1036"><a href="#L1036" class="line">1036</a>     Forbidden:</span>
+<span id="L1037"><a href="#L1037" class="line">1037</a>       description: |</span>
+<span id="L1038"><a href="#L1038" class="line">1038</a>         El rol no tiene el permiso requerido, o un método no seguro llegó de otro origen y lo</span>
+<span id="L1039"><a href="#L1039" class="line">1039</a>         rechazó la protección CSRF (en ambos casos `code` = `forbidden`, DD-30)</span>
+<span id="L1040"><a href="#L1040" class="line">1040</a>       content:</span>
+<span id="L1041"><a href="#L1041" class="line">1041</a>         application/problem+json:</span>
+<span id="L1042"><a href="#L1042" class="line">1042</a>           schema:</span>
+<span id="L1043"><a href="#L1043" class="line">1043</a>             $ref: &#x27;#/components/schemas/Problem&#x27;</span>
+<span id="L1044"><a href="#L1044" class="line">1044</a>     NotFound:</span>
+<span id="L1045"><a href="#L1045" class="line">1045</a>       description: No existe o pertenece a otra empresa (`code` = `not_found`)</span>
+<span id="L1046"><a href="#L1046" class="line">1046</a>       content:</span>
+<span id="L1047"><a href="#L1047" class="line">1047</a>         application/problem+json:</span>
+<span id="L1048"><a href="#L1048" class="line">1048</a>           schema:</span>
+<span id="L1049"><a href="#L1049" class="line">1049</a>             $ref: &#x27;#/components/schemas/Problem&#x27;</span>
+<span id="L1050"><a href="#L1050" class="line">1050</a>     Conflict:</span>
+<span id="L1051"><a href="#L1051" class="line">1051</a>       description: Regla de negocio violada (`code` = `last_admin` o `invalid_state`)</span>
+<span id="L1052"><a href="#L1052" class="line">1052</a>       content:</span>
+<span id="L1053"><a href="#L1053" class="line">1053</a>         application/problem+json:</span>
+<span id="L1054"><a href="#L1054" class="line">1054</a>           schema:</span>
+<span id="L1055"><a href="#L1055" class="line">1055</a>             $ref: &#x27;#/components/schemas/Problem&#x27;</span>
+<span id="L1056"><a href="#L1056" class="line">1056</a>     PayloadTooLarge:</span>
+<span id="L1057"><a href="#L1057" class="line">1057</a>       description: |</span>
+<span id="L1058"><a href="#L1058" class="line">1058</a>         Body demasiado grande (`code` = `payload_too_large`). Con body JSON: más de 65 536 bytes</span>
+<span id="L1059"><a href="#L1059" class="line">1059</a>         (64 KiB). En `PUT /tenant/logo`: archivo de más de 2 097 152 bytes o cuerpo multipart de</span>
+<span id="L1060"><a href="#L1060" class="line">1060</a>         más de 2 162 688 bytes (DD-31).</span>
+<span id="L1061"><a href="#L1061" class="line">1061</a>       content:</span>
+<span id="L1062"><a href="#L1062" class="line">1062</a>         application/problem+json:</span>
+<span id="L1063"><a href="#L1063" class="line">1063</a>           schema:</span>
+<span id="L1064"><a href="#L1064" class="line">1064</a>             $ref: &#x27;#/components/schemas/Problem&#x27;</span>
+<span id="L1065"><a href="#L1065" class="line">1065</a>     UnsupportedMediaType:</span>
+<span id="L1066"><a href="#L1066" class="line">1066</a>       description: Content-Type no soportado o imagen que no es PNG/JPEG (`code` = `unsupported_media_type`)</span>
+<span id="L1067"><a href="#L1067" class="line">1067</a>       content:</span>
+<span id="L1068"><a href="#L1068" class="line">1068</a>         application/problem+json:</span>
+<span id="L1069"><a href="#L1069" class="line">1069</a>           schema:</span>
+<span id="L1070"><a href="#L1070" class="line">1070</a>             $ref: &#x27;#/components/schemas/Problem&#x27;</span>
+<span id="L1071"><a href="#L1071" class="line">1071</a>     ValidationFailed:</span>
+<span id="L1072"><a href="#L1072" class="line">1072</a>       description: Datos inválidos (`code` = `validation_failed`), con el detalle por campo</span>
+<span id="L1073"><a href="#L1073" class="line">1073</a>       content:</span>
+<span id="L1074"><a href="#L1074" class="line">1074</a>         application/problem+json:</span>
+<span id="L1075"><a href="#L1075" class="line">1075</a>           schema:</span>
+<span id="L1076"><a href="#L1076" class="line">1076</a>             $ref: &#x27;#/components/schemas/ValidationProblem&#x27;</span>
+<span id="L1077"><a href="#L1077" class="line">1077</a>     RateLimited:</span>
+<span id="L1078"><a href="#L1078" class="line">1078</a>       description: Demasiados pedidos (`code` = `rate_limited`)</span>
+<span id="L1079"><a href="#L1079" class="line">1079</a>       headers:</span>
+<span id="L1080"><a href="#L1080" class="line">1080</a>         Retry-After:</span>
+<span id="L1081"><a href="#L1081" class="line">1081</a>           $ref: &#x27;#/components/headers/RetryAfter&#x27;</span>
+<span id="L1082"><a href="#L1082" class="line">1082</a>       content:</span>
+<span id="L1083"><a href="#L1083" class="line">1083</a>         application/problem+json:</span>
+<span id="L1084"><a href="#L1084" class="line">1084</a>           schema:</span>
+<span id="L1085"><a href="#L1085" class="line">1085</a>             $ref: &#x27;#/components/schemas/Problem&#x27;</span>
+<span id="L1086"><a href="#L1086" class="line">1086</a>     ServerError:</span>
+<span id="L1087"><a href="#L1087" class="line">1087</a>       description: |</span>
+<span id="L1088"><a href="#L1088" class="line">1088</a>         500 `internal` (bug, incluida una violación de RLS) o 503 `service_unavailable`</span>
+<span id="L1089"><a href="#L1089" class="line">1089</a>         (base u otra dependencia no disponible, o espera demasiado larga por el lock del registro;</span>
+<span id="L1090"><a href="#L1090" class="line">1090</a>         se puede reintentar con backoff)</span>
+<span id="L1091"><a href="#L1091" class="line">1091</a>       headers:</span>
+<span id="L1092"><a href="#L1092" class="line">1092</a>         Retry-After:</span>
+<span id="L1093"><a href="#L1093" class="line">1093</a>           description: Solo en algunos `503`, cuando el servidor sabe cuánto esperar (p. ej. el registro, DD-33)</span>
+<span id="L1094"><a href="#L1094" class="line">1094</a>           schema:</span>
+<span id="L1095"><a href="#L1095" class="line">1095</a>             type: integer</span>
+<span id="L1096"><a href="#L1096" class="line">1096</a>             minimum: 1</span>
+<span id="L1097"><a href="#L1097" class="line">1097</a>       content:</span>
+<span id="L1098"><a href="#L1098" class="line">1098</a>         application/problem+json:</span>
+<span id="L1099"><a href="#L1099" class="line">1099</a>           schema:</span>
+<span id="L1100"><a href="#L1100" class="line">1100</a>             $ref: &#x27;#/components/schemas/Problem&#x27;</span>
+<span id="L1101"><a href="#L1101" class="line">1101</a> </span>
+<span id="L1102"><a href="#L1102" class="line">1102</a>   schemas:</span>
+<span id="L1103"><a href="#L1103" class="line">1103</a>     ErrorCode:</span>
+<span id="L1104"><a href="#L1104" class="line">1104</a>       type: string</span>
+<span id="L1105"><a href="#L1105" class="line">1105</a>       description: |</span>
+<span id="L1106"><a href="#L1106" class="line">1106</a>         Código estable del error. El frontend mapea cada código a un texto en español.</span>
+<span id="L1107"><a href="#L1107" class="line">1107</a>         `method_not_allowed` (405) indica un error de programación del cliente: la ruta existe</span>
+<span id="L1108"><a href="#L1108" class="line">1108</a>         pero no con ese método; la respuesta trae la cabecera `Allow`.</span>
+<span id="L1109"><a href="#L1109" class="line">1109</a>       enum:</span>
+<span id="L1110"><a href="#L1110" class="line">1110</a>         - malformed_request</span>
+<span id="L1111"><a href="#L1111" class="line">1111</a>         - validation_failed</span>
+<span id="L1112"><a href="#L1112" class="line">1112</a>         - unsupported_media_type</span>
+<span id="L1113"><a href="#L1113" class="line">1113</a>         - payload_too_large</span>
+<span id="L1114"><a href="#L1114" class="line">1114</a>         - unauthenticated</span>
+<span id="L1115"><a href="#L1115" class="line">1115</a>         - invalid_credentials</span>
+<span id="L1116"><a href="#L1116" class="line">1116</a>         - account_disabled</span>
+<span id="L1117"><a href="#L1117" class="line">1117</a>         - forbidden</span>
+<span id="L1118"><a href="#L1118" class="line">1118</a>         - not_found</span>
+<span id="L1119"><a href="#L1119" class="line">1119</a>         - method_not_allowed</span>
+<span id="L1120"><a href="#L1120" class="line">1120</a>         - email_already_registered</span>
+<span id="L1121"><a href="#L1121" class="line">1121</a>         - email_taken</span>
+<span id="L1122"><a href="#L1122" class="line">1122</a>         - email_not_verified</span>
+<span id="L1123"><a href="#L1123" class="line">1123</a>         - last_admin</span>
+<span id="L1124"><a href="#L1124" class="line">1124</a>         - invalid_state</span>
+<span id="L1125"><a href="#L1125" class="line">1125</a>         - token_invalid</span>
+<span id="L1126"><a href="#L1126" class="line">1126</a>         - login_locked</span>
+<span id="L1127"><a href="#L1127" class="line">1127</a>         - rate_limited</span>
+<span id="L1128"><a href="#L1128" class="line">1128</a>         - service_unavailable</span>
+<span id="L1129"><a href="#L1129" class="line">1129</a>         - internal</span>
+<span id="L1130"><a href="#L1130" class="line">1130</a> </span>
+<span id="L1131"><a href="#L1131" class="line">1131</a>     SuggestedAction:</span>
+<span id="L1132"><a href="#L1132" class="line">1132</a>       type: string</span>
+<span id="L1133"><a href="#L1133" class="line">1133</a>       description: |</span>
+<span id="L1134"><a href="#L1134" class="line">1134</a>         Acción que la UI puede ofrecer para salir del error. Estable; se amplía con cada spec.</span>
+<span id="L1135"><a href="#L1135" class="line">1135</a>         - password_reset: ofrecer &quot;¿Querés recuperar la contraseña?&quot; y llamar a</span>
+<span id="L1136"><a href="#L1136" class="line">1136</a>           `POST /auth/password-reset` con el email ya ingresado.</span>
+<span id="L1137"><a href="#L1137" class="line">1137</a>       enum:</span>
+<span id="L1138"><a href="#L1138" class="line">1138</a>         - password_reset</span>
+<span id="L1139"><a href="#L1139" class="line">1139</a> </span>
+<span id="L1140"><a href="#L1140" class="line">1140</a>     Problem:</span>
+<span id="L1141"><a href="#L1141" class="line">1141</a>       type: object</span>
+<span id="L1142"><a href="#L1142" class="line">1142</a>       description: RFC 9457 Problem Details</span>
+<span id="L1143"><a href="#L1143" class="line">1143</a>       required: [type, title, status, code]</span>
+<span id="L1144"><a href="#L1144" class="line">1144</a>       properties:</span>
+<span id="L1145"><a href="#L1145" class="line">1145</a>         type:</span>
+<span id="L1146"><a href="#L1146" class="line">1146</a>           type: string</span>
+<span id="L1147"><a href="#L1147" class="line">1147</a>           format: uri-reference</span>
+<span id="L1148"><a href="#L1148" class="line">1148</a>           description: &#x27;`/problems/{code}`&#x27;</span>
+<span id="L1149"><a href="#L1149" class="line">1149</a>         title:</span>
+<span id="L1150"><a href="#L1150" class="line">1150</a>           type: string</span>
+<span id="L1151"><a href="#L1151" class="line">1151</a>           description: Resumen genérico en español</span>
+<span id="L1152"><a href="#L1152" class="line">1152</a>         status:</span>
+<span id="L1153"><a href="#L1153" class="line">1153</a>           type: integer</span>
+<span id="L1154"><a href="#L1154" class="line">1154</a>           minimum: 400</span>
+<span id="L1155"><a href="#L1155" class="line">1155</a>           maximum: 599</span>
+<span id="L1156"><a href="#L1156" class="line">1156</a>         detail:</span>
+<span id="L1157"><a href="#L1157" class="line">1157</a>           type: string</span>
+<span id="L1158"><a href="#L1158" class="line">1158</a>           description: Explicación en español sin datos internos</span>
+<span id="L1159"><a href="#L1159" class="line">1159</a>         instance:</span>
+<span id="L1160"><a href="#L1160" class="line">1160</a>           type: string</span>
+<span id="L1161"><a href="#L1161" class="line">1161</a>           description: Request id para correlacionar con los logs</span>
+<span id="L1162"><a href="#L1162" class="line">1162</a>         code:</span>
+<span id="L1163"><a href="#L1163" class="line">1163</a>           $ref: &#x27;#/components/schemas/ErrorCode&#x27;</span>
+<span id="L1164"><a href="#L1164" class="line">1164</a>         suggested_action:</span>
+<span id="L1165"><a href="#L1165" class="line">1165</a>           $ref: &#x27;#/components/schemas/SuggestedAction&#x27;</span>
+<span id="L1166"><a href="#L1166" class="line">1166</a> </span>
+<span id="L1167"><a href="#L1167" class="line">1167</a>     EmailAlreadyRegisteredProblem:</span>
+<span id="L1168"><a href="#L1168" class="line">1168</a>       description: |</span>
+<span id="L1169"><a href="#L1169" class="line">1169</a>         409 del registro cuando ya existe un usuario con ese email (DD-19, DD-21, INV-20).</span>
+<span id="L1170"><a href="#L1170" class="line">1170</a>         No contiene ningún dato de la cuenta existente.</span>
+<span id="L1171"><a href="#L1171" class="line">1171</a>       allOf:</span>
+<span id="L1172"><a href="#L1172" class="line">1172</a>         - $ref: &#x27;#/components/schemas/Problem&#x27;</span>
+<span id="L1173"><a href="#L1173" class="line">1173</a>         - type: object</span>
+<span id="L1174"><a href="#L1174" class="line">1174</a>           required: [code, suggested_action, detail]</span>
+<span id="L1175"><a href="#L1175" class="line">1175</a>           properties:</span>
+<span id="L1176"><a href="#L1176" class="line">1176</a>             code:</span>
+<span id="L1177"><a href="#L1177" class="line">1177</a>               const: email_already_registered</span>
+<span id="L1178"><a href="#L1178" class="line">1178</a>             status:</span>
+<span id="L1179"><a href="#L1179" class="line">1179</a>               const: 409</span>
+<span id="L1180"><a href="#L1180" class="line">1180</a>             suggested_action:</span>
+<span id="L1181"><a href="#L1181" class="line">1181</a>               const: password_reset</span>
+<span id="L1182"><a href="#L1182" class="line">1182</a> </span>
+<span id="L1183"><a href="#L1183" class="line">1183</a>     ValidationProblem:</span>
+<span id="L1184"><a href="#L1184" class="line">1184</a>       allOf:</span>
+<span id="L1185"><a href="#L1185" class="line">1185</a>         - $ref: &#x27;#/components/schemas/Problem&#x27;</span>
+<span id="L1186"><a href="#L1186" class="line">1186</a>         - type: object</span>
+<span id="L1187"><a href="#L1187" class="line">1187</a>           required: [errors]</span>
+<span id="L1188"><a href="#L1188" class="line">1188</a>           properties:</span>
+<span id="L1189"><a href="#L1189" class="line">1189</a>             errors:</span>
+<span id="L1190"><a href="#L1190" class="line">1190</a>               type: array</span>
+<span id="L1191"><a href="#L1191" class="line">1191</a>               minItems: 1</span>
+<span id="L1192"><a href="#L1192" class="line">1192</a>               items:</span>
+<span id="L1193"><a href="#L1193" class="line">1193</a>                 $ref: &#x27;#/components/schemas/FieldError&#x27;</span>
+<span id="L1194"><a href="#L1194" class="line">1194</a> </span>
+<span id="L1195"><a href="#L1195" class="line">1195</a>     FieldError:</span>
+<span id="L1196"><a href="#L1196" class="line">1196</a>       type: object</span>
+<span id="L1197"><a href="#L1197" class="line">1197</a>       required: [field, code]</span>
+<span id="L1198"><a href="#L1198" class="line">1198</a>       additionalProperties: false</span>
+<span id="L1199"><a href="#L1199" class="line">1199</a>       properties:</span>
+<span id="L1200"><a href="#L1200" class="line">1200</a>         field:</span>
+<span id="L1201"><a href="#L1201" class="line">1201</a>           type: string</span>
+<span id="L1202"><a href="#L1202" class="line">1202</a>           description: Nombre del campo del request (snake_case), p. ej. `email`, `tax_id` o `file` (logo)</span>
+<span id="L1203"><a href="#L1203" class="line">1203</a>         code:</span>
+<span id="L1204"><a href="#L1204" class="line">1204</a>           type: string</span>
+<span id="L1205"><a href="#L1205" class="line">1205</a>           description: |</span>
+<span id="L1206"><a href="#L1206" class="line">1206</a>             `invalid_timezone` solo aparece en `PATCH /tenant` (el registro usa el default, DD-27).</span>
+<span id="L1207"><a href="#L1207" class="line">1207</a>             En `PUT /tenant/logo`, `field` = `file` con `required` o `invalid_value` (DD-31).</span>
+<span id="L1208"><a href="#L1208" class="line">1208</a>           enum:</span>
+<span id="L1209"><a href="#L1209" class="line">1209</a>             - required</span>
+<span id="L1210"><a href="#L1210" class="line">1210</a>             - invalid_format</span>
+<span id="L1211"><a href="#L1211" class="line">1211</a>             - too_short</span>
+<span id="L1212"><a href="#L1212" class="line">1212</a>             - too_long</span>
+<span id="L1213"><a href="#L1213" class="line">1213</a>             - invalid_value</span>
+<span id="L1214"><a href="#L1214" class="line">1214</a>             - invalid_tax_id</span>
+<span id="L1215"><a href="#L1215" class="line">1215</a>             - same_as_email</span>
+<span id="L1216"><a href="#L1216" class="line">1216</a>             - unknown_template</span>
+<span id="L1217"><a href="#L1217" class="line">1217</a>             - invalid_timezone</span>
+<span id="L1218"><a href="#L1218" class="line">1218</a> </span>
+<span id="L1219"><a href="#L1219" class="line">1219</a>     Role:</span>
+<span id="L1220"><a href="#L1220" class="line">1220</a>       type: string</span>
+<span id="L1221"><a href="#L1221" class="line">1221</a>       description: &#x27;`admin` = Administrador, `operator` = Operador&#x27;</span>
+<span id="L1222"><a href="#L1222" class="line">1222</a>       enum: [admin, operator]</span>
+<span id="L1223"><a href="#L1223" class="line">1223</a> </span>
+<span id="L1224"><a href="#L1224" class="line">1224</a>     UserStatus:</span>
+<span id="L1225"><a href="#L1225" class="line">1225</a>       type: string</span>
+<span id="L1226"><a href="#L1226" class="line">1226</a>       enum: [invited, active, disabled]</span>
+<span id="L1227"><a href="#L1227" class="line">1227</a> </span>
+<span id="L1228"><a href="#L1228" class="line">1228</a>     Currency:</span>
+<span id="L1229"><a href="#L1229" class="line">1229</a>       type: string</span>
+<span id="L1230"><a href="#L1230" class="line">1230</a>       description: ISO 4217. Monedas del MVP.</span>
+<span id="L1231"><a href="#L1231" class="line">1231</a>       enum: [ARS, USD]</span>
+<span id="L1232"><a href="#L1232" class="line">1232</a> </span>
+<span id="L1233"><a href="#L1233" class="line">1233</a>     Permission:</span>
+<span id="L1234"><a href="#L1234" class="line">1234</a>       type: string</span>
+<span id="L1235"><a href="#L1235" class="line">1235</a>       description: |</span>
+<span id="L1236"><a href="#L1236" class="line">1236</a>         Permisos de la matriz FR-007 (una fila de la tabla = un permiso). Fuente: `internal/authz`.</span>
+<span id="L1237"><a href="#L1237" class="line">1237</a>         - customers.manage: clientes (alta, edición, consulta)</span>
+<span id="L1238"><a href="#L1238" class="line">1238</a>         - projects.manage: proyectos, notas, adjuntos, cambio de etapa</span>
+<span id="L1239"><a href="#L1239" class="line">1239</a>         - quotes.manage: presupuestos (crear, PDF, enviar, aprobar)</span>
+<span id="L1240"><a href="#L1240" class="line">1240</a>         - customer_receipts.create: registrar cobros de clientes (incluso con cheques)</span>
+<span id="L1241"><a href="#L1241" class="line">1241</a>         - balances.view: ver saldo de un cliente o proyecto</span>
+<span id="L1242"><a href="#L1242" class="line">1242</a>         - project_costs.view: ver costos y margen de un proyecto</span>
+<span id="L1243"><a href="#L1243" class="line">1243</a>         - suppliers.view_contact: proveedores, datos de contacto</span>
+<span id="L1244"><a href="#L1244" class="line">1244</a>         - party_finances.manage: proveedores (cuenta corriente), empleados y socios</span>
+<span id="L1245"><a href="#L1245" class="line">1245</a>         - money_accounts.manage: cuentas de dinero (saldos y movimientos)</span>
+<span id="L1246"><a href="#L1246" class="line">1246</a>         - financial_operations.manage: compras, pagos, cargos, aportes, retiros, gastos</span>
+<span id="L1247"><a href="#L1247" class="line">1247</a>         - checks.manage: cartera de cheques y cheques propios</span>
+<span id="L1248"><a href="#L1248" class="line">1248</a>         - bank_statements.import: importación de extractos</span>
+<span id="L1249"><a href="#L1249" class="line">1249</a>         - reports.view: reportes</span>
+<span id="L1250"><a href="#L1250" class="line">1250</a>         - settings.manage: configuración y usuarios</span>
+<span id="L1251"><a href="#L1251" class="line">1251</a>         - movements.void: anular movimientos</span>
+<span id="L1252"><a href="#L1252" class="line">1252</a>       enum:</span>
+<span id="L1253"><a href="#L1253" class="line">1253</a>         - customers.manage</span>
+<span id="L1254"><a href="#L1254" class="line">1254</a>         - projects.manage</span>
+<span id="L1255"><a href="#L1255" class="line">1255</a>         - quotes.manage</span>
+<span id="L1256"><a href="#L1256" class="line">1256</a>         - customer_receipts.create</span>
+<span id="L1257"><a href="#L1257" class="line">1257</a>         - balances.view</span>
+<span id="L1258"><a href="#L1258" class="line">1258</a>         - project_costs.view</span>
+<span id="L1259"><a href="#L1259" class="line">1259</a>         - suppliers.view_contact</span>
+<span id="L1260"><a href="#L1260" class="line">1260</a>         - party_finances.manage</span>
+<span id="L1261"><a href="#L1261" class="line">1261</a>         - money_accounts.manage</span>
+<span id="L1262"><a href="#L1262" class="line">1262</a>         - financial_operations.manage</span>
+<span id="L1263"><a href="#L1263" class="line">1263</a>         - checks.manage</span>
+<span id="L1264"><a href="#L1264" class="line">1264</a>         - bank_statements.import</span>
+<span id="L1265"><a href="#L1265" class="line">1265</a>         - reports.view</span>
+<span id="L1266"><a href="#L1266" class="line">1266</a>         - settings.manage</span>
+<span id="L1267"><a href="#L1267" class="line">1267</a>         - movements.void</span>
+<span id="L1268"><a href="#L1268" class="line">1268</a> </span>
+<span id="L1269"><a href="#L1269" class="line">1269</a>     Email:</span>
+<span id="L1270"><a href="#L1270" class="line">1270</a>       type: string</span>
+<span id="L1271"><a href="#L1271" class="line">1271</a>       format: email</span>
+<span id="L1272"><a href="#L1272" class="line">1272</a>       maxLength: 254</span>
+<span id="L1273"><a href="#L1273" class="line">1273</a>       description: Se normaliza a minúsculas y sin espacios en los extremos.</span>
+<span id="L1274"><a href="#L1274" class="line">1274</a> </span>
+<span id="L1275"><a href="#L1275" class="line">1275</a>     Password:</span>
+<span id="L1276"><a href="#L1276" class="line">1276</a>       type: string</span>
+<span id="L1277"><a href="#L1277" class="line">1277</a>       minLength: 10</span>
+<span id="L1278"><a href="#L1278" class="line">1278</a>       maxLength: 128</span>
+<span id="L1279"><a href="#L1279" class="line">1279</a>       description: Sin reglas de composición; no puede ser igual al email (DD-6).</span>
+<span id="L1280"><a href="#L1280" class="line">1280</a> </span>
+<span id="L1281"><a href="#L1281" class="line">1281</a>     IndustryTemplate:</span>
+<span id="L1282"><a href="#L1282" class="line">1282</a>       type: object</span>
+<span id="L1283"><a href="#L1283" class="line">1283</a>       required: [code, name]</span>
+<span id="L1284"><a href="#L1284" class="line">1284</a>       additionalProperties: false</span>
+<span id="L1285"><a href="#L1285" class="line">1285</a>       properties:</span>
+<span id="L1286"><a href="#L1286" class="line">1286</a>         code:</span>
+<span id="L1287"><a href="#L1287" class="line">1287</a>           type: string</span>
+<span id="L1288"><a href="#L1288" class="line">1288</a>           description: Código estable, p. ej. `aluminum_carpentry` o `generic`</span>
+<span id="L1289"><a href="#L1289" class="line">1289</a>         name:</span>
+<span id="L1290"><a href="#L1290" class="line">1290</a>           type: string</span>
+<span id="L1291"><a href="#L1291" class="line">1291</a>           description: Nombre para mostrar, en español</span>
+<span id="L1292"><a href="#L1292" class="line">1292</a> </span>
+<span id="L1293"><a href="#L1293" class="line">1293</a>     SignupRequest:</span>
+<span id="L1294"><a href="#L1294" class="line">1294</a>       type: object</span>
+<span id="L1295"><a href="#L1295" class="line">1295</a>       required: [name, email, password, company_name, base_currency, industry_template_code]</span>
+<span id="L1296"><a href="#L1296" class="line">1296</a>       additionalProperties: false</span>
+<span id="L1297"><a href="#L1297" class="line">1297</a>       properties:</span>
+<span id="L1298"><a href="#L1298" class="line">1298</a>         name:</span>
+<span id="L1299"><a href="#L1299" class="line">1299</a>           type: string</span>
+<span id="L1300"><a href="#L1300" class="line">1300</a>           minLength: 1</span>
+<span id="L1301"><a href="#L1301" class="line">1301</a>           maxLength: 120</span>
+<span id="L1302"><a href="#L1302" class="line">1302</a>           description: Nombre de la persona que se registra</span>
+<span id="L1303"><a href="#L1303" class="line">1303</a>         email:</span>
+<span id="L1304"><a href="#L1304" class="line">1304</a>           $ref: &#x27;#/components/schemas/Email&#x27;</span>
+<span id="L1305"><a href="#L1305" class="line">1305</a>         password:</span>
+<span id="L1306"><a href="#L1306" class="line">1306</a>           $ref: &#x27;#/components/schemas/Password&#x27;</span>
+<span id="L1307"><a href="#L1307" class="line">1307</a>         company_name:</span>
+<span id="L1308"><a href="#L1308" class="line">1308</a>           type: string</span>
+<span id="L1309"><a href="#L1309" class="line">1309</a>           minLength: 1</span>
+<span id="L1310"><a href="#L1310" class="line">1310</a>           maxLength: 120</span>
+<span id="L1311"><a href="#L1311" class="line">1311</a>         base_currency:</span>
+<span id="L1312"><a href="#L1312" class="line">1312</a>           $ref: &#x27;#/components/schemas/Currency&#x27;</span>
+<span id="L1313"><a href="#L1313" class="line">1313</a>         industry_template_code:</span>
+<span id="L1314"><a href="#L1314" class="line">1314</a>           type: string</span>
+<span id="L1315"><a href="#L1315" class="line">1315</a>           maxLength: 64</span>
+<span id="L1316"><a href="#L1316" class="line">1316</a>         timezone:</span>
+<span id="L1317"><a href="#L1317" class="line">1317</a>           type: string</span>
+<span id="L1318"><a href="#L1318" class="line">1318</a>           maxLength: 64</span>
+<span id="L1319"><a href="#L1319" class="line">1319</a>           description: |</span>
+<span id="L1320"><a href="#L1320" class="line">1320</a>             Zona IANA del navegador. Si falta o no es una zona conocida, se usa</span>
+<span id="L1321"><a href="#L1321" class="line">1321</a>             `America/Argentina/Buenos_Aires` (sin error, DD-27).</span>
+<span id="L1322"><a href="#L1322" class="line">1322</a> </span>
+<span id="L1323"><a href="#L1323" class="line">1323</a>     LoginRequest:</span>
+<span id="L1324"><a href="#L1324" class="line">1324</a>       type: object</span>
+<span id="L1325"><a href="#L1325" class="line">1325</a>       required: [email, password]</span>
+<span id="L1326"><a href="#L1326" class="line">1326</a>       additionalProperties: false</span>
+<span id="L1327"><a href="#L1327" class="line">1327</a>       properties:</span>
+<span id="L1328"><a href="#L1328" class="line">1328</a>         email:</span>
+<span id="L1329"><a href="#L1329" class="line">1329</a>           $ref: &#x27;#/components/schemas/Email&#x27;</span>
+<span id="L1330"><a href="#L1330" class="line">1330</a>         password:</span>
+<span id="L1331"><a href="#L1331" class="line">1331</a>           type: string</span>
+<span id="L1332"><a href="#L1332" class="line">1332</a>           minLength: 1</span>
+<span id="L1333"><a href="#L1333" class="line">1333</a>           maxLength: 128</span>
+<span id="L1334"><a href="#L1334" class="line">1334</a> </span>
+<span id="L1335"><a href="#L1335" class="line">1335</a>     PasswordResetRequest:</span>
+<span id="L1336"><a href="#L1336" class="line">1336</a>       type: object</span>
+<span id="L1337"><a href="#L1337" class="line">1337</a>       required: [email]</span>
+<span id="L1338"><a href="#L1338" class="line">1338</a>       additionalProperties: false</span>
+<span id="L1339"><a href="#L1339" class="line">1339</a>       properties:</span>
+<span id="L1340"><a href="#L1340" class="line">1340</a>         email:</span>
+<span id="L1341"><a href="#L1341" class="line">1341</a>           $ref: &#x27;#/components/schemas/Email&#x27;</span>
+<span id="L1342"><a href="#L1342" class="line">1342</a> </span>
+<span id="L1343"><a href="#L1343" class="line">1343</a>     TokenRequest:</span>
+<span id="L1344"><a href="#L1344" class="line">1344</a>       type: object</span>
+<span id="L1345"><a href="#L1345" class="line">1345</a>       required: [token]</span>
+<span id="L1346"><a href="#L1346" class="line">1346</a>       additionalProperties: false</span>
+<span id="L1347"><a href="#L1347" class="line">1347</a>       properties:</span>
+<span id="L1348"><a href="#L1348" class="line">1348</a>         token:</span>
+<span id="L1349"><a href="#L1349" class="line">1349</a>           type: string</span>
+<span id="L1350"><a href="#L1350" class="line">1350</a>           minLength: 1</span>
+<span id="L1351"><a href="#L1351" class="line">1351</a>           maxLength: 128</span>
+<span id="L1352"><a href="#L1352" class="line">1352</a>           description: Token en claro recibido por email (base64url)</span>
+<span id="L1353"><a href="#L1353" class="line">1353</a> </span>
+<span id="L1354"><a href="#L1354" class="line">1354</a>     PasswordResetConfirmRequest:</span>
+<span id="L1355"><a href="#L1355" class="line">1355</a>       type: object</span>
+<span id="L1356"><a href="#L1356" class="line">1356</a>       required: [token, password]</span>
+<span id="L1357"><a href="#L1357" class="line">1357</a>       additionalProperties: false</span>
+<span id="L1358"><a href="#L1358" class="line">1358</a>       properties:</span>
+<span id="L1359"><a href="#L1359" class="line">1359</a>         token:</span>
+<span id="L1360"><a href="#L1360" class="line">1360</a>           type: string</span>
+<span id="L1361"><a href="#L1361" class="line">1361</a>           minLength: 1</span>
+<span id="L1362"><a href="#L1362" class="line">1362</a>           maxLength: 128</span>
+<span id="L1363"><a href="#L1363" class="line">1363</a>         password:</span>
+<span id="L1364"><a href="#L1364" class="line">1364</a>           $ref: &#x27;#/components/schemas/Password&#x27;</span>
+<span id="L1365"><a href="#L1365" class="line">1365</a> </span>
+<span id="L1366"><a href="#L1366" class="line">1366</a>     InvitationPreview:</span>
+<span id="L1367"><a href="#L1367" class="line">1367</a>       type: object</span>
+<span id="L1368"><a href="#L1368" class="line">1368</a>       required: [tenant_name, email, role, expires_at]</span>
+<span id="L1369"><a href="#L1369" class="line">1369</a>       additionalProperties: false</span>
+<span id="L1370"><a href="#L1370" class="line">1370</a>       properties:</span>
+<span id="L1371"><a href="#L1371" class="line">1371</a>         tenant_name:</span>
+<span id="L1372"><a href="#L1372" class="line">1372</a>           type: string</span>
+<span id="L1373"><a href="#L1373" class="line">1373</a>         email:</span>
+<span id="L1374"><a href="#L1374" class="line">1374</a>           $ref: &#x27;#/components/schemas/Email&#x27;</span>
+<span id="L1375"><a href="#L1375" class="line">1375</a>         role:</span>
+<span id="L1376"><a href="#L1376" class="line">1376</a>           $ref: &#x27;#/components/schemas/Role&#x27;</span>
+<span id="L1377"><a href="#L1377" class="line">1377</a>         expires_at:</span>
+<span id="L1378"><a href="#L1378" class="line">1378</a>           type: string</span>
+<span id="L1379"><a href="#L1379" class="line">1379</a>           format: date-time</span>
+<span id="L1380"><a href="#L1380" class="line">1380</a> </span>
+<span id="L1381"><a href="#L1381" class="line">1381</a>     InvitationAcceptRequest:</span>
+<span id="L1382"><a href="#L1382" class="line">1382</a>       type: object</span>
+<span id="L1383"><a href="#L1383" class="line">1383</a>       required: [token, name, password]</span>
+<span id="L1384"><a href="#L1384" class="line">1384</a>       additionalProperties: false</span>
+<span id="L1385"><a href="#L1385" class="line">1385</a>       properties:</span>
+<span id="L1386"><a href="#L1386" class="line">1386</a>         token:</span>
+<span id="L1387"><a href="#L1387" class="line">1387</a>           type: string</span>
+<span id="L1388"><a href="#L1388" class="line">1388</a>           minLength: 1</span>
+<span id="L1389"><a href="#L1389" class="line">1389</a>           maxLength: 128</span>
+<span id="L1390"><a href="#L1390" class="line">1390</a>         name:</span>
+<span id="L1391"><a href="#L1391" class="line">1391</a>           type: string</span>
+<span id="L1392"><a href="#L1392" class="line">1392</a>           minLength: 1</span>
+<span id="L1393"><a href="#L1393" class="line">1393</a>           maxLength: 120</span>
+<span id="L1394"><a href="#L1394" class="line">1394</a>         password:</span>
+<span id="L1395"><a href="#L1395" class="line">1395</a>           $ref: &#x27;#/components/schemas/Password&#x27;</span>
+<span id="L1396"><a href="#L1396" class="line">1396</a> </span>
+<span id="L1397"><a href="#L1397" class="line">1397</a>     InvitationRequest:</span>
+<span id="L1398"><a href="#L1398" class="line">1398</a>       type: object</span>
+<span id="L1399"><a href="#L1399" class="line">1399</a>       required: [email, role]</span>
+<span id="L1400"><a href="#L1400" class="line">1400</a>       additionalProperties: false</span>
+<span id="L1401"><a href="#L1401" class="line">1401</a>       properties:</span>
+<span id="L1402"><a href="#L1402" class="line">1402</a>         email:</span>
+<span id="L1403"><a href="#L1403" class="line">1403</a>           $ref: &#x27;#/components/schemas/Email&#x27;</span>
+<span id="L1404"><a href="#L1404" class="line">1404</a>         role:</span>
+<span id="L1405"><a href="#L1405" class="line">1405</a>           $ref: &#x27;#/components/schemas/Role&#x27;</span>
+<span id="L1406"><a href="#L1406" class="line">1406</a> </span>
+<span id="L1407"><a href="#L1407" class="line">1407</a>     RoleChangeRequest:</span>
+<span id="L1408"><a href="#L1408" class="line">1408</a>       type: object</span>
+<span id="L1409"><a href="#L1409" class="line">1409</a>       required: [role]</span>
+<span id="L1410"><a href="#L1410" class="line">1410</a>       additionalProperties: false</span>
+<span id="L1411"><a href="#L1411" class="line">1411</a>       properties:</span>
+<span id="L1412"><a href="#L1412" class="line">1412</a>         role:</span>
+<span id="L1413"><a href="#L1413" class="line">1413</a>           $ref: &#x27;#/components/schemas/Role&#x27;</span>
+<span id="L1414"><a href="#L1414" class="line">1414</a> </span>
+<span id="L1415"><a href="#L1415" class="line">1415</a>     CurrentUser:</span>
+<span id="L1416"><a href="#L1416" class="line">1416</a>       type: object</span>
+<span id="L1417"><a href="#L1417" class="line">1417</a>       required: [id, name, email, role, status, email_verified]</span>
+<span id="L1418"><a href="#L1418" class="line">1418</a>       additionalProperties: false</span>
+<span id="L1419"><a href="#L1419" class="line">1419</a>       properties:</span>
+<span id="L1420"><a href="#L1420" class="line">1420</a>         id:</span>
+<span id="L1421"><a href="#L1421" class="line">1421</a>           type: string</span>
+<span id="L1422"><a href="#L1422" class="line">1422</a>           format: uuid</span>
+<span id="L1423"><a href="#L1423" class="line">1423</a>         name:</span>
+<span id="L1424"><a href="#L1424" class="line">1424</a>           type: string</span>
+<span id="L1425"><a href="#L1425" class="line">1425</a>         email:</span>
+<span id="L1426"><a href="#L1426" class="line">1426</a>           $ref: &#x27;#/components/schemas/Email&#x27;</span>
+<span id="L1427"><a href="#L1427" class="line">1427</a>         role:</span>
+<span id="L1428"><a href="#L1428" class="line">1428</a>           $ref: &#x27;#/components/schemas/Role&#x27;</span>
+<span id="L1429"><a href="#L1429" class="line">1429</a>         status:</span>
+<span id="L1430"><a href="#L1430" class="line">1430</a>           $ref: &#x27;#/components/schemas/UserStatus&#x27;</span>
+<span id="L1431"><a href="#L1431" class="line">1431</a>         email_verified:</span>
+<span id="L1432"><a href="#L1432" class="line">1432</a>           type: boolean</span>
+<span id="L1433"><a href="#L1433" class="line">1433</a>           description: Si es false, la UI muestra un aviso para verificar; solo impide invitar (DD-46, P-2)</span>
+<span id="L1434"><a href="#L1434" class="line">1434</a> </span>
+<span id="L1435"><a href="#L1435" class="line">1435</a>     TenantSummary:</span>
+<span id="L1436"><a href="#L1436" class="line">1436</a>       type: object</span>
+<span id="L1437"><a href="#L1437" class="line">1437</a>       required: [id, name, base_currency, timezone, has_logo]</span>
+<span id="L1438"><a href="#L1438" class="line">1438</a>       additionalProperties: false</span>
+<span id="L1439"><a href="#L1439" class="line">1439</a>       properties:</span>
+<span id="L1440"><a href="#L1440" class="line">1440</a>         id:</span>
+<span id="L1441"><a href="#L1441" class="line">1441</a>           type: string</span>
+<span id="L1442"><a href="#L1442" class="line">1442</a>           format: uuid</span>
+<span id="L1443"><a href="#L1443" class="line">1443</a>         name:</span>
+<span id="L1444"><a href="#L1444" class="line">1444</a>           type: string</span>
+<span id="L1445"><a href="#L1445" class="line">1445</a>         base_currency:</span>
+<span id="L1446"><a href="#L1446" class="line">1446</a>           $ref: &#x27;#/components/schemas/Currency&#x27;</span>
+<span id="L1447"><a href="#L1447" class="line">1447</a>         timezone:</span>
+<span id="L1448"><a href="#L1448" class="line">1448</a>           type: string</span>
+<span id="L1449"><a href="#L1449" class="line">1449</a>         has_logo:</span>
+<span id="L1450"><a href="#L1450" class="line">1450</a>           type: boolean</span>
+<span id="L1451"><a href="#L1451" class="line">1451</a> </span>
+<span id="L1452"><a href="#L1452" class="line">1452</a>     SessionInfo:</span>
+<span id="L1453"><a href="#L1453" class="line">1453</a>       type: object</span>
+<span id="L1454"><a href="#L1454" class="line">1454</a>       required: [user, tenant, permissions]</span>
+<span id="L1455"><a href="#L1455" class="line">1455</a>       additionalProperties: false</span>
+<span id="L1456"><a href="#L1456" class="line">1456</a>       properties:</span>
+<span id="L1457"><a href="#L1457" class="line">1457</a>         user:</span>
+<span id="L1458"><a href="#L1458" class="line">1458</a>           $ref: &#x27;#/components/schemas/CurrentUser&#x27;</span>
+<span id="L1459"><a href="#L1459" class="line">1459</a>         tenant:</span>
+<span id="L1460"><a href="#L1460" class="line">1460</a>           $ref: &#x27;#/components/schemas/TenantSummary&#x27;</span>
+<span id="L1461"><a href="#L1461" class="line">1461</a>         permissions:</span>
+<span id="L1462"><a href="#L1462" class="line">1462</a>           type: array</span>
+<span id="L1463"><a href="#L1463" class="line">1463</a>           uniqueItems: true</span>
+<span id="L1464"><a href="#L1464" class="line">1464</a>           items:</span>
+<span id="L1465"><a href="#L1465" class="line">1465</a>             $ref: &#x27;#/components/schemas/Permission&#x27;</span>
+<span id="L1466"><a href="#L1466" class="line">1466</a> </span>
+<span id="L1467"><a href="#L1467" class="line">1467</a>     Tenant:</span>
+<span id="L1468"><a href="#L1468" class="line">1468</a>       type: object</span>
+<span id="L1469"><a href="#L1469" class="line">1469</a>       required:</span>
+<span id="L1470"><a href="#L1470" class="line">1470</a>         - id</span>
+<span id="L1471"><a href="#L1471" class="line">1471</a>         - name</span>
+<span id="L1472"><a href="#L1472" class="line">1472</a>         - legal_name</span>
+<span id="L1473"><a href="#L1473" class="line">1473</a>         - tax_id</span>
+<span id="L1474"><a href="#L1474" class="line">1474</a>         - address</span>
+<span id="L1475"><a href="#L1475" class="line">1475</a>         - phone</span>
+<span id="L1476"><a href="#L1476" class="line">1476</a>         - email</span>
+<span id="L1477"><a href="#L1477" class="line">1477</a>         - has_logo</span>
+<span id="L1478"><a href="#L1478" class="line">1478</a>         - base_currency</span>
+<span id="L1479"><a href="#L1479" class="line">1479</a>         - timezone</span>
+<span id="L1480"><a href="#L1480" class="line">1480</a>         - industry_template_code</span>
+<span id="L1481"><a href="#L1481" class="line">1481</a>         - created_at</span>
+<span id="L1482"><a href="#L1482" class="line">1482</a>         - updated_at</span>
+<span id="L1483"><a href="#L1483" class="line">1483</a>       additionalProperties: false</span>
+<span id="L1484"><a href="#L1484" class="line">1484</a>       properties:</span>
+<span id="L1485"><a href="#L1485" class="line">1485</a>         id:</span>
+<span id="L1486"><a href="#L1486" class="line">1486</a>           type: string</span>
+<span id="L1487"><a href="#L1487" class="line">1487</a>           format: uuid</span>
+<span id="L1488"><a href="#L1488" class="line">1488</a>         name:</span>
+<span id="L1489"><a href="#L1489" class="line">1489</a>           type: string</span>
+<span id="L1490"><a href="#L1490" class="line">1490</a>         legal_name:</span>
+<span id="L1491"><a href="#L1491" class="line">1491</a>           type: [string, &#x27;null&#x27;]</span>
+<span id="L1492"><a href="#L1492" class="line">1492</a>           description: Razón social</span>
+<span id="L1493"><a href="#L1493" class="line">1493</a>         tax_id:</span>
+<span id="L1494"><a href="#L1494" class="line">1494</a>           type: [string, &#x27;null&#x27;]</span>
+<span id="L1495"><a href="#L1495" class="line">1495</a>           pattern: &#x27;^[0-9]{11}$&#x27;</span>
+<span id="L1496"><a href="#L1496" class="line">1496</a>           description: CUIT sin guiones</span>
+<span id="L1497"><a href="#L1497" class="line">1497</a>         address:</span>
+<span id="L1498"><a href="#L1498" class="line">1498</a>           type: [string, &#x27;null&#x27;]</span>
+<span id="L1499"><a href="#L1499" class="line">1499</a>         phone:</span>
+<span id="L1500"><a href="#L1500" class="line">1500</a>           type: [string, &#x27;null&#x27;]</span>
+<span id="L1501"><a href="#L1501" class="line">1501</a>         email:</span>
+<span id="L1502"><a href="#L1502" class="line">1502</a>           type: [string, &#x27;null&#x27;]</span>
+<span id="L1503"><a href="#L1503" class="line">1503</a>           format: email</span>
+<span id="L1504"><a href="#L1504" class="line">1504</a>         has_logo:</span>
+<span id="L1505"><a href="#L1505" class="line">1505</a>           type: boolean</span>
+<span id="L1506"><a href="#L1506" class="line">1506</a>           description: Si es true, la imagen está en `GET /tenant/logo`</span>
+<span id="L1507"><a href="#L1507" class="line">1507</a>         base_currency:</span>
+<span id="L1508"><a href="#L1508" class="line">1508</a>           $ref: &#x27;#/components/schemas/Currency&#x27;</span>
+<span id="L1509"><a href="#L1509" class="line">1509</a>         timezone:</span>
+<span id="L1510"><a href="#L1510" class="line">1510</a>           type: string</span>
+<span id="L1511"><a href="#L1511" class="line">1511</a>         industry_template_code:</span>
+<span id="L1512"><a href="#L1512" class="line">1512</a>           type: string</span>
+<span id="L1513"><a href="#L1513" class="line">1513</a>         created_at:</span>
+<span id="L1514"><a href="#L1514" class="line">1514</a>           type: string</span>
+<span id="L1515"><a href="#L1515" class="line">1515</a>           format: date-time</span>
+<span id="L1516"><a href="#L1516" class="line">1516</a>         updated_at:</span>
+<span id="L1517"><a href="#L1517" class="line">1517</a>           type: string</span>
+<span id="L1518"><a href="#L1518" class="line">1518</a>           format: date-time</span>
+<span id="L1519"><a href="#L1519" class="line">1519</a>           description: Cambia en cada modificación de la empresa, incluida la subida o baja del logo</span>
+<span id="L1520"><a href="#L1520" class="line">1520</a> </span>
+<span id="L1521"><a href="#L1521" class="line">1521</a>     TenantUpdate:</span>
+<span id="L1522"><a href="#L1522" class="line">1522</a>       type: object</span>
+<span id="L1523"><a href="#L1523" class="line">1523</a>       minProperties: 1</span>
+<span id="L1524"><a href="#L1524" class="line">1524</a>       additionalProperties: false</span>
+<span id="L1525"><a href="#L1525" class="line">1525</a>       description: Solo se modifican los campos presentes; `null` (o un texto vacío) borra un campo opcional; `name` y `timezone` no admiten `null` (DD-43).</span>
+<span id="L1526"><a href="#L1526" class="line">1526</a>       properties:</span>
+<span id="L1527"><a href="#L1527" class="line">1527</a>         name:</span>
+<span id="L1528"><a href="#L1528" class="line">1528</a>           type: string</span>
+<span id="L1529"><a href="#L1529" class="line">1529</a>           minLength: 1</span>
+<span id="L1530"><a href="#L1530" class="line">1530</a>           maxLength: 120</span>
+<span id="L1531"><a href="#L1531" class="line">1531</a>         legal_name:</span>
+<span id="L1532"><a href="#L1532" class="line">1532</a>           type: [string, &#x27;null&#x27;]</span>
+<span id="L1533"><a href="#L1533" class="line">1533</a>           maxLength: 200</span>
+<span id="L1534"><a href="#L1534" class="line">1534</a>         tax_id:</span>
+<span id="L1535"><a href="#L1535" class="line">1535</a>           type: [string, &#x27;null&#x27;]</span>
+<span id="L1536"><a href="#L1536" class="line">1536</a>           description: CUIT; se aceptan guiones y se guardan solo los 11 dígitos (DD-16)</span>
+<span id="L1537"><a href="#L1537" class="line">1537</a>           maxLength: 13</span>
+<span id="L1538"><a href="#L1538" class="line">1538</a>         address:</span>
+<span id="L1539"><a href="#L1539" class="line">1539</a>           type: [string, &#x27;null&#x27;]</span>
+<span id="L1540"><a href="#L1540" class="line">1540</a>           maxLength: 300</span>
+<span id="L1541"><a href="#L1541" class="line">1541</a>         phone:</span>
+<span id="L1542"><a href="#L1542" class="line">1542</a>           type: [string, &#x27;null&#x27;]</span>
+<span id="L1543"><a href="#L1543" class="line">1543</a>           maxLength: 50</span>
+<span id="L1544"><a href="#L1544" class="line">1544</a>         email:</span>
+<span id="L1545"><a href="#L1545" class="line">1545</a>           type: [string, &#x27;null&#x27;]</span>
+<span id="L1546"><a href="#L1546" class="line">1546</a>           format: email</span>
+<span id="L1547"><a href="#L1547" class="line">1547</a>           maxLength: 254</span>
+<span id="L1548"><a href="#L1548" class="line">1548</a>         timezone:</span>
+<span id="L1549"><a href="#L1549" class="line">1549</a>           type: string</span>
+<span id="L1550"><a href="#L1550" class="line">1550</a>           maxLength: 64</span>
+<span id="L1551"><a href="#L1551" class="line">1551</a> </span>
+<span id="L1552"><a href="#L1552" class="line">1552</a>     User:</span>
+<span id="L1553"><a href="#L1553" class="line">1553</a>       type: object</span>
+<span id="L1554"><a href="#L1554" class="line">1554</a>       required: [id, email, name, role, status, email_verified, created_at, invitation_expires_at]</span>
+<span id="L1555"><a href="#L1555" class="line">1555</a>       additionalProperties: false</span>
+<span id="L1556"><a href="#L1556" class="line">1556</a>       properties:</span>
+<span id="L1557"><a href="#L1557" class="line">1557</a>         id:</span>
+<span id="L1558"><a href="#L1558" class="line">1558</a>           type: string</span>
+<span id="L1559"><a href="#L1559" class="line">1559</a>           format: uuid</span>
+<span id="L1560"><a href="#L1560" class="line">1560</a>         email:</span>
+<span id="L1561"><a href="#L1561" class="line">1561</a>           $ref: &#x27;#/components/schemas/Email&#x27;</span>
+<span id="L1562"><a href="#L1562" class="line">1562</a>         name:</span>
+<span id="L1563"><a href="#L1563" class="line">1563</a>           type: [string, &#x27;null&#x27;]</span>
+<span id="L1564"><a href="#L1564" class="line">1564</a>           description: &#x27;`null` mientras el usuario está invitado&#x27;</span>
+<span id="L1565"><a href="#L1565" class="line">1565</a>         role:</span>
+<span id="L1566"><a href="#L1566" class="line">1566</a>           $ref: &#x27;#/components/schemas/Role&#x27;</span>
+<span id="L1567"><a href="#L1567" class="line">1567</a>         status:</span>
+<span id="L1568"><a href="#L1568" class="line">1568</a>           $ref: &#x27;#/components/schemas/UserStatus&#x27;</span>
+<span id="L1569"><a href="#L1569" class="line">1569</a>         email_verified:</span>
+<span id="L1570"><a href="#L1570" class="line">1570</a>           type: boolean</span>
+<span id="L1571"><a href="#L1571" class="line">1571</a>         created_at:</span>
+<span id="L1572"><a href="#L1572" class="line">1572</a>           type: string</span>
+<span id="L1573"><a href="#L1573" class="line">1573</a>           format: date-time</span>
+<span id="L1574"><a href="#L1574" class="line">1574</a>         invitation_expires_at:</span>
+<span id="L1575"><a href="#L1575" class="line">1575</a>           type: [string, &#x27;null&#x27;]</span>
+<span id="L1576"><a href="#L1576" class="line">1576</a>           format: date-time</span>
+<span id="L1577"><a href="#L1577" class="line">1577</a>           description: |</span>
+<span id="L1578"><a href="#L1578" class="line">1578</a>             Si `status` = `invited`: vencimiento de su **última** invitación, **aunque ya haya</span>
+<span id="L1579"><a href="#L1579" class="line">1579</a>             pasado** (la UI muestra &quot;Invitación vencida&quot; si es anterior a ahora, DD-25). Para</span>
+<span id="L1580"><a href="#L1580" class="line">1580</a>             `active` y `disabled`: `null`.</span>
+<span id="L1581"><a href="#L1581" class="line">1581</a> </span>
+<span id="L1582"><a href="#L1582" class="line">1582</a>     Health:</span>
+<span id="L1583"><a href="#L1583" class="line">1583</a>       type: object</span>
+<span id="L1584"><a href="#L1584" class="line">1584</a>       required: [status]</span>
+<span id="L1585"><a href="#L1585" class="line">1585</a>       additionalProperties: false</span>
+<span id="L1586"><a href="#L1586" class="line">1586</a>       properties:</span>
+<span id="L1587"><a href="#L1587" class="line">1587</a>         status:</span>
+<span id="L1588"><a href="#L1588" class="line">1588</a>           type: string</span>
+<span id="L1589"><a href="#L1589" class="line">1589</a>           enum: [ok, unavailable]</span></pre></main></body></html>

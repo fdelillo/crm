@@ -1,0 +1,592 @@
+{
+  "commit": "c7692bd7b7a0d8e07e18d3c9ec1738b169dc032f",
+  "permissions": [
+    "customers.manage",
+    "projects.manage",
+    "quotes.manage",
+    "customer_receipts.create",
+    "balances.view",
+    "project_costs.view",
+    "suppliers.view_contact",
+    "party_finances.manage",
+    "money_accounts.manage",
+    "financial_operations.manage",
+    "checks.manage",
+    "bank_statements.import",
+    "reports.view",
+    "settings.manage",
+    "movements.void"
+  ],
+  "operator_permissions": [
+    "customers.manage",
+    "projects.manage",
+    "quotes.manage",
+    "customer_receipts.create",
+    "balances.view",
+    "suppliers.view_contact"
+  ],
+  "deliveries": 3,
+  "figure_count": 59,
+  "interactive_figure_count": 17,
+  "topic_count": 33,
+  "diagram_page_count": 38,
+  "initial_catalog_covered": true,
+  "pending_interaction": "Evaluar loop automático continuo; aplazado por el usuario",
+  "date": "2026-10-14",
+  "plugin": "diagram-design 2.6.98",
+  "style_source": "specs/001-empresas-usuarios/ui.md §19",
+  "pages": [
+    {
+      "slug": "01-contexto",
+      "title": "Contexto del sistema",
+      "kind": "Arquitectura",
+      "status": "Mixto",
+      "delivery": 1,
+      "sources": [
+        "docs/vision.md",
+        ".specify/memory/constitution.md",
+        "cmd/crm/serve.go"
+      ]
+    },
+    {
+      "slug": "02-arquitectura",
+      "title": "Arquitectura general",
+      "kind": "Arquitectura",
+      "status": "Mixto",
+      "delivery": 1,
+      "sources": [
+        "docs/adr/001-monolito-modular.md",
+        "docs/adr/019-distribucion-spa-embebida-go.md",
+        "cmd/crm/serve.go",
+        "internal/app/root.go"
+      ]
+    },
+    {
+      "slug": "03-modulos",
+      "title": "Mapa de módulos",
+      "kind": "Arquitectura por áreas",
+      "status": "Mixto",
+      "delivery": 1,
+      "sources": [
+        "docs/vision.md",
+        "docs/adr/001-monolito-modular.md",
+        "internal/app/api.go",
+        "internal/industrytemplate/catalog.go",
+        "cmd/crm/serve.go"
+      ]
+    },
+    {
+      "slug": "04-fronteras",
+      "title": "Dependencias y fronteras",
+      "kind": "Dependencias",
+      "status": "Actual",
+      "delivery": 1,
+      "sources": [
+        "docs/adr/001-monolito-modular.md",
+        ".golangci.yml",
+        "internal/tenant/service.go",
+        "internal/identity/service.go"
+      ]
+    },
+    {
+      "slug": "05-peticion",
+      "title": "Recorrido de una petición",
+      "kind": "Secuencia · paso a paso",
+      "status": "Actual",
+      "delivery": 1,
+      "sources": [
+        "internal/app/root.go",
+        "internal/app/api.go",
+        "internal/identity/middleware.go",
+        "internal/identity/service.go",
+        "internal/tenant/http.go",
+        "internal/tenant/update.go",
+        "internal/authz/authz.go"
+      ]
+    },
+    {
+      "slug": "06-aislamiento",
+      "title": "Aislamiento entre empresas",
+      "kind": "Secuencia · paso a paso",
+      "status": "Actual",
+      "delivery": 1,
+      "sources": [
+        "docs/adr/005-aislamiento-tenant-rol-por-empresa-rls.md",
+        "internal/platform/db/db.go",
+        "db/migrations/00002_tenant_functions.sql",
+        "db/invariants/isolation_integration_test.go",
+        "db/invariants/foreignkeys_integration_test.go"
+      ]
+    },
+    {
+      "slug": "07-permisos",
+      "title": "Roles y permisos",
+      "kind": "Matriz de acceso",
+      "status": "Actual",
+      "delivery": 1,
+      "sources": [
+        "internal/authz/authz.go",
+        "docs/adr/013-autorizacion-matriz-permisos.md",
+        "internal/app/routes_users.go",
+        "internal/tenant/http.go"
+      ]
+    },
+    {
+      "slug": "08-dominio",
+      "title": "Modelo conceptual del negocio",
+      "kind": "ER / dominio",
+      "status": "Especificado",
+      "delivery": 1,
+      "sources": [
+        "docs/modelo-dominio.md",
+        "docs/glosario.md",
+        "specs/004-proyectos/spec.md",
+        "specs/005-presupuestos/spec.md",
+        "specs/007-cuentas-corrientes/spec.md"
+      ]
+    },
+    {
+      "slug": "09-esquema",
+      "title": "Esquema físico actual",
+      "kind": "Esquema SQL",
+      "status": "Actual",
+      "delivery": 1,
+      "sources": [
+        "db/migrations/00005_sessions_user_tokens.sql",
+        "db/migrations/00008_login_throttles.sql",
+        "db/migrations/00004_users.sql",
+        "db/migrations/00007_audit_log.sql",
+        "db/migrations/00003_tenants.sql",
+        "db/migrations/00006_outbox_messages.sql",
+        "db/migrations/00005_sessions_user_tokens.sql"
+      ]
+    },
+    {
+      "slug": "10-entorno-local",
+      "title": "Entorno local de desarrollo",
+      "kind": "Despliegue local",
+      "status": "Mixto",
+      "delivery": 1,
+      "sources": [
+        "compose.yaml",
+        "README.md",
+        "cmd/crm/serve.go",
+        "internal/app/readiness.go",
+        "docs/adr/019-distribucion-spa-embebida-go.md"
+      ]
+    },
+    {
+      "slug": "11-registro",
+      "title": "Registro de empresa",
+      "kind": "Secuencia · paso a paso",
+      "status": "Actual",
+      "delivery": 2,
+      "sources": [
+        "internal/tenant/service.go",
+        "internal/tenant/http.go",
+        "internal/identity/service.go",
+        "internal/platform/db/db.go",
+        "cmd/crm/serve.go",
+        "internal/tenant/service_integration_test.go"
+      ]
+    },
+    {
+      "slug": "12-autenticacion",
+      "title": "Autenticación y sesión",
+      "kind": "Secuencia / estados",
+      "status": "Actual",
+      "delivery": 2,
+      "sources": [
+        "internal/identity/login.go",
+        "internal/identity/middleware.go",
+        "internal/identity/service.go",
+        "internal/platform/config/config.go",
+        "internal/app/routes_auth.go",
+        "internal/identity/login_test.go",
+        "internal/identity/login_integration_test.go"
+      ]
+    },
+    {
+      "slug": "13-usuarios",
+      "title": "Usuarios e invitaciones",
+      "kind": "Secuencias / estados",
+      "status": "Actual",
+      "delivery": 2,
+      "sources": [
+        "internal/app/routes_users.go",
+        "internal/identity/users.go",
+        "internal/identity/user.go",
+        "internal/identity/store/users.sql",
+        "internal/identity/users_integration_test.go",
+        "internal/identity/invite_verified_integration_test.go",
+        "internal/identity/invitation_lock_integration_test.go"
+      ]
+    },
+    {
+      "slug": "14-recuperacion",
+      "title": "Verificación y recuperación",
+      "kind": "Secuencias / estados",
+      "status": "Actual",
+      "delivery": 2,
+      "sources": [
+        "internal/app/routes_recovery.go",
+        "internal/identity/token_flows.go",
+        "internal/identity/store/queries.sql",
+        "internal/identity/store/users.sql",
+        "internal/identity/emails/emails.go",
+        "internal/identity/token_flows_integration_test.go",
+        "db/migrations/00005_sessions_user_tokens.sql"
+      ]
+    },
+    {
+      "slug": "15-outbox",
+      "title": "Entrega de correo y reintentos",
+      "kind": "Secuencia / estados",
+      "status": "Actual",
+      "delivery": 2,
+      "sources": [
+        "internal/platform/outbox/dispatcher.go",
+        "internal/platform/outbox/outbox.go",
+        "internal/platform/outbox/store/queries.sql",
+        "internal/platform/outbox/store/worker.sql",
+        "internal/identity/emails/emails.go",
+        "docs/adr/024-clasificacion-fallos-outbox-y-presupuesto-smtp.md",
+        "docs/adr/025-saneamiento-last-error-y-codigo-extendido.md",
+        "internal/platform/outbox/outbox_integration_test.go"
+      ]
+    },
+    {
+      "slug": "16-archivos",
+      "title": "Archivos privados y logos",
+      "kind": "Secuencias / decisiones",
+      "status": "Actual",
+      "delivery": 2,
+      "sources": [
+        "internal/tenant/logo.go",
+        "internal/tenant/http.go",
+        "internal/platform/objectstore/s3.go",
+        "internal/tenant/logo_integration_test.go",
+        "internal/tenant/logo_revision_integration_test.go",
+        "docs/adr/011-almacenamiento-archivos-s3.md"
+      ]
+    },
+    {
+      "slug": "17-backend",
+      "title": "Estructura interna del backend",
+      "kind": "Componentes",
+      "status": "Actual",
+      "delivery": 3,
+      "sources": [
+        "docs/adr/001-monolito-modular.md",
+        "internal/app/api.go",
+        "internal/tenant/http.go",
+        "internal/tenant/service.go",
+        "internal/platform/db/db.go",
+        "sqlc.yaml"
+      ]
+    },
+    {
+      "slug": "18-contratos",
+      "title": "Contrato y generación de código",
+      "kind": "Flujos de desarrollo",
+      "status": "Mixto",
+      "delivery": 3,
+      "sources": [
+        "docs/adr/014-contrato-openapi-canonico.md",
+        "docs/adr/018-server-state-tanstack-query-openapi.md",
+        "specs/001-empresas-usuarios/contracts/openapi.yaml",
+        "internal/testsupport/contract/contract.go",
+        "sqlc.yaml",
+        "Makefile"
+      ]
+    },
+    {
+      "slug": "19-ci",
+      "title": "Construcción y CI",
+      "kind": "Pipeline",
+      "status": "Mixto",
+      "delivery": 3,
+      "sources": [
+        ".github/workflows/ci.yml",
+        "Makefile",
+        "go.mod",
+        "tools.mod",
+        "docs/adr/019-distribucion-spa-embebida-go.md",
+        "docs/adr/022-estrategia-de-tests-frontend.md",
+        "specs/001-empresas-usuarios/tasks.md"
+      ]
+    },
+    {
+      "slug": "20-pruebas",
+      "title": "Estrategia de pruebas",
+      "kind": "Capas de verificación",
+      "status": "Mixto",
+      "delivery": 3,
+      "sources": [
+        "docs/adr/012-estrategia-de-tests.md",
+        "docs/adr/022-estrategia-de-tests-frontend.md",
+        "db/invariants/isolation_integration_test.go",
+        "internal/testsupport/contract/contract.go",
+        "internal/testsupport/pgtest/pgtest.go",
+        "Makefile"
+      ]
+    },
+    {
+      "slug": "21-operacion",
+      "title": "Operación y recuperación",
+      "kind": "Runbook / secuencia",
+      "status": "Mixto",
+      "delivery": 3,
+      "sources": [
+        "cmd/crm/serve.go",
+        "cmd/crm/migrate.go",
+        "cmd/crm/tenants.go",
+        "internal/app/server.go",
+        "internal/app/readiness.go",
+        "internal/app/ops.go",
+        "internal/tenant/reprovision.go",
+        "specs/001-empresas-usuarios/plan.md"
+      ]
+    },
+    {
+      "slug": "22-observabilidad",
+      "title": "Observabilidad y diagnóstico",
+      "kind": "Señales operativas",
+      "status": "Actual",
+      "delivery": 3,
+      "sources": [
+        "internal/app/server.go",
+        "internal/app/periodic.go",
+        "internal/platform/httpx/middleware.go",
+        "internal/platform/audit/audit.go",
+        "internal/platform/outbox/stats.go",
+        "internal/tenant/inventory.go",
+        "specs/001-empresas-usuarios/plan.md"
+      ]
+    },
+    {
+      "slug": "23-trazabilidad",
+      "title": "Desarrollo y trazabilidad",
+      "kind": "Flujo documental",
+      "status": "Actual",
+      "delivery": 3,
+      "sources": [
+        ".specify/memory/constitution.md",
+        "README.md",
+        "CLAUDE.md",
+        "docs/adr/README.md",
+        "specs/001-empresas-usuarios/plan.md",
+        "specs/001-empresas-usuarios/tasks.md"
+      ]
+    },
+    {
+      "slug": "24-frontend",
+      "title": "Arquitectura del frontend",
+      "kind": "Componentes / secuencia",
+      "status": "Especificado",
+      "delivery": 3,
+      "sources": [
+        "docs/adr/015-frontend-stack-y-estructura.md",
+        "docs/adr/016-componentes-shadcn-tailwind.md",
+        "docs/adr/018-server-state-tanstack-query-openapi.md",
+        "docs/adr/020-pwa-service-worker-minimo.md",
+        "specs/001-empresas-usuarios/ui.md"
+      ]
+    },
+    {
+      "slug": "25-navegacion",
+      "title": "Navegación y acceso a pantallas",
+      "kind": "Mapa de acceso",
+      "status": "Especificado",
+      "delivery": 3,
+      "sources": [
+        "specs/001-empresas-usuarios/ui.md",
+        "docs/adr/017-router-react-router-spa.md",
+        "docs/adr/018-server-state-tanstack-query-openapi.md"
+      ]
+    },
+    {
+      "slug": "26-comercial",
+      "title": "Circuito comercial completo",
+      "kind": "Proceso de negocio",
+      "status": "Especificado",
+      "delivery": 3,
+      "sources": [
+        "docs/vision.md",
+        "docs/modelo-dominio.md",
+        "specs/003-terceros/spec.md",
+        "specs/004-proyectos/spec.md",
+        "specs/005-presupuestos/spec.md",
+        "specs/007-cuentas-corrientes/spec.md"
+      ]
+    },
+    {
+      "slug": "27-presupuestos",
+      "title": "Vida del presupuesto",
+      "kind": "Estados / efectos",
+      "status": "Especificado",
+      "delivery": 3,
+      "sources": [
+        "specs/005-presupuestos/spec.md",
+        "specs/004-proyectos/spec.md",
+        "docs/modelo-dominio.md"
+      ]
+    },
+    {
+      "slug": "28-proyectos",
+      "title": "Vida del proyecto",
+      "kind": "Etapas configurables",
+      "status": "Especificado",
+      "delivery": 3,
+      "sources": [
+        "specs/002-configuracion/spec.md",
+        "specs/004-proyectos/spec.md",
+        "docs/modelo-dominio.md"
+      ]
+    },
+    {
+      "slug": "29-finanzas",
+      "title": "Operaciones financieras",
+      "kind": "Secuencias conceptuales",
+      "status": "Especificado",
+      "delivery": 3,
+      "sources": [
+        "docs/modelo-dominio.md",
+        "specs/006-cuentas-dinero/spec.md",
+        "specs/007-cuentas-corrientes/spec.md",
+        ".specify/memory/constitution.md"
+      ]
+    },
+    {
+      "slug": "30-monedas-anulacion",
+      "title": "Multimoneda y anulación",
+      "kind": "Reglas transversales",
+      "status": "Especificado",
+      "delivery": 3,
+      "sources": [
+        ".specify/memory/constitution.md",
+        "docs/modelo-dominio.md",
+        "specs/006-cuentas-dinero/spec.md",
+        "specs/007-cuentas-corrientes/spec.md",
+        "specs/010-cheques/spec.md"
+      ]
+    },
+    {
+      "slug": "31-cheques",
+      "title": "Ciclo de vida de los cheques",
+      "kind": "Máquinas de estados",
+      "status": "Especificado",
+      "delivery": 3,
+      "sources": [
+        "specs/010-cheques/spec.md",
+        "docs/modelo-dominio.md",
+        "specs/006-cuentas-dinero/spec.md",
+        "specs/007-cuentas-corrientes/spec.md"
+      ]
+    },
+    {
+      "slug": "32-importacion",
+      "title": "Importación y conciliación",
+      "kind": "Proceso de datos",
+      "status": "Especificado",
+      "delivery": 3,
+      "sources": [
+        "specs/008-importacion-extractos/spec.md",
+        "specs/010-cheques/spec.md",
+        "internal/authz/authz.go"
+      ]
+    },
+    {
+      "slug": "33-reportes",
+      "title": "Linaje de reportes",
+      "kind": "Flujo de datos",
+      "status": "Especificado",
+      "delivery": 3,
+      "sources": [
+        "specs/009-reportes/spec.md",
+        "specs/004-proyectos/spec.md",
+        "specs/007-cuentas-corrientes/spec.md",
+        "specs/010-cheques/spec.md",
+        "docs/modelo-dominio.md"
+      ]
+    }
+  ],
+  "detail_pages": [
+    {
+      "slug": "13-usuarios-aceptacion",
+      "title": "Aceptar la invitación",
+      "parent": "13-usuarios",
+      "status": "Actual",
+      "delivery": 2,
+      "sources": [
+        "internal/app/routes_users.go",
+        "internal/identity/users.go",
+        "internal/identity/user.go",
+        "internal/identity/store/users.sql",
+        "internal/identity/users_integration_test.go",
+        "internal/identity/invite_verified_integration_test.go",
+        "internal/identity/invitation_lock_integration_test.go"
+      ]
+    },
+    {
+      "slug": "14-recuperacion-reset",
+      "title": "Confirmar una contraseña nueva",
+      "parent": "14-recuperacion",
+      "status": "Actual",
+      "delivery": 2,
+      "sources": [
+        "internal/app/routes_recovery.go",
+        "internal/identity/token_flows.go",
+        "internal/identity/store/queries.sql",
+        "internal/identity/store/users.sql",
+        "internal/identity/emails/emails.go",
+        "internal/identity/token_flows_integration_test.go",
+        "db/migrations/00005_sessions_user_tokens.sql"
+      ]
+    },
+    {
+      "slug": "14-recuperacion-verificacion",
+      "title": "Confirmar el email",
+      "parent": "14-recuperacion",
+      "status": "Actual",
+      "delivery": 2,
+      "sources": [
+        "internal/app/routes_recovery.go",
+        "internal/identity/token_flows.go",
+        "internal/identity/store/queries.sql",
+        "internal/identity/store/users.sql",
+        "internal/identity/emails/emails.go",
+        "internal/identity/token_flows_integration_test.go",
+        "db/migrations/00005_sessions_user_tokens.sql"
+      ]
+    },
+    {
+      "slug": "16-archivos-lectura",
+      "title": "Consultar el logo",
+      "parent": "16-archivos",
+      "status": "Actual",
+      "delivery": 2,
+      "sources": [
+        "internal/tenant/logo.go",
+        "internal/tenant/http.go",
+        "internal/platform/objectstore/s3.go",
+        "internal/tenant/logo_integration_test.go",
+        "internal/tenant/logo_revision_integration_test.go",
+        "docs/adr/011-almacenamiento-archivos-s3.md"
+      ]
+    },
+    {
+      "slug": "29-finanzas-compra",
+      "title": "Registrar una compra y su costo",
+      "parent": "29-finanzas",
+      "status": "Especificado",
+      "delivery": 3,
+      "sources": [
+        "docs/modelo-dominio.md",
+        "specs/006-cuentas-dinero/spec.md",
+        "specs/007-cuentas-corrientes/spec.md",
+        ".specify/memory/constitution.md"
+      ]
+    }
+  ]
+}

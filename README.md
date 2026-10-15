@@ -4,8 +4,9 @@ Sistema web **sencillo** para gestionar clientes, proyectos, presupuestos y fluj
 caja (clientes, proveedores, empleados y socios). El primer usuario es una carpintería
 de aluminio; el diseño es genérico y se adapta a otros rubros mediante configuración.
 
-> Estado: **especificación** (Spec Driven Development) con el esqueleto del backend (spec 001, Fase 0).
-> Todavía no hay funcionalidades: ver [`specs/001-empresas-usuarios/tasks.md`](specs/001-empresas-usuarios/tasks.md).
+> Estado: backend de empresas, usuarios y autenticación implementado; frontend y módulos de
+> negocio posteriores especificados. Ver [`tasks.md`](specs/001-empresas-usuarios/tasks.md) y el
+> [atlas de desarrollo](docs/diagramas/index.html), que distingue implementación actual y diseño previsto.
 
 ## Documentación
 
@@ -15,6 +16,13 @@ de aluminio; el diseño es genérico y se adapta a otros rubros mediante configu
 | [Visión](docs/vision.md) | Problema, usuarios, alcance del MVP y orden de construcción |
 | [Modelo de dominio](docs/modelo-dominio.md) | Entidades, efectos de cada operación, multimoneda |
 | [Glosario](docs/glosario.md) | Términos del negocio y su nombre en el código |
+| [Atlas de desarrollo](docs/diagramas/index.html) | Arquitectura, seguridad, datos, desarrollo, operación y negocio previsto; recorridos interactivos |
+
+Los diagramas son HTML autocontenidos: abrir `docs/diagramas/index.html` en un navegador o
+servir la carpeta como documentación estática. GitHub muestra el HTML como código; la
+[guía del atlas](docs/diagramas/README.md) explica navegación, alcance y mantenimiento.
+La [cobertura del catálogo](docs/diagramas/cobertura.html) relaciona los 33 temas con sus vistas:
+59 figuras y 17 recorridos interactivos, con el estado de implementación indicado en cada página.
 
 ## Specs del MVP
 

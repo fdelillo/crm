@@ -3,6 +3,24 @@
 Decisiones estructurales del proyecto. Formato: Contexto, Decisión, Fundamento, Alternativas
 consideradas, Consecuencias.
 
+Vistas relacionadas: [arquitectura general](../diagramas/02-arquitectura.html),
+[fronteras entre módulos](../diagramas/04-fronteras.html),
+[aislamiento entre empresas](../diagramas/06-aislamiento.html) y
+[matriz de permisos](../diagramas/07-permisos.html). Cada vista incluye sus fuentes y revisión.
+
+Flujos implementados: [registro](../diagramas/11-registro.html),
+[autenticación](../diagramas/12-autenticacion.html),
+[usuarios e invitaciones](../diagramas/13-usuarios.html),
+[recuperación](../diagramas/14-recuperacion.html),
+[outbox](../diagramas/15-outbox.html) y [logos](../diagramas/16-archivos.html).
+
+Desarrollo y operación: [organización del backend](../diagramas/17-backend.html),
+[contratos](../diagramas/18-contratos.html), [integración continua](../diagramas/19-ci.html),
+[pruebas](../diagramas/20-pruebas.html), [operación y recuperación](../diagramas/21-operacion.html),
+[observabilidad](../diagramas/22-observabilidad.html) y
+[trazabilidad](../diagramas/23-trazabilidad.html). El
+[frontend previsto](../diagramas/24-frontend.html) se presenta como diseño especificado.
+
 Reglas:
 
 - Numeración secuencial compartida por backend y frontend (`NNN-slug.md`); un número nunca se

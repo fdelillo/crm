@@ -1,0 +1,85 @@
+<!doctype html><html lang="es-AR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>internal/app/readiness.go · Fuente CRM</title><style>
+*{box-sizing:border-box} :root{--color-paper:#F8FAFC;--color-ink:#0F172A;--color-muted:#475569;--color-soft:#475569;--color-accent:#2563EB;--color-rule:#E2E8F0;--font-sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;--font-serif:var(--font-sans);--font-mono:ui-monospace,SFMono-Regular,Consolas,monospace;--motion-fast:160ms;--motion-step:480ms;--motion-hold:720ms;--motion-total:5760ms;--motion-ease:cubic-bezier(.2,.8,.2,1)}
+body{margin:0;background:var(--color-paper);color:var(--color-ink);font:16px/1.65 var(--font-sans)} a{color:#1E40AF;text-underline-offset:3px}a:hover{color:#2563EB}a:focus-visible,summary:focus-visible{outline:3px solid #2563EB;outline-offset:4px}
+header{border-bottom:1px solid #E2E8F0;background:white}header .bar{max-width:1360px;margin:auto;padding:16px 28px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px}.brand{text-decoration:none;color:#0F172A;font-weight:600;letter-spacing:-.02em}.brand b{color:#2563EB}nav{display:flex;gap:8px;flex-wrap:wrap}nav a{min-height:44px;display:inline-flex;align-items:center;padding:0 12px;text-decoration:none;border:1px solid #E2E8F0;border-radius:6px;background:white;font-size:14px}
+main{max-width:1360px;margin:auto;padding:40px 28px 64px;min-width:0}h1{overflow-wrap:anywhere;font:600 32px/1.2 var(--font-sans);letter-spacing:-.03em;margin:12px 0 16px}h2{font:600 22px/1.3 var(--font-sans);margin:0 0 8px}h3{font-size:18px;margin:20px 0 8px}p{margin:8px 0 16px}.eyebrow{font:500 12px/1.5 var(--font-mono);letter-spacing:.1em;text-transform:uppercase;color:#475569}.intro{max-width:850px;color:#475569;font-size:18px}.meta{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 28px}.tag{padding:4px 10px;border:1px solid #E2E8F0;background:#FFF;border-radius:4px;font-size:13px;color:#475569}.tag.current{color:#047857;background:#ECFDF5;border-color:#047857}.tag.planned{color:#92400E;background:#FFFBEB;border-color:#92400E}
+.figure{margin:28px 0;padding:24px;background:white;border:1px solid #E2E8F0;border-radius:8px;max-width:100%;min-width:0}.figure>p{color:#475569;max-width:1000px;font-size:15px}.diagram-container{width:100%;overflow-x:auto;margin:20px 0 0;border:1px solid #E2E8F0;border-radius:6px;background:#F8FAFC}svg{display:block;width:100%;min-width:1280px}.caption{font-size:14px;color:#475569;margin-top:16px}.note{border-left:3px solid #2563EB;padding:12px 18px;background:#EFF6FF}.reading{max-width:1050px}.reading li{margin:8px 0}details{border:1px solid #E2E8F0;border-radius:6px;background:white;margin:12px 0;padding:16px}summary{cursor:pointer;font-weight:600;min-height:28px}.sources{font-size:14px}.sources li{margin:8px 0;overflow-wrap:anywhere}code,pre{font-family:var(--font-mono);font-size:13px}pre{overflow:auto;background:#F1F5F9;padding:16px;border-radius:4px}footer{margin-top:40px;padding-top:20px;border-top:1px solid #E2E8F0;color:#475569;font-size:13px}.catalog{list-style:none;margin:28px 0;padding:0;border-top:1px solid #E2E8F0}.catalog li{display:grid;grid-template-columns:64px 1fr 180px;align-items:start;gap:20px;padding:22px 0;border-bottom:1px solid #E2E8F0}.catalog .number{font:500 24px var(--font-mono);color:#475569}.catalog a{display:block;min-height:44px;font-size:20px;font-weight:600;text-decoration:none}.catalog p{margin:5px 0 0;color:#475569}.catalog .kind{font:12px var(--font-mono);color:#475569;padding-top:8px}.roadmap{display:grid;grid-template-columns:1.15fr 1fr;gap:24px;margin-top:32px}.panel{border:1px solid #E2E8F0;border-radius:8px;padding:24px;background:white}.facts{display:flex;flex-wrap:wrap;gap:28px;margin:24px 0}.facts strong{font-size:26px;display:block;color:#0F172A}.facts span{font-size:14px;color:#475569}table{border-collapse:collapse;width:100%;font-size:14px}th,td{text-align:left;padding:10px;border-bottom:1px solid #E2E8F0}th{background:#F1F5F9}.table-wrap{overflow:auto}.table-wrap td a{display:block;min-height:44px}svg .name{font-family:var(--font-sans);font-size:12px;font-weight:600;fill:#0F172A}svg .sub{font-family:var(--font-mono);font-size:9px;fill:#475569}svg .tiny{font-family:var(--font-mono);font-size:8px;fill:#475569}
+@media(max-width:700px){main{padding:28px 16px 40px}header .bar{padding:12px 16px}h1{font-size:26px}.figure{padding:16px}.catalog li{grid-template-columns:40px 1fr;gap:12px}.catalog .kind{grid-column:2}.roadmap{grid-template-columns:1fr}.intro{font-size:16px}}
+@media print{header,nav{display:none}main{padding:0}.figure{break-inside:avoid;padding:12px}.diagram-container{overflow-x:visible}svg{min-width:0}.roadmap{display:block}details{break-inside:avoid}body{background:white}.sources a{color:#0F172A}}
+ .line{color:#475569;text-decoration:none}pre span:target{background:#EFF6FF}</style></head><body><main><nav><a href="../../../index.html">← Índice del atlas</a></nav><p class="eyebrow">Copia de referencia · 2026-10-14</p><h1>internal/app/readiness.go</h1><p>Revisión: <code>c7692bd7b7a0d8e07e18d3c9ec1738b169dc032f</code>. Esta copia documenta las fuentes usadas; no se actualiza automáticamente.</p><pre><span id="L1"><a href="#L1" class="line">   1</a> package app</span>
+<span id="L2"><a href="#L2" class="line">   2</a> </span>
+<span id="L3"><a href="#L3" class="line">   3</a> import (</span>
+<span id="L4"><a href="#L4" class="line">   4</a> 	&quot;context&quot;</span>
+<span id="L5"><a href="#L5" class="line">   5</a> 	&quot;errors&quot;</span>
+<span id="L6"><a href="#L6" class="line">   6</a> 	&quot;github.com/fdelillo/crm/internal/platform/db&quot;</span>
+<span id="L7"><a href="#L7" class="line">   7</a> 	&quot;github.com/fdelillo/crm/internal/platform/httpx&quot;</span>
+<span id="L8"><a href="#L8" class="line">   8</a> 	&quot;io&quot;</span>
+<span id="L9"><a href="#L9" class="line">   9</a> 	&quot;log/slog&quot;</span>
+<span id="L10"><a href="#L10" class="line">  10</a> 	&quot;net/http&quot;</span>
+<span id="L11"><a href="#L11" class="line">  11</a> 	&quot;time&quot;</span>
+<span id="L12"><a href="#L12" class="line">  12</a> )</span>
+<span id="L13"><a href="#L13" class="line">  13</a> </span>
+<span id="L14"><a href="#L14" class="line">  14</a> const ReadinessTimeout = time.Second</span>
+<span id="L15"><a href="#L15" class="line">  15</a> </span>
+<span id="L16"><a href="#L16" class="line">  16</a> // ReadinessHandler bounds both pool acquisition and the schema read. Versions stay in logs only.</span>
+<span id="L17"><a href="#L17" class="line">  17</a> func ReadinessHandler(runner db.TxRunner, expected int64, logger *slog.Logger) http.Handler {</span>
+<span id="L18"><a href="#L18" class="line">  18</a> 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {</span>
+<span id="L19"><a href="#L19" class="line">  19</a> 		ctx, cancel := context.WithTimeout(r.Context(), ReadinessTimeout)</span>
+<span id="L20"><a href="#L20" class="line">  20</a> 		defer cancel()</span>
+<span id="L21"><a href="#L21" class="line">  21</a> 		var version int64</span>
+<span id="L22"><a href="#L22" class="line">  22</a> 		var known bool</span>
+<span id="L23"><a href="#L23" class="line">  23</a> 		err := runner.InSystemTx(ctx, db.RoleAuth, func(ctx context.Context, tx db.Tx) error {</span>
+<span id="L24"><a href="#L24" class="line">  24</a> 			var err error</span>
+<span id="L25"><a href="#L25" class="line">  25</a> 			version, known, err = db.SchemaVersion(ctx, tx)</span>
+<span id="L26"><a href="#L26" class="line">  26</a> 			return err</span>
+<span id="L27"><a href="#L27" class="line">  27</a> 		})</span>
+<span id="L28"><a href="#L28" class="line">  28</a> 		if r.Context().Err() != nil {</span>
+<span id="L29"><a href="#L29" class="line">  29</a> 			httpx.WriteDBError(w, r, db.ErrCanceled, logger)</span>
+<span id="L30"><a href="#L30" class="line">  30</a> 			return</span>
+<span id="L31"><a href="#L31" class="line">  31</a> 		}</span>
+<span id="L32"><a href="#L32" class="line">  32</a> 		w.Header().Set(&quot;Content-Type&quot;, &quot;application/json&quot;)</span>
+<span id="L33"><a href="#L33" class="line">  33</a> 		w.Header().Set(&quot;Cache-Control&quot;, &quot;no-store&quot;)</span>
+<span id="L34"><a href="#L34" class="line">  34</a> 		reason := &quot;&quot;</span>
+<span id="L35"><a href="#L35" class="line">  35</a> 		level := slog.LevelWarn</span>
+<span id="L36"><a href="#L36" class="line">  36</a> 		fields := []any{&quot;event&quot;, &quot;readiness_failed&quot;, &quot;request_id&quot;, httpx.RequestIDFrom(r.Context())}</span>
+<span id="L37"><a href="#L37" class="line">  37</a> 		switch {</span>
+<span id="L38"><a href="#L38" class="line">  38</a> 		case errors.Is(err, db.ErrPrivilege):</span>
+<span id="L39"><a href="#L39" class="line">  39</a> 			reason = &quot;privilege&quot;</span>
+<span id="L40"><a href="#L40" class="line">  40</a> 			level = slog.LevelError</span>
+<span id="L41"><a href="#L41" class="line">  41</a> 			fields = append(fields, &quot;security_event&quot;, &quot;rls_violation&quot;, &quot;err&quot;, err)</span>
+<span id="L42"><a href="#L42" class="line">  42</a> 		case ctx.Err() != nil:</span>
+<span id="L43"><a href="#L43" class="line">  43</a> 			reason = &quot;timeout&quot;</span>
+<span id="L44"><a href="#L44" class="line">  44</a> 		case err != nil:</span>
+<span id="L45"><a href="#L45" class="line">  45</a> 			reason = &quot;unavailable&quot;</span>
+<span id="L46"><a href="#L46" class="line">  46</a> 			fields = append(fields, &quot;err&quot;, err)</span>
+<span id="L47"><a href="#L47" class="line">  47</a> 		case !known:</span>
+<span id="L48"><a href="#L48" class="line">  48</a> 			reason = &quot;schema_unknown&quot;</span>
+<span id="L49"><a href="#L49" class="line">  49</a> 		case version != expected:</span>
+<span id="L50"><a href="#L50" class="line">  50</a> 			reason = &quot;schema_mismatch&quot;</span>
+<span id="L51"><a href="#L51" class="line">  51</a> 			fields = append(fields, &quot;db_version&quot;, version, &quot;expected_version&quot;, expected)</span>
+<span id="L52"><a href="#L52" class="line">  52</a> 		}</span>
+<span id="L53"><a href="#L53" class="line">  53</a> 		if reason != &quot;&quot; {</span>
+<span id="L54"><a href="#L54" class="line">  54</a> 			httpx.SetLogLevel(r, level)</span>
+<span id="L55"><a href="#L55" class="line">  55</a> 			logger.Log(r.Context(), level, &quot;readiness failed&quot;, append(fields, &quot;reason&quot;, reason)...)</span>
+<span id="L56"><a href="#L56" class="line">  56</a> 			w.WriteHeader(http.StatusServiceUnavailable)</span>
+<span id="L57"><a href="#L57" class="line">  57</a> 			_, _ = io.WriteString(w, `{&quot;status&quot;:&quot;unavailable&quot;}`)</span>
+<span id="L58"><a href="#L58" class="line">  58</a> 			return</span>
+<span id="L59"><a href="#L59" class="line">  59</a> 		}</span>
+<span id="L60"><a href="#L60" class="line">  60</a> 		_, _ = io.WriteString(w, `{&quot;status&quot;:&quot;ok&quot;}`)</span>
+<span id="L61"><a href="#L61" class="line">  61</a> 	})</span>
+<span id="L62"><a href="#L62" class="line">  62</a> }</span>
+<span id="L63"><a href="#L63" class="line">  63</a> </span>
+<span id="L64"><a href="#L64" class="line">  64</a> // LogServerVersion records the PostgreSQL version once at startup, with a bounded auth transaction.</span>
+<span id="L65"><a href="#L65" class="line">  65</a> func LogServerVersion(ctx context.Context, runner db.TxRunner, logger *slog.Logger) {</span>
+<span id="L66"><a href="#L66" class="line">  66</a> 	ctx, cancel := context.WithTimeout(ctx, ReadinessTimeout)</span>
+<span id="L67"><a href="#L67" class="line">  67</a> 	defer cancel()</span>
+<span id="L68"><a href="#L68" class="line">  68</a> 	var version string</span>
+<span id="L69"><a href="#L69" class="line">  69</a> 	err := runner.InSystemTx(ctx, db.RoleAuth, func(ctx context.Context, tx db.Tx) error {</span>
+<span id="L70"><a href="#L70" class="line">  70</a> 		return tx.QueryRow(ctx, &quot;SELECT current_setting(&#x27;server_version&#x27;)&quot;).Scan(&amp;version)</span>
+<span id="L71"><a href="#L71" class="line">  71</a> 	})</span>
+<span id="L72"><a href="#L72" class="line">  72</a> 	if err == nil {</span>
+<span id="L73"><a href="#L73" class="line">  73</a> 		logger.Info(&quot;database connected&quot;, &quot;server_version&quot;, version)</span>
+<span id="L74"><a href="#L74" class="line">  74</a> 	} else if ctx.Err() == nil {</span>
+<span id="L75"><a href="#L75" class="line">  75</a> 		logger.Warn(&quot;database version unavailable&quot;, &quot;err&quot;, err)</span>
+<span id="L76"><a href="#L76" class="line">  76</a> 	}</span>
+<span id="L77"><a href="#L77" class="line">  77</a> }</span></pre></main></body></html>
