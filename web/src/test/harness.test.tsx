@@ -41,6 +41,17 @@ describe('browser test harness', () => {
       /POST .*\/api\/v1\/missing-handler/,
     )
   })
+  // Fails only if the afterEach in setup.ts checks the unhandled list: here the
+  // test's own code swallowed the network error and asserts nothing.
+  it.fails(
+    'afterEach fails a test whose code caught an unhandled request',
+    async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      await fetch(`${origin}/api/v1/caught`).catch(() => undefined)
+    },
+  )
+  // The next two tests are a pair and rely on running in this order (Vitest runs
+  // a file's tests sequentially unless told otherwise): the first leaves state, the second checks it is gone.
   it('can populate a test cache, override a handler and save a temporary flag', () => {
     cacheFromPreviousTest = createTestQueryClient()
     cacheFromPreviousTest.setQueryData(['session'], {
