@@ -72,6 +72,13 @@ export default tseslint.config(
   },
   {
     files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/api/**', '**/*.test.*', 'src/test/**'],
+    rules: {
+      'no-restricted-imports': ['error', { paths: [forbiddenNetworkImports] }],
+    },
+  },
+  {
+    files: ['src/**/*.{ts,tsx}'],
     ignores: [
       'src/api/**',
       'src/features/tenant/api.ts',
@@ -79,13 +86,17 @@ export default tseslint.config(
       'src/test/**',
     ],
     rules: {
-      'no-restricted-imports': ['error', { paths: [forbiddenNetworkImports] }],
       'no-restricted-syntax': [
         'error',
         ...networkSelectors,
         ...canvasSelectors,
       ],
     },
+  },
+  {
+    files: ['src/api/**/*.{ts,tsx}', 'src/features/tenant/api.ts'],
+    ignores: ['**/*.test.*'],
+    rules: { 'no-restricted-syntax': ['error', ...canvasSelectors] },
   },
   {
     files: ['src/features/tenant/logo/canvas.ts'],
@@ -100,7 +111,7 @@ export default tseslint.config(
           paths: [forbiddenNetworkImports],
           patterns: [
             {
-              regex: '(^@/|^\\.\\./)+(api|features|app)(/|$)',
+              regex: '^(?:@/|(?:\\.\\./)+)(?:api|features|app)(?:/|$)',
               message: 'Shared components receive data through props.',
             },
           ],
