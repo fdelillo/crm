@@ -1,33 +1,43 @@
-# Validación del atlas completo
+# Validación del atlas
 
-Fecha: 2026-10-14. Revisión fuente: `c7692bd7b7a0d8e07e18d3c9ec1738b169dc032f`.
+Fecha local: 2026-10-14. Revisión de referencia única: `9e6fc311b81221ea051710dc5af08ad244475170` (origin/main al iniciar esta corrección).
 
-## Resultado
+## Contenido y enlaces
 
-- 33 temas principales: cobertura del catálogo inicial documentada en `cobertura.html` y `COBERTURA.md`.
-- 38 páginas con diagramas, 59 figuras y 17 recorridos interactivos; cinco páginas de detalle enlazadas desde sus temas.
-- Las 38 páginas pasan `diagram-design/scripts/self_check.py --offline`: SVG accesible, contenido dentro del viewBox, recursos autocontenidos y controlador canónico de movimiento.
-- Enlaces locales de 143 HTML comprobados, incluidas las copias de fuentes y la cobertura. Sin referencias remotas.
-- Las 15 filas de permisos coinciden con authz. El esquema físico conserva las siete tablas reales; los modelos futuros están identificados como especificados.
-- Máscaras de etiquetas sin solapar nodos. La comprobación de rutas no encontró cruces nuevos ni strokes compartidos; los cuatro cruces previos conservan sus puentes.
+- 33 temas, 38 páginas con diagramas, 59 figuras, 17 recorridos y 40 HTML en total.
+- Cada figura actual y las partes actuales de las vistas mixtas se contrastaron contra esa revisión; [registro por figura](REVISION.md).
+- 120 URLs únicas de GitHub fijadas al mismo SHA: 106 rutas distintas comprobadas con `git cat-file -e <SHA>:<ruta>`; 22 anclas de línea verificadas contra la longitud del blob del mismo SHA. Ninguna ruta ausente ni rango inválido.
+- Enlaces internos y anclas comprobados. La carpeta anterior de referencias locales se eliminó y no queda ningún enlace hacia ella.
+- Los 15 permisos se contrastaron con authz.go de la revisión. Las siete tablas y su DDL mantienen los mismos blobs de migraciones; se agregan las referencias de privilegios 00001 y readiness 00009.
+- IDs SVG sin duplicados y máscaras de etiquetas sin solapar nodos. La figura de CI se revisó visualmente y no tiene texto fuera de nodos o viewBox.
 
-## Revisión en navegador
+## Self-check del plugin y adaptación explícita
 
-- Entrega 01: 10 páginas en escritorio y móvil; controles de petición/aislamiento, reinicio, reproducción y pausa comprobados.
-- Entrega 02: 10 páginas nuevas en escritorio y a 390 px; diez secuencias llegan a fin por teclado con todos los elementos visibles.
-- Entrega 03: 18 páginas nuevas en escritorio y a 390 px, sin texto fuera del SVG/nodos ni desbordamiento horizontal de página. Las cinco secuencias nuevas llegan a fin por teclado.
-- Cada figura mantiene su ancho legible y scroll horizontal independiente en celular.
-- Corregida y comprobada el área pulsable de los títulos del índice que se parten en varias líneas.
-- Cobertura HTML con 33 filas. Se verificaron enlaces entre índice, temas y detalles.
+Se ejecutó self_check sobre las 38 páginas. El validador original rechaza todos los hipervínculos externos y exige el controlador en inglés exacto: reporta los enlaces GitHub en 38 páginas y la localización de mensajes en las 17 interactivas. Son dos requisitos explícitos del usuario que reemplazan esas restricciones del plugin; no se informa un pase del validador original sin cambios.
 
-Los modos sin JavaScript, impresión y movimiento reducido se comprobaron estructuralmente en HTML/CSS con el validador del plugin; no se emularon en el navegador. No se ejecutó `make check`: esta entrega cambia documentación estática y no ejecuta código de negocio, despliegues, migraciones ni movimientos financieros.
+El [validador reproducible](validar.py) vuelve a ejecutar todas las comprobaciones del plugin con dos adaptaciones acotadas: permite solo los hipervínculos GitHub ya verificados y compara el controlador completo contra la plantilla con los literales de estado traducidos. No permite recursos remotos ni cambios adicionales en el JavaScript. Resultado: **38/38**, sin incidencias estructurales, de seguridad, geometría o movimiento detectadas por self_check.
 
-Las specs en borrador y los detalles Proposed conservan ese estado. Hosting, backups operativos y RPO/RTO no se presentan como ya resueltos. Las máquinas de estados de negocio son representativas y no reemplazan los planes futuros.
+Desde la raíz del repositorio:
 
-La reproducción automática continua sigue pendiente por indicación del usuario.
+```sh
+python3 docs/diagramas/validar.py --repo . --self-check /ruta/diagram-design/scripts/self_check.py
+git diff --check
+```
 
-## Alcance al preparar el PR
+Sin --self-check, validar.py sigue comprobando enlaces internos, SHA, rutas Git, rangos de línea, recursos inline y conteos; no ejecuta las pruebas geométricas del plugin.
 
-La revisión fuente del atlas es c7692bd. Al preparar el PR, main ya incluía #23 (DD-F31: releer /me tras reenviar confirmación) y #24 (ADR-026: govulncheck y toolchain actualizado). Esos cambios posteriores requieren actualizar las vistas de CI y frontend antes de integrar; las copias de fuentes conservan la revisión documentada.
+## Navegador
 
-La rama de documentación se rebasó sobre `9e6fc31` sin conflictos. Esa integración de Git no cambia la revisión fuente de las figuras ni extiende su validación semántica a los cambios posteriores.
+- Las 38 páginas se revisaron de nuevo en escritorio: sin texto fuera del viewBox o de los nodos, ni desbordamiento horizontal de página.
+- Las 38 páginas se recorrieron a 390 × 844 px: sin desbordamiento de página; cada figura tiene su propio scroll horizontal.
+- En las 17 secuencias: Siguiente, Inicio, Fin, flecha derecha, Reproducir y Pausar comprobados en escritorio. Fin deja visibles todos los elementos y los anuncios de paso/pausa están en español. A 390 px se repitieron Siguiente y Fin en las 17.
+- Cobertura móvil: 33 filas y sin desbordamiento. Navegación entre índice, temas y detalles comprobada.
+- Sin JavaScript, impresión y movimiento reducido tienen comprobación estructural del plugin; no se emularon esas preferencias en el navegador. Los literales de sus anuncios también están traducidos.
+
+## Alcance y checks remotos
+
+No se editaron plan, tasks, ui, ADRs ni contrato. Los enlaces del README general, visión, modelo de dominio e índice ADR se conservan. No se ejecutaron despliegues, migraciones ni operaciones financieras.
+
+make check y make vuln son checks requeridos del PR; su resultado para el SHA final se consulta en GitHub y se informa al cerrar esta revisión. No se sustituye su resultado con la validación documental. El ruleset de main se contrastó por la API de GitHub.
+
+La reproducción automática continua sigue pendiente por indicación del usuario. Las vistas Especificado conservan su estado; las máquinas de estados de negocio siguen siendo representativas.
