@@ -27,3 +27,7 @@ Flujo por spec (`specs/NNN-slug/`):
 Skills: `ui-ux-pro-max` (diseño de UI), `archify` (diagramas HTML), `graphify` (grafo del
 código, solo a pedido), `revisar-pendientes` (revisa tareas del tablero de Notion según
 `.claude/tracker.md`).
+
+Codex usa los mismos agentes: `AGENTS.md` le indica cómo, y `.codex/agents/*.toml` se generan a
+partir de `.claude/agents/*.md`. Después de cambiar un agente, correr `make codex-agents`; si
+no, `make lint` falla.

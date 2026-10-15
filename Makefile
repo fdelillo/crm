@@ -21,19 +21,24 @@ export GOTOOLCHAIN := $(GO_TOOLCHAIN)
 # dependencies never mix with the application's.
 TOOL  = $(GO) tool -modfile=tools.mod
 
-.PHONY: generate lint test test-int check vuln db-reset dev-certs
+.PHONY: generate codex-agents lint test test-int check vuln db-reset dev-certs
 
 # Regenerate the sqlc code from the migrations and the queries of each module.
 generate:
 	$(TOOL) sqlc generate
 
-# gofmt, go vet, golangci-lint (with depguard) and generated code up to date.
+# Regenerate the Codex custom agents (.codex/agents/*.toml) from .claude/agents/*.md (see AGENTS.md).
+codex-agents:
+	sh .codex/sync-agents.sh
+
+# gofmt, go vet, golangci-lint (with depguard) and generated code (sqlc, Codex agents) up to date.
 lint:
 	@unformatted="$$(find . -name '*.go' -not -path './.git/*' -not -path '*/node_modules/*' -print0 | xargs -0 gofmt -l)"; \
 	if [ -n "$$unformatted" ]; then echo "gofmt needed on:"; echo "$$unformatted"; exit 1; fi
 	$(GO) vet -tags=integration ./...
 	$(TOOL) golangci-lint run ./...
 	$(TOOL) sqlc diff
+	sh .codex/sync-agents.sh --check
 
 # Unit tests. No Docker needed.
 test:
