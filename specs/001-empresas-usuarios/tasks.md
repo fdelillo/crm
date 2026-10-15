@@ -3140,6 +3140,8 @@ la tercera revisión queda cerrada. Todas las fases F se pueden implementar cont
 v0.5.0, porque los tests con MSW no dependen de la Fase 10 del backend. P-F10 y P-F11 tienen
 default y no bloquean.
 
+- **Fase F0 completa (2026-10-15)**: T-F001 a T-F009 en `feat/001-frontend-skeleton`, desde `main` en `c96cfe0`. `make check-all` en verde. Prueba independiente hecha: binario en `https://localhost:8443` y Vite en `https://localhost:5173` sin aviso de certificado; los cinco `curl -I` sin `-k` traen las cabeceras de `ui.md` §21.1–21.2 y no traen HSTS. S-F1 y S-F2 aprobados sin respaldo. Spike de la cookie OK en Chromium y Chrome (`__Host-crm_session` con `Secure`, `HttpOnly` y `SameSite=Lax`); Firefox y Safari nativos quedan pendientes. Excepciones de versiones: TypeScript 5.9.3, ESLint y `@eslint/js` 9.39.5. `npm audit` informa 7 vulnerabilidades altas, todas en la cadena de desarrollo del CLI de shadcn (braces/micromatch, GHSA-vfj7-8cjw-p6xm), sin dependencias de producción afectadas. Pendiente de revisión.
+
 ---
 
 ### Fase F0 — Esqueleto del frontend (Setup)
