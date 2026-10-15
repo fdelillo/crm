@@ -59,6 +59,7 @@ ajustes antes de la Fase 6). La sección Frontend no cambia: el contrato no camb
 **Decimocuarta revisión 2026-10-08** (*Accepted*, aprobada por el usuario el 2026-10-08): resultado de T-B910 registrado (plan §18, decimocuarta tanda; [`revision-14-t-b910.md`](revision-14-t-b910.md)). Se mantiene ADR-005, y la condición de salida a producción está cumplida. En lugar de repetir T-B910 con 20.000 roles, rigen el techo de ADR-005 (plan DD-33 R-f) y los disparadores sobre `tenant_roles_total` (plan §12.4). Tareas afectadas: T-B910 (resultado y autocontrol del tracer) y la condición de salida a producción. Parte B (revisión de código del PR fdelillo/crm#17, *Accepted*, aprobada por el usuario el 2026-10-08): T-B801 (regla (4) ampliada, regla (6) nueva, mutaciones (j) a (q)), T-B903 y la fila 3 del paso 0 de la Fase 9 (mutaciones ratificadas). Sin tareas nuevas ni cambios de código de producción: la parte B cambia el guard y el tracer, que son código de test. La sección Frontend no cambia: el contrato no cambia.
 **Decimoquinta revisión 2026-10-10** (*Accepted*, aprobada por el usuario el 2026-10-10): pendientes no bloqueantes de la revisión final de código del PR fdelillo/crm#17 (Fase 9, mergeado en `main` en `b945373`; plan §18, decimoquinta tanda), en un PR solo de tests y texto. T-B801: la regla (4) prohíbe declarar parámetros de tipo en `cmd/crm` (mutaciones (r) a (t)), y se corrige su frase sobre "otro tipo", que era falsa con genéricos. T-B911: control positivo de la sonda de `pg_stat_activity`. T-B910: casos sintéticos del autocontrol del tracer. Textos: §B-5 de `revision-14-t-b910.md`, fila 4 de la entrada de la decimocuarta parte B y fecha de la entrada de la Fase 9. Sin tareas nuevas ni cambios de código de producción. La sección Frontend no cambia: el contrato no cambia.
 **Decimosexta revisión 2026-10-12** (*Accepted*, aprobada por el usuario el 2026-10-12): auditoría de seguridad de `b945373` (plan §18, decimosexta tanda; [`revision-16-auditoria.md`](revision-16-auditoria.md)). Fase 10 nueva (T-B1001 a T-B1010): revalidación del actor bajo el lock de la empresa (DD-44), cupo del hasher antes de la conexión (DD-45), cupos de invitación (DD-48), cupo global de registros (DD-49) e invitar con email verificado (DD-46, opción B). Cambia un test existente (`TestRoleChangesAndLastAdmin`), y se adaptan los hashers instrumentados de T-B503 y T-B604. Contrato **v0.5.0**: ver "Coordinación con la sección Frontend".
+**Decimoséptima revisión 2026-10-14** (*Accepted* (aprobada por el usuario el 2026-10-14)): vulnerabilidades conocidas en dependencias Go (plan §18, decimoséptima tanda; ADR-026), la unidad bloqueada de la auditoría de `b945373`. Fase 11 nueva (T-B1101): `make vuln` y el workflow `vulncheck`. No cambia código de producción ni el contrato. La sección Frontend recibe una fila de coordinación para T-F009 (npm).
 
 ---
 
@@ -848,6 +849,8 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
       verde; `gofmt -l` vacío; `grep -rnE --include='*.go' '[Pp]hase ?[0-9]' .` sin resultados.
       Pendiente de revisión.
 
+- **Decimoséptima revisión (2026-10-14, *Accepted*: aprobada por el usuario el 2026-10-14)**: govulncheck en CI (ADR-026; plan §18, decimoséptima tanda). Nueva **Fase 11** (T-B1101), en `chore/001-vulnerability-scan` desde `main` (`c7692bd`), en un solo PR (el diseño va en el primer commit de la rama). Cierra la unidad bloqueada de la auditoría: la entrada de cierre informa el estado de `go.sum` (niveles símbolo, paquete y módulo) y el de `tools.sum` (modo binario). Si la primera corrida encuentra algo alcanzable que tiene corrección, se corrige en el mismo PR. Si no tiene corrección, el desarrollador frena y lo reporta, y el PR queda en borrador. También frena y reporta, sin tocar `.golangci.yml` ni el código, si golangci-lint no compila o da otro resultado con el `x/tools` que trae govulncheck. El desarrollador no edita texto de diseño; la aprobación es el merge del PR.
+
 ### Convenciones de esta sección
 
 - `[T]` = tarea de test. Va **antes** de la tarea de código que la hace pasar, y el test debe
@@ -934,12 +937,13 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
 | Comando | Qué corre |
 |---|---|
 | `make generate` | `sqlc generate` |
-| `make lint` | `gofmt -l` vacío, `go vet ./...`, `golangci-lint run` (incluye `depguard`), `sqlc diff` (código generado al día) |
+| `make lint` | `gofmt -l` vacío, `go vet -tags=integration ./...`, `golangci-lint run` (incluye `depguard`), `sqlc diff` (código generado al día) |
 | `make test` | `go test -race ./...` (unitarios; no necesita Docker) |
 | `make test-int` | `go test -race -tags=integration ./...` (necesita Docker) |
 | `make check` | `lint` + `test` + `test-int`. **Es el checkpoint de cada fase** |
 | `make db-reset` | Solo desarrollo: recrea la base local y corre bootstrap + migraciones |
 | `make dev-certs` | Solo desarrollo y job de E2E: genera `.certs/localhost.pem` y `.certs/localhost-key.pem` con `mkcert` (T-B014). **No** lo necesita `make check` |
+| `make vuln` | `govulncheck` de `tools.mod` en modo source sobre `./...` (nivel símbolo, sin tests). Con `VULN_DIR=<dir>` analiza otro módulo; se usa solo en los controles de T-B1101. Necesita red (vuln.go.dev) y su resultado cambia con la base: **no** es parte de `make check`. Lo corre el workflow `vulncheck` (ADR-026) |
 
 Los targets del frontend (`web-build`, `web-check`, `build`, `check-all`) los agrega T-F009; el
 backend compila y testea sin el frontend gracias al marcador `web/dist/.gitkeep` (ADR-019).
@@ -962,6 +966,7 @@ duplican acá**. Dependen de:
 | T-F004 (tipos del contrato) y T-F101 (mensajes por `code`) | Contrato **v0.4.1** (séptima revisión) | Declara `413 payload_too_large` en las operaciones con body JSON. No agrega valores a `ErrorCode` ni cambia esquemas: el mapa de T-F101 compila igual y `ui.md` §12.2 ya cubre `payload_too_large` fuera del logo ("como `malformed_request`"). Cuando exista `web/`, `gen:api` regenera los tipos (incluyen la respuesta `413` nueva). Sin decisión de UI pendiente |
 | T-F202 (pantalla de registro) | T-B305 (tercera revisión) | El `503` del registro puede traer `Retry-After: 2` (DD-33); el mensaje de "Reintentar" puede usarlo. Decisión del `frontend-architect` |
 | T-F004 y T-F101 (tipos y mensajes), Fase F5 (usuarios e invitaciones) | Contrato **v0.5.0** (decimosexta revisión; T-B1005, T-B1009) | `ErrorCode` suma `email_not_verified`: T-F101 deja de compilar hasta tener su mensaje. `POST /users/invitations` puede responder `403 email_not_verified` (aviso y "Reenviar verificación"; `/me` ya trae `email_verified`) y `429 rate_limited` con `Retry-After`, igual que `POST /users/{userId}/reactivate`. "Reenviar invitación" usa la misma ruta que invitar (DD-5). Lo decide el `frontend-architect` en `ui.md` |
+| T-F009 (CI del frontend) | ADR-026 (T-B1101) | El escaneo de vulnerabilidades del backend no cubre npm. Sugerencia: un paso con la misma política (bloqueante en PR y en `main`, más la corrida diaria del workflow `vulncheck`), p. ej. `npm audit` sobre las dependencias de producción con un umbral. npm no analiza alcance, así que el umbral y si entran las `devDependencies` los decide el `frontend-architect` en `ui.md` |
 
 Orden sugerido: Fase 0 del backend completa → T-F007/T-F008 (en la misma rama o la siguiente) →
 T-F009.
@@ -2774,6 +2779,46 @@ La concurrencia de DD-44 y DD-45 la prueban T-B1001 y T-B1003; no se reproduce a
 
 ---
 
+### Fase 11 — Mantenimiento de seguridad: vulnerabilidades conocidas en dependencias Go (decimoséptima revisión, *Accepted*)
+
+**Objetivo**: que `make vuln` y el workflow `vulncheck` (en PR, en `main` y una vez por día) bloqueen ante una vulnerabilidad alcanzable de la base de Go, en el código del módulo o en la librería estándar (ADR-026). Además, cerrar la unidad bloqueada de la auditoría de `b945373` informando el estado de `go.sum` y `tools.sum`.
+
+**Prueba independiente**: los controles de T-B1101 sobre módulos temporales fuera del repo, y `make vuln` en verde sobre el árbol.
+
+**T-B1101 — Escaneo de vulnerabilidades con govulncheck** · ADR-026 (I-1 a I-4), R-24, plan §10.3 (A06), §12.3; auditoría de `b945373` (unidad bloqueada)
+- **Pasos**:
+  1. `tools.mod`: agregar `golang.org/x/vuln/cmd/govulncheck` como `tool`, en v1.9.0, y actualizar `tools.sum`. Se espera que suban `golang.org/x/tools` (v0.50.0 → v0.52.0), `x/mod`, `x/sync` y `x/sys`, y que se sume `x/telemetry`; el PR lo lista. Las líneas `toolchain` de `go.mod` y `tools.mod` quedan iguales (I-2).
+  2. `Makefile`: target `vuln` (en `.PHONY`), con la variable `VULN_DIR` (por defecto el directorio actual). Corre govulncheck desde `tools.mod` con `-C $(VULN_DIR) -show traces,version ./...`, en formato texto, sin `-test` ni `-tags`. No entra en `check`. Comentario: necesita red y remite a ADR-026. El comentario de las herramientas (línea 5) suma govulncheck.
+  3. `.github/workflows/vulncheck.yml` como dice ADR-026 §5.
+  4. README: fila `make vuln` en "Comandos" y govulncheck en la frase de herramientas que no se instalan.
+  5. **Primera corrida e informe** (se hace una vez y va en la entrada de estado):
+     - (a) `make vuln`;
+     - (b) el nivel módulo de la app: `go tool -modfile=tools.mod govulncheck -scan module ./...`, solo como informe;
+     - (c) las herramientas: compilar `sqlc` y `golangci-lint` desde `tools.mod` en un directorio temporal y correr `govulncheck -mode binary` sobre cada una, solo como informe.
+
+     Lo que aparezca se trata según ADR-026 §4. Un hallazgo alcanzable con corrección se arregla en este PR: si es de la librería estándar, se sube `toolchain` en los dos archivos; si es de un módulo, se sube a la versión corregida y se corre `go mod tidy`. Si no tiene corrección, **frenar** y reportar. Los hallazgos de nivel módulo o paquete, y los de las herramientas, solo se informan.
+- **Verificación**: controles sobre módulos temporales en el directorio temporal del sistema. Nunca se versionan (I-4). Cada uno tiene su propio `go mod tidy`.
+
+  | Caso | Módulo temporal | Esperado |
+  |---|---|---|
+  | V1 alcanzable | `require golang.org/x/text v0.3.6`; `main` llama a `language.Parse` | `make vuln VULN_DIR=<dir>` termina con `Error 3`. La salida incluye `GO-2021-0113` (CVE-2021-38561) con la traza de `main` a `language.Parse` (puede listar además otros ids de `x/text`) |
+  | V2 requerido pero no llamado | La misma versión; `main` usa solo un paquete de `golang.org/x/text` que no importa `language` (verificarlo con `go list -deps`; p. ej. `width`) | Termina en 0; el resumen menciona vulnerabilidades en módulos requeridos que el código no llama |
+  | V3 versión corregida | Como V1, pero con la última `golang.org/x/text` | Termina en 0. Así se ve que lo que falla en V1 es la vulnerabilidad, no el armado del módulo |
+  | V4 base inalcanzable | V1, con los módulos ya en caché y `HTTPS_PROXY=http://127.0.0.1:9` | Termina con `Error 1` y un error de conexión; nunca en 0 (I-1) |
+  | V5 árbol | `make vuln` en la raíz | Termina en 0 después del paso 5; `-show version` muestra govulncheck v1.9.0 y la versión de Go de `toolchain` |
+- **Mutaciones** (se aplican al target, se ve fallar el caso y se restauran): `-format json` → V1 termina en 0 (por eso el target usa texto, I-1); `-scan module` → V2 termina con un código distinto de 0; sin `-C $(VULN_DIR)` → V1 termina en 0, porque analiza el árbol y no el módulo de prueba.
+- **CI**: en el PR, el job `govulncheck` corre `make vuln` y su log muestra las versiones de govulncheck, de Go y de la base. El cableado de la falla se revisa leyendo el workflow (sin `continue-on-error` ni `|| true`). No se prueba con un commit vulnerable en el PR, por I-4.
+
+**Checkpoint Fase 11**:
+- `make check` en verde, con el `x/tools` nuevo y `make lint` en 0 issues sin tocar `.golangci.yml`.
+- `make vuln` en verde.
+- V1 a V5 y las tres mutaciones reportados, cada uno con su resultado.
+- El CI del PR en verde, tanto en `ci` como en `vulncheck`.
+- La entrada de estado informa el estado de `go.sum` y de `tools.sum` y da por cerrada la unidad de la auditoría.
+- Después del merge: una corrida `workflow_dispatch` de `vulncheck` sobre `main` en verde, y la primera corrida programada, las dos registradas en la entrada de estado.
+
+---
+
 ### Renombre por funcionalidad (2026-10-14)
 
 Equivalencias para resolver las referencias históricas (entradas de estado, plan §18,
@@ -2907,6 +2952,7 @@ en `waitRuntimeConnections`, los "phase-one lookups" de `queryrules` (plan §4.4
 | DD-47 / R-20 Reserva de un email por invitación (riesgo aceptado) | T-B601 (fija el `409` de un desactivado) |
 | DD-48 Cupos de invitación por empresa y por IP | T-B1005, T-B1006 |
 | DD-49 / R-21 Cupo global de registros y alerta de ritmo | T-B1007, T-B1008 |
+| ADR-026 / R-24 Vulnerabilidades conocidas en dependencias Go (unidad bloqueada de la auditoría de `b945373`) | T-B1101 |
 
 ---
 
