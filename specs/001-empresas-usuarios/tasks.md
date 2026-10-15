@@ -2965,6 +2965,15 @@ enviar. DD-F30 queda reemplazada. Tareas afectadas: T-F101 (`Retry-After: 1200`)
 contrato sigue en v0.5.0 y los tipos generados son los mismos), T-F402 (P-F7: el reset sigue con
 `202`) ni T-F506. Sin tareas nuevas ni cambios de orden.
 
+**Enmienda DD-F31 y estado del backend (2026-10-14, *Accepted*: aprobada por el usuario el 2026-10-14)** (`ui.md` Revisión 4, enmienda
+DD-F31): (1) el reenvío de la confirmación a un email ya confirmado responde `202` sin enviar; con
+un `/me` viejo, C-01, el aviso W y S-05 decían "Listo, te lo reenviamos". Tras el `202` se vuelve a
+pedir `/me` y el texto sale de esa lectura (DD-F31, INV-F17), y S-05 no ofrece reenviar si el email
+ya está confirmado. Sin cambios en el backend ni en el contrato. (2) Las Fases 0 a 10 del backend
+están en `main`: se actualizan el estado de las dependencias y las pruebas independientes de F4 y
+F5. Tareas afectadas: T-F404, T-F405, T-F406, T-F502 y trazabilidad. Sin tareas nuevas ni cambios
+de orden.
+
 ### Convenciones de esta sección
 
 - `[T]` = tarea de test. Va **antes** de la tarea de código que la hace pasar, y el test debe
@@ -3038,10 +3047,12 @@ Se corren en `web/` salvo los de `make`.
 | F6 | T-B706 (límites de DD-31); DD-42 y DD-43 (contrato v0.4.3) | H-2 y H-11 resueltos (DD-23, DD-31); **H-12 abierto** (prueba en un celular real): no bloquea |
 | F7 | Fases 0 a 10 del backend (en `main`) + `compose.yaml` + T-B014 y la receta de CI de plan §10.5.1 | H-7, H-9, H-10 resueltos (DD-28, DD-30, DD-24); supuesto S-12 se valida en T-F701; los flujos de invitación de T-F702 confirman antes el email del Administrador (DD-46) |
 
-**Estado del backend (2026-10-13)**: las Fases 0 a 9 están en `main` (`b945373`). La Fase 10
-(decimosexta revisión, aprobada el 2026-10-12) todavía no está implementada. Hasta que llegue a
-`main`, las pruebas independientes de F2, F4 y F5 se hacen sin el gate de invitar ni los cupos
-nuevos; las filas que los necesitan dicen "con la Fase 10" y se completan después.
+**Estado del backend (2026-10-14)**: las Fases 0 a 10 están en `main` (`c7692bd`). La Fase 10
+(decimosexta revisión con la enmienda H-16) entró con el PR fdelillo/crm#20 (`e8112b7`); los PR #21
+(`b7544f3`) y #22 (`c7692bd`) renombraron por funcionalidad archivos y tests del backend sin
+cambiar comportamiento (equivalencias en "Renombre por funcionalidad (2026-10-14)", sección
+Backend). Las pruebas independientes de todas las fases F se hacen completas, con el gate de
+invitar y los cupos nuevos.
 
 **Revisión 16 incorporada** (`ui.md` Revisión 4, §26): la lista "Dependiente de la revisión 16" de
 la tercera revisión queda cerrada. Todas las fases F se pueden implementar contra el contrato
@@ -3480,14 +3491,20 @@ login con "Cerraste sesión." y atrás no muestra datos.
 **Objetivo**: los enlaces de email funcionan de punta a punta sin exponer el token en la URL, y el
 aviso de verificación permite reenviar el email.
 
-**Prueba independiente**: con el backend (T-B507) y los `APP_LINK_*` por defecto (DD-14): pedir el
-restablecimiento, abrir el enlace de Mailpit, definir la contraseña nueva e ingresar; reabrir el
-mismo enlace → "Este enlace ya no sirve."; confirmar el email desde su enlace y ver desaparecer el
-aviso. Con la Fase 10 del backend: registrar otra empresa sin confirmar el email, restablecer su
-contraseña e ingresar → sin aviso (el reset confirmó el email, DD-46). Con la Fase 10 (enmienda
-H-16), con otra empresa sin confirmar: tocar "Reenviar" del aviso cuatro veces → las tres primeras
-dicen "Listo, te lo reenviamos…" y llegan tres emails a Mailpit; la cuarta dice "Ya te lo mandamos
-hace poco. Esperá 20 minutos y probá de nuevo." y no llega ninguno más.
+**Prueba independiente**: con el backend (T-B507 y la Fase 10, en `main`) y los `APP_LINK_*` por
+defecto (DD-14): pedir el restablecimiento, abrir el enlace de Mailpit, definir la contraseña nueva
+e ingresar; reabrir el mismo enlace → "Este enlace ya no sirve."; confirmar el email desde su enlace
+y ver desaparecer el aviso. Registrar otra empresa sin confirmar el email, restablecer su
+contraseña e ingresar → sin aviso (el reset confirmó el email, DD-46). Con otra empresa sin
+confirmar (enmienda H-16): tocar "Reenviar" del aviso cuatro veces → las tres primeras dicen
+"Listo, te lo reenviamos…" y llegan tres emails a Mailpit; la cuarta dice "Ya te lo mandamos hace
+poco. Esperá 20 minutos y probá de nuevo." y no llega ninguno más. Con una empresa más sin
+confirmar (DD-F31): con el aviso visible, abrir el enlace de confirmación de Mailpit en una ventana
+privada puesta al lado (las dos visibles, sin taparse) y confirmar; sin cambiar de pestaña en la
+primera, tocar "Reenviar" → "Tu email ya está confirmado. No hace falta otro enlace.", el aviso
+desaparece y no llega ningún email nuevo a Mailpit. Si el aviso desapareció antes de tocar
+"Reenviar", el navegador marcó la primera ventana como oculta y la relectura de DD-F28 lo resolvió
+antes: repetir con las ventanas sin superponerse.
 
 **T-F401 [T] — Token de los enlaces (`useLinkToken`)** · DD-14, DD-F2, INV-F08, `ui.md` §6.2
 - **Red**:
@@ -3527,7 +3544,7 @@ hace poco. Esperá 20 minutos y probá de nuevo." y no llega ninguno más.
   | Campo | `autocomplete="new-password"`; "Mostrar"/"Ocultar" con `aria-pressed` |
 - **Green**: pasa la tabla.
 
-**T-F404 [T] — Confirmar email** · US-1.3, DD-13, DD-F3, `ui.md` §13.5
+**T-F404 [T] — Confirmar email** · US-1.3, DD-13, DD-F3, DD-F31, INV-F17, `ui.md` §13.5
 - **Red**:
 
   | Interacción | Resultado observable |
@@ -3535,30 +3552,42 @@ hace poco. Esperá 20 minutos y probá de nuevo." y no llega ninguno más.
   | Montar la pantalla con token | ningún `POST` hasta tocar "Confirmar mi email"; antes del botón, "Si no creaste una cuenta con este email, no lo confirmes: confirmarlo le daría acceso a quien la creó." (P-F10) |
   | Confirmar sin sesión → `204` | "¡Listo! Tu email quedó confirmado." + "Ingresar" |
   | Confirmar con sesión → `204` | "Ir al inicio"; `/me` pedido de nuevo (`email_verified: true`); el texto de éxito no menciona invitar (el token puede ser de otra cuenta) |
-  | `400 token_invalid` con sesión | mensaje de §12.2 + "Reenviar email de confirmación" → `POST …/resend` → `202`: "Listo, te lo reenviamos. Revisá también el correo no deseado.", sin la línea de los 20 minutos (DD-F30 reemplazada, enmienda H-16) / `429` con `Retry-After: 120`: "Ya te lo mandamos hace poco." + "Esperá 2 minutos y probá de nuevo." |
+  | `400 token_invalid` con sesión y `email_verified: false` | mensaje de §12.2 + "Reenviar email de confirmación" → `POST …/resend` → `202` y `/me` sigue en `email_verified: false`: "Listo, te lo reenviamos. Revisá también el correo no deseado.", sin la línea de los 20 minutos (DD-F30 reemplazada, enmienda H-16) / `429` con `Retry-After: 120`: "Ya te lo mandamos hace poco." + "Esperá 2 minutos y probá de nuevo." |
+  | `400 token_invalid` o sin token, con sesión y `email_verified: true` | "Tu email ya está confirmado. No hace falta otro enlace." + "Ir al inicio"; no aparece "Reenviar email de confirmación" (DD-F31) |
+  | `400 token_invalid` con sesión y `email_verified: false` en caché → "Reenviar" → `202`; `/me` → `email_verified: true` | toast "Tu email ya está confirmado. No hace falta otro enlace."; nunca "Listo, te lo reenviamos"; la pantalla pasa a la fila anterior y el foco va al `<h1>` (DD-F31, INV-F17) |
   | `400 token_invalid` sin sesión | mensaje + "Ingresar" |
   | Sin token | "Este enlace está incompleto." |
+- **Mutaciones** (se aplican, el caso falla y se restauran; DD-F31): ofrecer "Reenviar" sin mirar
+  `email_verified` → falla la fila del email ya confirmado; mostrar el éxito con el `202` sin releer
+  `/me` → falla la fila siguiente.
 - **Green**: pasa la tabla.
 
-**T-F405 [T] — Aviso "Confirmá tu email"** · US-1.3, P-2, BR-F05, DD-46 (3) con la enmienda H-16, `ui.md` §13.13
+**T-F405 [T] — Aviso "Confirmá tu email"** · US-1.3, P-2, BR-F05, DD-46 (3) con la enmienda H-16, DD-F31, INV-F17, `ui.md` §13.13
 - **Red**:
 
   | Caso | Esperado |
   |---|---|
   | `email_verified: false` | aviso con el email en todas las pantallas con sesión |
   | `email_verified: true` | sin aviso |
-  | "Reenviar" → `202` | "Listo, te lo reenviamos. Revisá también el correo no deseado." anunciado en `aria-live`; el texto no menciona esperar 20 minutos (DD-F30 reemplazada, enmienda H-16: un `202` siempre envía) |
+  | "Reenviar" → `202`; `/me` → `email_verified: false` | un `GET /me` después del `POST`, aunque no pasaron los 60 s de `staleTime`; "Enviando…" hasta que responde; después "Listo, te lo reenviamos. Revisá también el correo no deseado." anunciado en `aria-live`; el texto no menciona esperar 20 minutos (DD-F30 reemplazada, enmienda H-16: un `202` siempre envía salvo con el email ya confirmado) |
+  | Caché con `email_verified: false`, la pestaña siempre visible; "Reenviar" → `202`; `/me` → `email_verified: true` (confirmado en otra ventana o dispositivo) | nunca aparece "Listo, te lo reenviamos"; toast "Tu email ya está confirmado. No hace falta otro enlace."; el aviso desaparece y el foco va al `<h1>` de la pantalla (DD-F31, INV-F17) |
+  | "Reenviar" → `202`; `/me` → `500` / sin red | "Si todavía no lo confirmaste, te mandamos un enlace nuevo. Revisá también el correo no deseado."; el aviso sigue visible (DD-F31) |
   | "Reenviar" → `429` con `Retry-After: 300` (cupo por IP o por usuario; el contrato no los distingue) | "Ya te lo mandamos hace poco. Esperá 5 minutos y probá de nuevo." |
   | "Reenviar" → `429` con `Retry-After: 1200` (cupo por usuario agotado) | "Ya te lo mandamos hace poco. Esperá 20 minutos y probá de nuevo." |
   | "Reenviar" → `429` con `Retry-After: 180`; "Reenviar" otra vez → `429` con `Retry-After: 1200` (los dos cupos agotados) | primero "Esperá 3 minutos y probá de nuevo." y después "Esperá 20 minutos y probá de nuevo.", cada uno anunciado en `aria-live`; "Reenviar" sigue habilitado; un solo `POST` por toque |
   | Ingresar después de restablecer la contraseña: la respuesta del login trae `email_verified: true` (DD-46 (2)) | sin aviso |
   | "Ocultar" | desaparece y sigue oculto al navegar; con `sessionStorage` vacío vuelve a aparecer |
   | Teclado | "Reenviar" y "Ocultar" alcanzables con Tab y con nombre accesible |
+- **Mutaciones** (se aplican, el caso falla y se restauran; DD-F31): resolver `'sent'` con el `202`
+  sin releer `/me` → falla la fila de `email_verified: true`; leer `/me` de la caché, o pedirlo
+  respetando el `staleTime`, → falla la misma fila (MSW cuenta un solo `GET /me`); tratar el fallo
+  de `/me` como `'sent'` → falla la fila de `/me` → `500`.
 - **Green**: pasa la tabla.
 
 **T-F406 — Implementar** `useLinkToken`, `ForgotPasswordPage`, `ResetPasswordPage`,
 `VerifyEmailPage`, `EmailVerificationBanner` y sus hooks. `useResendEmailVerification` va en
-`features/auth/session.ts` (revisión 4: lo usan también S-07, S-09 y S-10, `ui.md` §15.4).
+`features/auth/session.ts` (revisión 4: lo usan también S-07, S-09 y S-10, `ui.md` §15.4) y
+resuelve `ResendVerificationOutcome` releyendo `/me` tras el `202` (DD-F31).
 
 **Checkpoint Fase F4**: `npm run check` en verde + prueba independiente.
 
@@ -3570,7 +3599,7 @@ hace poco. Esperá 20 minutos y probá de nuevo." y no llega ninguno más.
 reactiva desde el celular sin poder dejar la empresa sin administrador; el invitado acepta en una
 pantalla.
 
-**Prueba independiente**: con el backend (T-B607). Con la Fase 10, antes: registrar la empresa, ver
+**Prueba independiente**: con el backend (T-B607 y la Fase 10, en `main`). Antes: registrar la empresa, ver
 en Usuarios "Confirmá tu email para invitar a tu equipo." con "+ Invitar" deshabilitado, confirmar
 el email desde Mailpit en otra pestaña y, al volver, ver "+ Invitar" habilitado sin recargar.
 Después: invitar a un operador, reinvitarlo como
@@ -3615,6 +3644,7 @@ desactivar a un usuario y ver que su ventana vuelve al login con "Tu sesión se 
   | Sesión con `email_verified: false` (revisión 4, BR-F14) | aviso "Confirmá tu email para invitar a tu equipo." con "Te mandamos un enlace a {email}…" y "Reenviar email de confirmación"; "+ Invitar" deshabilitado, con `aria-describedby` que apunta al aviso; en el estado vacío, "Invitar" también deshabilitado |
   | "Reenviar email de confirmación" → `202` / `429` con `Retry-After: 120` / `429` con `Retry-After: 1200` | en el aviso (`role="status"`): "Listo, te lo reenviamos. Revisá también el correo no deseado." (sin la línea de los 20 minutos, enmienda H-16) / "Ya te lo mandamos hace poco." + "Esperá 2 minutos y probá de nuevo." / lo mismo con "Esperá 20 minutos y probá de nuevo." |
   | Con el aviso visible, la pestaña vuelve a enfocarse y `/me` responde `email_verified: true` | el aviso desaparece y "+ Invitar" queda habilitado, sin recargar (DD-F28) |
+  | "Reenviar email de confirmación" → `202`; `/me` → `email_verified: true` | toast "Tu email ya está confirmado. No hace falta otro enlace."; nunca "Listo, te lo reenviamos"; el aviso desaparece, "+ Invitar" queda habilitado y el foco va al `<h1>` (DD-F31) |
 - **Green**: pasa la tabla.
 
 **T-F503 [T] — Acciones sobre usuarios** · US-3.3, US-3.4, FR-005, P-3, DD-5, DD-26, DD-F7, DD-F8, INV-F04, INV-F10, `ui.md` §13.9
@@ -3985,4 +4015,5 @@ usó) reportado.
 | DD-48 / DD-49 (cupos de invitación y cupo global del registro), DD-F29 | T-F004, T-F101, T-F202, T-F503, T-F504 |
 | DD-46 (2) y (3) (el reset confirma el email; cupo por usuario del reenvío, con `429` y `Retry-After` desde la enmienda H-16), H-16 (resuelto), DD-F30 (reemplazada), P-F10 | T-F101, T-F404, T-F405, T-F502, T-F702 |
 | DD-44 (`401` en una acción de administración) | T-F104, T-F503 |
+| DD-F31 / INV-F17 (reenvío a un email ya confirmado: el texto sale de `/me` releído) | T-F404, T-F405, T-F406, T-F502 |
 | NFR-F01..F13 | T-F002 (F02, F07, F08), T-F702 (F01, F06, F10, F12), T-F703 (F09, F11), T-F704 (F03..F05), T-F705 (F06..F08), T-F706 (F13) |

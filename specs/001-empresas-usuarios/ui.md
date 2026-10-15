@@ -1,7 +1,7 @@
 # UI (frontend): Empresas, usuarios y roles
 
 **Spec**: [`spec.md`](spec.md) · **Rama**: `001-empresas-usuarios` · **Fecha**: 2026-09-29
-**Autor**: `frontend-architect` · **Estado**: Revisión 3 aprobada por el usuario el 2026-10-12; Revisión 4 aprobada por el usuario el 2026-10-13 (P-F10: sí; P-F11: no); enmienda H-16 a la Revisión 4 aprobada por el usuario el 2026-10-13
+**Autor**: `frontend-architect` · **Estado**: Revisión 3 aprobada por el usuario el 2026-10-12; Revisión 4 aprobada por el usuario el 2026-10-13 (P-F10: sí; P-F11: no); enmienda H-16 a la Revisión 4 aprobada por el usuario el 2026-10-13; enmienda DD-F31 *Accepted*, aprobada por el usuario el 2026-10-14
 **Contrato consumido**: [`contracts/openapi.yaml`](contracts/openapi.yaml) **v0.5.0** (**canónico**; el diseño original se hizo contra v0.3.1; la Revisión 3, contra v0.4.3)
 **Revisión 1 (2026-09-29)**: respuestas del usuario a P-F1 a P-F5 (§26) y resolución de los
 hallazgos H-1 a H-9 por el backend (`plan.md` §18, DD-22 a DD-30, §10.7, contrato v0.3.0). Cambios:
@@ -53,6 +53,13 @@ S-05 y el aviso W (§13.5, §13.9, §13.13); el `429` del reenvío viene del cup
 usuario, y con los dos agotados el reintento puede traer una segunda espera, que la UI no promete
 evitar (§11.1, §12.2, DD-F29); H-16 resuelto (§27.2). Sin cambios en P-F7 (el reset sigue con
 `202`), DD-F25 (ya formatea 1200 s como "20 minutos") ni el sistema visual.
+**Revisión 4, enmienda DD-F31 (2026-10-14, *Accepted*: aprobada por el usuario el 2026-10-14)**: el reenvío de la confirmación a un email
+ya confirmado responde `202` sin enviar (contrato v0.5.0; `ResendEmailVerification`), y con un
+`/me` viejo C-01, el aviso W y S-05 decían "Listo, te lo reenviamos". Tras el `202` se vuelve a
+pedir `/me` y el texto sale de esa lectura; S-05 no ofrece reenviar si el email ya está confirmado
+(DD-F31, INV-F17; §10.3, §11.1, §13.5, §13.9, §13.13, §15). Sin cambios en el backend ni en el
+contrato. Además, el backend tiene las Fases 0 a 10 en `main` (`c7692bd`): §0, §11.1, §26, §27.1 y
+RF-16 dejan de decir que la Fase 10 falta.
 
 | Archivo | Contenido |
 |---|---|
@@ -66,9 +73,10 @@ evitar (§11.1, §12.2, DD-F29); H-16 resuelto (§27.2). Sin cambios en P-F7 (el
 ## 0. Contexto y validación del stack
 
 **Greenfield en frontend**: no hay código ni `package.json`. El backend de 001 está
-**implementado** (Fases 0 a 9 en `main`, `b945373`; ADR-001 a ADR-014, ADR-024 y ADR-025, y las
-quince tandas del §18 del plan; la decimosexta, aprobada el 2026-10-12, se implementa como Fase 10)
-y su contrato OpenAPI (v0.5.0) es la restricción más dura de este diseño.
+**implementado** (Fases 0 a 10 en `main` al 2026-10-14, `c7692bd`; ADR-001 a ADR-014, ADR-024 y
+ADR-025, y las dieciséis tandas del §18 del plan: la decimosexta, con la enmienda H-16, es la Fase
+10, que entró con el PR #20, `e8112b7`) y su contrato OpenAPI (v0.5.0) es la restricción más dura
+de este diseño.
 
 Diseño sobre este stack (decisiones del usuario marcadas con **(u)**; el resto son defaults
 propuestos, cada uno con su ADR):
@@ -419,6 +427,7 @@ Propiedades que se rompen **sin que falle la compilación**. Cada una tiene un t
 | INV-F14 | El logo se muestra siempre con la URL versionada `/api/v1/tenant/logo?v={id}-{updated_at}` (parámetro `v` del contrato, ignorado por el servidor): al cambiar el logo o la empresa, cambia la URL. | T-F603 |
 | INV-F15 | *(Revisión 3)* El body de `PATCH /tenant` solo lleva claves de `TenantUpdate` que cambiaron; `name` y `timezone` nunca van como `null`; `base_currency` nunca va (DD-43; el servidor responde `400` ante una clave desconocida o un `null` en esos campos). | T-F602 |
 | INV-F16 | *(Revisión 4)* El manejador global de `403` (§12.4) dispara **solo** con `code = forbidden`. El `403 email_not_verified` (DD-46) lo maneja la pantalla que invitó: nunca muestra "Sin permiso" ni "No tenés permiso para hacer esto.". Se rompe sin que falle la compilación si el manejador pasa a mirar `status === 403`. | T-F104, T-F504 |
+| INV-F17 | *(Enmienda DD-F31)* Ningún texto dice que se reenvió la confirmación sin una lectura de `/me` posterior al `202` que traiga `email_verified = false`. Se rompe sin que falle la compilación si el hook vuelve a resolver con el `202` solo o lee `/me` de la caché. | T-F404, T-F405, T-F502 |
 
 ---
 
@@ -488,7 +497,7 @@ export const queryKeys = {
 | Cerrar sesión | `POST /auth/logout` | `clear()` (tras el `204`) |
 | Restablecer contraseña | `POST /auth/password-reset/confirm` | `clear()` (el backend cerró todas las sesiones de ese usuario) |
 | Confirmar email | `POST /auth/email-verification/confirm` | `invalidateQueries(session)` |
-| Reenviar verificación | `POST /auth/email-verification/resend` | — |
+| Reenviar verificación | `POST /auth/email-verification/resend` | Tras el `202`, vuelve a pedir `/me` (ignora el `staleTime`) y espera la respuesta: el resultado sale de esa lectura (DD-F31) |
 | Pedir restablecimiento | `POST /auth/password-reset` | — |
 | Editar empresa | `PATCH /tenant` | `setQueryData(tenant, respuesta)` + `invalidateQueries(session)` (nombre en `TenantSummary`). Si nada cambió de verdad, la respuesta trae el mismo `updated_at` (DD-43 (4)) y la URL del logo no cambia |
 | Subir / quitar logo | `PUT` / `DELETE /tenant/logo` | `PUT`: `setQueryData(tenant, respuesta)` (nuevo `updated_at` → nueva URL del logo); `DELETE`: `invalidateQueries(tenant)`; ambos `invalidateQueries(session)` (`has_logo`) |
@@ -539,7 +548,7 @@ No se consumen `/healthz` ni `/readyz`.
 
 **Límites de tasa** (plan DD-9; los cupos por IP se verificaron en `internal/app/api.go` el
 2026-10-12; los de DD-48, DD-49 y DD-46 (3) son de la decimosexta revisión y del contrato v0.5.0, y
-los implementa la Fase 10 del backend). Son constantes del backend, no configuración. Cada cupo es
+los implementó la Fase 10 del backend: verificados en `internal/app/api.go` el 2026-10-14). Son constantes del backend, no configuración. Cada cupo es
 una ráfaga más una reposición; excedido → `429 rate_limited` con `Retry-After` en segundos. Los
 cupos compartidos limitan un **flujo**: un pedido en una pantalla gasta cupo de la otra. Cuando una
 ruta tiene dos cupos (por IP y global, por empresa y por IP, o por IP y por usuario en el reenvío
@@ -558,7 +567,7 @@ espera y ningún texto promete que el reintento funcione: dicen "Esperá {espera
 | Contraseña (por IP) | 5, 1 cada 12 min | `POST /auth/password-reset` y `…/confirm` (S-03 y S-04) | hasta 720 s | Minutos |
 | Contraseña, por email | 3, 1 cada 20 min | `POST /auth/password-reset` | — (no hay `429`: responde `202` igual y no envía; DD-9, DD-39) | La línea de P-F7 en S-03 |
 | Verificación (por IP) | 20, 1 cada 3 min | `…/email-verification/confirm` y `…/resend` (S-05, C-01 y el aviso W de S-07, S-09 y S-10) | hasta 180 s | Reenvío: "Ya te lo mandamos hace poco." + minutos. Confirmación: "Hiciste muchos intentos seguidos." |
-| Reenvío de la verificación, por usuario (revisión 4; enmienda H-16) | 3, 1 cada 20 min (DD-46 (3)); corre después del de IP y de autenticar, y un `429` por IP no lo gasta | `POST …/email-verification/resend` | hasta 1200 s | El mismo texto que la fila anterior: "Ya te lo mandamos hace poco." + la espera, hasta "20 minutos" (DD-F25). Con los dos cupos agotados responde primero el de IP (≤ 180 s) y, al reintentar, puede llegar este con su espera. Un `202` siempre envía, salvo con el email ya confirmado (DD-F30 reemplazada) |
+| Reenvío de la verificación, por usuario (revisión 4; enmienda H-16) | 3, 1 cada 20 min (DD-46 (3)); corre después del de IP y de autenticar, y un `429` por IP no lo gasta | `POST …/email-verification/resend` | hasta 1200 s | El mismo texto que la fila anterior: "Ya te lo mandamos hace poco." + la espera, hasta "20 minutos" (DD-F25). Con los dos cupos agotados responde primero el de IP (≤ 180 s) y, al reintentar, puede llegar este con su espera. Un `202` siempre envía, salvo con el email ya confirmado, caso que la UI distingue releyendo `/me` (DD-F31; DD-F30 reemplazada) |
 | Invitación, lado invitado (por IP) | 20, 1 cada 3 min | `POST /auth/invitations/preview` y `…/accept` (S-06: una aceptación gasta 2) | hasta 180 s | Minutos |
 | Invitación, lado Administrador, por empresa (revisión 4) | 10, 1 cada 6 min; cuenta éxitos y rechazos y lo comparten **todos** los Administradores de la empresa (DD-48) | `POST /users/invitations` y `POST /users/{userId}/reactivate` (S-10, y "Reenviar invitación" y "Reactivar" de S-09) | hasta 360 s | "Por ahora no podemos enviar más invitaciones." + minutos (DD-F29) |
 | Invitación, lado Administrador, por IP (revisión 4) | 20, 1 cada 3 min (DD-48) | Las mismas dos rutas | hasta 180 s | El mismo texto |
@@ -1061,9 +1070,9 @@ persona.
 
 | Estado | Qué ve el usuario |
 |---|---|
-| Sin token | "Este enlace está incompleto." + con sesión: "Reenviar email de confirmación"; sin sesión: "Ingresar" |
+| Sin token | "Este enlace está incompleto." + con sesión y el email sin confirmar: "Reenviar email de confirmación"; con sesión y el email ya confirmado: "Tu email ya está confirmado. No hace falta otro enlace." + "Ir al inicio" (DD-F31); sin sesión: "Ingresar" |
 | Inicial (con token) | Título, bajada, el párrafo A y "Confirmar mi email". Ningún `POST` hasta tocar el botón |
-| Error | `token_invalid`: "Este enlace de confirmación ya no sirve. Vence a las 48 horas o ya se usó." + con sesión: "Reenviar email de confirmación" (resultado en la misma pantalla con los textos de C-01, §13.13: `202` con "Listo, te lo reenviamos…"; `429`, del cupo por IP o del cupo por usuario, con "Ya te lo mandamos hace poco." y la espera); sin sesión: "Ingresá y pedí uno nuevo desde el aviso" + "Ingresar". `429` (cupo por IP compartido con el reenvío, §11.1), `503`, `500`, red |
+| Error | `token_invalid`: "Este enlace de confirmación ya no sirve. Vence a las 48 horas o ya se usó." + con sesión y el email sin confirmar: "Reenviar email de confirmación" (resultado en la misma pantalla con los textos de C-01, §13.13: `202` con "Listo, te lo reenviamos…" o, si `/me` releído ya trae el email confirmado, el toast de DD-F31, la variante siguiente y el foco al `<h1>`; `429`, del cupo por IP o del cupo por usuario, con "Ya te lo mandamos hace poco." y la espera); con sesión y el email ya confirmado: "Tu email ya está confirmado. No hace falta otro enlace." + "Ir al inicio", sin "Reenviar" (DD-F31); sin sesión: "Ingresá y pedí uno nuevo desde el aviso" + "Ingresar". `429` (cupo por IP compartido con el reenvío, §11.1), `503`, `500`, red |
 | Enviando | "Confirmando…" |
 | Éxito | `204` → `invalidateQueries(session)`; con sesión "Ir al inicio", sin sesión "Ingresar". No dice "ya podés invitar", porque el `204` no dice de quién era el token: el enlace puede ser de otra cuenta que la de la sesión abierta. El aviso C-01 y BR-F14 se actualizan solos con `/me` |
 | Sin permiso / Sesión vencida | N/A (funciona con o sin sesión) |
@@ -1220,8 +1229,14 @@ W: `VerifyToInviteNotice` (§15.1), un `FormAlert` de advertencia (`role="status
 "Confirmá tu email para invitar a tu equipo."; descripción: "Te mandamos un enlace a {email}. Si no
 lo encontrás, pedí uno nuevo."; acción: "Reenviar email de confirmación"
 (`POST /auth/email-verification/resend`). El resultado se anuncia en el mismo aviso:
-- `202` → "Listo, te lo reenviamos. Revisá también el correo no deseado." (enmienda H-16: un
-  `202` siempre envía; DD-F30 reemplazada);
+- `202` y `/me` releído con `email_verified = false` → "Listo, te lo reenviamos. Revisá también el
+  correo no deseado." (enmienda H-16: un `202` siempre envía salvo con el email ya confirmado;
+  DD-F30 reemplazada);
+- `202` y `/me` con `email_verified = true` (se confirmó en otra ventana o dispositivo; el servidor
+  no envió nada) → toast "Tu email ya está confirmado. No hace falta otro enlace."; el aviso
+  desaparece, todo se habilita y el foco va al `<h1>` (DD-F31);
+- `202` y `/me` falla → "Si todavía no lo confirmaste, te mandamos un enlace nuevo. Revisá también
+  el correo no deseado.";
 - `429` (cupo por IP o por usuario, §11.1) → "Ya te lo mandamos hace poco. Esperá {espera} y
   probá de nuevo." (hasta "20 minutos", DD-F25);
 - red, `503` o `500` → el texto de §12.2 con "Reintentar".
@@ -1491,8 +1506,13 @@ contenido" como primer elemento enfocable. El menú del usuario (escritorio) tie
 
 **C-01 Aviso "Confirmá tu email"** (BR-F05): "Confirmá tu email: te mandamos un enlace a
 {email}." + "Reenviar" + botón "Ocultar" con nombre accesible. Resultado de "Reenviar":
-- `202`: "Listo, te lo reenviamos. Revisá también el correo no deseado." (enmienda H-16: un `202`
-  siempre envía, salvo con el email ya confirmado; DD-F30 reemplazada);
+- `202`: se vuelve a pedir `/me` ("Enviando…" sigue hasta la respuesta) y el texto sale de esa
+  lectura (DD-F31): con `email_verified = false`, "Listo, te lo reenviamos. Revisá también el correo
+  no deseado." (enmienda H-16: un `202` siempre envía, salvo con el email ya confirmado; DD-F30
+  reemplazada); con `email_verified = true` (confirmado en otra ventana o dispositivo; el servidor no
+  envió nada), toast "Tu email ya está confirmado. No hace falta otro enlace.", el aviso desaparece
+  y el foco va al `<h1>`; si `/me` falla, "Si todavía no lo confirmaste, te mandamos un enlace
+  nuevo. Revisá también el correo no deseado.";
 - `429` (cupo por IP o por usuario, §11.1; el contrato no dice cuál): "Ya te lo mandamos hace
   poco. Esperá {espera} y probá de nuevo.". `{espera}` va de "unos segundos" a "20 minutos"
   (DD-F25). Con los dos cupos agotados, el primer `429` trae la espera del cupo por IP (≤ 180 s)
@@ -1734,7 +1754,7 @@ export interface LockedNoticeProps {
 // src/components/EmailVerificationBanner.tsx (C-01)
 export interface EmailVerificationBannerProps {
   email: string;
-  resendStatus: 'idle' | 'pending' | 'sent' | 'error';
+  resendStatus: 'idle' | 'pending' | 'sent' | 'unknown' | 'error';  // 'unknown': 202 sin poder releer /me (DD-F31); 'already_verified' no llega: el aviso se desmonta
   errorMessage?: string;
   onResend: () => void;
   onDismiss: () => void;
@@ -1746,7 +1766,7 @@ export interface EmailVerificationBannerProps {
 export interface VerifyToInviteNoticeProps {
   id: string;                    // destino de aria-describedby de "+ Invitar" e "Invitá a tu equipo"
   email: string;                 // session.user.email
-  resendStatus: 'idle' | 'pending' | 'sent' | 'error';
+  resendStatus: 'idle' | 'pending' | 'sent' | 'unknown' | 'error';  // como EmailVerificationBanner (DD-F31)
   errorMessage?: string;         // de messageForError(error, 'resendVerification')
   onResend: () => void;
 }
@@ -1848,7 +1868,12 @@ export function useCan(permission: Permission): boolean;
 export function useInviteBlockedReason(): 'email_not_verified' | null;
 /** Revisión 4: se mueve acá desde features/auth/api.ts porque lo usan el shell (C-01), S-05, S-07,
  *  S-09 y S-10, y features/X solo puede importar features/auth/session (§9.1). */
-export function useResendEmailVerification(): UseMutationResult<void, ApiError, void>;
+/** DD-F31: tras el 202 vuelve a pedir /me (ignora staleTime) y resuelve con esa lectura: 'sent' si
+ *  email_verified sigue en false; 'already_verified' si es true (el servidor no envió nada; el toast
+ *  lo muestra el onSuccess del hook y no el de mutate, porque el aviso que lo pidió puede haberse
+ *  desmontado); 'unknown' si /me falló. */
+export type ResendVerificationOutcome = 'sent' | 'already_verified' | 'unknown';
+export function useResendEmailVerification(): UseMutationResult<ResendVerificationOutcome, ApiError, void>;
 
 // features/auth/api.ts (mutaciones y queries de auth)
 export function useIndustryTemplates(): UseQueryResult<IndustryTemplate[], ApiError>;
@@ -2348,6 +2373,7 @@ La preparación de imágenes vive en `features/tenant/logo/` porque solo la usa 
 | **DD-F28** | *(Nueva, revisión 4; aplica P-F8)* Invitar con el email sin confirmar. La UI lo sabe por `session.user.email_verified` (`/me`, contrato v0.5.0), con `useInviteBlockedReason()`. Deshabilita con el motivo visible todo lo que emite una invitación (BR-F14) y pone al lado el aviso W con "Reenviar email de confirmación"; S-10 muestra el aviso en lugar del formulario. `['session']` usa `refetchOnWindowFocus: 'always'` mientras el email no está confirmado, así una confirmación hecha en otra pestaña habilita todo al volver, sin recargar. El `403 email_not_verified` lo maneja la pantalla (INV-F16) y refresca la sesión. "Reactivar" a un desactivado que nunca aceptó también se deshabilita (P-F8) aunque el servidor no lo exija en esa ruta, porque reactivarlo envía una invitación | Con DD-46, invitar depende de un dato que `/me` ya trae. Anticiparlo evita un formulario que siempre falla y le dice al usuario cómo salir. Sin el refetch al enfocar, si vuelve de confirmar antes de que pasen los 60 s de `staleTime`, el botón sigue deshabilitado. Descartado: (a) dejar todo habilitado y mostrar solo el `403` (el usuario completa un formulario para enterarse); (b) ocultar "Invitar" (no sabe que existe ni cómo habilitarlo); (c) una pantalla aparte "confirmá primero" (más navegación para un aviso); (d) `'always'` para todos los usuarios (un `/me` por cada vuelta a la pestaña, sin necesidad) | Un `/me` por cada vuelta a la pestaña mientras el email no esté confirmado (solo el fundador, hasta que hace un clic); dos botones de reenvío en S-07, S-09 y S-10 mientras C-01 esté visible (P-F11); una confirmación hecha en otro dispositivo se ve recién al enfocar o recargar |
 | **DD-F29** | *(Nueva, revisión 4; ampliada por la enmienda H-16)* Textos de `rate_limited` por contexto, ciertos para cualquier cupo que se haya agotado: registro "Hubo muchos intentos de registro seguidos." (+ "No se creó nada…"); invitar, reenviar invitación y reactivar "Por ahora no podemos enviar más invitaciones." (+ el motivo: cuidar el envío de emails); reenvío de la confirmación "Ya te lo mandamos hace poco.". La UI no distingue el cupo por IP del global (registro), el de la empresa del de la IP (invitaciones) ni el cupo por IP del cupo por usuario (reenvío de la confirmación, enmienda H-16) | El contrato no los distingue y la acción del usuario es la misma: esperar y reintentar. `Retry-After` ya trae la diferencia que le importa (cuánto esperar, DD-F25). "Hiciste muchos intentos" es falso con el cupo global (el visitante puede haber hecho uno solo) y con el de la empresa (lo puede haber gastado otro Administrador). Descartado: pedir al backend un código o un dato que diga qué cupo se agotó (un valor más en `ErrorCode` para el mismo comportamiento) | El texto no explica por qué (otro Administrador, un ataque en curso). Durante un ataque al registro (R-21 del plan), el visitante legítimo solo ve "esperá". Con dos cupos agotados, la primera espera puede quedarse corta: al reintentar llega otro `429` con la del otro cupo (en el reenvío de la confirmación, primero ≤ 180 s del de IP y después hasta 1200 s del de usuario). Los textos dicen "probá de nuevo" y no prometen que funcione |
 | **DD-F30** | ***Reemplazada por la enmienda H-16** (2026-10-13, §27.2): sin cupo por usuario el servidor responde `429` con `Retry-After`, así que la línea se retiró de C-01, S-05 y el aviso W, y la espera sale exacta en "Ya te lo mandamos hace poco." (§13.13). Versión reemplazada:* *(Nueva, revisión 4; mismo criterio que P-F7, aprobada)* El resultado "Listo, te lo reenviamos" del reenvío de la confirmación (C-01, S-05, aviso W) suma "Si lo pediste varias veces, esperá unos 20 minutos." | Con DD-46 (3), después de 3 reenvíos el servidor responde `202` sin enviar hasta pasados 20 min. Sin la línea, el usuario reintenta y cree que el sistema anda mal. Descartado: contar los reenvíos en el cliente (no ve los de otras pestañas ni dispositivos) | Una línea más en el aviso, aunque sea el primer reenvío. Si el backend adopta H-16 (`429` con `Retry-After`), la línea se va y la espera sale exacta |
+| **DD-F31** | *(Nueva, enmienda del 2026-10-14; Accepted, aprobada por el usuario)* Tras el `202` del reenvío de la confirmación (C-01, aviso W, S-05), `useResendEmailVerification` vuelve a pedir `/me` ignorando el `staleTime` y el texto sale de esa lectura: `email_verified = false` → "Listo, te lo reenviamos…"; `true` → toast "Tu email ya está confirmado. No hace falta otro enlace." y el aviso desaparece con la caché; `/me` falla → "Si todavía no lo confirmaste, te mandamos un enlace nuevo. Revisá también el correo no deseado.". Si el control con foco desaparece, el foco va al `<h1>` (destino de INV-F10). S-05 no ofrece "Reenviar" si la sesión ya tiene el email confirmado | El servidor responde `202` sin enviar si el email ya está confirmado (`resendEmailVerification`, v0.5.0). DD-F28 no cubre todos los casos: TanStack Query v5 relee con `visibilitychange`, no al pasar a otra ventana que sigue visible ni cuando se confirma desde otro dispositivo. Como la confirmación no se deshace, si `/me` después del `202` sigue en `false`, el servidor también vio `false` y pidió el envío: el texto es exacto sin tocar el contrato. Descartado: (a) releer `/me` antes de reenviar (queda la ventana entre el `GET` y el `POST`, y demora el envío); (b) un texto neutro siempre (deja el aviso viejo y "Invitar" deshabilitado hasta volver a la pestaña, y le quita certeza al caso normal); (c) que el servidor distinga el caso con otro estado o un cuerpo (cambia el contrato y lo decide el backend; `/me` da el mismo dato) | Un `GET /me` más por cada `202` (como mucho 3 cada 20 min por usuario, DD-46 (3)); "Enviando…" dura un viaje más; un resultado más en el hook y dos textos nuevos. Si `/me` falla después del `202`, el texto es neutro |
 
 ---
 
@@ -2404,9 +2430,9 @@ Revisión 3 queda resuelta en la Revisión 4):
 - S-03 y S-04: sin cambios (la revisión 16 no tocó sus cupos ni DD-39; P-F7 aprobada).
 - S-06 y S-02: sin cambios.
 
-Lo que resta del backend es implementar la Fase 10 (T-B1001 a T-B1010). Las pruebas con MSW no la
-esperan; las pruebas independientes de F2, F4 y F5 sí, en lo que toca a DD-46, DD-48 y DD-49
-(`tasks.md`, Frontend, dependencias).
+*(2026-10-14)* La Fase 10 del backend (T-B1001 a T-B1010) está en `main` desde el PR #20
+(`e8112b7`): las pruebas independientes de F2, F4 y F5 se hacen completas, también en lo que toca a
+DD-46, DD-48 y DD-49 (`tasks.md`, Frontend, dependencias).
 
 ## 27. Hallazgos para el backend-architect
 
@@ -2457,6 +2483,13 @@ v0.5.0) y T-B1009 (V8a a V8i) en `tasks.md`: el `429` del reenvío ya estaba dec
 con `Retry-After`), así que los tipos generados y T-F004 no cambian; el pedido de restablecimiento
 sigue respondiendo `202` (P-F7 no cambia).
 
+Verificación del 2026-10-14 (enmienda DD-F31), contra `main` (`c7692bd`, Fases 0 a 10): los cupos
+de §11.1, incluidos los de la revisión 4, coinciden con `internal/app/api.go`;
+`ResendEmailVerification` (`internal/identity/token_flows.go`) no emite token si el email ya está
+confirmado o el usuario no está activo, y `RegisterRecoveryRoutes` (`internal/app/routes_recovery.go`)
+responde `202` igual, como dice `resendEmailVerification`. El párrafo de la revisión 4 sobre el
+código sin la Fase 10 queda como histórico.
+
 ### 27.2 Nuevos
 
 | ID | Hallazgo | Propuesta | Impacto en el frontend |
@@ -2493,7 +2526,7 @@ Otros puntos menores (los dos **resueltos** al 2026-10-12, revisión 3: el índi
 | RF-12 | Se filtra la clave de la CA local (`rootCA-key.pem`) de un desarrollador | Baja | Medio | No se comparte ni se copia al repo; `.certs/` ignorado por git; en CI la CA es efímera (R-14 del plan) |
 | RF-13 | La prueba en un celular real no se puede hacer por falta de un origen HTTPS accesible (H-12) | Alta hasta tener *staging* | Medio (S-F8 y NFR-F13 sin validar) | H-12: *staging* o reenvío de puertos en Android; se reporta como pendiente sin bloquear F6 |
 | RF-14 | *(Revisión 3; cerrado en la revisión 4)* La revisión 16 del backend cambia registro, verificación, invitación o recuperación después de implementar F2, F4 o F5 | — | — | Cerrado: la revisión 16 se aprobó el 2026-10-12 y la Revisión 4 la incorpora antes de implementar esas fases |
-| RF-16 | *(Revisión 4)* La Fase 10 del backend se atrasa o cambia un valor (cupos de DD-48, DD-49 o DD-46 (3)) después de implementar F5 | Media | Bajo | Los textos dependen de `Retry-After` y no de los valores (DD-F25, DD-F29). El `403 email_not_verified` está en el contrato v0.5.0 y los tests con MSW no esperan al backend. La prueba independiente de F5 en esos puntos se hace con la Fase 10 en `main` |
+| RF-16 | *(Revisión 4; el atraso quedó cerrado el 2026-10-14: la Fase 10 está en `main`)* La Fase 10 del backend se atrasa o cambia un valor (cupos de DD-48, DD-49 o DD-46 (3)) después de implementar F5 | Media | Bajo | Los textos dependen de `Retry-After` y no de los valores (DD-F25, DD-F29). El `403 email_not_verified` está en el contrato v0.5.0 y los tests con MSW no esperan al backend. La prueba independiente de F5 en esos puntos se hace con la Fase 10 en `main` |
 | RF-15 | *(Revisión 3)* El selector de zona no muestra la zona guardada porque el navegador usa un alias (S-F11) | Baja | Bajo | DD-F27; T-F602 |
 
 ---
@@ -2508,7 +2541,7 @@ La actualización va **en el mismo cambio** que el código.
 | Un `code` de error o `suggested_action` | `api/errorMessages.ts` (no compila sin él) + §12.2 |
 | Un `FieldError.code` o una longitud del contrato | §12.3 + esquema Zod del formulario + su test |
 | Un cupo de DD-9, o el código de error de campo que usa un endpoint (revisión 3) | §11.1 (tabla de cupos) + §12.3 (variantes) + `api/errorMessages.ts` + el test de la pantalla |
-| Un cupo de DD-48 o DD-49, el cupo por usuario del reenvío (DD-46 (3); desde la enmienda H-16 responde `429` con `Retry-After`) o una regla que dependa de `email_verified` (revisión 4) | §11.1 (tabla de cupos y nota de los dos cupos agotados) + §12.2 (`rate_limited` por contexto) + C-01 (§13.13), el aviso W (§13.9) y S-05 (§13.5) si cambia el reenvío + BR-F14 y DD-F28 si cambia qué exige el email confirmado + `api/errorMessages.ts` + T-F101, T-F404, T-F405 y T-F501..T-F504. Si el reenvío volviera a responder `202` sin enviar, vuelve una línea como la de DD-F30 (reemplazada) |
+| Un cupo de DD-48 o DD-49, el cupo por usuario del reenvío (DD-46 (3); desde la enmienda H-16 responde `429` con `Retry-After`) o una regla que dependa de `email_verified` (revisión 4) | §11.1 (tabla de cupos y nota de los dos cupos agotados) + §12.2 (`rate_limited` por contexto) + C-01 (§13.13), el aviso W (§13.9) y S-05 (§13.5) si cambia el reenvío + BR-F14 y DD-F28 si cambia qué exige el email confirmado + `api/errorMessages.ts` + T-F101, T-F404, T-F405 y T-F501..T-F504. Si el reenvío volviera a responder `202` sin enviar, vuelve una línea como la de DD-F30 (reemplazada). Si el reenvío a un email ya confirmado deja de responder `202`, se revisa DD-F31 (y T-F404, T-F405, T-F502) |
 | Una pantalla o su ruta | §4 inventario + §5 mapa + §6.1 árbol + guards |
 | Un *path* de enlace de email | §6.2 + `APP_LINK_*` del backend (plan §10.5, DD-14) + E2E |
 | Props de un componente compartido | §15 + sus usos |
