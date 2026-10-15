@@ -59,7 +59,7 @@ Artefactos de esta spec:
 | [`revision-13-t-b905.md`](revision-13-t-b905.md) | Decimotercera revisión: diagnóstico de T-B905, target redefinido, T-B910 y reglas de decisión; pendientes del PR #17 (§11.1, guard, T-B911) |
 | [`revision-14-t-b910.md`](revision-14-t-b910.md) | Decimocuarta revisión: resultado de T-B910, curva lineal, techo de ADR-005 (DD-33 R-f) y disparadores de §12.4 |
 | [`revision-16-auditoria.md`](revision-16-auditoria.md) | Decimosexta revisión: auditoría de seguridad de `b945373`, verificación de los seis candidatos, DD-44 a DD-49 y alternativas de producto |
-| [`docs/adr/`](../../docs/adr/README.md) | ADR-001 a ADR-014: decisiones base del proyecto; ADR-019: SPA embebida; ADR-024: fallos de entrega del outbox; ADR-025: saneamiento de `last_error` (Accepted) |
+| [`docs/adr/`](../../docs/adr/README.md) | ADR-001 a ADR-014: decisiones base del proyecto; ADR-019: SPA embebida; ADR-024: fallos de entrega del outbox; ADR-025: saneamiento de `last_error` (Accepted); ADR-026: vulnerabilidades de dependencias con govulncheck (Accepted) |
 
 ---
 
@@ -71,7 +71,7 @@ las decisiones base del proyecto (ADR-001 a ADR-014).
 
 | Aspecto | Decisión | Fuente |
 |---|---|---|
-| Lenguaje | Go **1.27** (estable actual; 1.27.1 del 2026-09-01) | Constitución + verificación |
+| Lenguaje | Go **1.27**; la versión exacta es la línea `toolchain` de `go.mod` (go1.27.2 desde el 2026-10-14, por las vulnerabilidades de la librería estándar que encontró T-B1101), que el `Makefile` fuerza con `GOTOOLCHAIN` (ADR-026, nota 2026-10-14) | Constitución + verificación |
 | Base de datos | PostgreSQL **18**, último *minor* (debe incluir el arreglo de CVE-2026-14666; el comportamiento de DD-34 se observó en 18.6) | ADR-005 |
 | Router HTTP | `github.com/go-chi/chi/v5` (v5.3.2) para la API (`/api/`); mux raíz de la librería estándar que reparte entre API, ops y SPA | ADR-002 (decisión del usuario), DD-22 |
 | Acceso a datos | `sqlc` (generador) + `github.com/jackc/pgx/v5` (`pgxpool`) | ADR-003 (decisión del usuario) |
@@ -92,6 +92,7 @@ las decisiones base del proyecto (ADR-001 a ADR-014).
 | Compresión | gzip solo para la SPA con `github.com/klauspost/compress/gzhttp` (dependencia aprobada por el usuario) | DD-29, ADR-019 |
 | Zonas horarias | Base IANA embebida con `time/tzdata` (librería estándar) | DD-27 |
 | Logs | `log/slog` (JSON) de la librería estándar | DD-12 |
+| Vulnerabilidades de dependencias | `govulncheck` v1.9.0 (`golang.org/x/vuln`) fijado en `tools.mod`; `make vuln` (fuera de `make check`) en el workflow `vulncheck`: bloqueante en cada PR y en `main`, y una corrida diaria | ADR-026 |
 | Rate limit | `golang.org/x/time/rate`, en memoria; clave por IP (IPv6 por /64) y, en rutas puntuales, por empresa (DD-48), por usuario (DD-46 (3)) o constante (DD-49) | DD-9, DD-32, DD-46, DD-48, DD-49 |
 | Desarrollo local | PostgreSQL 18 + Mailpit + MinIO (`compose.yaml`; MinIO desde `ghcr.io/coollabsio/minio`, fijada por versión y digest, la misma imagen que los tests); **HTTPS local** con un certificado de `mkcert` (herramienta de desarrollo, no dependencia del binario); Vite con *proxy* de `/api` | ADR-010, ADR-011, ADR-019, DD-24, DD-36 |
 
@@ -1267,6 +1268,7 @@ confianza.
 | DoS de aplicación | Ráfaga de logins que esperan el semáforo de argon2id con conexiones del pool tomadas y dejan sin pool a todas las empresas | Cupo del hasher antes de la conexión (DD-45, INV-36, T-B1003) |
 | DoS / abuso del remitente | Invitaciones sin límite: la cola global del outbox se desplaza y el remitente se usa para correo masivo | Cupos por empresa y por IP en invitar y reactivar (DD-48, T-B1005); señal `outbox_oldest_pending_seconds` (§12.3) |
 | DoS persistente | Registros masivos desde muchos prefijos que dejan roles `crm_t_*` permanentes y acercan el techo de DD-33 R-f | Cupo global de registros y alerta de ritmo (DD-49, R-21, T-B1007) |
+| A06 Vulnerable and Outdated Components | Una dependencia del binario, o la librería estándar de la versión de Go fijada, tiene una vulnerabilidad publicada que el código alcanza | `govulncheck` (ADR-026): bloqueante en PR y en `main`, corrida diaria sobre `main`, procedimiento de ADR-026 §4 y runbook §12.3; `toolchain` igual en `go.mod` y `tools.mod` (I-2); T-B1101 |
 
 ### 10.4 El riesgo de `CREATEROLE` y cómo se acota
 
@@ -1978,6 +1980,7 @@ En el login, `login_failed_total` cuenta cada contraseña evaluada que termina e
 | Registros en masa | `tenants_total` sube más de 20 en una hora, o `signup_global_limited_total` > 0 | IPs en los logs de `/auth/signup`; bloquear los prefijos en el proxy. Con el cupo global agotado, los registros legítimos reciben `429` mientras dure el ataque (DD-49, R-21). Comparar `tenant_roles_total` con los disparadores de §12.4 |
 | Alguien dice que no puede registrarse (`409 email_already_registered`) y que el reset no le llega | Reporte de un usuario | Como DBA, buscar el email. Si es un `disabled` sin `password_hash` en otra empresa, es la reserva por invitación aceptada en DD-47 (R-20). Hoy no hay herramienta para liberarla: registrar el caso, que dispara su diseño |
 | Rechazos de administración con `security_event=actor_revalidation_failed` | logs `WARN` | Un request de un admin que fue bajado o desactivado mientras corría (DD-44). Aislado es normal; si se repite para el mismo `user_id` después de su baja, revisar si su sesión estaba comprometida |
+| El workflow `vulncheck` falla (email de la corrida diaria, o check rojo en un PR que no tocó dependencias) | job `govulncheck`: `make` termina con `Error 3` (hallazgo) o `Error 1` (error de la herramienta) | `Error 1`: red o vuln.go.dev; volver a correrlo con `workflow_dispatch`, nunca marcar el job como opcional. `Error 3`: el log trae el id `GO-…`, el módulo, la versión corregida y la traza. Librería estándar → subir `toolchain` en `go.mod` y `tools.mod` al *patch* corregido. Módulo → subirlo a la versión corregida. Sin corrección → ADR-026 §4. En una rama propia desde `main`, mergeada antes que los demás PRs. Si hay producción, desplegar: el binario desplegado sigue vulnerable hasta entonces |
 
 ### 12.4 Operación específica del rol por empresa
 
@@ -2120,6 +2123,7 @@ targets es condición para salir a producción (ADR-005, consecuencia 1), no par
 | R-21 | El cupo global de registros (DD-49) es una palanca de denegación: quien sostenga 60/h desde 12 claves de IP deja sin registro a los usuarios legítimos mientras dure el ataque | Baja | Medio (temporal) | Alerta de ritmo y `signup_global_limited_total` (§12.3); bloqueo en el proxy; el valor se recalcula con la cuenta de DD-49 si cambian los cupos por IP. Salida estructural del crecimiento de roles: alternativa B de ADR-005 |
 | R-22 | El outbox no tiene justicia entre empresas ni prioridad para los mensajes de seguridad: aun dentro de los cupos de DD-48, muchas claves pueden demorar por minutos los emails de otras empresas | Baja | Bajo | Cupos de DD-48; `outbox_oldest_pending_seconds` (§12.3). Salida si se repite: prioridad por tipo de mensaje (columna visible para `crm_worker`, INV-05, `data-model.md` §3.4, T-B109) |
 | R-23 | *(Con DD-46.)* Pre-secuestro residual: si el dueño de un email confirma la verificación de una cuenta que no creó, el atacante queda verificado y puede invitar. Además, quien recupera una cuenta reclamada hereda nombre, plantilla y moneda base | Baja | Alto si ocurre | Cupo por usuario del reenvío y aviso en el email (DD-46 (3) y (4)); `ListUsers` muestra a los demás admins. Disparador: un caso real → opción C de DD-46 (verificar con la sesión del dueño) |
+| R-24 | Una vulnerabilidad publicada en una dependencia Go, o en la librería estándar, alcanzable desde el código, llega a producción o pasa sin verse entre PRs | Media | Variable (según la vulnerabilidad) | ADR-026: `make vuln` bloqueante en PR y en `main`, corrida diaria con aviso por email, runbook §12.3. El binario desplegado sigue vulnerable hasta el próximo despliegue. Residual: dependencias de test, herramientas de `tools.mod` y npm (T-F009) quedan fuera del escaneo |
 
 ---
 
@@ -2164,7 +2168,7 @@ La actualización de la documentación va **en el mismo cambio** que el código.
 | La semántica de `PATCH /tenant` (`null`, texto vacío, sin cambios, zona horaria) o la validación de la zona en el registro | DD-43 + DD-27 + contrato (`updateTenant`, `TenantUpdate`) + `data-model.md` §2.1 y §2.6 + T-B303/T-B701/T-B702/T-B705 + `ui.md` §13.11 si cambia lo que manda la SPA |
 | El bucket de desarrollo o el *healthcheck* de `minio` en `compose.yaml` | §10.5.1 + T-B707 + README (Levantar todo) + `.env.example` |
 | Cómo arranca o se apaga `crm serve` (servidores, listeners, worker, `env`) | Reglas (1) a (6) de T-B801 en el mismo PR + T-B911 + §11.1 (`internal/app`) + §9.4 |
-| La versión de Go en `go.mod` | Antes de subirla, revisar si la versión nueva agrega formas de construir, convertir o asignar un valor, o de seleccionar un campo, que el guard de T-B801 no ve (la decimocuarta revisión encontró `new` con una expresión; la decimoquinta, los genéricos). Reglas (4) y (6) de T-B801 y sus mutaciones, en el mismo PR |
+| La versión de Go en `go.mod` | Antes de subirla, revisar si la versión nueva agrega formas de construir, convertir o asignar un valor, o de seleccionar un campo, que el guard de T-B801 no ve (la decimocuarta revisión encontró `new` con una expresión; la decimoquinta, los genéricos). Reglas (4) y (6) de T-B801 y sus mutaciones, en el mismo PR. Un *patch* (`1.27.x`, p. ej. por una vulnerabilidad de la librería estándar, ADR-026) no cambia el lenguaje y no necesita esa revisión. Siempre: la misma línea `toolchain` en `tools.mod` (ADR-026, I-2) |
 | Una función, tipo o constante exportada de `internal/` que usa otro paquete | §11.1 en el mismo PR |
 | `tenant_roles_total` llega a un disparador de DD-33 R-f (hoy 5.000 y 8.000) | §12.4: ADR que reemplaza a ADR-005 (al 50 %) o su fase en producción (al 75 %) |
 | La clase de instancia de PostgreSQL de producción o su versión | Medir la pendiente (T-B910 M-1 y M-2 contra una instancia descartable) + techo y disparadores de DD-33 R-f + §12.4 + la alerta |
@@ -2172,6 +2176,10 @@ La actualización de la documentación va **en el mismo cambio** que el código.
 | Un flujo nuevo que deriva una contraseña dentro de una transacción, la concurrencia del hasher (H) o `pool_max_conns` (P) | DD-45 + INV-36 (H < P) + T-B1003 + nota de ADR-007 + DD-33 R-e |
 | Los cupos de invitación, el cupo global de registros o el cupo por usuario del reenvío de la verificación (valores, claves, orden, rutas que cubren, respuesta) | DD-48/DD-49/DD-46 (3) + DD-9 (cotas) + contrato (`429` y descripciones) + T-B1005/T-B1007/T-B1009 + §12.3/§12.4 (alerta) + R-21/R-22/R-23 + `ui.md` (§11.1, §13.13 y los textos de `rate_limited`) |
 | Qué habilita la verificación del email, o qué la completa | DD-46 + DD-4/DD-13 + P-2 + INV-37 + contrato (`email_not_verified` y descripciones) + `data-model.md` §2.2 + spec (clarificación) + `ui.md` + T-B1009 |
+| Una dependencia de `go.mod` (agregar, subir o bajar) | `make vuln` en verde en el mismo PR (lo corre el workflow `vulncheck`, ADR-026) |
+| La versión de govulncheck, sus flags, el alcance del escaneo o el workflow `vulncheck` | ADR-026 (nota fechada, o ADR nuevo si cambia la decisión) + `Makefile` + `.github/workflows/vulncheck.yml` + controles y mutaciones de T-B1101 + §12.3 + README |
+| El SHA de una action | El mismo SHA en todos los workflows (`ci.yml`, `vulncheck.yml`) |
+| Una vulnerabilidad aceptada (alta, revisión o vencimiento) | `docs/seguridad/vulnerabilidades-aceptadas.md` + la exclusión de `make vuln`, en el mismo PR (ADR-026 §4) |
 | Un término nuevo | `docs/glosario.md` |
 
 ---
@@ -2197,6 +2205,7 @@ La actualización de la documentación va **en el mismo cambio** que el código.
 
 ### Estado de la implementación (2026-10-12)
 
+- **2026-10-14**: la decimoséptima tanda (abajo, *Accepted* 2026-10-14) cierra la unidad bloqueada de la auditoría de `b945373` (CVE de dependencias) con ADR-026 y la Fase 11 de `tasks.md`, antes del frontend. La Fase 10 está en `main` desde el PR #20 (`e8112b7`).
 - **2026-10-12**: la decimosexta tanda (abajo, *Accepted* 2026-10-12) responde a la auditoría de seguridad de `b945373` con la Fase 10 de `tasks.md`. Se implementa en una rama nueva desde `main`, después del merge de la decimoquinta.
 - **2026-10-10**: las Fases 0 a 9 del backend están en `main` (la 9 con el PR fdelillo/crm#17, `b945373`). Los pendientes no bloqueantes de la revisión final de ese PR van en un PR solo de tests y texto (decimoquinta tanda, abajo).
 - **2026-10-08 (cierre de la Fase 9)**: la Fase 9 está completa en `feat/001-backend-phase-9` (PR fdelillo/crm#17), con T-B910 cumplido en las dos corridas. La decimocuarta tanda (abajo) registra los números y el techo de ADR-005. El detalle está en `tasks.md` (Estado de la implementación).
@@ -2807,3 +2816,35 @@ Estado: las Fases 0 a 9 están en `main` (`b945373`), y la decimoquinta tanda se
 **Lo que le pide al frontend** (lo decide el `frontend-architect`; detalle en `revision-16-auditoria.md` §9): un mensaje para `email_not_verified` (T-F101 deja de compilar hasta tenerlo), el aviso con "Reenviar verificación" en la pantalla de invitar, y el `429` con `Retry-After` en invitar, reenviar invitación y reactivar. Contrato **v0.5.0**.
 
 **Enmienda H-16 (2026-10-13, *Accepted*: decisión del usuario).** En la revisión 4 de `ui.md` (§27.2), el `frontend-architect` señaló que el reenvío de la verificación es autenticado. Por eso el `202` sin enviar de DD-46 (3) no protege ninguna enumeración y obliga a la UI a un texto genérico (DD-F30). El usuario lo sumó a la Fase 10 como enmienda de esta tanda, sin abrir otra. Sin cupo por usuario, la ruta responde `429 rate_limited` con `Retry-After`. El cupo pasa a ser un middleware (`MiddlewareBy` con `userKey`) que corre después del cupo por IP y de `Authenticate`. El cupo por IP de DD-9 no cambia y manda si se agotan los dos. No cambia ninguna invariante (INV-13 es del reset, que es público). El contrato sigue en **v0.5.0**: el `429` ya estaba declarado y v0.5.0 no está publicada. Toca DD-46, DD-9 (nota), §2, §8, §9.1 (que además decía "por email": corregido), §11.1 y §16; en `tasks.md`, T-B1009 (V8a a V8i), T-B1010 y la prueba independiente de la Fase 10; en el contrato, la descripción y el historial. Le pide al frontend retirar DD-F30 y mostrar la espera exacta (detalle en `revision-16-auditoria.md` §3.7).
+
+### Decimoséptima tanda (2026-10-14): vulnerabilidades conocidas en dependencias Go — *Accepted* (aprobada por el usuario el 2026-10-14)
+
+Estado: el backend de 001 está completo en `main` (`c7692bd`). La auditoría de `b945373` dejó una unidad bloqueada: el estado de CVE de `go.sum` y `tools.sum` no se evaluó porque no tenía red. El usuario decidió cerrarla antes del frontend, en un PR aparte, como recomendaba `revision-16-auditoria.md` §7. La decisión es estructural y vale para todas las specs, así que va en **ADR-026**. Acá queda el resumen.
+
+| Tema | Decisión (ADR-026) |
+|---|---|
+| Herramienta | govulncheck v1.9.0 en `tools.mod`, corrido con `make vuln` |
+| Alcance | Modo source sobre `./...`, nivel símbolo, sin `-test` ni tags. Fuera: el código de test, las herramientas (informadas una vez) y npm (T-F009) |
+| Política | Bloqueante en PR y en `main`, más una corrida diaria sobre `main`; el aviso es el email de la corrida fallida; fuera de `make check` |
+| Hallazgos | Se arreglan en un PR propio desde `main`, o en el mismo PR si los introdujo ese PR. Sin corrección: dejar de llamar al símbolo, reemplazar la dependencia o aceptar el riesgo (registro con vencimiento de 30 días como máximo) |
+| Workflow | `vulncheck.yml`, `contents: read`, los mismos SHAs que `ci.yml`, sin caché |
+
+**Invariantes**: no cambia ninguna de §5. ADR-026 agrega I-1 a I-4, propias del escaneo.
+
+**Código**: nada de producción. Cambian `Makefile`, `tools.mod`/`tools.sum`, el workflow nuevo y el README, en la Fase 11 de `tasks.md` (T-B1101).
+
+**Cambios en este plan**: §1, §10.3 (A06), §12.3, §15 (R-24), §16.
+
+**Hallazgo de documentación**: la tabla "Comandos de validación" de `tasks.md` decía `go vet ./...`, pero el Makefile corre `go vet -tags=integration ./...`. Se corrige.
+
+**Decisiones del usuario (2026-10-14, todas con su default)**:
+
+| # | Pregunta | Alternativas | Decisión |
+|---|---|---|---|
+| 1 | ¿govulncheck v1.9.0 en `tools.mod`, aunque sube el `x/tools` de golangci-lint a v0.52.0? | `go run …@v1.9.0` (aislado, con la versión en el Makefile); la action oficial (`@latest`) | Sí, en `tools.mod` |
+| 2 | ¿Alcance `./...`, modo source, nivel símbolo, sin tests? | Con `-test` y tags; modo binario; `-scan module` | Sí |
+| 3 | ¿Bloqueante en PR y en `main`, más una corrida diaria, con aviso por email de la corrida fallida y fuera de `make check`? | (a) solo en PRs; (b) no bloqueante en PR; issue automático | Sí |
+| 4 | ¿Un hallazgo ajeno al PR se arregla primero en un PR propio, y un riesgo aceptado exige registro con vencimiento de 30 días como máximo? | Arreglarlo en el PR que se puso rojo; aceptar sin vencimiento | Sí |
+| 5 | ¿Fase 11 (T-B1101) en `chore/001-vulnerability-scan` desde `main`? | Sumarlo a la Fase 10, que ya está cerrada | Sí; el diseño va en la misma rama, antes de la implementación |
+
+Esta tanda no cambia el contrato. Al frontend solo le pide coordinar T-F009, que define el escaneo de npm.

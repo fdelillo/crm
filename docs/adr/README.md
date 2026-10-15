@@ -41,6 +41,7 @@ Reglas:
 | [023](023-idioma-formato-fechas-dinero-frontend.md) | Idioma, formato de fechas y dinero en el frontend (es-AR, `Intl`, sin punto flotante) | Proposed | 001 (frontend) |
 | [024](024-clasificacion-fallos-outbox-y-presupuesto-smtp.md) | Clasificación de fallos de entrega del outbox, presupuesto de tiempo del envío SMTP y aislamiento de fallos por mensaje | Accepted (ADR-025, *Accepted*, reemplaza el último párrafo de §2 y partes de §3; nota 2026-10-01 (b)) | 001 (revisión del PR #8) |
 | [025](025-saneamiento-last-error-y-codigo-extendido.md) | `last_error` sin texto del proveedor después del contenido, redacción de secuencias tipo secreto y código extendido leído del texto en todas las fases | Accepted | 001 (tercera revisión del PR #8) |
+| [026](026-vulnerabilidades-dependencias-govulncheck.md) | Vulnerabilidades conocidas en dependencias Go con govulncheck (bloqueante en PR y `main`, corrida diaria) | Accepted | 001 (auditoría de `b945373`, unidad bloqueada) |
 
 Los ADR 001–014 quedaron `Accepted` el 2026-09-29, al aprobarse el plan de la spec 001.
 
@@ -59,3 +60,7 @@ ADR-010; no pasa a `Superseded`.
 La nota 2026-10-02 de ADR-014 (`Accepted`, aprobada por el usuario el 2026-10-02) precisa cómo se
 aplica la verificación de contrato (request validado solo en respuestas `2xx`; `404`/`405` globales
 contra `Problem`) sin cambiar la decisión.
+
+ADR-026 (2026-10-14, `Accepted`, aprobada por el usuario el 2026-10-14) cierra la unidad bloqueada
+de la auditoría de `b945373`. Aplica a todo el módulo Go; el escaneo de las dependencias del
+frontend lo define T-F009.

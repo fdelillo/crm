@@ -58,7 +58,7 @@ Para instalar los comandos de Spec Kit en este repo:
 
 Requisitos: Go 1.27 (con `GOTOOLCHAIN=auto` el comando `go` descarga la versión fijada en `go.mod`),
 Docker, `make`, y [`mkcert`](https://github.com/FiloSottile/mkcert#installation) para HTTPS local.
-`sqlc` y `golangci-lint` no se instalan: `make` los corre desde `tools.mod` (`go tool -modfile=tools.mod`).
+`sqlc`, `golangci-lint` y `govulncheck` no se instalan: `make` los corre desde `tools.mod` (`go tool -modfile=tools.mod`).
 
 ### Comandos
 
@@ -68,6 +68,7 @@ Docker, `make`, y [`mkcert`](https://github.com/FiloSottile/mkcert#installation)
 | `make lint` | `gofmt`, `go vet`, `golangci-lint` (con `depguard`) y `sqlc diff` |
 | `make test` | Tests unitarios (`go test -race ./...`); no necesitan Docker |
 | `make test-int` | Además, tests de integración con PostgreSQL 18 real (necesita Docker) |
+| `make vuln` | `govulncheck` sobre el código del módulo (nivel símbolo, sin tests). Necesita red y su resultado cambia con la base de vulnerabilidades: no es parte de `make check`. Lo corre el workflow `vulncheck` ([ADR-026](docs/adr/026-vulnerabilidades-dependencias-govulncheck.md)) |
 | `make generate` | Regenera el código de `sqlc` |
 | `make db-reset` | Solo desarrollo: recrea el PostgreSQL local, corre el bootstrap y las migraciones |
 | `make dev-certs` | Solo desarrollo y E2E: genera `.certs/localhost.pem` y `.certs/localhost-key.pem` con mkcert |

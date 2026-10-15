@@ -16,8 +16,10 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      # Go 1.27: the version comes from go.mod (go + toolchain lines). The module cache and the
-      # build cache (which also holds the dev tools built from tools.mod) are restored between runs.
+      # Go 1.27: setup-go only brings a base Go 1.27.x (it reads the `go` line). The exact version is
+      # the `toolchain` line of go.mod, which the Makefile forces with GOTOOLCHAIN (ADR-026 I-2). The
+      # module cache and the build cache (which also holds the dev tools built from tools.mod) are
+      # restored between runs.
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
