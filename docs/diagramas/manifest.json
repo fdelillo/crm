@@ -1,0 +1,643 @@
+{
+  "commit": "9e6fc311b81221ea051710dc5af08ad244475170",
+  "permissions": [
+    "customers.manage",
+    "projects.manage",
+    "quotes.manage",
+    "customer_receipts.create",
+    "balances.view",
+    "project_costs.view",
+    "suppliers.view_contact",
+    "party_finances.manage",
+    "money_accounts.manage",
+    "financial_operations.manage",
+    "checks.manage",
+    "bank_statements.import",
+    "reports.view",
+    "settings.manage",
+    "movements.void"
+  ],
+  "operator_permissions": [
+    "customers.manage",
+    "projects.manage",
+    "quotes.manage",
+    "customer_receipts.create",
+    "balances.view",
+    "suppliers.view_contact"
+  ],
+  "areas": [
+    {
+      "id": "arquitectura-seguridad",
+      "label": "Arquitectura y seguridad"
+    },
+    {
+      "id": "flujos",
+      "label": "Flujos de identidad y servicios"
+    },
+    {
+      "id": "desarrollo-operacion",
+      "label": "Desarrollo y operación"
+    },
+    {
+      "id": "negocio-previsto",
+      "label": "Negocio previsto"
+    }
+  ],
+  "figure_count": 59,
+  "interactive_figure_count": 17,
+  "topic_count": 33,
+  "diagram_page_count": 38,
+  "initial_catalog_covered": true,
+  "pending_interaction": "Evaluar loop automático continuo; aplazado por el usuario",
+  "date": "2026-10-14",
+  "plugin": "diagram-design 2.6.98; mensajes del controlador localizados al español a pedido del usuario",
+  "style_source": "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/001-empresas-usuarios/ui.md#L2068-L2136",
+  "pages": [
+    {
+      "slug": "01-contexto",
+      "title": "Contexto del sistema",
+      "kind": "Arquitectura",
+      "status": "Mixto",
+      "area": "Arquitectura y seguridad",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/vision.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/.specify/memory/constitution.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/cmd/crm/serve.go"
+      ]
+    },
+    {
+      "slug": "02-arquitectura",
+      "title": "Arquitectura general",
+      "kind": "Arquitectura",
+      "status": "Mixto",
+      "area": "Arquitectura y seguridad",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/001-monolito-modular.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/019-distribucion-spa-embebida-go.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/cmd/crm/serve.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/app/root.go"
+      ]
+    },
+    {
+      "slug": "03-modulos",
+      "title": "Mapa de módulos",
+      "kind": "Arquitectura por áreas",
+      "status": "Mixto",
+      "area": "Arquitectura y seguridad",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/vision.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/001-monolito-modular.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/app/api.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/industrytemplate/catalog.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/cmd/crm/serve.go"
+      ]
+    },
+    {
+      "slug": "04-fronteras",
+      "title": "Dependencias y fronteras",
+      "kind": "Dependencias",
+      "status": "Actual",
+      "area": "Arquitectura y seguridad",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/001-monolito-modular.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/.golangci.yml",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/tenant/service.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/service.go"
+      ]
+    },
+    {
+      "slug": "05-peticion",
+      "title": "Recorrido de una petición",
+      "kind": "Secuencia · paso a paso",
+      "status": "Actual",
+      "area": "Arquitectura y seguridad",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/app/root.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/app/api.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/middleware.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/service.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/tenant/http.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/tenant/update.go#L155-L203",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/authz/authz.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/001-empresas-usuarios/plan.md#L861-L872"
+      ]
+    },
+    {
+      "slug": "06-aislamiento",
+      "title": "Aislamiento entre empresas",
+      "kind": "Secuencia · paso a paso",
+      "status": "Actual",
+      "area": "Arquitectura y seguridad",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/005-aislamiento-tenant-rol-por-empresa-rls.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/platform/db/db.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/db/migrations/00002_tenant_functions.sql",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/db/invariants/isolation_integration_test.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/db/invariants/foreignkeys_integration_test.go"
+      ]
+    },
+    {
+      "slug": "07-permisos",
+      "title": "Roles y permisos",
+      "kind": "Matriz de acceso",
+      "status": "Actual",
+      "area": "Arquitectura y seguridad",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/authz/authz.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/013-autorizacion-matriz-permisos.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/app/routes_users.go#L18-L137",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/app/api.go#L25-L34",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/users.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/tenant/http.go"
+      ]
+    },
+    {
+      "slug": "08-dominio",
+      "title": "Modelo conceptual del negocio",
+      "kind": "ER / dominio",
+      "status": "Especificado",
+      "area": "Arquitectura y seguridad",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/modelo-dominio.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/glosario.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/004-proyectos/spec.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/005-presupuestos/spec.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/007-cuentas-corrientes/spec.md"
+      ]
+    },
+    {
+      "slug": "09-esquema",
+      "title": "Esquema físico actual",
+      "kind": "Esquema SQL",
+      "status": "Actual",
+      "area": "Arquitectura y seguridad",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/db/migrations/00005_sessions_user_tokens.sql",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/db/migrations/00008_login_throttles.sql",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/db/migrations/00004_users.sql",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/db/migrations/00007_audit_log.sql",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/db/migrations/00003_tenants.sql",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/db/migrations/00006_outbox_messages.sql",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/db/migrations/00005_sessions_user_tokens.sql",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/db/migrations/00001_schemas.sql#L12-L19",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/db/migrations/00009_readiness_schema_version.sql#L1-L5"
+      ]
+    },
+    {
+      "slug": "10-entorno-local",
+      "title": "Entorno local de desarrollo",
+      "kind": "Despliegue local",
+      "status": "Mixto",
+      "area": "Arquitectura y seguridad",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/compose.yaml",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/README.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/cmd/crm/serve.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/app/readiness.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/019-distribucion-spa-embebida-go.md"
+      ]
+    },
+    {
+      "slug": "11-registro",
+      "title": "Registro de empresa",
+      "kind": "Secuencia · paso a paso",
+      "status": "Actual",
+      "area": "Flujos de identidad y servicios",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/tenant/service.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/tenant/http.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/service.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/platform/db/db.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/cmd/crm/serve.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/tenant/service_integration_test.go"
+      ]
+    },
+    {
+      "slug": "12-autenticacion",
+      "title": "Autenticación y sesión",
+      "kind": "Secuencia / estados",
+      "status": "Actual",
+      "area": "Flujos de identidad y servicios",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/login.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/middleware.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/service.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/platform/config/config.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/app/routes_auth.go#L19-L46",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/app/api.go#L25-L34",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/login_test.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/login_integration_test.go"
+      ]
+    },
+    {
+      "slug": "13-usuarios",
+      "title": "Usuarios e invitaciones",
+      "kind": "Secuencias / estados",
+      "status": "Actual",
+      "area": "Flujos de identidad y servicios",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/app/routes_users.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/users.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/user.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/store/users.sql",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/users_integration_test.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/invite_verified_integration_test.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/invitation_lock_integration_test.go"
+      ]
+    },
+    {
+      "slug": "14-recuperacion",
+      "title": "Verificación y recuperación",
+      "kind": "Secuencias / estados",
+      "status": "Actual",
+      "area": "Flujos de identidad y servicios",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/app/routes_recovery.go#L16-L88",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/app/api.go#L27-L30",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/token_flows.go#L21-L90",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/token_flows.go#L270-L281",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/store/queries.sql",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/store/users.sql",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/emails/emails.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/token_flows_integration_test.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/db/migrations/00005_sessions_user_tokens.sql"
+      ]
+    },
+    {
+      "slug": "15-outbox",
+      "title": "Entrega de correo y reintentos",
+      "kind": "Secuencia / estados",
+      "status": "Actual",
+      "area": "Flujos de identidad y servicios",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/platform/outbox/dispatcher.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/platform/outbox/outbox.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/platform/outbox/store/queries.sql",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/platform/outbox/store/worker.sql",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/emails/emails.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/024-clasificacion-fallos-outbox-y-presupuesto-smtp.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/025-saneamiento-last-error-y-codigo-extendido.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/platform/outbox/outbox_integration_test.go"
+      ]
+    },
+    {
+      "slug": "16-archivos",
+      "title": "Archivos privados y logos",
+      "kind": "Secuencias / decisiones",
+      "status": "Actual",
+      "area": "Flujos de identidad y servicios",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/tenant/logo.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/tenant/http.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/platform/objectstore/s3.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/tenant/logo_integration_test.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/tenant/logo_revision_integration_test.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/011-almacenamiento-archivos-s3.md"
+      ]
+    },
+    {
+      "slug": "17-backend",
+      "title": "Estructura interna del backend",
+      "kind": "Componentes",
+      "status": "Actual",
+      "area": "Desarrollo y operación",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/001-monolito-modular.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/app/api.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/tenant/http.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/tenant/service.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/platform/db/db.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/sqlc.yaml"
+      ]
+    },
+    {
+      "slug": "18-contratos",
+      "title": "Contrato y generación de código",
+      "kind": "Flujos de desarrollo",
+      "status": "Mixto",
+      "area": "Desarrollo y operación",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/014-contrato-openapi-canonico.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/018-server-state-tanstack-query-openapi.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/001-empresas-usuarios/contracts/openapi.yaml",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/testsupport/contract/contract.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/sqlc.yaml",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/Makefile"
+      ]
+    },
+    {
+      "slug": "19-ci",
+      "title": "Construcción y CI",
+      "kind": "Pipeline",
+      "status": "Mixto",
+      "area": "Desarrollo y operación",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/.github/workflows/ci.yml",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/.github/workflows/vulncheck.yml#L1-L33",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/026-vulnerabilidades-dependencias-govulncheck.md#L20-L88",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/026-vulnerabilidades-dependencias-govulncheck.md#L149-L170",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/Makefile#L1-L58",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/go.mod",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/tools.mod",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/019-distribucion-spa-embebida-go.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/022-estrategia-de-tests-frontend.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/001-empresas-usuarios/tasks.md"
+      ]
+    },
+    {
+      "slug": "20-pruebas",
+      "title": "Estrategia de pruebas",
+      "kind": "Capas de verificación",
+      "status": "Mixto",
+      "area": "Desarrollo y operación",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/012-estrategia-de-tests.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/022-estrategia-de-tests-frontend.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/db/invariants/isolation_integration_test.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/testsupport/contract/contract.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/testsupport/pgtest/pgtest.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/Makefile"
+      ]
+    },
+    {
+      "slug": "21-operacion",
+      "title": "Operación y recuperación",
+      "kind": "Runbook / secuencia",
+      "status": "Mixto",
+      "area": "Desarrollo y operación",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/cmd/crm/serve.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/cmd/crm/migrate.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/cmd/crm/tenants.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/app/server.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/app/readiness.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/app/ops.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/tenant/reprovision.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/001-empresas-usuarios/plan.md#L1970-L1985",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/026-vulnerabilidades-dependencias-govulncheck.md#L39-L51"
+      ]
+    },
+    {
+      "slug": "22-observabilidad",
+      "title": "Observabilidad y diagnóstico",
+      "kind": "Señales operativas",
+      "status": "Actual",
+      "area": "Desarrollo y operación",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/app/server.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/app/periodic.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/platform/httpx/middleware.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/platform/audit/audit.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/platform/outbox/stats.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/tenant/inventory.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/001-empresas-usuarios/plan.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/db/migrations/00001_schemas.sql#L12-L19",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/db/migrations/00007_audit_log.sql",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/db/migrations/00009_readiness_schema_version.sql#L1-L5"
+      ]
+    },
+    {
+      "slug": "23-trazabilidad",
+      "title": "Desarrollo y trazabilidad",
+      "kind": "Flujo documental",
+      "status": "Actual",
+      "area": "Desarrollo y operación",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/.specify/memory/constitution.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/README.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/CLAUDE.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/026-vulnerabilidades-dependencias-govulncheck.md#L149-L170",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/README.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/001-empresas-usuarios/plan.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/001-empresas-usuarios/tasks.md"
+      ]
+    },
+    {
+      "slug": "24-frontend",
+      "title": "Arquitectura del frontend",
+      "kind": "Componentes / secuencia",
+      "status": "Especificado",
+      "area": "Desarrollo y operación",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/015-frontend-stack-y-estructura.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/016-componentes-shadcn-tailwind.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/018-server-state-tanstack-query-openapi.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/020-pwa-service-worker-minimo.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/001-empresas-usuarios/ui.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/001-empresas-usuarios/ui.md#L1870-L1876",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/001-empresas-usuarios/ui.md#L430"
+      ]
+    },
+    {
+      "slug": "25-navegacion",
+      "title": "Navegación y acceso a pantallas",
+      "kind": "Mapa de acceso",
+      "status": "Especificado",
+      "area": "Desarrollo y operación",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/001-empresas-usuarios/ui.md#L1066-L1078",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/017-router-react-router-spa.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/018-server-state-tanstack-query-openapi.md"
+      ]
+    },
+    {
+      "slug": "26-comercial",
+      "title": "Circuito comercial completo",
+      "kind": "Proceso de negocio",
+      "status": "Especificado",
+      "area": "Negocio previsto",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/vision.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/modelo-dominio.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/003-terceros/spec.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/004-proyectos/spec.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/005-presupuestos/spec.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/007-cuentas-corrientes/spec.md"
+      ]
+    },
+    {
+      "slug": "27-presupuestos",
+      "title": "Vida del presupuesto",
+      "kind": "Estados / efectos",
+      "status": "Especificado",
+      "area": "Negocio previsto",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/005-presupuestos/spec.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/004-proyectos/spec.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/modelo-dominio.md"
+      ]
+    },
+    {
+      "slug": "28-proyectos",
+      "title": "Vida del proyecto",
+      "kind": "Etapas configurables",
+      "status": "Especificado",
+      "area": "Negocio previsto",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/002-configuracion/spec.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/004-proyectos/spec.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/modelo-dominio.md"
+      ]
+    },
+    {
+      "slug": "29-finanzas",
+      "title": "Operaciones financieras",
+      "kind": "Secuencias conceptuales",
+      "status": "Especificado",
+      "area": "Negocio previsto",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/modelo-dominio.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/006-cuentas-dinero/spec.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/007-cuentas-corrientes/spec.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/.specify/memory/constitution.md"
+      ]
+    },
+    {
+      "slug": "30-monedas-anulacion",
+      "title": "Multimoneda y anulación",
+      "kind": "Reglas transversales",
+      "status": "Especificado",
+      "area": "Negocio previsto",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/.specify/memory/constitution.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/modelo-dominio.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/006-cuentas-dinero/spec.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/007-cuentas-corrientes/spec.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/010-cheques/spec.md"
+      ]
+    },
+    {
+      "slug": "31-cheques",
+      "title": "Ciclo de vida de los cheques",
+      "kind": "Máquinas de estados",
+      "status": "Especificado",
+      "area": "Negocio previsto",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/010-cheques/spec.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/modelo-dominio.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/006-cuentas-dinero/spec.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/007-cuentas-corrientes/spec.md"
+      ]
+    },
+    {
+      "slug": "32-importacion",
+      "title": "Importación y conciliación",
+      "kind": "Proceso de datos",
+      "status": "Especificado",
+      "area": "Negocio previsto",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/008-importacion-extractos/spec.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/010-cheques/spec.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/authz/authz.go"
+      ]
+    },
+    {
+      "slug": "33-reportes",
+      "title": "Linaje de reportes",
+      "kind": "Flujo de datos",
+      "status": "Especificado",
+      "area": "Negocio previsto",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/009-reportes/spec.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/004-proyectos/spec.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/007-cuentas-corrientes/spec.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/010-cheques/spec.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/modelo-dominio.md"
+      ]
+    }
+  ],
+  "detail_pages": [
+    {
+      "slug": "13-usuarios-aceptacion",
+      "title": "Aceptar la invitación",
+      "parent": "13-usuarios",
+      "status": "Actual",
+      "area": "Flujos de identidad y servicios",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/app/routes_users.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/users.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/user.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/store/users.sql",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/users_integration_test.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/invite_verified_integration_test.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/invitation_lock_integration_test.go"
+      ]
+    },
+    {
+      "slug": "14-recuperacion-reset",
+      "title": "Confirmar una contraseña nueva",
+      "parent": "14-recuperacion",
+      "status": "Actual",
+      "area": "Flujos de identidad y servicios",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/app/routes_recovery.go#L16-L88",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/app/api.go#L27-L30",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/token_flows.go#L21-L90",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/token_flows.go#L270-L281",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/store/queries.sql",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/store/users.sql",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/emails/emails.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/token_flows_integration_test.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/db/migrations/00005_sessions_user_tokens.sql"
+      ]
+    },
+    {
+      "slug": "14-recuperacion-verificacion",
+      "title": "Confirmar el email",
+      "parent": "14-recuperacion",
+      "status": "Actual",
+      "area": "Flujos de identidad y servicios",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/app/routes_recovery.go#L16-L88",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/app/api.go#L27-L30",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/token_flows.go#L21-L90",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/token_flows.go#L270-L281",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/store/queries.sql",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/store/users.sql",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/emails/emails.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/token_flows_integration_test.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/db/migrations/00005_sessions_user_tokens.sql"
+      ]
+    },
+    {
+      "slug": "16-archivos-lectura",
+      "title": "Consultar el logo",
+      "parent": "16-archivos",
+      "status": "Actual",
+      "area": "Flujos de identidad y servicios",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/tenant/logo.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/tenant/http.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/platform/objectstore/s3.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/tenant/logo_integration_test.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/tenant/logo_revision_integration_test.go",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/011-almacenamiento-archivos-s3.md"
+      ]
+    },
+    {
+      "slug": "29-finanzas-compra",
+      "title": "Registrar una compra y su costo",
+      "parent": "29-finanzas",
+      "status": "Especificado",
+      "area": "Negocio previsto",
+      "sources": [
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/modelo-dominio.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/006-cuentas-dinero/spec.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/specs/007-cuentas-corrientes/spec.md",
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/.specify/memory/constitution.md"
+      ]
+    }
+  ],
+  "pr_review": {
+    "reference_commit": "9e6fc311b81221ea051710dc5af08ad244475170",
+    "pending_before_merge": [],
+    "resolved": [
+      "Fuentes por permalink a una sola revisión",
+      "Exactitud de petición, cupos, locks y recuperación",
+      "ADR-026, vulncheck y ruleset",
+      "DD-F31 e INV-F17",
+      "Anuncios accesibles en español",
+      "Organización por áreas"
+    ]
+  }
+}

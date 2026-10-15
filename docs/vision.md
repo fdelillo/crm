@@ -1,5 +1,10 @@
 # Visión del producto
 
+Vistas relacionadas: [contexto del sistema](diagramas/01-contexto.html) y
+[mapa de módulos](diagramas/03-modulos.html), con su estado de implementación.
+El [ciclo comercial previsto](diagramas/26-comercial.html) y la
+[navegación prevista](diagramas/25-navegacion.html) desarrollan el alcance especificado.
+
 ## Problema
 
 Las pequeñas empresas que trabajan por proyecto (carpinterías de aluminio, herrerías,

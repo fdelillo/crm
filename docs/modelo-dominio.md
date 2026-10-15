@@ -3,6 +3,16 @@
 Modelo **conceptual** (no es el esquema de base de datos, que se define en cada
 `plan.md`). Todas las entidades, salvo `Tenant`, pertenecen a una empresa.
 
+Vistas complementarias: [modelo conceptual por áreas](diagramas/08-dominio.html) y
+[esquema físico actual](diagramas/09-esquema.html). El primero resume el negocio especificado;
+el segundo muestra las tablas que ya existen en las migraciones.
+
+Flujos de negocio especificados: [ciclo comercial](diagramas/26-comercial.html),
+[presupuestos](diagramas/27-presupuestos.html), [finanzas](diagramas/29-finanzas.html),
+[monedas y anulación](diagramas/30-monedas-anulacion.html) y
+[cheques](diagramas/31-cheques.html). Estas vistas no implican implementación ni aprobación
+de las specs pendientes.
+
 ## Diagrama de entidades
 
 ```mermaid
