@@ -29,16 +29,16 @@ func ReadinessPlaceholder() http.Handler {
 	})
 }
 
-// spaUnavailableMessage is the same text the web package will use without index.html (ADR-019).
+// spaUnavailableMessage is the same text the web package uses without index.html (ADR-019).
 const spaUnavailableMessage = "La interfaz no está compilada (correr `make web-build`)"
 
-// SPAUnavailableHandler is the RootDeps.SPA of `crm serve` until T-F008 replaces it with
-// web.NewHandler(web.DistFS()).
+// SPAUnavailableHandler is the RootDeps.SPA stub of backend tests that do not need the real SPA.
+// `crm serve` uses web.NewHandler(web.DistFS()).
 func SPAUnavailableHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
-		httpx.SetLogLevel(r, slog.LevelWarn) // expected until T-F008
+		httpx.SetLogLevel(r, slog.LevelWarn) // expected: the SPA is not built
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = io.WriteString(w, spaUnavailableMessage)
 	})

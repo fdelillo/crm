@@ -86,6 +86,9 @@ func TestRootEmbeddedSPA(t *testing.T) {
 					}
 					if strings.HasPrefix(tt.path, "/api/") {
 						contract.Default(t).RequireRecorded(t, req, rec)
+						if tt.path == "/api/v1/no-existe" && !strings.Contains(rec.Body.String(), `"code":"not_found"`) {
+							t.Errorf("unknown API route body = %q, want code not_found", rec.Body.String())
+						}
 						if rec.Header().Get("Content-Encoding") != "" || rec.Header().Get("Content-Type") != "application/problem+json" || strings.Contains(rec.Body.String(), "<html") {
 							t.Errorf("API response was changed by SPA: headers %v body %q", rec.Header(), rec.Body.String())
 						}
@@ -99,24 +102,35 @@ func TestRootEmbeddedSPA(t *testing.T) {
 	}
 }
 
-// T-F007 (DD-29): even API bodies above the compression threshold stay uncompressed.
+// T-F007 (DD-29): even API bodies above the compression threshold stay uncompressed, with no
+// common middleware and with the real chain (a compressor added to it must fail this test).
 func TestRootDoesNotCompressLargeAPIResponse(t *testing.T) {
-	api := app.NewAPIRouter()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	body := `{"name":"` + strings.Repeat("CRM ", 500) + `"}`
-	api.Get("/api/v1/example", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, body)
-	})
-	root := app.NewRootHandler(app.RootDeps{
-		API: api, Liveness: app.LivenessHandler(), Readiness: app.ReadinessPlaceholder(),
-		SPA: web.NewHandler(fstest.MapFS{"index.html": {Data: []byte("<html>CRM</html>")}}),
-	}, nil)
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/example", nil)
-	req.Header.Set("Accept-Encoding", "gzip")
-	rec := httptest.NewRecorder()
-	root.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK || rec.Body.String() != body || rec.Header().Get("Content-Encoding") != "" {
-		t.Fatalf("API was compressed: status %d headers %v body %q", rec.Code, rec.Header(), rec.Body.String())
+	chains := map[string]func() app.CommonMiddleware{
+		"no middleware":     func() app.CommonMiddleware { return nil },
+		"common, remote":    func() app.CommonMiddleware { return app.NewCommonMiddleware(logger, false, nil) },
+		"common, local TLS": func() app.CommonMiddleware { return app.NewCommonMiddleware(logger, true, nil) },
+	}
+	for name, chain := range chains {
+		t.Run(name, func(t *testing.T) {
+			api := app.NewAPIRouter()
+			api.Get("/api/v1/example", func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, body)
+			})
+			root := app.NewRootHandler(app.RootDeps{
+				API: api, Liveness: app.LivenessHandler(), Readiness: app.ReadinessPlaceholder(),
+				SPA: web.NewHandler(fstest.MapFS{"index.html": {Data: []byte("<html>CRM</html>")}}),
+			}, chain())
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/example", nil)
+			req.Header.Set("Accept-Encoding", "gzip")
+			rec := httptest.NewRecorder()
+			root.ServeHTTP(rec, req)
+			if rec.Code != http.StatusOK || rec.Body.String() != body || rec.Header().Get("Content-Encoding") != "" {
+				t.Fatalf("API was compressed: status %d headers %v body %q", rec.Code, rec.Header(), rec.Body.String())
+			}
+		})
 	}
 }
 

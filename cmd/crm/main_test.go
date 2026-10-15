@@ -152,6 +152,17 @@ func TestRun_ServeAnswersHealthzAndStopsOnCancel(t *testing.T) {
 		}
 	}
 
+	// Only web.NewHandler answers a POST on an SPA route with 405 + Allow, built or not: the
+	// unavailable stub would answer 503, so this also fails in CI where dist is not built.
+	resp, err = client.Post("http://"+addr+"/login", "application/json", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatalf("POST /login: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed || resp.Header.Get("Allow") != "GET, HEAD" {
+		t.Errorf("POST /login: status %d Allow %q, want 405 and GET, HEAD", resp.StatusCode, resp.Header.Get("Allow"))
+	}
+
 	cancel()
 	select {
 	case err := <-done:
