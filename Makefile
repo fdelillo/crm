@@ -2,6 +2,21 @@
 # `make check` is the checkpoint of every phase. Frontend targets are added by T-F009.
 
 GO   ?= go
+
+# One exact Go version (ADR-026 I-2 and its 2026-10-14 note). setup-go only installs the latest
+# 1.27.x and, with GOTOOLCHAIN=auto, the `toolchain` line is a minimum, so a newer patch would be
+# used silently. Every target runs with exactly the `toolchain` of go.mod (go downloads it if
+# needed). The guard runs while make parses the file, before any target: it fails if go.mod has no
+# `toolchain` line or if tools.mod has a different one.
+GO_TOOLCHAIN       := $(shell awk '$$1=="toolchain"{print $$2}' go.mod)
+TOOLS_GO_TOOLCHAIN := $(shell awk '$$1=="toolchain"{print $$2}' tools.mod)
+ifeq ($(GO_TOOLCHAIN),)
+$(error go.mod has no `toolchain` line (ADR-026 I-2))
+endif
+ifneq ($(GO_TOOLCHAIN),$(TOOLS_GO_TOOLCHAIN))
+$(error `toolchain` differs: go.mod=$(GO_TOOLCHAIN) tools.mod=$(TOOLS_GO_TOOLCHAIN) (ADR-026 I-2))
+endif
+export GOTOOLCHAIN := $(GO_TOOLCHAIN)
 # Dev tools (sqlc, golangci-lint, govulncheck) are pinned in tools.mod, apart from go.mod so their many
 # dependencies never mix with the application's.
 TOOL  = $(GO) tool -modfile=tools.mod
@@ -34,8 +49,9 @@ check: lint test test-int
 # live vuln.go.dev database. Needs network and its result changes with the date, so it is NOT part
 # of `check`. Text format on purpose: with json, sarif or openvex govulncheck exits 0 even when it
 # finds something. Exit status: 3 = reachable finding, 1 = tool error. VULN_DIR is for the T-B1101
-# controls only (another module).
-VULN_DIR ?= .
+# controls only (another module); `=` and not `?=` so an exported
+# VULN_DIR in the environment cannot make it scan another module (it can only be set on the command line).
+VULN_DIR = .
 vuln:
 	$(TOOL) govulncheck -C $(VULN_DIR) -show traces,version ./...
 
