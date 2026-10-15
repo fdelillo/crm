@@ -11,7 +11,8 @@
     "typecheck": "tsc -b",
     "test": "vitest run --typecheck",
     "check": "npm run lint && npm run typecheck && npm test && npm run build",
-    "gen:api": "openapi-typescript --redocly redocly.yaml && openapi-typescript --redocly test-fixtures/openapi/redocly.yaml"
+    "gen:api": "openapi-typescript --redocly redocly.yaml && openapi-typescript --redocly test-fixtures/openapi/redocly.yaml",
+    "e2e": "playwright test --project=chromium"
   },
   "dependencies": {
     "@hookform/resolvers": "5.9.1",

@@ -23,3 +23,6 @@ web/dist/*
 web/.api-bundle/
 web/playwright-report/
 web/test-results/
+
+# Built application binaries
+/bin/

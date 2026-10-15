@@ -1,7 +1,8 @@
 # Development and CI commands (specs/001-empresas-usuarios/tasks.md, "Comandos de validación").
-# `make check` is the checkpoint of every phase. Frontend targets are added by T-F009.
+# `make check` validates the backend; `make check-all` validates the backend and frontend.
 
 GO   ?= go
+NPM  ?= npm
 
 # One exact Go version (ADR-026 I-2 and its 2026-10-14 note). setup-go only installs the latest
 # 1.27.x and, with GOTOOLCHAIN=auto, the `toolchain` line is a minimum, so a newer patch would be
@@ -21,7 +22,7 @@ export GOTOOLCHAIN := $(GO_TOOLCHAIN)
 # dependencies never mix with the application's.
 TOOL  = $(GO) tool -modfile=tools.mod
 
-.PHONY: generate codex-agents lint test test-int check vuln db-reset dev-certs
+.PHONY: generate codex-agents lint test test-int check vuln db-reset dev-certs web-build web-check build check-all
 
 # Regenerate the sqlc code from the migrations and the queries of each module.
 generate:
@@ -84,3 +85,20 @@ dev-certs:
 		mkcert -cert-file .certs/localhost.pem -key-file .certs/localhost-key.pem localhost 127.0.0.1 && \
 		echo "Certificado generado en .certs/ (no se versiona)"; \
 	fi
+
+# Frontend checks and builds use the committed lockfile and need no certificates.
+web-build:
+	cd web && $(NPM) ci && $(NPM) run build
+
+web-check:
+	cd web && $(NPM) ci && $(NPM) run check
+
+# Build the SPA before Go reads its embedded files.
+build: web-build
+	mkdir -p bin
+	$(GO) build -o bin/crm ./cmd/crm
+
+# Keep Go's embed reads separate from Vite's replacement of dist, also with make -j.
+check-all:
+	$(MAKE) check
+	$(MAKE) web-check
