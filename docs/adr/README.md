@@ -50,7 +50,7 @@ Reglas:
 | [014](014-contrato-openapi-canonico.md) | Contrato OpenAPI 3.1 canónico, handlers a mano, validación en tests | Accepted (nota 2026-10-02 sobre cómo se aplica la validación: Accepted, aprobada por el usuario el 2026-10-02) | 001 |
 | [015](015-frontend-stack-y-estructura.md) | Frontend: Vite + React + TypeScript en `web/`, carpetas por feature | Proposed | 001 (frontend) |
 | [016](016-componentes-shadcn-tailwind.md) | Componentes con shadcn/ui (Radix) y estilos con Tailwind CSS v4 | Accepted (decisión del usuario; detalles Proposed) | 001 (frontend) |
-| [017](017-router-react-router-spa.md) | Router con React Router v7 en modo SPA, variante *data* | Accepted (decisión del usuario; detalles Proposed) | 001 (frontend) |
+| [017](017-router-react-router-spa.md) | Router con React Router v8 en modo SPA, variante *data* | Accepted (decisión del usuario; detalles Proposed; v8 desde el 2026-10-15, decisión del usuario: nota 2026-10-15) | 001 (frontend) |
 | [018](018-server-state-tanstack-query-openapi.md) | Server state con TanStack Query, cliente openapi-fetch y tipos con openapi-typescript | Accepted (decisión del usuario; detalles Proposed) | 001 (frontend) |
 | [019](019-distribucion-spa-embebida-go.md) | SPA embebida en el binario Go, mismo origen que la API | Accepted (decisión del usuario; detalles aceptados el 2026-09-29, ver nota) | 001 (frontend) |
 | [020](020-pwa-service-worker-minimo.md) | PWA instalable con service worker mínimo, sin offline | Proposed | 001 (frontend) |
@@ -82,3 +82,6 @@ contra `Problem`) sin cambiar la decisión.
 ADR-026 (2026-10-14, `Accepted`, aprobada por el usuario el 2026-10-14) cierra la unidad bloqueada
 de la auditoría de `b945373`. Aplica a todo el módulo Go; el escaneo de las dependencias del
 frontend lo define T-F009.
+
+La nota 2026-10-15 de ADR-017 (decisión del usuario) pasa React Router de v7 a v8 sin cambiar la
+decisión: misma librería, mismo modo *data*, sin loaders, actions ni middleware.

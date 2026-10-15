@@ -3033,6 +3033,18 @@ están en `main`: se actualizan el estado de las dependencias y las pruebas inde
 F5. Tareas afectadas: T-F404, T-F405, T-F406, T-F502 y trazabilidad. Sin tareas nuevas ni cambios
 de orden.
 
+**Enmienda de versiones (2026-10-15)** (`ui.md`, enmienda de versiones; nota 2026-10-15 de
+ADR-017): al arrancar F0, la regla de versiones chocó con dos *peer dependencies*. (1) React
+Router: la última estable es 8.4.0 y el usuario decidió adoptarla en lugar de v7 (misma librería,
+mismo modo *data*; ningún test de F0 a F7 depende de algo que cambie en v8). (2) TypeScript: queda
+en 5.9.3, la única versión que aceptan a la vez `openapi-typescript` y `typescript-eslint` sin
+forzar la instalación. La regla pasa a "la última estable compatible con las *peer dependencies*
+del conjunto", y la excepción queda registrada en las convenciones. El usuario confirmó la regla y
+la excepción el 2026-10-15 (`ui.md` P-F12). Tareas afectadas:
+convenciones (versiones), T-F001 (versiones, `tsconfig`, Node, verificación de dependencias) y
+T-F006 (imports del router, sin `future` ni `middleware`, test de humo de navegación). Sin tareas
+nuevas ni cambios de orden.
+
 ### Convenciones de esta sección
 
 - `[T]` = tarea de test. Va **antes** de la tarea de código que la hace pasar, y el test debe
@@ -3070,8 +3082,16 @@ de orden.
   cada fase sí: columna "Backend necesario" de la tabla de dependencias, y la preparación de HTTPS
   local de `ui.md` §21.3 (`mkcert -install`, `make dev-certs`, `NODE_EXTRA_CA_CERTS`). Cualquier
   navegador del piso de NFR-F02 sirve para desarrollar.
-- Versiones: la última estable de cada librería al arrancar la Fase F0, fijadas en
-  `package-lock.json`; T-F001 reporta las versiones elegidas.
+- Versiones *(enmienda de versiones, 2026-10-15)*: la última estable de cada librería
+  **compatible con las *peer dependencies* del conjunto, sin `--force` ni
+  `--legacy-peer-deps`**, al arrancar la Fase F0; fijadas en `package-lock.json`; T-F001 reporta
+  las versiones elegidas. Una librería que queda por debajo de su última estable se registra en
+  esta tabla, con el motivo y la condición para revisarla; cada actualización de dependencias
+  revisa la tabla:
+
+  | Librería | Versión fijada | Última estable (2026-10-15) | Motivo | Se revisa cuando |
+  |---|---|---|---|---|
+  | `typescript` | 5.9.3 | 7.0.2 | (1) `openapi-typescript` 7.13.0 (la última) declara `peerDependencies.typescript: ^5.x`; (2) `typescript-eslint` 8.71.2 (la última) declara `>=4.8.4 <6.1.0`. 5.9.3 es la última versión que satisface las dos | `openapi-typescript` y `typescript-eslint` acepten TypeScript ≥ 6: se sube a la última que acepten las dos, en un PR propio con `npm run check` en verde |
 
 ### Comandos de validación (los crea la Fase F0)
 
@@ -3135,8 +3155,10 @@ muestra lo mismo con recarga en caliente; `curl -I` (sin `-k`) sobre `https://lo
 respuestas de `ui.md` §21.1–21.2 (sin `Strict-Transport-Security`, porque es modo local).
 
 **T-F001 — Proyecto `web/`, TypeScript y lint** · ADR-015, `ui.md` §9.1, §22
-- Plantilla Vite React + TypeScript en `web/`; React 19; `strict` y `noUncheckedIndexedAccess`;
-  alias `@/*`; `engines.node` y `.nvmrc` con Node LTS; `npm`.
+- Plantilla Vite React + TypeScript en `web/`; React 19 (≥ 19.2.7, piso de React Router 8);
+  TypeScript **5.9.3** (excepción de las convenciones); `strict` y `noUncheckedIndexedAccess`;
+  `target` y `lib` ES2022 o posterior en `tsconfig.app.json` (React Router 8 se publica en ES2022);
+  alias `@/*`; `engines.node` y `.nvmrc` con Node LTS (≥ 22.22.0, piso de React Router 8); `npm`.
 - ESLint (typescript-eslint, `react-hooks`, `jsx-a11y`, `no-console`) + Prettier. Reglas
   `no-restricted-imports` de `ui.md` §9.1: `components/**` no importa `@/api`, `@/features`,
   `@/app`; `features/X` no importa `features/Y` salvo `features/auth/session`; `fetch` solo en
@@ -3148,7 +3170,12 @@ respuestas de `ui.md` §21.1–21.2 (sin `Strict-Transport-Security`, porque es 
   (`.certs/` ya lo ignora T-B014).
 - Reportar las versiones elegidas de Vite, React, TypeScript, Tailwind, CLI de shadcn, React
   Router, TanStack Query, openapi-fetch, openapi-typescript, React Hook Form, Zod,
-  `@hookform/resolvers` (≥ 5.1), Vitest, MSW, Playwright (RF-1).
+  `@hookform/resolvers` (≥ 5.1), Vitest, MSW, Playwright (RF-1). Toda versión por debajo de su
+  última estable tiene que figurar en la tabla de excepciones de las convenciones (hoy, solo
+  TypeScript). React Router: 8.x, solo el paquete `react-router` (`react-router-dom` no existe en
+  v8).
+- **Verificación de dependencias**: `npm ci`, sin `--force` ni `--legacy-peer-deps`, termina sin
+  conflictos de *peer dependencies*, y `npm ls --all` no marca ningún paquete como `invalid`.
 - **Verificación**: un archivo de fixture en `components/` que importa `@/api/client` hace fallar
   `npm run lint` (se borra después de comprobarlo).
 
@@ -3231,9 +3258,16 @@ respuestas de `ui.md` §21.1–21.2 (sin `Strict-Transport-Security`, porque es 
   `<h1>`), guards provisorios que dejan pasar, `lazy` por grupo de rutas; `RootLayout` con
   `<Toaster/>` y `<ScrollRestoration/>`; `createAppQueryClient` con los defaults de `ui.md` §10.2
   (sin los manejadores globales, que llegan en F1); `main.tsx`; `src/test/renderApp.tsx`
-  (`createMemoryRouter` con el mismo árbol).
+  (`createMemoryRouter` con el mismo árbol). *(Enmienda de versiones)* React Router 8 (ADR-017,
+  nota 2026-10-15): `createBrowserRouter` y `createMemoryRouter` sin opción `future` ni
+  `getContext`; ninguna ruta declara `loader`, `action` ni `middleware`; `RouterProvider` se
+  importa de `react-router/dom` en `main.tsx` y en `renderApp.tsx`, y todo lo demás de
+  `react-router`.
 - Test de humo: cada ruta del árbol muestra su `<h1>` provisorio; una ruta inexistente muestra
-  "No encontramos esta página."
+  "No encontramos esta página."; desde `/`, navegar a `/settings` con el router de memoria del
+  test muestra el `<h1>` de Ajustes y volver atrás muestra el de la pantalla de inicio, sin errores
+  en la consola. Es la prueba de que el router de datos de React Router 8 (paquete solo ESM,
+  middleware siempre activo) funciona en Vitest con jsdom.
 - `vite.config.ts` según la tabla de `ui.md` §21.3: `server.https` con `../.certs/localhost.pem` y
   `../.certs/localhost-key.pem`; si faltan, `npm run dev` termina con "Faltan los certificados de
   desarrollo: corré `make dev-certs` (ver README)."; `server.port: 5173` con `strictPort`;
