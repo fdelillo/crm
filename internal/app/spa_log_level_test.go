@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 	"testing/fstest"
 
@@ -16,13 +17,16 @@ import (
 func requestLineFor(t *testing.T, logs *syncBuffer, rec *httptest.ResponseRecorder) map[string]any {
 	t.Helper()
 	id := rec.Header().Get("X-Request-Id")
+	var found []map[string]any
 	for _, l := range logs.lines(t) {
 		if l["msg"] == "request" && l["request_id"] == id {
-			return l
+			found = append(found, l)
 		}
 	}
-	t.Fatalf("no request line for %q; logs:\n%s", id, logs.String())
-	return nil
+	if len(found) != 1 {
+		t.Fatalf("request lines for %q = %d, want 1; logs:\n%s", id, len(found), logs.String())
+	}
+	return found[0]
 }
 
 func statusHandler(code int) http.Handler {
@@ -37,7 +41,6 @@ func TestRootSPALogLevel(t *testing.T) {
 	}
 	// A plain handler, not chi: the escaped path would be a chi 404, and what matters is that the
 	// request reaches the API and not the SPA rule.
-	apiWith := statusHandler
 	panicking := http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic("spa boom") })
 
 	cases := []struct {
@@ -59,8 +62,8 @@ func TestRootSPALogLevel(t *testing.T) {
 		{"SPA panic", panicking, nil, "GET", "/x", false, 500, "ERROR", "spa"},
 		{"built SPA GET /", built(), nil, "GET", "/", false, 200, "INFO", "spa"},
 		{"SPAUnavailableHandler", app.SPAUnavailableHandler(), nil, "GET", "/login", false, 503, "WARN", "spa"},
-		{"API 503 on /api/v1/x", unbuilt(), apiWith(503), "GET", "/api/v1/x", false, 503, "ERROR", ""},
-		{"API 503 on escaped /api%2Fv1%2Fx", unbuilt(), apiWith(503), "GET", "/api%2Fv1%2Fx", false, 503, "ERROR", ""},
+		{"API 503 on /api/v1/x", unbuilt(), statusHandler(503), "GET", "/api/v1/x", false, 503, "ERROR", ""},
+		{"API 503 on escaped /api%2Fv1%2Fx", unbuilt(), statusHandler(503), "GET", "/api%2Fv1%2Fx", false, 503, "ERROR", ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -114,7 +117,7 @@ func TestRootUnbuiltSPAResponseUnchangedByLogLevel(t *testing.T) {
 		t.Errorf("body = %q, want %q", rec.Body.String(), direct.Body.String())
 	}
 	for k, want := range direct.Header() {
-		if got := rec.Header()[k]; len(got) != len(want) || got[0] != want[0] {
+		if got := rec.Header()[k]; !slices.Equal(got, want) {
 			t.Errorf("header %s = %v, want %v", k, got, want)
 		}
 	}

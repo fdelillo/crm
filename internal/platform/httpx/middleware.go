@@ -91,16 +91,20 @@ func trackWriter(w http.ResponseWriter) *statusWriter {
 	return &statusWriter{ResponseWriter: w}
 }
 
-// routeHolder lets handlers deeper in the chain tell Logging which route label to record.
-type routeHolder struct {
+// requestState is the per-request state Logging shares with the handlers below it: the route label,
+// the SetLogLevel override, the WithStatusLogLevel rules by status, the client-canceled mark and the
+// principal ids of SetLogPrincipal.
+type requestState struct {
 	label    string
 	level    *slog.Level
 	byStatus map[int]slog.Level // WithStatusLogLevel rules (DD-50)
 	canceled bool
+	tenantID uuid.UUID // both set together by SetLogPrincipal; uuid.Nil means not annotated
+	userID   uuid.UUID
 }
 
 func markClientCanceled(r *http.Request) {
-	if h, ok := r.Context().Value(routeKey).(*routeHolder); ok {
+	if h, ok := r.Context().Value(routeKey).(*requestState); ok {
 		h.canceled = true
 	}
 	clientCanceledTotal.Add(1)
@@ -110,7 +114,7 @@ func markClientCanceled(r *http.Request) {
 // For responses that are expected even though they are 5xx, such as a placeholder answering 503.
 // A panic still logs at ERROR. It is a no-op outside Logging.
 func SetLogLevel(r *http.Request, level slog.Level) {
-	if h, ok := r.Context().Value(routeKey).(*routeHolder); ok {
+	if h, ok := r.Context().Value(routeKey).(*requestState); ok {
 		h.level = &level
 	}
 }
@@ -119,9 +123,13 @@ func SetLogLevel(r *http.Request, level slog.Level) {
 // has that status, for responses that are expected even though they are 5xx (DD-50). Precedence in
 // Logging: client canceled > panic > SetLogLevel > WithStatusLogLevel > the default. It does not
 // wrap the ResponseWriter (the status comes from Logging's own) and is a no-op outside Logging.
+//
+// With two rules for the same status the innermost wins (the last one registered, since each rule
+// is recorded before calling next). A rule, once reached, holds until the end of the request, even
+// if the handler that carries it returns without writing a response.
 func WithStatusLogLevel(status int, level slog.Level, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if h, ok := r.Context().Value(routeKey).(*routeHolder); ok {
+		if h, ok := r.Context().Value(routeKey).(*requestState); ok {
 			if h.byStatus == nil {
 				h.byStatus = map[int]slog.Level{}
 			}
@@ -131,10 +139,24 @@ func WithStatusLogLevel(status int, level slog.Level, next http.Handler) http.Ha
 	})
 }
 
+// SetLogPrincipal records the company and the user of the session that identity.Authenticate
+// resolved, so Logging writes tenant_id and user_id on the request line (DD-12, INV-38). Only
+// Authenticate calls it. Receiving two ids and not the Principal keeps the SessionID out of the
+// platform. It fails closed: if either id is uuid.Nil nothing is recorded. A later call with valid ids
+// replaces an earlier one. It is a no-op outside Logging.
+func SetLogPrincipal(r *http.Request, tenantID, userID uuid.UUID) {
+	if tenantID == uuid.Nil || userID == uuid.Nil {
+		return
+	}
+	if h, ok := r.Context().Value(routeKey).(*requestState); ok {
+		h.tenantID, h.userID = tenantID, userID
+	}
+}
+
 // SetRoute records the route label for the request log. The root mux calls it through WithRoute
 // and the API wrapper with the chi pattern. It is a no-op outside Logging.
 func SetRoute(r *http.Request, label string) {
-	if h, ok := r.Context().Value(routeKey).(*routeHolder); ok {
+	if h, ok := r.Context().Value(routeKey).(*requestState); ok {
 		h.label = label
 	}
 }
@@ -147,14 +169,15 @@ func WithRoute(label string, next http.Handler) http.Handler {
 	})
 }
 
-// Logging writes one structured line per request: request_id, method, route, status and
-// duration_ms (DD-12). It logs from a defer so a panic that Recover (outside) turns into a 500 is
-// still logged. Bodies, cookies and headers are never logged.
+// Logging writes one structured line per request: request_id, method, route, status, event
+// (request or client_canceled), ip and duration_ms, plus tenant_id and user_id when
+// SetLogPrincipal annotated them (DD-12, INV-38). It logs from a defer so a panic that Recover
+// (outside) turns into a 500 is still logged. Bodies, cookies and headers are never logged.
 func Logging(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
-			holder := &routeHolder{}
+			holder := &requestState{}
 			r = r.WithContext(context.WithValue(r.Context(), routeKey, holder))
 			sw := trackWriter(w)
 			completed := false
@@ -187,14 +210,19 @@ func Logging(logger *slog.Logger) func(http.Handler) http.Handler {
 					level = slog.LevelError
 				}
 				requestsTotal.Add(strconv.Itoa(status), 1)
-				logger.Log(r.Context(), level, "request",
+				attrs := []any{
 					"request_id", RequestIDFrom(r.Context()),
 					"method", r.Method,
 					"route", route,
 					"status", status,
 					"event", canceledEvent(holder.canceled),
 					"ip", ClientIPFrom(r.Context()).String(),
-					"duration_ms", time.Since(start).Milliseconds())
+					"duration_ms", time.Since(start).Milliseconds(),
+				}
+				if holder.tenantID != uuid.Nil {
+					attrs = append(attrs, "tenant_id", holder.tenantID.String(), "user_id", holder.userID.String())
+				}
+				logger.Log(r.Context(), level, "request", attrs...)
 			}()
 			next.ServeHTTP(sw, r)
 			completed = true
