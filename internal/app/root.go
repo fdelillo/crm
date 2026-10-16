@@ -85,7 +85,9 @@ func getOnly(next http.Handler) http.Handler {
 // routes on the escaped path, so "/api%2Fv1%2Fx" would otherwise fall into the SPA's catch-all with
 // URL.Path "/api/v1/x" (INV-22): it goes to the API, which answers 404 problem+json.
 func spaUnlessAPI(api, spa http.Handler) http.Handler {
-	spa = httpx.WithRoute("spa", spa)
+	// T-F011 (DD-50): the unbuilt-SPA 503 is expected in "backend only" mode, so it logs WARN. The
+	// rule wraps only the SPA branch, after the /api%2F… diversion: an API 503 stays ERROR.
+	spa = httpx.WithRoute("spa", httpx.WithStatusLogLevel(http.StatusServiceUnavailable, slog.LevelWarn, spa))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
 			api.ServeHTTP(w, r)

@@ -95,6 +95,7 @@ func trackWriter(w http.ResponseWriter) *statusWriter {
 type routeHolder struct {
 	label    string
 	level    *slog.Level
+	byStatus map[int]slog.Level // WithStatusLogLevel rules (DD-50)
 	canceled bool
 }
 
@@ -112,6 +113,22 @@ func SetLogLevel(r *http.Request, level slog.Level) {
 	if h, ok := r.Context().Value(routeKey).(*routeHolder); ok {
 		h.level = &level
 	}
+}
+
+// WithStatusLogLevel makes Logging write the request line at level when the final response of next
+// has that status, for responses that are expected even though they are 5xx (DD-50). Precedence in
+// Logging: client canceled > panic > SetLogLevel > WithStatusLogLevel > the default. It does not
+// wrap the ResponseWriter (the status comes from Logging's own) and is a no-op outside Logging.
+func WithStatusLogLevel(status int, level slog.Level, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if h, ok := r.Context().Value(routeKey).(*routeHolder); ok {
+			if h.byStatus == nil {
+				h.byStatus = map[int]slog.Level{}
+			}
+			h.byStatus[status] = level
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // SetRoute records the route label for the request log. The root mux calls it through WithRoute
@@ -156,13 +173,18 @@ func Logging(logger *slog.Logger) func(http.Handler) http.Handler {
 					route = unmatchedRoute
 				}
 				level := slog.LevelInfo
+				statusLevel, hasStatusLevel := holder.byStatus[status]
 				switch {
 				case holder.canceled:
 					level = slog.LevelInfo
-				case !completed || (status >= http.StatusInternalServerError && holder.level == nil):
+				case !completed:
 					level = slog.LevelError
 				case holder.level != nil:
 					level = *holder.level
+				case hasStatusLevel:
+					level = statusLevel
+				case status >= http.StatusInternalServerError:
+					level = slog.LevelError
 				}
 				requestsTotal.Add(strconv.Itoa(status), 1)
 				logger.Log(r.Context(), level, "request",
