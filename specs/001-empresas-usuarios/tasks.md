@@ -3130,6 +3130,15 @@ orden.
 (zona del navegador sin sesión). Cambian T-F101 (filas nuevas, necesarias para cerrar F1), T-F301
 (fila nueva), T-F302 y la trazabilidad. Sin tareas nuevas ni cambios de orden.
 
+**Enmienda de F1, P-F18 (2026-10-16; `ui.md` P-F18 aprobada por el usuario el 2026-10-16)**
+(`ui.md`, enmienda de F1, P-F18): (1) `RequireSession` muestra el error a pantalla completa solo sin
+sesión en caché (`isLoadingError`); un refetch fallido conserva el shell, sin aviso. (2)
+`ApiError.receivedAt`, y la hora de `login_locked` calculada con ese instante. (3) `AppShell` con
+`lazy` (grupo 2 de `ui.md` §23). (4) Título "… · CRM" y foco en la pantalla de error de render; sin
+sesión, toda pantalla termina en "· CRM". Cambian T-F005 (fila nueva, se implementa en F1), T-F101,
+T-F102, T-F104, T-F105, T-F106, T-F107, T-F301, T-F302, el checkpoint de F1 y la trazabilidad. Sin
+tareas nuevas ni cambios de orden. Los cuatro puntos se cierran en F1; la fila de T-F301 entra con F3.
+
 ### Convenciones de esta sección
 
 - `[T]` = tarea de test. Va **antes** de la tarea de código que la hace pasar, y el test debe
@@ -3327,7 +3336,7 @@ respuestas de `ui.md` §21.1–21.2 (sin `Strict-Transport-Security`, porque es 
   de actualización en `lint`. Archivos generados versionados.
 - **Refactor**: el fixture del spike queda fuera de `redocly.yaml` de producción.
 
-**T-F005 [T] — Cliente HTTP y normalización de errores** · ADR-018, ADR-009, `ui.md` §11.3
+**T-F005 [T] — Cliente HTTP y normalización de errores** · ADR-018, ADR-009, `ui.md` §11.3, P-F18
 - **Red** (unitario sobre `toApiError`/`unwrap`/`isRetryable` y cliente con MSW):
 
   | Respuesta o situación | Esperado |
@@ -3336,6 +3345,7 @@ respuestas de `ui.md` §21.1–21.2 (sin `Strict-Transport-Security`, porque es 
   | `422` `ValidationProblem` con 2 errores | `fieldErrors` con los 2, en orden |
   | `429 login_locked` con `Retry-After: 900` | `retryAfterSeconds: 900` |
   | `429` sin `Retry-After` | `retryAfterSeconds: null` |
+  | *(P-F18)* `429 login_locked` y `fetch` que rechaza, con el reloj fijado (`vi.setSystemTime`) | `receivedAt` = ese instante en ms, en los dos casos |
   | `503` `service_unavailable` con `Retry-After: 2` (registro, DD-33, contrato v0.4.0) | `retryAfterSeconds: 2`; `isRetryable` → `true` |
   | `405` problem+json `method_not_allowed` con `Allow: GET` | `kind: 'problem'`, `code: 'method_not_allowed'` |
   | `500` con `instance` | `requestId` = `instance` |
@@ -3348,7 +3358,7 @@ respuestas de `ui.md` §21.1–21.2 (sin `Strict-Transport-Security`, porque es 
   | `api.GET('/me')` con MSW | URL `${origin}/api/v1/me`, respuesta tipada |
   | `api.POST('/auth/login', …)` | `Content-Type: application/json`, body serializado |
 - **Green**: `src/api/client.ts`, `errors.ts`, `queryKeys.ts` (`ui.md` §10.3).
-- **Refactor**: `toApiError` es una función pura sin dependencias de React.
+- **Refactor**: `toApiError` no depende de React; fuera de su entrada solo lee el reloj, para `receivedAt` (P-F18).
 
 **T-F006 — Esqueleto de rutas, providers y desarrollo con HTTPS local** · ADR-017, ADR-019, DD-24, DD-F23, `ui.md` §6.1, §10.2, §21.3, H-10
 - Depende de T-B005 (TLS local en `serve`) y T-B014 (`make dev-certs`).
@@ -3530,7 +3540,7 @@ de mkcert instalada: abrir `https://localhost:5173/settings/users` sin sesión r
 navegador) se ve el shell; borrar la sesión en la base y navegar vuelve al login con "Tu sesión se
 cerró"; Chrome ofrece "Instalar app" sobre el binario en `https://localhost:8443`.
 
-**T-F101 [T] — Mensajes por `code` y por campo** · ADR-009, INV-F05, `ui.md` §12.2–12.3, §13.2, §15.4, P-F16, P-F17, INV-F12
+**T-F101 [T] — Mensajes por `code` y por campo** · ADR-009, INV-F05, `ui.md` §12.2–12.3, §13.2, §15.4, P-F16, P-F17, P-F18, INV-F12
 - **Red**:
 
   | Caso | Esperado |
@@ -3539,10 +3549,11 @@ cerró"; Chrome ofrece "Instalar app" sobre el binario en `https://localhost:844
   | `messageForError` para cada `code` de §12.2 en contexto `generic` | título y descripción de la tabla |
   | `token_invalid` en `resetConfirm`, `verifyEmail`, `invitationPreview` | los tres textos de §12.2 |
   | *(P-F16)* `token_invalid` en `generic` y en `login` (contexto sin variante propia) | "Este enlace ya no sirve." + "Pedí uno nuevo." |
-  | *(P-F16)* `login_locked` con `retryAfterSeconds` 900 y el reloj fijado (`vi.setSystemTime`) en 14:20:00 hora local | "Por seguridad, pausamos el ingreso con este email." + "Hubo varios intentos fallidos. Podés volver a intentar a las 14:35 (en 15 minutos) o restablecer tu contraseña ahora." |
+  | *(P-F16)* `login_locked` con `retryAfterSeconds` 900 y `receivedAt` a las 14:20:00 hora local (P-F18; el reloj del sistema en otra hora) | "Por seguridad, pausamos el ingreso con este email." + "Hubo varios intentos fallidos. Podés volver a intentar a las 14:35 (en 15 minutos) o restablecer tu contraseña ahora." |
   | *(P-F16, P-F17)* `formatRetryAt(900, now)` con `now` a las 14:20:00 hora local / a las 14:20:30 | `{ time: '14:35', minutes: 15 }` / `{ time: '14:36', minutes: 16 }` (minuto siguiente y minutos de reloj, `ui.md` §13.2) |
   | *(P-F17)* `formatRetryAt(10, now)` con `now` a las 14:20:30 / `formatRetryAt(60, now)` con `now` a las 14:20:00 | `{ time: '14:21', minutes: 1 }` / lo mismo |
-  | *(P-F17)* `login_locked` con `retryAfterSeconds` 60 y el reloj en 14:20:00 hora local | "…Podés volver a intentar a las 14:21 (en 1 minuto) o restablecer tu contraseña ahora." |
+  | *(P-F17)* `login_locked` con `retryAfterSeconds` 60 y `receivedAt` a las 14:20:00 hora local (P-F18) | "…Podés volver a intentar a las 14:21 (en 1 minuto) o restablecer tu contraseña ahora." |
+  | *(P-F18)* El mismo error `login_locked` (900 s, `receivedAt` 14:20:00) con el reloj del sistema en 14:20:00 y después en 14:27:00 | el mismo texto las dos veces ("a las 14:35 (en 15 minutos)"): la hora sale de `receivedAt`, no del reloj |
   | *(P-F17)* `login_locked` sin `Retry-After` (`retryAfterSeconds: null`) | "Por seguridad, pausamos el ingreso con este email." + "Hubo varios intentos fallidos. Podés volver a intentar en unos minutos o restablecer tu contraseña ahora." |
   | `unsupported_media_type`, `payload_too_large` y `malformed_request` en `logo` | textos del logo ("No pudimos subir el logo." con `requestId` para el `400`) |
   | `rate_limited` con `retryAfterSeconds` 3 / 60 / 61 / 1800 / `null` | "unos segundos" / "1 minuto" / "2 minutos" / "30 minutos" / "unos minutos" (DD-F25) |
@@ -3564,7 +3575,8 @@ cerró"; Chrome ofrece "Instalar app" sobre el binario en `https://localhost:844
 **T-F102 — Implementar `api/errorMessages.ts`** (`messageForError`, `fieldErrorMessage`,
 `logoRejectMessage`, `applyServerFieldErrors`) y `formatRetryAt` en `lib/` (firma de `ui.md` §15.4,
 reglas de §13.2), que `messageForError` usa para `login_locked`. *(Enmienda de F1, P-F16: antes
-estaba en T-F302.)*
+estaba en T-F302.)* *(P-F18)* `ApiError.receivedAt` en `api/errors.ts`; `messageForError` arma la
+hora de `login_locked` con `formatRetryAt(s, new Date(error.receivedAt))`, nunca con `new Date()`.
 
 **T-F103 [T] — `safeNextPath` y la URL de sesión vencida** · INV-F07, BR-F07, INV-F18, DD-F32
 - **Red**:
@@ -3582,7 +3594,7 @@ estaba en T-F302.)*
   | `isSessionExpiredRedirect` con `/login`, `/login?reason=logged_out`, `/settings`, `/settings?reason=session_expired` | `false` |
 - **Green**: pasa la tabla.
 
-**T-F104 [T] — Sesión, guards y manejadores globales** · ADR-017, ADR-018, INV-F01, INV-F02, INV-F03, INV-F06, BR-F04, `ui.md` §6.4, §12.4
+**T-F104 [T] — Sesión, guards y manejadores globales** · ADR-017, ADR-018, INV-F01, INV-F02, INV-F03, INV-F06, BR-F04, `ui.md` §6.4, §12.4, §12.5, P-F18
 - **Red** (pantallas con MSW):
 
   | Caso | Esperado |
@@ -3590,7 +3602,8 @@ estaba en T-F302.)*
   | Ruta con sesión y `/me` pendiente | pantalla de arranque con `aria-busy`; no se ve el formulario de login |
   | `/me` → `401` al entrar a `/settings/users` | `/login?next=%2Fsettings%2Fusers`, **sin** aviso de sesión vencida |
   | `/me` → `200` en `/login` | redirige a `/`; con `?next=/settings/users`, a `/settings/users`; con `?next=//evil.example`, a `/` |
-  | `/me` → `503` en una ruta con sesión | estado de error con "Reintentar"; al reintentar con `200` se ve la pantalla |
+  | `/me` → `503` al entrar a una ruta con sesión (sin sesión en caché) | estado de error a pantalla completa con "Reintentar"; al reintentar con `200` se ve la pantalla |
+  | *(P-F18)* Admin en `/settings` con la sesión en caché; pasados los 60 s de `staleTime`, un refetch de `/me` al enfocar la ventana → `503` hasta agotar los reintentos / error de red | el shell y "Ajustes" siguen montados (el mismo nodo `<h1>`, el foco no se mueve); no aparece el estado de error ni otro aviso; el refetch siguiente con `200` no cambia nada visible |
   | Operador en `/settings/users` | "No tenés acceso a esta sección" + "Volver al inicio"; **no** se pidió `GET /users` |
   | Admin en `/settings/users` y `GET /users` → `401 unauthenticated` | caché vacía; `/login?next=%2Fsettings%2Fusers&reason=session_expired` con "Tu sesión se cerró. Ingresá de nuevo para seguir." |
   | Dos queries responden `401` a la vez | una sola navegación |
@@ -3606,12 +3619,12 @@ estaba en T-F302.)*
 - **Refactor**: un solo lugar decide "¿es `401 unauthenticated`?"; los guards no conocen la red.
 
 **T-F105 — Implementar sesión y guards**: `features/auth/session.ts` (`useSession`,
-`useCurrentSession`, `useCan`), `RequireSession`, `PublicOnly`, `RequirePermission`,
+`useCurrentSession`, `useCan`), `RequireSession` (error a pantalla completa solo con `isLoadingError`, P-F18), `PublicOnly`, `RequirePermission`,
 `ForbiddenState`, manejadores de `createAppQueryClient` inyectados desde `main.tsx`,
 `lib/safeNextPath.ts`, `lib/sessionExpiredRedirect.ts` (el manejador de §12.4 y la transición a
 `null` de §6.4 arman la URL con `sessionExpiredLoginPath`; DD-F32).
 
-**T-F106 [T] — Shell, Ajustes y accesibilidad base** · BR-F04, INV-F10, NFR-F06, `ui.md` §13.8, §13.13, §18
+**T-F106 [T] — Shell, Ajustes y accesibilidad base** · BR-F04, INV-F10, NFR-F06, `ui.md` §12.1, §13, §13.8, §13.13, §18, P-F18
 - **Red**:
 
   | Caso | Esperado |
@@ -3624,13 +3637,17 @@ estaba en T-F302.)*
   | Encabezado | nombre de la empresa de `['tenant']`; mientras carga, `session.tenant.name`; sin logo, iniciales |
   | Evento `offline` / `online` | aparece / desaparece "Sin conexión. Revisá tu internet." (`role="status"`) |
   | Una pantalla que lanza un error al renderizar | "Algo salió mal al mostrar esta pantalla" con "Recargar" e "Ir al inicio" |
+  | *(P-F18)* Falla el chunk de la primera pantalla (el `lazy` de `/` rechaza en la carga inicial) / una pantalla lanza al renderizar después de navegar desde Ajustes | `document.title` = "Algo salió mal al mostrar esta pantalla · CRM" (no "CRM" ni "Ajustes · {Empresa}"); foco en el `<h1>` |
+  | *(P-F18)* Ruta inexistente sin sesión | `document.title` = "No encontramos esta página. · CRM" |
   | `vite:preloadError` la primera vez / la segunda | llama a `reload` (espía) y marca `sessionStorage` / muestra "Hay una versión nueva de la app" + "Actualizar" |
   | Ruta inexistente | "No encontramos esta página." + "Ir al inicio" |
 - **Green**: pasa la tabla.
 
-**T-F107 — Implementar el shell**: `RootLayout` (foco al `<h1>` al cambiar de ruta),
-`AppShell`, navegación inferior y lateral, `SettingsPage` (sin "Cerrar sesión", que llega en F3),
-`NotFoundPage`, `ErrorBoundary` raíz, manejo de `vite:preloadError`, `PageHeader`, `FormAlert`,
+**T-F107 — Implementar el shell**: `RootLayout` (foco al `<h1>` al cambiar de ruta; `document.title`
+con "· CRM" sin sesión, P-F18), `AppShell` (con `lazy` en `router.tsx`: grupo (2) de `ui.md` §23,
+P-F18), navegación inferior y lateral, `SettingsPage` (sin "Cerrar sesión", que llega en F3),
+`NotFoundPage`, `ErrorBoundary` raíz (fija su título con `useDocumentTitle` y enfoca su `<h1>`,
+P-F18), manejo de `vite:preloadError`, `PageHeader`, `FormAlert`,
 `ErrorState`, `EmptyState`, `AppBrand`, `OfflineBanner`, `useOnlineStatus`, `useDocumentTitle`,
 `useTenant` (lectura).
 
@@ -3641,7 +3658,7 @@ estaba en T-F302.)*
   manifest sin errores, SW activo, Cache Storage con solo `crm-offline-v1`); la verificación
   automática es T-F703.
 
-**Checkpoint Fase F1**: `npm run check` en verde + prueba independiente contra el backend.
+**Checkpoint Fase F1**: `npm run check` en verde + prueba independiente contra el backend + *(P-F18)* el chunk de entrada que genera `npm run build` no contiene Radix DropdownMenu (buscar `DropdownMenu` en el `index-*.js`).
 
 ---
 
@@ -3722,7 +3739,7 @@ hora, y cierre de sesión que deja el dispositivo limpio.
 muestra "Por seguridad, pausamos el ingreso…" con la hora; "Cerrar sesión" desde Ajustes vuelve al
 login con "Cerraste sesión." y atrás no muestra datos.
 
-**T-F301 [T] — Pantalla Ingresar** · US-2.1, US-2.2, FR-003, INV-13, INV-F02, DD-F17, `ui.md` §13.2, §14.1
+**T-F301 [T] — Pantalla Ingresar** · US-2.1, US-2.2, FR-003, INV-13, INV-F02, DD-F17, `ui.md` §13.2, §14.1, P-F18
 - **Red**:
 
   | Interacción | Resultado observable |
@@ -3731,6 +3748,7 @@ login con "Cerraste sesión." y atrás no muestra datos.
   | `401 invalid_credentials` | "El email o la contraseña no son correctos."; email conservado; contraseña vacía y enfocada; sin navegación ni limpieza de caché |
   | `403 account_disabled` | "Tu usuario está desactivado." + "Pedile a un administrador de tu empresa que lo reactive." |
   | `429 login_locked` con `Retry-After: 900` y reloj en 14:20 | "…Podés volver a intentar a las 14:35 (en 15 minutos)…"; "Restablecer contraseña" lleva a `/forgot-password` con el email; "Volver a intentar" muestra el formulario |
+  | *(P-F18)* `429 login_locked` con `Retry-After: 900` recibido a las 14:20; el reloj avanza a 14:27 y se fuerza un re-render (`rerender`) | sigue diciendo "a las 14:35 (en 15 minutos)" |
   | *(P-F17)* `429 login_locked` sin `Retry-After` | el mismo panel con "…Podés volver a intentar en unos minutos o restablecer tu contraseña ahora." y los dos botones |
   | `429 rate_limited` con `Retry-After: 3` (cupo por IP del login, DD-9) / con `Retry-After: 120` | "Esperá unos segundos y probá de nuevo." / "Esperá 2 minutos y probá de nuevo." (DD-F25) |
   | `reason=session_expired` / `password_changed` / `logged_out` / otro valor | el aviso correspondiente / ninguno |
@@ -3743,7 +3761,7 @@ login con "Cerraste sesión." y atrás no muestra datos.
 
 **T-F302 — Implementar `LoginPage`, `LockedNotice` y `useLogin`**. `LoginPage` pasa a `LockedNotice`
 el `title` y la `description` de `messageForError(error, 'login')` (`ui.md` §15.1; enmienda de F1,
-P-F17): ninguno de los tres formatea la hora ni reimplementa `formatRetryAt` (T-F102, P-F16).
+P-F17): ninguno de los tres formatea la hora ni reimplementa `formatRetryAt` (T-F102, P-F16). `LoginPage` puede llamar a `messageForError` en el render: la hora es estable porque sale de `error.receivedAt` (P-F18).
 
 **T-F303 [T] — Cerrar sesión** · US-2, INV-F03, `ui.md` §13.8, §17
 - **Red**:
@@ -4308,4 +4326,5 @@ usó) reportado.
 | H-17 / plan DD-50 propuesta (log del `503` de la SPA sin compilar), P-F15 | T-F011 |
 | P-F16 (`token_invalid` sin variante de contexto; `formatRetryAt` en F1), `ui.md` §12.2, §13.2, §15.4 | T-F101, T-F102, T-F302 |
 | P-F17 (`login_locked` sin `Retry-After`, minutos de `formatRetryAt`, props de `LockedNotice`), INV-F12 y ADR-023 (zona del navegador sin sesión) | T-F101, T-F102, T-F301, T-F302 |
+| P-F18 (refetch fallido de `/me` con la sesión en caché; `ApiError.receivedAt`; `AppShell` con `lazy`; título de la pantalla de error de render y "· CRM" sin sesión), `ui.md` §6.4, §11.3, §12.1, §13, §13.2, §23 | T-F005, T-F101, T-F102, T-F104, T-F105, T-F106, T-F107, T-F301, T-F302 |
 | NFR-F01..F13 | T-F002 (F02, F07, F08), T-F702 (F01, F06, F10, F12), T-F703 (F09, F11), T-F704 (F03..F05), T-F705 (F06..F08), T-F706 (F13) |

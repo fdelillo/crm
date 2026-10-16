@@ -107,6 +107,18 @@ minutos no se contradicen; con 1, "(en 1 minuto)". (3) `LockedNotice` recibe `ti
 texto. (4) INV-F12 se alinea con ADR-023: sin sesión se usa la zona del navegador. Cambian §9.2,
 §12.2, §13.2, §15.1, §15.4 y §26. Tareas: cambian T-F101, T-F301 y T-F302. Sistema visual sin
 cambios.
+**Enmienda de F1, P-F18 (2026-10-16; aprobada por el usuario el 2026-10-16)**: cuatro puntos de la
+revisión de código de F1 (vuelta 2). (1) **Refetch fallido de `/me` con la sesión en caché**:
+`RequireSession` muestra el error a pantalla completa solo sin sesión en caché (`isLoadingError`);
+si falla un refetch (`isRefetchError`), el shell y la pantalla siguen montados, sin aviso. (2) **Hora
+estable de `login_locked`**: `ApiError` registra el instante de recepción (`receivedAt`) y
+`messageForError` calcula la hora con ese instante, no con el reloj del render. (3) **DropdownMenu y
+chunks**: DropdownMenu entra con el shell (menú del usuario) y `AppShell` se carga con `lazy` (grupo
+2 de §23): `/login` no descarga Radix DropdownMenu. (4) **Título de la pantalla de error de
+render**: "Algo salió mal al mostrar esta pantalla · CRM" y foco en su `<h1>`, también si falla el
+chunk de la primera pantalla; sin sesión, toda pantalla termina en "· CRM", como ya decía §13.
+Cambian §6.4, §11.3, §12.1, §13, §13.2, §15.4, §23 y §26. Tareas: cambian T-F005, T-F101, T-F102,
+T-F104, T-F105, T-F106, T-F107, T-F301 y T-F302. Sistema visual sin cambios.
 
 | Archivo | Contenido |
 |---|---|
@@ -345,7 +357,7 @@ flowchart TD
 
 | Guard | Lee | Mientras carga | Sin sesión / sin permiso | Error de red o `5xx` |
 |---|---|---|---|---|
-| `RequireSession` | `['session']` | Pantalla de arranque (marca + spinner con `aria-busy`), sin parpadeo del login | `<Navigate to="/login?next=<ruta actual>" replace>` | Estado de error a pantalla completa con "Reintentar" |
+| `RequireSession` | `['session']` | Pantalla de arranque (marca + spinner con `aria-busy`), sin parpadeo del login | `<Navigate to="/login?next=<ruta actual>" replace>` | Sin sesión en caché (primera carga, `isLoadingError`): estado de error a pantalla completa con "Reintentar". Con la sesión en caché (falla un refetch, `isRefetchError`; en TanStack Query v5 `isError` es `true` en los dos casos): el shell y la pantalla siguen montados, sin aviso, y el próximo refetch (foco, montaje) vuelve a intentar (§12.5, P-F18) |
 | `PublicOnly` | `['session']` | Renderiza el formulario (el `GET /me` anónimo es rápido; no se bloquea la pantalla) | Con sesión → `<Navigate to={safeNextPath(next)} replace>` | Renderiza el formulario (el error de sesión no impide ingresar) |
 | `RequirePermission` | `session.permissions` | — (ya hay sesión) | Estado **Sin permiso** en la misma URL: "No tenés acceso a esta sección" + "Pedile a un administrador si lo necesitás" + botón "Volver al inicio" | — |
 
@@ -743,6 +755,7 @@ export interface ApiError extends Error {
   readonly suggestedAction: SuggestedAction | null;
   readonly retryAfterSeconds: number | null; // cabecera Retry-After (legible: mismo origen): 429 y, desde v0.4.0, algunos 503 (registro, DD-33)
   readonly requestId: string | null;    // problem.instance, para soporte
+  readonly receivedAt: number;          // Date.now() al normalizar (respuesta recibida o fetch rechazado); base de Retry-After en login_locked (P-F18)
 }
 
 export function toApiError(input: { response?: Response; body?: unknown; cause?: unknown }): ApiError;
@@ -803,7 +816,7 @@ Agregar una spec = una entrada en `redocly.yaml` + un `&` en `schema.ts`.
 | `500` | `internal` | "Algo salió mal de nuestro lado…" + código de referencia (`requestId`) | No |
 | Respuesta no problem+json | `kind: 'unexpected'` | Mensaje genérico según status (5xx como `503`, 4xx como `internal`) | Según status |
 | Error del cliente al preparar el logo | `prepareLogo` devuelve `{ ok: false, reason }` | Mensaje en el control del logo (§13.11.1); no hay request | No |
-| Error de render | `ErrorBoundary` de la ruta raíz | "Algo salió mal al mostrar esta pantalla" + "Recargar" + "Ir al inicio" | No |
+| Error de render | `ErrorBoundary` de la ruta raíz | "Algo salió mal al mostrar esta pantalla" + "Recargar" + "Ir al inicio"; `document.title` = "Algo salió mal al mostrar esta pantalla · CRM" y foco en su `<h1>`, también si falla el chunk de la primera pantalla (reemplaza a `RootLayout`, que no está montado; P-F18) | No |
 | Chunk inexistente tras un deploy | `vite:preloadError` | Recarga automática una vez por sesión (marca en `sessionStorage`); si vuelve a fallar, "Hay una versión nueva de la app" + "Actualizar" | Una vez |
 
 ### 12.2 Mapa `code` → mensaje (es-AR) → comportamiento
@@ -934,7 +947,9 @@ Detalles:
 Convenciones de todas las pantallas:
 
 - Un solo `<h1>` por pantalla (en `PageHeader`), foco al `<h1>` al llegar (INV-F10) y
-  `document.title` = "{Pantalla} · {Empresa o 'CRM'}".
+  `document.title` = "{Pantalla} · {Empresa o 'CRM'}": `{Pantalla}` es el texto del `<h1>`, y sin
+  sesión en caché va "CRM". La pantalla de error de render (§12.1) usa siempre "· CRM": el
+  *boundary* raíz reemplaza a `RootLayout`, así que fija su título y su foco sin leer la caché (P-F18).
 - Formularios: validación del cliente **al enviar** y, después del primer intento, al cambiar cada
   campo (`mode: 'onSubmit'`, `reValidateMode: 'onChange'`), ADR-021. Errores debajo del campo con
   `aria-describedby`; error general en un `FormAlert` con `role="alert"` arriba del botón.
@@ -1045,7 +1060,7 @@ stateDiagram-v2
 | Carga | Formulario inmediato (la comprobación de sesión no bloquea la pantalla) |
 | Vacío | N/A |
 | Error | §12.2: `invalid_credentials` (mensaje único, nunca dice si el email existe), `account_disabled` (aviso persistente), `rate_limited`, `503`/`500`/red |
-| Bloqueado | Panel de la derecha. Hora = ahora + `Retry-After`, en la zona del navegador, redondeada al minuto siguiente (una hora exacta no se mueve). Minutos = los de reloj entre ahora truncado al minuto y esa hora, mínimo 1 (14:20:30 + 900 s → "a las 14:36 (en 16 minutos)"). El texto se arma una vez, al recibir el `429`; sin `Retry-After`, va sin hora (§12.2; enmienda de F1, P-F17). "Volver a intentar" siempre habilitado (reintentar durante el bloqueo no lo extiende, DD-7). "Restablecer contraseña" lleva el email (el reset levanta el bloqueo) |
+| Bloqueado | Panel de la derecha. Hora = ahora + `Retry-After`, en la zona del navegador, redondeada al minuto siguiente (una hora exacta no se mueve). Minutos = los de reloj entre ahora truncado al minuto y esa hora, mínimo 1 (14:20:30 + 900 s → "a las 14:36 (en 16 minutos)"). El texto se arma con el instante en que llegó el `429` (`ApiError.receivedAt`), no con el reloj del render: un re-render posterior muestra la misma hora (P-F18); sin `Retry-After`, va sin hora (§12.2; enmienda de F1, P-F17). "Volver a intentar" siempre habilitado (reintentar durante el bloqueo no lo extiende, DD-7). "Restablecer contraseña" lleva el email (el reset levanta el bloqueo) |
 | Enviando | "Ingresando…" |
 | Éxito | `clear()` + sesión en caché → `replace` a `safeNextPath(next)` |
 | Sin permiso / Sesión vencida | N/A (el aviso de sesión vencida es la zona C) |
@@ -2037,7 +2052,7 @@ export function useOnlineStatus(): boolean;
 export function useDocumentTitle(title: string): void;
 export function isValidCuit(raw: string): boolean;                        // 11 dígitos + módulo 11
 export function formatDateTime(iso: string, timeZone: string, now?: Date): string; // "6/10, 14:30" (año si difiere)
-export function formatRetryAt(retryAfterSeconds: number, now: Date): { time: string; minutes: number }; // reglas de §13.2 (minutes: de reloj, mínimo 1; P-F17); T-F102 (F1, P-F16): lo usa messageForError (login_locked)
+export function formatRetryAt(retryAfterSeconds: number, now: Date): { time: string; minutes: number }; // reglas de §13.2 (minutes: de reloj, mínimo 1; P-F17); T-F102 (F1, P-F16): lo usa messageForError (login_locked) con now = new Date(error.receivedAt), nunca new Date() (P-F18)
 ```
 
 ---
@@ -2403,8 +2418,10 @@ La preparación de imágenes vive en `features/tenant/logo/` porque solo la usa 
 ## 23. Performance
 
 - **Code splitting por ruta** (`lazy` de React Router): (1) pantallas públicas; (2) shell +
-  panel; (3) cada pantalla de Ajustes por separado. Radix Dialog/DropdownMenu y la preparación del
-  logo solo entran con Usuarios y Datos de la empresa.
+  panel; (3) cada pantalla de Ajustes por separado. `AppShell` se carga con `lazy` (P-F18): Radix
+  DropdownMenu entra con el shell (menú del usuario, §13.13) y Usuarios lo reusa (menú `⋮`); Radix
+  Dialog y la preparación del logo solo entran con Usuarios y Datos de la empresa. Ninguno llega a
+  las pantallas públicas.
 - **Sin fuentes web** (DD-F14) ni imágenes pesadas: el LCP de `/login` es texto.
 - **Precarga**: al tocar un enlace de navegación, React Router descarga el chunk de la ruta
   mientras navega; no se precarga nada más.
@@ -2522,6 +2539,7 @@ Preguntas de la enmienda de F1 (2026-10-16):
 |---|---|---|---|
 | P-F16 | Dos huecos de T-F101/T-F102 (`api/errorMessages.ts`). (1) ¿Qué dice `token_invalid` en `generic` y en un contexto sin variante propia? (2) ¿`formatRetryAt` se adelanta a T-F102 (F1), ya que el texto de `login_locked` de §12.2 lo necesita y estaba en T-F302 (F3)? | **Cerrada: sí** (el usuario, 2026-10-16) | **Sí** a los dos. (1) "Este enlace ya no sirve." / "Pedí uno nuevo.": vale para cualquier enlace, sin el plazo que solo corresponde al restablecimiento. En 001 solo lo devuelven el restablecimiento, la verificación y la invitación, así que es el texto de respaldo del `Record` (INV-F05). Alternativas: reusar el texto del restablecimiento (el plazo de una hora es falso para otros enlaces) o el de `internal` (dice que algo falló de nuestro lado, y no es así). (2) Una sola implementación, con la firma de §15.4 y las reglas de §13.2; T-F302 la usa. Alternativas: un formato provisorio en F1 que T-F302 reemplaza (dos implementaciones de la misma regla) o dejar `login_locked` sin hora hasta F3 (T-F101 no puede verificar el texto de §12.2) |
 | P-F17 | Cuatro puntos de `login_locked` que P-F16 dejó abiertos. (1) ¿Qué dice sin `Retry-After`? (2) ¿Cómo se calcula `minutes` de `formatRetryAt`, y con 1 se dice "1 minuto"? (3) ¿Qué recibe `LockedNotice`: la `Date` de §15.1, el resultado de `formatRetryAt` o el texto? (4) ¿INV-F12 admite la zona del navegador sin sesión? | **Cerrada: sí** (el usuario, 2026-10-16) | **Sí** a los cuatro. (1) "…Podés volver a intentar en unos minutos o restablecer tu contraseña ahora.", el "unos minutos" que DD-F25 usa sin cabecera. Alternativas: suponer 15 minutos (falso si el bloqueo ya venía corriendo) o el texto de `rate_limited` (pierde el estado Bloqueado y "Restablecer contraseña"). (2) Minutos de reloj entre ahora truncado al minuto y la hora mostrada, mínimo 1: a las 14:20:30 con 900 s, "a las 14:36 (en 16 minutos)", y quien mira el reloj (14:20) ve cuentas que cierran. Con 1, "(en 1 minuto)": el singular de DD-F25, sin su "unos segundos", porque acá ya hay una hora. Alternativa: `ceil(s/60)`, más simple pero un minuto desfasado de la hora mostrada. (3) `title` y `description` ya armados por `messageForError(error, 'login')`: una sola fuente del texto, y el caso sin cabecera sale solo. Son dos `string` porque `components/` no importa `api/` (§9.1). Alternativas: la `Date` (el componente rearma el texto y repite el caso sin hora) o `{ time, minutes }` (repite la frase y el singular). Costo: "en {n} minutos" no se actualiza si la pantalla queda abierta; la hora sigue siendo cierta. (4) ADR-023 ya usa la zona del navegador sin sesión; INV-F12 lo omitía. Se corrige su texto, sin ADR nuevo |
+| P-F18 | Cuatro puntos de la revisión de código de F1 (vuelta 2). (1) Si falla un refetch de `/me` con la sesión en caché, ¿`RequireSession` muestra el error a pantalla completa? (2) ¿Cómo se garantiza que la hora de `login_locked` no cambie en cada render? (3) ¿Con qué chunk entra DropdownMenu, y el shell se carga con `lazy`? (4) ¿Qué `document.title` tiene la pantalla de error de render? | **Cerrada: sí** (el usuario, 2026-10-16) | **Sí** a los cuatro. (1) Pantalla completa solo con `isLoadingError`; un refetch fallido (red, `5xx`; el `401` ya es `null`) conserva el shell y la pantalla, **sin aviso**: la sesión mostrada es la última buena, el servidor autoriza igual, el próximo refetch reintenta solo, C-02 avisa si no hay red y cada pantalla muestra sus errores. Alternativas: la pantalla completa (desmonta el shell; en F6 perdería cambios sin guardar sin el aviso de DD-F32) o un aviso no bloqueante (texto sin acción útil y otra región `aria-live`). (2) `ApiError.receivedAt` (`Date.now()` en `toApiError`) y `formatRetryAt(s, new Date(error.receivedAt))`: el texto depende solo del error, que TanStack Query conserva hasta el próximo envío, y `Retry-After` se cuenta desde la recepción (RFC 9110). Alternativas: armarlo en `onError` y guardarlo en estado (depende de que cada llamador lo recuerde), `useMemo` (React no garantiza conservar el valor) o un parámetro `now` (le pasa el problema al llamador). (3) DropdownMenu entra con el shell (menú del usuario) y Usuarios lo reusa; `AppShell` con `lazy`, como pide el grupo (2) de §23, así `/login` (NFR-F05) no lo descarga. Costo: un chunk más al entrar al panel. Alternativa: shell estático y corregir solo el texto (el menú queda en el chunk de las pantallas públicas). (4) El `ErrorBoundary` raíz fija "Algo salió mal al mostrar esta pantalla · CRM" y enfoca su `<h1>`: reemplaza a `RootLayout`, que es quien fija título y foco, así que con cualquier error de render el título quedaba en "CRM" o en el de la pantalla anterior. Usa siempre "· CRM" para no depender de la caché. Sin sesión, `RootLayout` agrega "· CRM", como ya decía §13. Alternativas: solo el `<h1>` (sin el nombre de la app en pestañas ni en el historial) o la empresa si hay sesión en caché (otra dependencia del *boundary*) |
 
 **Revisión 16 del backend: cerrada para la UI** (la lista "Dependiente de la revisión 16" de la
 Revisión 3 queda resuelta en la Revisión 4):
