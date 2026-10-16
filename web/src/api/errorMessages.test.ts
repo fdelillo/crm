@@ -1,0 +1,279 @@
+import { describe, expect, it, vi } from 'vitest'
+import { toApiError } from './errors'
+import type { ErrorCode, FieldErrorCode } from './types'
+import { problem } from '@/test/fixtures'
+import {
+  messageForError,
+  fieldErrorMessage,
+  logoRejectMessage,
+  applyServerFieldErrors,
+} from './errorMessages'
+
+function error(code: ErrorCode, seconds?: number, status = 400) {
+  return toApiError({
+    response: new Response(null, {
+      status,
+      headers: {
+        'Content-Type': 'application/problem+json',
+        ...(seconds === undefined ? {} : { 'Retry-After': String(seconds) }),
+      },
+    }),
+    body: problem(code, status, { instance: 'support-reference' }),
+  })
+}
+// T-F101 (INV-F05): exact contract messages, contexts and field variants.
+describe('user error messages', () => {
+  it.each([
+    ['malformed_request', 'No pudimos procesar el pedido.'],
+    ['validation_failed', 'Revisá los datos marcados.'],
+    ['unsupported_media_type', 'No pudimos procesar el pedido.'],
+    ['payload_too_large', 'No pudimos procesar el pedido.'],
+    ['unauthenticated', 'Tu sesión se cerró. Ingresá de nuevo para seguir.'],
+    ['invalid_credentials', 'El email o la contraseña no son correctos.'],
+    ['account_disabled', 'Tu usuario está desactivado.'],
+    ['forbidden', 'No tenés permiso para hacer esto.'],
+    ['not_found', 'No encontramos lo que buscás.'],
+    ['method_not_allowed', 'No pudimos procesar el pedido.'],
+    ['email_already_registered', 'Ya existe un usuario con ese email.'],
+    ['email_taken', 'Ese email ya tiene un usuario en el sistema.'],
+    ['email_not_verified', 'Confirmá tu email para invitar a tu equipo.'],
+    ['last_admin', 'Tiene que quedar al menos un administrador activo.'],
+    [
+      'invalid_state',
+      'El estado de este usuario cambió mientras tanto. Actualizamos la lista.',
+    ],
+    ['rate_limited', 'Hiciste muchos intentos seguidos.'],
+    ['service_unavailable', 'El servicio no está disponible en este momento.'],
+    ['internal', 'Algo salió mal de nuestro lado.'],
+  ] satisfies [ErrorCode, string][])(
+    '%s has its approved generic title',
+    (code, title) => {
+      expect(messageForError(error(code), 'generic').title).toBe(title)
+    },
+  )
+  it.each([
+    [3, 'unos segundos'],
+    [60, '1 minuto'],
+    [61, '2 minutos'],
+    [1800, '30 minutos'],
+    [undefined, 'unos minutos'],
+  ] as const)('rounds the wait %s', (seconds, wait) => {
+    expect(
+      messageForError(error('rate_limited', seconds, 429), 'generic')
+        .description,
+    ).toBe(`Esperá ${wait} y probá de nuevo.`)
+  })
+  it.each(['invite', 'userAction', 'generic'] as const)(
+    'explains email verification in %s',
+    (context) => {
+      expect(
+        messageForError(error('email_not_verified'), context),
+      ).toMatchObject({
+        title: 'Confirmá tu email para invitar a tu equipo.',
+        description:
+          'Te mandamos un enlace cuando te registraste. Si no lo encontrás, pedí uno nuevo.',
+      })
+    },
+  )
+  it.each([
+    [45, 'unos segundos'],
+    [720, '12 minutos'],
+  ] as const)('explains registration throttling %s', (seconds, wait) => {
+    expect(
+      messageForError(error('rate_limited', seconds, 429), 'signup'),
+    ).toMatchObject({
+      title: 'Hubo muchos intentos de registro seguidos.',
+      description: `Esperá ${wait} y probá de nuevo. No se creó nada: podés reintentar con los mismos datos.`,
+    })
+  })
+  it.each(['invite', 'userAction'] as const)(
+    'explains invitation throttling %s',
+    (context) => {
+      expect(
+        messageForError(error('rate_limited', 360, 429), context).description,
+      ).toBe(
+        'Hay un límite de invitaciones y reactivaciones seguidas para cuidar el envío de emails. Esperá 6 minutos y probá de nuevo.',
+      )
+    },
+  )
+  it.each([300, 1200])('explains resend throttling %s', (seconds) => {
+    expect(
+      messageForError(
+        error('rate_limited', seconds, 429),
+        'resendVerification',
+      ),
+    ).toMatchObject({
+      title: 'Ya te lo mandamos hace poco.',
+      description: `Esperá ${seconds / 60} minutos y probá de nuevo.`,
+    })
+  })
+  it.each([
+    [
+      'resetConfirm',
+      'Este enlace ya no sirve.',
+      'Vence a la hora o ya se usó. Pedí uno nuevo.',
+    ],
+    [
+      'verifyEmail',
+      'Este enlace de confirmación ya no sirve.',
+      'Vence a las 48 horas o ya se usó.',
+    ],
+    [
+      'invitationPreview',
+      'Esta invitación ya no es válida.',
+      'Venció, ya se usó o la reemplazó una más nueva.',
+    ],
+  ] as const)('describes invalid links in %s', (context, title, description) =>
+    expect(messageForError(error('token_invalid'), context)).toMatchObject({
+      title,
+      description,
+    }),
+  )
+  it.each([
+    ['unsupported_media_type', 'El logo tiene que ser una imagen PNG o JPG.'],
+    [
+      'payload_too_large',
+      'La imagen sigue pesando más de lo permitido. Probá con otra imagen del logo.',
+    ],
+    ['malformed_request', 'No pudimos subir el logo.'],
+  ] satisfies [ErrorCode, string][])('describes logo %s', (code, title) =>
+    expect(messageForError(error(code), 'logo').title).toBe(title),
+  )
+  it('keeps reference codes and explains temporary outages and network failures', () => {
+    expect(
+      messageForError(error('method_not_allowed'), 'generic'),
+    ).toMatchObject({
+      description: 'Recargá la página y probá de nuevo.',
+      requestId: 'support-reference',
+    })
+    expect(messageForError(error('internal'), 'generic').description).toContain(
+      'support-reference',
+    )
+    expect(
+      messageForError(error('service_unavailable', 2, 503), 'signup')
+        .description,
+    ).toBe(
+      'Probá de nuevo en unos segundos. No se creó nada: podés reintentar con los mismos datos.',
+    )
+    expect(
+      messageForError(error('service_unavailable', undefined, 503), 'generic')
+        .description,
+    ).toBe('Probá de nuevo en unos minutos.')
+    expect(
+      messageForError(toApiError({ cause: new TypeError() }), 'generic'),
+    ).toMatchObject({ title: 'No hay conexión.', retryable: true })
+    for (const [status, code] of [
+      [502, 'service_unavailable'],
+      [418, 'internal'],
+    ] as const)
+      expect(
+        messageForError(
+          toApiError({ response: new Response(null, { status }) }),
+          'generic',
+        ).title,
+      ).toBe(messageForError(error(code), 'generic').title)
+  })
+  it.each([
+    ['x', 'required', 'Completá este campo.'],
+    ['industry_template_code', 'required', 'Elegí el rubro de tu empresa.'],
+    ['base_currency', 'required', 'Elegí la moneda base.'],
+    ['file', 'required', 'Elegí una imagen para el logo.'],
+    ['x', 'invalid_format', 'El formato no es válido.'],
+    [
+      'email',
+      'invalid_format',
+      'Ingresá un email válido, por ejemplo nombre@empresa.com',
+    ],
+    [
+      'tax_id',
+      'invalid_format',
+      'El CUIT tiene 11 números (podés escribirlo con o sin guiones).',
+    ],
+    ['x', 'too_short', 'Es demasiado corto.'],
+    [
+      'password',
+      'too_short',
+      'La contraseña tiene que tener al menos 10 caracteres.',
+    ],
+    ['name', 'invalid_value', 'Tiene que tener entre 1 y 120 caracteres.'],
+    [
+      'company_name',
+      'invalid_value',
+      'Tiene que tener entre 1 y 120 caracteres.',
+    ],
+    [
+      'legal_name',
+      'invalid_value',
+      'Es demasiado largo (máximo 200 caracteres).',
+    ],
+    ['base_currency', 'invalid_value', 'Elegí la moneda base.'],
+    ['role', 'invalid_value', 'Elegí un rol.'],
+    [
+      'password',
+      'invalid_value',
+      'Ingresá tu contraseña (hasta 128 caracteres).',
+    ],
+    ['x', 'invalid_value', 'Revisá este dato.'],
+    [
+      'file',
+      'invalid_value',
+      'No pudimos leer la imagen o mide más de 2000 × 2000 px. Probá con otra imagen del logo.',
+    ],
+    ['password', 'too_long', 'La contraseña puede tener hasta 128 caracteres.'],
+    ['x', 'invalid_tax_id', 'El CUIT no es válido. Revisá los números.'],
+    ['x', 'same_as_email', 'La contraseña no puede ser igual a tu email.'],
+    ['x', 'unknown_template', 'Elegí un rubro de la lista.'],
+    ['x', 'invalid_timezone', 'Elegí una zona horaria de la lista.'],
+  ] satisfies [string, FieldErrorCode, string][])(
+    'describes %s %s',
+    (field, code, text) => expect(fieldErrorMessage(field, code)).toBe(text),
+  )
+  it.each([
+    ['name', 120],
+    ['company_name', 120],
+    ['legal_name', 200],
+    ['address', 300],
+    ['phone', 50],
+    ['email', 254],
+  ] as const)('uses the contract maximum for %s', (field, max) =>
+    expect(fieldErrorMessage(field, 'too_long')).toBe(
+      `Es demasiado largo (máximo ${max} caracteres).`,
+    ),
+  )
+  it.each([
+    [
+      'svg',
+      'No podemos usar logos en SVG. Exportalo como PNG desde el programa donde lo tenés y subilo de nuevo.',
+    ],
+    ['unsupported_format', 'El logo tiene que ser una imagen PNG o JPG.'],
+    [
+      'unreadable',
+      'No pudimos leer la imagen. Probá con otro archivo PNG o JPG.',
+    ],
+    [
+      'too_large_to_process',
+      'La imagen es demasiado grande para prepararla en este dispositivo. Probá con una captura de pantalla del logo o con una imagen más chica.',
+    ],
+    [
+      'cannot_shrink',
+      'No pudimos achicar la imagen lo suficiente. Probá con otra imagen del logo.',
+    ],
+  ] as const)('explains rejected logo %s', (reason, text) =>
+    expect(logoRejectMessage(reason)).toBe(text),
+  )
+  it('sets known field errors and returns unknown fields', () => {
+    const setError = vi.fn()
+    const unknown = { field: 'other', code: 'required' } as const
+    expect(
+      applyServerFieldErrors<{ email: string }>(
+        setError,
+        [{ field: 'email', code: 'invalid_format' }, unknown],
+        ['email'],
+      ),
+    ).toEqual([unknown])
+    expect(setError).toHaveBeenCalledWith('email', {
+      type: 'server',
+      message: fieldErrorMessage('email', 'invalid_format'),
+    })
+  })
+})
