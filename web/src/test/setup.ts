@@ -21,10 +21,15 @@ Object.defineProperty(window, 'scrollTo', {
   value: vi.fn(),
 })
 afterEach(() => {
-  cleanup()
-  clearTestQueryClients()
-  server.resetHandlers()
-  sessionStorage.clear()
-  assertNoUnhandledRequests()
+  // Checked first so a failure while cleaning up cannot leave the pending list
+  // for the next test; the finally block cleans up even when the check throws.
+  try {
+    assertNoUnhandledRequests()
+  } finally {
+    cleanup()
+    clearTestQueryClients()
+    server.resetHandlers()
+    sessionStorage.clear()
+  }
 })
 afterAll(() => server.close())
