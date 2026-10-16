@@ -3123,6 +3123,13 @@ reglas de §13.2, porque el texto de `login_locked` lo necesita; T-F302 lo usa y
 Cambian T-F101 (filas nuevas), T-F102, T-F302 y la trazabilidad. Sin tareas nuevas ni cambios de
 orden.
 
+**Enmienda de F1, P-F17 (2026-10-16; `ui.md` P-F17 aprobada por el usuario el 2026-10-16)**
+(`ui.md`, enmienda de F1, P-F17): `login_locked` sin `Retry-After` va sin hora; `minutes` de
+`formatRetryAt` son minutos de reloj, mínimo 1, con "1 minuto" en singular; `LockedNotice` recibe
+`title` y `description` de `messageForError` en vez de una `Date`; INV-F12 alineada con ADR-023
+(zona del navegador sin sesión). Cambian T-F101 (filas nuevas, necesarias para cerrar F1), T-F301
+(fila nueva), T-F302 y la trazabilidad. Sin tareas nuevas ni cambios de orden.
+
 ### Convenciones de esta sección
 
 - `[T]` = tarea de test. Va **antes** de la tarea de código que la hace pasar, y el test debe
@@ -3523,7 +3530,7 @@ de mkcert instalada: abrir `https://localhost:5173/settings/users` sin sesión r
 navegador) se ve el shell; borrar la sesión en la base y navegar vuelve al login con "Tu sesión se
 cerró"; Chrome ofrece "Instalar app" sobre el binario en `https://localhost:8443`.
 
-**T-F101 [T] — Mensajes por `code` y por campo** · ADR-009, INV-F05, `ui.md` §12.2–12.3, §13.2, §15.4, P-F16
+**T-F101 [T] — Mensajes por `code` y por campo** · ADR-009, INV-F05, `ui.md` §12.2–12.3, §13.2, §15.4, P-F16, P-F17, INV-F12
 - **Red**:
 
   | Caso | Esperado |
@@ -3533,7 +3540,10 @@ cerró"; Chrome ofrece "Instalar app" sobre el binario en `https://localhost:844
   | `token_invalid` en `resetConfirm`, `verifyEmail`, `invitationPreview` | los tres textos de §12.2 |
   | *(P-F16)* `token_invalid` en `generic` y en `login` (contexto sin variante propia) | "Este enlace ya no sirve." + "Pedí uno nuevo." |
   | *(P-F16)* `login_locked` con `retryAfterSeconds` 900 y el reloj fijado (`vi.setSystemTime`) en 14:20:00 hora local | "Por seguridad, pausamos el ingreso con este email." + "Hubo varios intentos fallidos. Podés volver a intentar a las 14:35 (en 15 minutos) o restablecer tu contraseña ahora." |
-  | *(P-F16)* `formatRetryAt(900, now)` con `now` a las 14:20:00 hora local / a las 14:20:30 | `{ time: '14:35', minutes: 15 }` / `time: '14:36'` (minuto siguiente, `ui.md` §13.2) |
+  | *(P-F16, P-F17)* `formatRetryAt(900, now)` con `now` a las 14:20:00 hora local / a las 14:20:30 | `{ time: '14:35', minutes: 15 }` / `{ time: '14:36', minutes: 16 }` (minuto siguiente y minutos de reloj, `ui.md` §13.2) |
+  | *(P-F17)* `formatRetryAt(10, now)` con `now` a las 14:20:30 / `formatRetryAt(60, now)` con `now` a las 14:20:00 | `{ time: '14:21', minutes: 1 }` / lo mismo |
+  | *(P-F17)* `login_locked` con `retryAfterSeconds` 60 y el reloj en 14:20:00 hora local | "…Podés volver a intentar a las 14:21 (en 1 minuto) o restablecer tu contraseña ahora." |
+  | *(P-F17)* `login_locked` sin `Retry-After` (`retryAfterSeconds: null`) | "Por seguridad, pausamos el ingreso con este email." + "Hubo varios intentos fallidos. Podés volver a intentar en unos minutos o restablecer tu contraseña ahora." |
   | `unsupported_media_type`, `payload_too_large` y `malformed_request` en `logo` | textos del logo ("No pudimos subir el logo." con `requestId` para el `400`) |
   | `rate_limited` con `retryAfterSeconds` 3 / 60 / 61 / 1800 / `null` | "unos segundos" / "1 minuto" / "2 minutos" / "30 minutos" / "unos minutos" (DD-F25) |
   | `service_unavailable` con `retryAfterSeconds` 2 en `signup` / sin cabecera | "Probá de nuevo en unos segundos." + "No se creó nada: podés reintentar con los mismos datos." / "Probá de nuevo en unos minutos." |
@@ -3721,6 +3731,7 @@ login con "Cerraste sesión." y atrás no muestra datos.
   | `401 invalid_credentials` | "El email o la contraseña no son correctos."; email conservado; contraseña vacía y enfocada; sin navegación ni limpieza de caché |
   | `403 account_disabled` | "Tu usuario está desactivado." + "Pedile a un administrador de tu empresa que lo reactive." |
   | `429 login_locked` con `Retry-After: 900` y reloj en 14:20 | "…Podés volver a intentar a las 14:35 (en 15 minutos)…"; "Restablecer contraseña" lleva a `/forgot-password` con el email; "Volver a intentar" muestra el formulario |
+  | *(P-F17)* `429 login_locked` sin `Retry-After` | el mismo panel con "…Podés volver a intentar en unos minutos o restablecer tu contraseña ahora." y los dos botones |
   | `429 rate_limited` con `Retry-After: 3` (cupo por IP del login, DD-9) / con `Retry-After: 120` | "Esperá unos segundos y probá de nuevo." / "Esperá 2 minutos y probá de nuevo." (DD-F25) |
   | `reason=session_expired` / `password_changed` / `logged_out` / otro valor | el aviso correspondiente / ninguno |
   | *(DD-F32)* `reason=session_expired` con `state.unsavedChangesLost: true` / sin `state` / `reason=logged_out` con ese `state` | "Tu sesión se cerró. Ingresá de nuevo para seguir." + "Los cambios que no habías guardado se perdieron." / solo la primera línea / solo "Cerraste sesión." |
@@ -3730,8 +3741,9 @@ login con "Cerraste sesión." y atrás no muestra datos.
   | Envío con Enter desde el campo contraseña | envía |
 - **Green**: pasa la tabla.
 
-**T-F302 — Implementar `LoginPage`, `LockedNotice` y `useLogin`**. Usan `formatRetryAt` de T-F102
-(enmienda de F1, P-F16): no lo reimplementan.
+**T-F302 — Implementar `LoginPage`, `LockedNotice` y `useLogin`**. `LoginPage` pasa a `LockedNotice`
+el `title` y la `description` de `messageForError(error, 'login')` (`ui.md` §15.1; enmienda de F1,
+P-F17): ninguno de los tres formatea la hora ni reimplementa `formatRetryAt` (T-F102, P-F16).
 
 **T-F303 [T] — Cerrar sesión** · US-2, INV-F03, `ui.md` §13.8, §17
 - **Red**:
@@ -4295,4 +4307,5 @@ usó) reportado.
 | DD-F32 / INV-F18 (`401` con cambios sin guardar), P-F14, S-F13 | T-F103, T-F105, T-F301, T-F602, T-F605 |
 | H-17 / plan DD-50 propuesta (log del `503` de la SPA sin compilar), P-F15 | T-F011 |
 | P-F16 (`token_invalid` sin variante de contexto; `formatRetryAt` en F1), `ui.md` §12.2, §13.2, §15.4 | T-F101, T-F102, T-F302 |
+| P-F17 (`login_locked` sin `Retry-After`, minutos de `formatRetryAt`, props de `LockedNotice`), INV-F12 y ADR-023 (zona del navegador sin sesión) | T-F101, T-F102, T-F301, T-F302 |
 | NFR-F01..F13 | T-F002 (F02, F07, F08), T-F702 (F01, F06, F10, F12), T-F703 (F09, F11), T-F704 (F03..F05), T-F705 (F06..F08), T-F706 (F13) |
