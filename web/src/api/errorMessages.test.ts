@@ -52,6 +52,36 @@ describe('user error messages', () => {
     },
   )
   it.each([
+    ['malformed_request', 'Recargá la página y probá de nuevo.'],
+    ['unsupported_media_type', 'Recargá la página y probá de nuevo.'],
+    ['payload_too_large', 'Recargá la página y probá de nuevo.'],
+    [
+      'unauthenticated',
+      'Las sesiones se cierran solas después de 24 horas sin uso o a los 7 días.',
+    ],
+    [
+      'account_disabled',
+      'Pedile a un administrador de tu empresa que lo reactive.',
+    ],
+    ['forbidden', 'Si lo necesitás, pedíselo a un administrador.'],
+    ['email_already_registered', '¿Querés recuperar la contraseña?'],
+    ['email_taken', 'Usá otro email.'],
+    [
+      'email_not_verified',
+      'Te mandamos un enlace cuando te registraste. Si no lo encontrás, pedí uno nuevo.',
+    ],
+    [
+      'last_admin',
+      'Nombrá a otra persona como administrador antes de hacer este cambio.',
+    ],
+  ] satisfies [ErrorCode, string][])(
+    'keeps the approved explanation for %s',
+    (code, description) =>
+      expect(messageForError(error(code), 'generic').description).toBe(
+        description,
+      ),
+  )
+  it.each([
     [3, 'unos segundos'],
     [60, '1 minuto'],
     [61, '2 minutos'],
@@ -146,6 +176,9 @@ describe('user error messages', () => {
       description: 'Recargá la página y probá de nuevo.',
       requestId: 'support-reference',
     })
+    expect(messageForError(error('malformed_request'), 'logo').requestId).toBe(
+      'support-reference',
+    )
     expect(messageForError(error('internal'), 'generic').description).toContain(
       'support-reference',
     )
@@ -237,6 +270,14 @@ describe('user error messages', () => {
     ['email', 254],
   ] as const)('uses the contract maximum for %s', (field, max) =>
     expect(fieldErrorMessage(field, 'too_long')).toBe(
+      `Es demasiado largo (máximo ${max} caracteres).`,
+    ),
+  )
+  it.each([
+    ['address', 300],
+    ['phone', 50],
+  ] as const)('explains an invalid optional text %s', (field, max) =>
+    expect(fieldErrorMessage(field, 'invalid_value')).toBe(
       `Es demasiado largo (máximo ${max} caracteres).`,
     ),
   )
