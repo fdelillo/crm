@@ -156,8 +156,11 @@ export const errorMessages: Record<ErrorCode, ErrorMessageResolver> = {
     const title = 'Por seguridad, pausamos el ingreso con este email.'
     const seconds = error?.retryAfterSeconds ?? null
     let when = 'en unos minutos'
-    if (seconds !== null) {
-      const { time, minutes } = formatRetryAt(seconds, new Date())
+    if (error && seconds !== null) {
+      const { time, minutes } = formatRetryAt(
+        seconds,
+        new Date(error.receivedAt),
+      )
       when = `a las ${time} (en ${minutes === 1 ? '1 minuto' : `${minutes} minutos`})`
     }
     return {
