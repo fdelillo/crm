@@ -172,6 +172,34 @@ describe('application shell', () => {
       expect(document.title).toBe('Panel inicial · Empresa de prueba'),
     )
   })
+  // INV-F10 (ui.md §13): leaving the render-error screen with Back also focuses the destination's <h1>.
+  it('focuses the previous heading after Back from the render-error screen', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    function BrokenPage(): never {
+      throw new Error('Test rendering failure')
+    }
+    const { router } = renderApp(['/settings'], {
+      protectedPage: <BrokenPage />,
+    })
+    await screen.findByRole('heading', { name: 'Ajustes' })
+    await userEvent.click(screen.getByRole('link', { name: 'Usuarios' }))
+    const errorHeading = await screen.findByRole('heading', {
+      name: 'Algo salió mal al mostrar esta pantalla',
+    })
+    await waitFor(() => expect(errorHeading).toHaveFocus())
+    await act(() => router.navigate(-1))
+    const settings = await screen.findByRole('heading', { name: 'Ajustes' })
+    await waitFor(() => expect(settings).toHaveFocus())
+  })
+  // ui.md §18: a reload keeps history.state, but an initial load must not move focus.
+  it('does not move focus on an initial load whose history entry carries stale state', async () => {
+    renderApp([{ pathname: '/', state: { focusHeading: true } }])
+    const home = await screen.findByRole('heading', { name: 'Panel inicial' })
+    await waitFor(() =>
+      expect(document.title).toBe('Panel inicial · Empresa de prueba'),
+    )
+    expect(home).not.toHaveFocus()
+  })
   // T-F106 (P-F18, ui.md §13): without a cached session every title ends in "· CRM".
   it('ends the title in "· CRM" on a screen without a session', async () => {
     renderApp(['/ruta-inexistente'])
