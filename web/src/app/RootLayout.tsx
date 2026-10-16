@@ -9,9 +9,14 @@ export function RootLayout() {
   const location = useLocation()
   const previousPath = useRef(location.pathname)
   const client = useQueryClient()
-  // Leaving the error screen (any way) remounts this layout; the boundary left a flag.
-  const pendingFocus = useRef(consumeErrorScreenExit())
+  const pendingFocus = useRef(false)
   const lastHeading = useRef<HTMLHeadingElement | null>(null)
+  // Leaving the error screen (any way) remounts this layout; the boundary left a
+  // flag. Read in an effect, not in render: StrictMode runs the second mount
+  // effect with the flag already consumed, and it must not overwrite the true.
+  useLayoutEffect(() => {
+    if (consumeErrorScreenExit()) pendingFocus.current = true
+  }, [])
   // Layout effect: mark the navigation before the observer sees the new <h1>.
   useLayoutEffect(() => {
     if (previousPath.current !== location.pathname) pendingFocus.current = true
