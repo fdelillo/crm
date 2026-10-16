@@ -119,7 +119,6 @@ describe('session guards and global failures', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
     const heading = await screen.findByRole('heading', {
       name: 'Usuarios',
-      exact: true,
     })
     await waitFor(() =>
       expect(document.title).toBe('Usuarios · Empresa de prueba'),
