@@ -1,7 +1,7 @@
 # UI (frontend): Empresas, usuarios y roles
 
 **Spec**: [`spec.md`](spec.md) · **Rama**: `001-empresas-usuarios` · **Fecha**: 2026-09-29
-**Autor**: `frontend-architect` · **Estado**: Revisión 3 aprobada por el usuario el 2026-10-12; Revisión 4 aprobada por el usuario el 2026-10-13 (P-F10: sí; P-F11: no); enmienda H-16 a la Revisión 4 aprobada por el usuario el 2026-10-13; enmienda DD-F31 *Accepted*, aprobada por el usuario el 2026-10-14; enmienda de versiones del 2026-10-15: React Router 8 por decisión del usuario, regla de versiones y excepción de TypeScript confirmadas por el usuario el 2026-10-15 (P-F12)
+**Autor**: `frontend-architect` · **Estado**: Revisión 3 aprobada por el usuario el 2026-10-12; Revisión 4 aprobada por el usuario el 2026-10-13 (P-F10: sí; P-F11: no); enmienda H-16 a la Revisión 4 aprobada por el usuario el 2026-10-13; enmienda DD-F31 *Accepted*, aprobada por el usuario el 2026-10-14; enmienda de versiones del 2026-10-15: React Router 8 por decisión del usuario, regla de versiones y excepción de TypeScript confirmadas por el usuario el 2026-10-15 (P-F12); enmienda de F0 del 2026-10-15: P-F13, P-F14 y P-F15 aprobadas por el usuario el 2026-10-16
 **Contrato consumido**: [`contracts/openapi.yaml`](contracts/openapi.yaml) **v0.5.0** (**canónico**; el diseño original se hizo contra v0.3.1; la Revisión 3, contra v0.4.3)
 **Revisión 1 (2026-09-29)**: respuestas del usuario a P-F1 a P-F5 (§26) y resolución de los
 hallazgos H-1 a H-9 por el backend (`plan.md` §18, DD-22 a DD-30, §10.7, contrato v0.3.0). Cambios:
@@ -74,6 +74,21 @@ del conjunto, sin `--force` ni `--legacy-peer-deps`", con la excepción registra
 (Frontend, convenciones). Cambian §0, §22, §26 (P-F12, con default), §28 (RF-1), §29 y §30.
 Ninguna pantalla, estado, regla ni caso de test cambia; T-F001 y T-F006 suman verificaciones.
 Sistema visual sin cambios.
+**Enmienda de F0 (2026-10-15; P-F13, P-F14 y P-F15 aprobadas por el usuario el
+2026-10-16)**: tres pendientes de la implementación y
+la revisión de F0 (`main` en `de4d951`). (1) **Vulnerabilidades de npm** (ADR-027 nuevo; resuelve la
+fila T-F009 ↔ ADR-026): `make web-vuln` corre `npm audit` en dos pasadas. La de producción bloquea
+desde `low`; la del árbol completo bloquea solo `critical` y lista el resto. Corre como job
+`make web-vuln` del workflow `vulncheck` (PR, `main` y corrida diaria), obligatorio en el ruleset
+de `main` una vez mergeado. Las excepciones van al registro de ADR-026. Las 7 altas de la cadena de
+`shadcn` (`braces`, sin versión corregida) quedan informadas en el log y no bloquean. (2) **`401`
+con cambios sin guardar** (DD-F32, INV-F18): el aviso de salida de S-11 nunca frena la navegación de
+sesión vencida. Todo bloqueo de salida pasa por `useUnsavedChangesGuard`, y el login avisa que se
+perdieron los cambios. (3) **Log del `503` de la SPA sin compilar** (H-17, para el
+`backend-architect`): propuesta de bajarlo a `WARN` desde `internal/app`, sin tocar `web` ni
+`depguard`. Cambian §5, §9.2, §12.4, §13.2, §13.11, §15.4, §21, §24, §25, §26, §27.2, §28, §29 y §30.
+Tareas: T-F010 y T-F011 nuevas; cambian T-F103, T-F105, T-F301, T-F602 y T-F605. Sistema visual
+sin cambios (la línea nueva del login reutiliza la zona C).
 
 | Archivo | Contenido |
 |---|---|
@@ -250,7 +265,7 @@ flowchart TD
 - En Invitar (S-10), "Cancelar" y el éxito vuelven a Usuarios con `navigate(-1)` si se llegó desde
   ahí, o con `replace` a `/settings/users` si se entró directo por URL.
 - Datos de la empresa (S-11) con cambios sin guardar: al intentar salir se pide confirmación
-  (`useBlocker`, BR-F10). Mientras se prepara o sube el logo, salir también pide confirmación.
+  (`useUnsavedChangesGuard`, BR-F10, DD-F32). Mientras se prepara o sube el logo, salir también pide confirmación. Un `401` no la pide: va al login (§12.4).
 
 ---
 
@@ -442,6 +457,7 @@ Propiedades que se rompen **sin que falle la compilación**. Cada una tiene un t
 | INV-F15 | *(Revisión 3)* El body de `PATCH /tenant` solo lleva claves de `TenantUpdate` que cambiaron; `name` y `timezone` nunca van como `null`; `base_currency` nunca va (DD-43; el servidor responde `400` ante una clave desconocida o un `null` en esos campos). | T-F602 |
 | INV-F16 | *(Revisión 4)* El manejador global de `403` (§12.4) dispara **solo** con `code = forbidden`. El `403 email_not_verified` (DD-46) lo maneja la pantalla que invitó: nunca muestra "Sin permiso" ni "No tenés permiso para hacer esto.". Se rompe sin que falle la compilación si el manejador pasa a mirar `status === 403`. | T-F104, T-F504 |
 | INV-F17 | *(Enmienda DD-F31)* Ningún texto dice que se reenvió la confirmación sin una lectura de `/me` posterior al `202` que traiga `email_verified = false`. Se rompe sin que falle la compilación si el hook vuelve a resolver con el `202` solo o lee `/me` de la caché. | T-F404, T-F405, T-F502 |
+| INV-F18 | *(Enmienda de F0, DD-F32)* Ninguna navegación de sesión vencida (§12.4, §6.4) queda frenada por un aviso de cambios sin guardar. La URL sale siempre de `sessionExpiredLoginPath`, y todo bloqueo de salida usa `useUnsavedChangesGuard`: `useBlocker` no se importa en ningún otro archivo (`no-restricted-imports`). Se rompe sin que falle la compilación si un formulario usa `useBlocker` directo o si el manejador arma la URL a mano. | T-F103, T-F602, lint (T-F605) |
 
 ---
 
@@ -878,6 +894,14 @@ Detalles:
   pierde en 001 (formularios de ≤ 7 campos); `next` devuelve a la misma pantalla. Las specs con
   formularios largos (005 presupuestos, 007 operaciones) definen en su `ui.md` un borrador en
   `sessionStorage`; ADR-006 pedía definirlo acá: para 001 se acepta la pérdida.
+- *(Enmienda de F0, DD-F32, INV-F18)* **Con cambios sin guardar**: el aviso "Tenés cambios sin
+  guardar" de S-11 no frena esta navegación. Sería un aviso sobre una sesión muerta, y con
+  "Quedarme" cada query que se vuelve a pedir traería otro `401`. La URL sale de
+  `sessionExpiredLoginPath` y el guard la reconoce con `isSessionExpiredRedirect`. Si había un guard
+  activo (`hasUnsavedChanges()`, que se lee **antes** de navegar), la navegación lleva `state: {
+  unsavedChangesLost: true }` y el login suma "Los cambios que no habías guardado se perdieron.".
+  Si el aviso estaba abierto, se cierra. `next` es la pantalla actual, no el destino que el aviso
+  había frenado.
 
 ### 12.5 Límites de error (*error boundaries*)
 
@@ -978,7 +1002,7 @@ A: ícono de la app. B: `<h1>` y bajada. C y D: `<fieldset>` con `<legend>`. E: 
 └──────────────────────────────────┘
 ```
 
-C: aviso según `reason` (`session_expired`: "Tu sesión se cerró. Ingresá de nuevo para seguir.";
+C: aviso según `reason` (`session_expired`: "Tu sesión se cerró. Ingresá de nuevo para seguir.", más "Los cambios que no habías guardado se perdieron." si `location.state.unsavedChangesLost` es `true` (DD-F32);
 `password_changed`: "Listo, cambiaste tu contraseña. Ingresá con la nueva."; `logged_out`:
 "Cerraste sesión."). D: error general. "¿Olvidaste tu contraseña?" lleva el email escrito en
 `location.state`.
@@ -1396,7 +1420,7 @@ Para un invitado, {nombre} es su email (`name` es `null` hasta que acepta).
 | Error de logo | Del cliente (§13.11.1, sin request) · Del servidor (en el control del logo, §12.2–12.3): `413`, `415`, `422` con `field: file` (`invalid_value`: "No pudimos leer la imagen o mide más de 2000 × 2000 px…"; `required`), `400` (con `requestId`), `503`/`500`/red: primero se vuelve a pedir `GET /tenant`; si muestra que el logo se guardó (o se quitó), es éxito; si no, mensaje con "Reintentar" (DD-42, DD-F26) |
 | Enviando | "Guardando…" / "Subiendo logo…" / "Quitando logo…" |
 | Éxito | Toast "Guardamos los datos de la empresa." / "Logo actualizado." (si se achicó: "Logo actualizado. Lo achicamos para que pese menos.") / "Quitamos el logo."; el encabezado se actualiza sin recargar (nueva URL con `v`) |
-| Cambios sin guardar | Al salir: "Tenés cambios sin guardar. ¿Salir igual?" (`useBlocker`); también mientras se prepara o sube el logo |
+| Cambios sin guardar | Al salir: "Tenés cambios sin guardar. ¿Salir igual?" (`useUnsavedChangesGuard`, DD-F32); también mientras se prepara o sube el logo. Un `401` no pide confirmación: va al login, que avisa que los cambios se perdieron (§12.4) |
 | Sin permiso / Sesión vencida | Guard / §12.4 (DD-F5) |
 
 #### 13.11.1 Preparación del logo en el navegador (P-F2, P-F6, DD-11, DD-31, DD-F11, DD-F20, DD-F21, DD-F22)
@@ -1975,6 +1999,18 @@ export function applyServerFieldErrors<T extends FieldValues>(
   setError: UseFormSetError<T>, fieldErrors: FieldError[], knownFields: ReadonlyArray<Path<T>>,
 ): FieldError[];
 
+// lib/sessionExpiredRedirect.ts — DD-F32: única fuente de la URL de sesión vencida
+/** '/login?next=<pathname+search codificado>&reason=session_expired' (sin fragmento, §12.4). */
+export function sessionExpiredLoginPath(from: Pick<Location, 'pathname' | 'search'>): string;
+export function isSessionExpiredRedirect(to: Pick<Location, 'pathname' | 'search'>): boolean;
+export interface SessionExpiredLoginState { unsavedChangesLost?: true }   // location.state de /login
+
+// lib/unsavedChanges.ts — DD-F32, INV-F18: único archivo que importa useBlocker
+/** Bloquea la salida si `when` es true y el destino no es una redirección de sesión vencida.
+ *  Mientras está montado con `when` = true, hasUnsavedChanges() devuelve true. */
+export function useUnsavedChangesGuard(when: boolean): Blocker;
+export function hasUnsavedChanges(): boolean;   // lo lee el manejador de §12.4 antes de navegar
+
 // lib/*
 export function safeNextPath(raw: string | null): string;                 // '/' si no es interna
 export function useLinkToken(): string | null;                            // §6.2
@@ -2181,6 +2217,15 @@ viewport-fit=cover">` (sin bloquear el zoom), `<meta name="theme-color" content=
   lo redirige el `ServeMux` a `/api/`. `chi.Walk` ve solo la API.
 - **Compresión** (DD-29, aprobada por el usuario): `github.com/klauspost/compress/gzhttp` envuelve
   **solo** el handler de la SPA (umbral por defecto de 1 KB); la API no se comprime.
+- **Log del `503` sin compilar** *(enmienda de F0, H-17; decide el backend, P-F15)*: hoy sale como
+  `ERROR`, porque `web` no puede llamar a `httpx.SetLogLevel` (`depguard`). La propuesta (plan DD-50,
+  *Accepted*, P-F15; mecanismo elegido por el `backend-architect` el 2026-10-16) es `WARN` siempre, con una regla por estado de `httpx` que `internal/app` aplica solo a la SPA, sin cambiar `web` ni `depguard` (T-F011).
+- **Vulnerabilidades de npm** *(enmienda de F0, ADR-027, aprobado por el usuario el 2026-10-16,
+  P-F13)*: `make web-vuln` (fuera
+  de `make web-check`) corre `npm audit` en dos pasadas. La de producción bloquea desde `low`; la del
+  árbol completo bloquea solo `critical`. Corre en el job `make web-vuln` del workflow `vulncheck`.
+  La pasada de producción depende de la clasificación de ADR-027 §2: el JavaScript que llega a
+  `dist` va en `dependencies`; las herramientas y lo que solo aporta CSS, en `devDependencies`.
 
 ### 21.1 Reglas del handler de la SPA
 
@@ -2388,6 +2433,7 @@ La preparación de imágenes vive en `features/tenant/logo/` porque solo la usa 
 | **DD-F29** | *(Nueva, revisión 4; ampliada por la enmienda H-16)* Textos de `rate_limited` por contexto, ciertos para cualquier cupo que se haya agotado: registro "Hubo muchos intentos de registro seguidos." (+ "No se creó nada…"); invitar, reenviar invitación y reactivar "Por ahora no podemos enviar más invitaciones." (+ el motivo: cuidar el envío de emails); reenvío de la confirmación "Ya te lo mandamos hace poco.". La UI no distingue el cupo por IP del global (registro), el de la empresa del de la IP (invitaciones) ni el cupo por IP del cupo por usuario (reenvío de la confirmación, enmienda H-16) | El contrato no los distingue y la acción del usuario es la misma: esperar y reintentar. `Retry-After` ya trae la diferencia que le importa (cuánto esperar, DD-F25). "Hiciste muchos intentos" es falso con el cupo global (el visitante puede haber hecho uno solo) y con el de la empresa (lo puede haber gastado otro Administrador). Descartado: pedir al backend un código o un dato que diga qué cupo se agotó (un valor más en `ErrorCode` para el mismo comportamiento) | El texto no explica por qué (otro Administrador, un ataque en curso). Durante un ataque al registro (R-21 del plan), el visitante legítimo solo ve "esperá". Con dos cupos agotados, la primera espera puede quedarse corta: al reintentar llega otro `429` con la del otro cupo (en el reenvío de la confirmación, primero ≤ 180 s del de IP y después hasta 1200 s del de usuario). Los textos dicen "probá de nuevo" y no prometen que funcione |
 | **DD-F30** | ***Reemplazada por la enmienda H-16** (2026-10-13, §27.2): sin cupo por usuario el servidor responde `429` con `Retry-After`, así que la línea se retiró de C-01, S-05 y el aviso W, y la espera sale exacta en "Ya te lo mandamos hace poco." (§13.13). Versión reemplazada:* *(Nueva, revisión 4; mismo criterio que P-F7, aprobada)* El resultado "Listo, te lo reenviamos" del reenvío de la confirmación (C-01, S-05, aviso W) suma "Si lo pediste varias veces, esperá unos 20 minutos." | Con DD-46 (3), después de 3 reenvíos el servidor responde `202` sin enviar hasta pasados 20 min. Sin la línea, el usuario reintenta y cree que el sistema anda mal. Descartado: contar los reenvíos en el cliente (no ve los de otras pestañas ni dispositivos) | Una línea más en el aviso, aunque sea el primer reenvío. Si el backend adopta H-16 (`429` con `Retry-After`), la línea se va y la espera sale exacta |
 | **DD-F31** | *(Nueva, enmienda del 2026-10-14; Accepted, aprobada por el usuario)* Tras el `202` del reenvío de la confirmación (C-01, aviso W, S-05), `useResendEmailVerification` vuelve a pedir `/me` ignorando el `staleTime` y el texto sale de esa lectura: `email_verified = false` → "Listo, te lo reenviamos…"; `true` → toast "Tu email ya está confirmado. No hace falta otro enlace." y el aviso desaparece con la caché; `/me` falla → "Si todavía no lo confirmaste, te mandamos un enlace nuevo. Revisá también el correo no deseado.". Si el control con foco desaparece, el foco va al `<h1>` (destino de INV-F10). S-05 no ofrece "Reenviar" si la sesión ya tiene el email confirmado | El servidor responde `202` sin enviar si el email ya está confirmado (`resendEmailVerification`, v0.5.0). DD-F28 no cubre todos los casos: TanStack Query v5 relee con `visibilitychange`, no al pasar a otra ventana que sigue visible ni cuando se confirma desde otro dispositivo. Como la confirmación no se deshace, si `/me` después del `202` sigue en `false`, el servidor también vio `false` y pidió el envío: el texto es exacto sin tocar el contrato. Descartado: (a) releer `/me` antes de reenviar (queda la ventana entre el `GET` y el `POST`, y demora el envío); (b) un texto neutro siempre (deja el aviso viejo y "Invitar" deshabilitado hasta volver a la pestaña, y le quita certeza al caso normal); (c) que el servidor distinga el caso con otro estado o un cuerpo (cambia el contrato y lo decide el backend; `/me` da el mismo dato) | Un `GET /me` más por cada `202` (como mucho 3 cada 20 min por usuario, DD-46 (3)); "Enviando…" dura un viaje más; un resultado más en el hook y dos textos nuevos. Si `/me` falla después del `202`, el texto es neutro |
+| **DD-F32** | *(Nueva, enmienda de F0, 2026-10-15; Accepted: aprobada por el usuario el 2026-10-16, P-F14)* La navegación de sesión vencida (§12.4 y la transición a `null` de §6.4) no se bloquea por cambios sin guardar. (1) La URL la arma siempre `sessionExpiredLoginPath(location)` y la reconoce `isSessionExpiredRedirect(location)`, las dos en `lib/sessionExpiredRedirect.ts`. (2) Ningún formulario usa `useBlocker` directo: usa `useUnsavedChangesGuard(when)` (`lib/unsavedChanges.ts`), que bloquea solo si `when` es verdadero y el destino no es una redirección de sesión vencida. S-11 pasa `when` = formulario con cambios **o** logo preparándose o subiendo (un solo guard por pantalla). (3) Mientras un guard está activo, `hasUnsavedChanges()` es verdadero. El manejador lo lee **antes** de navegar y, si es verdadero, pasa `state: { unsavedChangesLost: true }`. (4) Con `reason=session_expired` y ese `state`, la zona C del login suma "Los cambios que no habías guardado se perdieron.". (5) `next` es la pantalla donde estaba (`/settings/company`), no el destino que el aviso había frenado. Al volver, el formulario se arma con los datos del servidor (INV-F01) | Sin la excepción, "¿Salir igual?" aparece sobre una sesión muerta. "Quedarme" deja una pantalla con la caché vacía (rompe INV-F03), y cada query que se vuelve a pedir trae otro `401` y otro aviso. Con la regla en un solo hook, los formularios de 005 y 007 la heredan. El aviso del login responde "¿se guardó?" cuando el `401` llegó al tocar "Guardar". Descartado: (a) la excepción solo dentro de S-11 (cada formulario futuro tendría que acordarse, y la pérdida es muda); (b) seguir bloqueando y dejar elegir (pantalla sin sesión, bucle de `401`); (c) un borrador en `sessionStorage` (DD-F5 lo deja para 005 y 007; datos de la empresa en el almacenamiento del navegador); (d) un toast desde el bloqueador (efecto dentro de la función del bloqueador; el anuncio compite con el foco que va al `<h1>` del login); (e) la línea siempre que `reason=session_expired` (alarma en el caso común, donde no se perdió nada) | Un contador a nivel de módulo, fuera de React (estado del cliente, no del servidor: INV-F01 no aplica). Una regla de `no-restricted-imports` para `useBlocker`. Lo cargado se sigue perdiendo (DD-F5). `useBlocker` no cubre recargar ni cerrar la pestaña (eso no cambia) |
 
 ---
 
@@ -2408,6 +2454,8 @@ La preparación de imágenes vive en `features/tenant/logo/` porque solo la usa 
 | S-F10 | En Android, el reenvío de puertos de Chrome (`chrome://inspect`) a `localhost:8443` más la CA de mkcert instalada en el teléfono permiten probar el binario local con sesión (respaldo de H-12) | Abierto (no verificado) | Checkpoint F6, si no hay otro origen | Probar en el celular solo contra un entorno con dominio y HTTPS real |
 | S-F11 | *(Revisión 3)* `Intl.supportedValuesOf('timeZone')` y `resolvedOptions().timeZone` devuelven nombres IANA canónicos (`America/Argentina/Buenos_Aires`) en los navegadores de NFR-F02. Un reporte de WebKit (bug 218542) muestra que Safari devolvía el alias `America/Buenos_Aires` | Abierto (no verificado) | T-F602 (selector de DD-F27) y a mano en Chrome, Firefox y Safari (T-F705) | DD-F27 ya cubre la zona guardada; el registro funciona igual (el backend conoce los alias por `time/tzdata`) |
 | S-F12 | *(Revisión 4)* Un usuario `disabled` con `name = null` nunca aceptó su invitación. El contrato solo dice "`null` mientras el usuario está invitado"; según `data-model.md` §2.2, `name` se completa al aceptar y desactivar no lo toca | Abierto | T-F501 y lectura de `Deactivate` en el código | "Reactivar" queda habilitado para ese usuario con el email sin confirmar. El servidor lo acepta igual (no exige la confirmación en `reactivate`): el efecto es solo una invitación que P-F8 quería evitar. Caso inalcanzable salvo con datos anteriores a la Fase 10 |
+| S-F13 | *(Enmienda de F0)* Con el aviso de cambios sin guardar abierto (una navegación frenada), una navegación nueva que el bloqueador deja pasar se completa, el aviso desaparece y el bloqueador vuelve a `unblocked` (React Router 8.4.0; la documentación de `useBlocker` no cubre el caso) | Abierto | T-F602 | Volver al arquitecto. Opciones: `blocker.reset()` antes de navegar, o recarga completa al login (pierde el `state`) |
+| S-F14 | *(Enmienda de F0)* `npm audit`, del npm del Node de `web/.nvmrc`, funciona solo con `package-lock.json`, sin `node_modules`, y termina con un código distinto de 0 si no puede consultar el registro. La documentación dice que necesita el lockfile, no que alcance solo con él | Abierto | Controles de T-F010 | Sin `node_modules` no funciona: el job agrega `npm ci --ignore-scripts`. Con código 0 ante un error: `make web-vuln` revisa la salida y ADR-027 recibe una nota |
 
 ## 26. Preguntas
 
@@ -2440,6 +2488,14 @@ Preguntas de la enmienda de versiones (2026-10-15):
 | ID | Pregunta | Estado | Default propuesto |
 |---|---|---|---|
 | P-F12 | ¿Se confirma la regla de versiones "la última estable compatible con las *peer dependencies* del conjunto, sin `--force` ni `--legacy-peer-deps`" y su excepción, TypeScript 5.9.3 en lugar de 7.0.2, hasta que `openapi-typescript` y `typescript-eslint` acepten TS ≥ 6? | **Cerrada: sí** (el usuario, 2026-10-15) | **Sí**. La alternativa es forzar la instalación: la generación de tipos del contrato y el lint correrían sobre un compilador que sus autores no soportan, y los tipos del contrato son la garantía principal entre frontend y backend (ADR-015). Cambiar `openapi-typescript` por otro generador reabre ADR-018 sin beneficio visible |
+
+Preguntas de la enmienda de F0 (2026-10-15):
+
+| ID | Pregunta | Estado | Default propuesto |
+|---|---|---|---|
+| P-F13 | ¿Se aprueba ADR-027 (vulnerabilidades de npm)? La pasada de producción bloquea desde `low` y la del árbol completo solo con `critical`; corre en el workflow `vulncheck` (PR, `main` y diario), y el check `make web-vuln` pasa a ser obligatorio en el ruleset de `main` una vez mergeado | **Cerrada: sí** (el usuario, 2026-10-16) | **Sí**. Alternativas (ADR-027): solo producción (no ve lo crítico de las herramientas de CI y desarrollo) o el árbol completo desde `high` (hoy rojo por 7 avisos de `braces` sin corrección, con una excepción a renovar cada 30 días) |
+| P-F14 | Con un `401` y cambios sin guardar en Datos de la empresa, ¿el login avisa "Los cambios que no habías guardado se perdieron." (DD-F32, puntos 3 y 4)? | **Cerrada: sí** (el usuario, 2026-10-16) | **Sí**. La excepción del aviso de salida (puntos 1 y 2) no es opcional: sin ella hay un bucle de `401`. Sin el aviso se ahorra el contador y algunas filas de test, pero el usuario vuelve al formulario sin sus cambios y sin saber por qué |
+| P-F15 | ¿El `503` "La interfaz no está compilada" se loguea `WARN` en vez de `ERROR`, en todos los entornos (plan DD-50: regla por estado de `httpx`, aplicada solo a la SPA desde `spaUnlessAPI`; H-17)? | **Cerrada: sí** (el usuario, 2026-10-16; mecanismo elegido por el `backend-architect`) | **Sí**, `WARN` siempre: ninguna alerta depende del `ERROR`, y en producción lo delatan `http_requests_total{status="503"}`, la línea con `route=spa` y la app inutilizable. Alternativas: `WARN` solo en modo local (`NewRootHandler` o `RootDeps` tendrían que recibir el modo: cambia plan §11.1 y los tests que arman el mux raíz); dejar `ERROR` |
 
 **Revisión 16 del backend: cerrada para la UI** (la lista "Dependiente de la revisión 16" de la
 Revisión 3 queda resuelta en la Revisión 4):
@@ -2519,6 +2575,7 @@ código sin la Fase 10 queda como histórico.
 | **H-14** (documental; revisión 3) | `GET /industry-templates` declara `429` en el contrato, pero el código no le aplica limitador | Quitar el `429` del contrato o agregar el cupo | Ninguno: la UI trata el `429` igual en cualquier query |
 | **H-15** (coordinación con T-F008; revisión 3) | `cmd/crm/main_test.go` exige `503` en `GET /login`. Con la SPA embebida, el resultado depende de si `web/dist` tiene `index.html` al correr `go test` | T-F008 ajusta el test: `503` sin `index.html`, `200` `text/html` con él | T-F008 |
 | **H-16** (**resuelto** el 2026-10-13: el usuario adoptó (b) como enmienda H-16 de la revisión 16, `revision-16-auditoria.md` §3.7; revisión 4) | `POST /auth/email-verification/resend` responde `202` sin enviar cuando se agota el cupo por usuario (DD-46 (3)), igual que el pedido de restablecimiento por email. En el restablecimiento, el `202` uniforme protege contra la enumeración (INV-13). Acá la ruta es autenticada y el email es el de la sesión, así que un `429` no revelaría nada nuevo | (a) Dejarlo así: la UI usa la línea de DD-F30 (diseño hasta el 2026-10-13). (b) **Recomendada; adoptada como enmienda H-16**: `429 rate_limited` con `Retry-After` también en el cupo por usuario (contrato *patch*: el `429` ya está declarado). El usuario sabría cuánto esperar | Aplicado: DD-F30 reemplazada; C-01, S-05 y el aviso W sin la línea de los 20 minutos; `429` del cupo por IP o por usuario con la espera exacta, y dos esperas seguidas si se agotan los dos (§11.1, §12.2, §13.13, DD-F29); T-F101, T-F404, T-F405 y T-F502. El contrato no cambia de versión (v0.5.0) ni de tipos |
+| **H-17** (no bloquea; revisión de F0, 2026-10-15) | `web.NewHandler` responde `503` "La interfaz no está compilada" sin llamar a `httpx.SetLogLevel`. No puede: la regla de `depguard` `web-imports-only-stdlib-and-gzhttp` se lo impide. Por eso `Logging` lo escribe como `ERROR`, mientras que el stub anterior (`app.SPAUnavailableHandler`) usaba `WARN`. En el modo "Solo backend" (plan §10.5.1) es el estado esperado y llena el log de `ERROR` | Propuesta para el `backend-architect` (texto en la DD-50 propuesta): un decorador en `spaUnlessAPI` (`internal/app/root.go`) que baja a `WARN` solo el `503` de la SPA. No cambian `web`, su firma, `serve.go` ni `depguard`; es lo que propuso el `backend-developer`. El `backend-architect` eligió el 2026-10-16 una variante sin decorador: `httpx.WithStatusLogLevel`, que `spaUnlessAPI` aplica solo a la SPA (plan DD-50). Aprobado por el usuario el 2026-10-16 (P-F15) | Ninguno en la SPA. T-F011 (la implementa el `backend-developer`); §21 |
 
 Otros puntos menores (los dos **resueltos** al 2026-10-12, revisión 3: el índice de ADR ya muestra ADR-019 *Accepted* y el encabezado de `tasks.md` ya dice que la sección Frontend se actualizó en la segunda revisión):
 
@@ -2548,6 +2605,8 @@ Otros puntos menores (los dos **resueltos** al 2026-10-12, revisión 3: el índi
 | RF-14 | *(Revisión 3; cerrado en la revisión 4)* La revisión 16 del backend cambia registro, verificación, invitación o recuperación después de implementar F2, F4 o F5 | — | — | Cerrado: la revisión 16 se aprobó el 2026-10-12 y la Revisión 4 la incorpora antes de implementar esas fases |
 | RF-16 | *(Revisión 4; el atraso quedó cerrado el 2026-10-14: la Fase 10 está en `main`)* La Fase 10 del backend se atrasa o cambia un valor (cupos de DD-48, DD-49 o DD-46 (3)) después de implementar F5 | Media | Bajo | Los textos dependen de `Retry-After` y no de los valores (DD-F25, DD-F29). El `403 email_not_verified` está en el contrato v0.5.0 y los tests con MSW no esperan al backend. La prueba independiente de F5 en esos puntos se hace con la Fase 10 en `main` |
 | RF-15 | *(Revisión 3)* El selector de zona no muestra la zona guardada porque el navegador usa un alias (S-F11) | Baja | Bajo | DD-F27; T-F602 |
+| RF-17 | *(Enmienda de F0)* `npm audit` no analiza alcance: un aviso de producción que no aplica bloquea un PR | Media | Bajo | ADR-027 §6: subir la dependencia, `overrides` o una excepción con vencimiento aprobada por el usuario |
+| RF-18 | *(Enmienda de F0)* Un paquete que llega a `dist` queda en `devDependencies` y la pasada de producción no lo ve (ADR-027 I-2) | Baja | Medio | Convención de clasificación en `tasks.md`; revisión de cada PR que toca `package.json`; regla de ESLint como alternativa si pasa una vez |
 
 ---
 
@@ -2575,6 +2634,8 @@ La actualización va **en el mismo cambio** que el código.
 | Una decisión de ADR-015..023 | ADR nuevo que la reemplace o nota fechada si es una aclaración (nunca reescribir uno aceptado) |
 | Cómo se construye o corre el frontend | README (sección de desarrollo) + §21.3 + comandos de `tasks.md` |
 | Una versión mayor de una librería con ADR (p. ej. React Router 8), o una versión fijada por debajo de su última estable (hoy, TypeScript 5.9.3) | Nota fechada en su ADR + §0 + RF-1 + tabla de excepciones de `tasks.md` (Frontend, convenciones) + las tareas afectadas + `package-lock.json` en el mismo PR |
+| Una dependencia npm (agregarla, subirla, quitarla o moverla entre `dependencies` y `devDependencies`) | Clasificación de ADR-027 §2 + `make web-vuln` en verde + tabla de versiones de `tasks.md` si queda por debajo de la última estable o lleva `overrides` + `docs/seguridad/vulnerabilidades-aceptadas.md` si cambia una excepción |
+| Un formulario que pide confirmación al salir, o la URL de sesión vencida | `useUnsavedChangesGuard` (nunca `useBlocker` directo) + `lib/sessionExpiredRedirect.ts` + INV-F18 + DD-F32 + el test de la pantalla (las filas de T-F602 como modelo) |
 
 ## 30. Fuentes consultadas
 
@@ -2593,4 +2654,8 @@ La actualización va **en el mismo cambio** que el código.
 - Cookies `Secure` y con prefijo en `http://localhost` por navegador (H-10): <https://github.com/httpwg/http-extensions/issues/2605>, <https://issues.chromium.org/issues/40202941>, <https://bugzilla.mozilla.org/show_bug.cgi?id=1618113>
 - mkcert (almacenes de confianza soportados, `certutil` en Linux, Firefox solo en macOS y Linux, `NODE_EXTRA_CA_CERTS` para Node, CA en iOS y Android, advertencia sobre `rootCA-key.pem`): <https://github.com/FiloSottile/mkcert>
 - Chrome DevTools, reenvío de puertos a un Android para abrir un servidor local (H-12): <https://developer.chrome.com/docs/devtools/remote-debugging/local-server>
+- `npm audit` (umbral, `--omit`, necesita el lockfile; sin exclusión por id): <https://docs.npmjs.com/cli/v11/commands/npm-audit>
+- Aviso GHSA-vfj7-8cjw-p6xm (`braces` ≤ 3.0.3; sin versión corregida al 2026-10-15): <https://github.com/advisories/GHSA-vfj7-8cjw-p6xm>
+- React Router 8.4.0, `useBlocker` (función con `currentLocation`, `nextLocation` e `historyAction`; no cubre recargas): <https://reactrouter.com/api/hooks/useBlocker>
+- OSV-Scanner, configuración (`ignoreUntil`, grupo `dev`), alternativa de ADR-027: <https://google.github.io/osv-scanner/configuration/>
 - `createImageBitmap` y `imageOrientation: 'from-image'` (soporte: Chrome 112, Firefox 111, Safari 16): <https://developer.mozilla.org/en-US/docs/Web/API/Window/createImageBitmap>, <https://caniuse.com/mdn-api_createimagebitmap_options_imageorientation_parameter_from-image>, <https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html>

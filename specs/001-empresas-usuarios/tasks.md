@@ -978,7 +978,8 @@ duplican acá**. Dependen de:
 | T-F004 (tipos del contrato) y T-F101 (mensajes por `code`) | Contrato **v0.4.1** (séptima revisión) | Declara `413 payload_too_large` en las operaciones con body JSON. No agrega valores a `ErrorCode` ni cambia esquemas: el mapa de T-F101 compila igual y `ui.md` §12.2 ya cubre `payload_too_large` fuera del logo ("como `malformed_request`"). Cuando exista `web/`, `gen:api` regenera los tipos (incluyen la respuesta `413` nueva). Sin decisión de UI pendiente |
 | T-F202 (pantalla de registro) | T-B305 (tercera revisión) | El `503` del registro puede traer `Retry-After: 2` (DD-33); el mensaje de "Reintentar" puede usarlo. Decisión del `frontend-architect` |
 | T-F004 y T-F101 (tipos y mensajes), Fase F5 (usuarios e invitaciones) | Contrato **v0.5.0** (decimosexta revisión; T-B1005, T-B1009) | `ErrorCode` suma `email_not_verified`: T-F101 deja de compilar hasta tener su mensaje. `POST /users/invitations` puede responder `403 email_not_verified` (aviso y "Reenviar verificación"; `/me` ya trae `email_verified`) y `429 rate_limited` con `Retry-After`, igual que `POST /users/{userId}/reactivate`. "Reenviar invitación" usa la misma ruta que invitar (DD-5). Lo decide el `frontend-architect` en `ui.md` |
-| T-F009 (CI del frontend) | ADR-026 (T-B1101) | El escaneo de vulnerabilidades del backend no cubre npm. Sugerencia: un paso con la misma política (bloqueante en PR y en `main`, más la corrida diaria del workflow `vulncheck`), p. ej. `npm audit` sobre las dependencias de producción con un umbral. npm no analiza alcance, así que el umbral y si entran las `devDependencies` los decide el `frontend-architect` en `ui.md` |
+| T-F009 (CI del frontend) | ADR-026 (T-B1101) | El escaneo de vulnerabilidades del backend no cubre npm. **Resuelto** por ADR-027 (aprobado por el usuario el 2026-10-16, `ui.md` P-F13): `make web-vuln`, dos pasadas de `npm audit` en el workflow `vulncheck`, con la política de ADR-026. Lo implementa T-F010 (`frontend-developer`), no T-F009 |
+| T-F011 (nivel de log del `503` de la SPA; la implementa `backend-developer`) | DD-50 (decimoctava revisión del plan) y `ui.md` P-F15 | `httpx.WithStatusLogLevel` y su uso en `spaUnlessAPI`. Toca `internal/platform/httpx` e `internal/app`; no toca `web`, `cmd/crm` ni `depguard`. P-F15 aprobada por el usuario el 2026-10-16 |
 
 Orden sugerido: Fase 0 del backend completa → T-F007/T-F008 (en la misma rama o la siguiente) →
 T-F009.
@@ -2629,6 +2630,7 @@ de la fase y se agrega a plan §11.1 en el mismo cambio (matriz §16).
 
 **T-B911 [T] — Tests de `runServe`: falla de un servidor y espera del worker** · T-B904, T-B908, T-B909, DD-35, plan §9.4 · decimotercera revisión
 - **Costura**: `env` (`cmd/crm/main.go`) suma `listen func(ctx context.Context, network, address string) (net.Listener, error)`. `run` lo inicializa con `(&net.ListenConfig{}).Listen`, y `runServe` escucha `HTTP_ADDR` y `METRICS_ADDR` solo con `e.listen` (regla (4) de T-B801). Nada más cambia en `runServe`.
+- **Qué error devuelve** (decimoctava revisión del plan; observación del PR #31): `runServe` garantiza el error del primer servidor que falla (o el del bind de `METRICS_ADDR`), no el de los dos, porque si el otro falla mientras se cancela `serverCtx`, `http.Server.Serve` ve el apagado y devuelve `ErrServerClosed`, que `app.Serve` traduce a `nil`; se acepta porque ese error es posterior al que disparó el apagado y no cambia qué hacer, y ningún test lo afirma.
 - **Red** (integración en `cmd/crm`, contra el PostgreSQL del harness, con un SMTP de prueba propio del test y sin `t.Parallel()`):
 
   | Caso | Esperado |
@@ -3045,6 +3047,17 @@ convenciones (versiones), T-F001 (versiones, `tsconfig`, Node, verificación de 
 T-F006 (imports del router, sin `future` ni `middleware`, test de humo de navegación). Sin tareas
 nuevas ni cambios de orden.
 
+**Enmienda de F0 (2026-10-15; `ui.md` P-F13, P-F14 y P-F15 aprobadas por el usuario el
+2026-10-16)** (`ui.md`, enmienda de F0;
+ADR-027): (1) escaneo de vulnerabilidades de npm. ADR-027, nuevo, resuelve la fila T-F009 ↔ ADR-026.
+T-F010 es nueva: `make web-vuln` y el job `make web-vuln` del workflow `vulncheck`. (2) Un `401`
+con cambios sin guardar en S-11 ya no queda frenado por el aviso de salida (DD-F32, INV-F18).
+Cambian T-F103 (URL de sesión vencida), T-F105, T-F301 (línea nueva del login), T-F602 y T-F605.
+(3) Log del `503` de la SPA sin compilar: hallazgo H-17 para el `backend-architect`. T-F011 es
+nueva y depende de su decisión (plan DD-50, propuesta). Convenciones: clasificación de
+dependencias. Comandos: `make web-vuln`. Sin cambios de orden: T-F010 y T-F011 no bloquean F1, y
+las filas nuevas de T-F103, T-F301 y T-F602 entran con su fase.
+
 ### Convenciones de esta sección
 
 - `[T]` = tarea de test. Va **antes** de la tarea de código que la hace pasar, y el test debe
@@ -3094,6 +3107,13 @@ nuevas ni cambios de orden.
   | `typescript` | 5.9.3 | 7.0.2 | (1) `openapi-typescript` 7.13.0 (la última) declara `peerDependencies.typescript: ^5.x`; (2) `typescript-eslint` 8.71.2 (la última) declara `>=4.8.4 <6.1.0`. 5.9.3 es la última versión que satisface las dos | `openapi-typescript` y `typescript-eslint` acepten TypeScript ≥ 6: se sube a la última que acepten las dos, en un PR propio con `npm run check` en verde |
   | `eslint` | 9.39.5 | 10.12.0 | `eslint-plugin-jsx-a11y` 6.10.2 (la última) declara `peerDependencies.eslint: ^3 \|\| ^4 \|\| ^5 \|\| ^6 \|\| ^7 \|\| ^8 \|\| ^9`; 9.39.5 es la última compatible | `eslint-plugin-jsx-a11y` acepte ESLint ≥ 10; se sube a la última compatible con `npm run check` en verde |
   | `@eslint/js` | 9.39.5 | 10.0.1 | `@eslint/js` 10.0.1 declara `peerDependencies.eslint: ^10.0.0`; se alinea con ESLint 9.39.5, limitado por `eslint-plugin-jsx-a11y` 6.10.2 | `eslint-plugin-jsx-a11y` acepte ESLint ≥ 10; se actualiza junto con ESLint y `npm run check` en verde |
+- **Clasificación de dependencias** *(enmienda de F0, ADR-027 §2)*: va en `dependencies` todo
+  paquete cuyo JavaScript llega a `web/dist`. Va en `devDependencies` lo que solo corre en desarrollo
+  o en CI (build, tests, lint, generadores, el CLI de shadcn) y los paquetes que solo aportan CSS
+  (`tailwindcss`, `tw-animate-css`, `shadcn`). Un archivo de `src/` que no es de test solo importa
+  una `devDependency` si queda fuera del bundle de producción (hoy, las devtools de TanStack Query
+  detrás de `import.meta.env.DEV`). La pasada de producción de `make web-vuln` depende de esta regla
+  (I-2): se revisa en cada PR que toca `package.json`.
 
 ### Comandos de validación (los crea la Fase F0)
 
@@ -3113,6 +3133,7 @@ Se corren en `web/` salvo los de `make`.
 | `make web-check` | `cd web && npm ci && npm run check` |
 | `make build` | `web-build` y después `go build` (binario con la SPA embebida) |
 | `make check-all` | `make check` (backend) + `make web-check` |
+| `make web-vuln` | *(Enmienda de F0, ADR-027)* `npm audit` en `web/`, en dos pasadas que corren siempre: producción (`--omit=dev`) bloquea desde `low`; el árbol completo bloquea solo `critical` y lista el resto. No instala nada. Necesita red y su resultado cambia con la base: **no** es parte de `make web-check` ni de `make check-all`. Lo corre el job `make web-vuln` del workflow `vulncheck`. `WEB_VULN_DIR=<dir>` (con `=`, como `VULN_DIR`) analiza otro proyecto; se usa solo en los controles de T-F010 |
 | `make dev-certs` | (del backend, T-B014) genera `.certs/localhost.pem` y `.certs/localhost-key.pem` con mkcert |
 
 ### Dependencias con el backend
@@ -3141,6 +3162,7 @@ v0.5.0, porque los tests con MSW no dependen de la Fase 10 del backend. P-F10 y 
 default y no bloquean.
 
 - **Fase F0 completa (2026-10-15)**: T-F001 a T-F009 en `feat/001-frontend-skeleton`, desde `main` en `c96cfe0`. `make check-all` en verde. Prueba independiente hecha: binario en `https://localhost:8443` y Vite en `https://localhost:5173` sin aviso de certificado; los cinco `curl -I` sin `-k` traen las cabeceras de `ui.md` §21.1–21.2 y no traen HSTS. S-F1 y S-F2 aprobados sin respaldo. Spike de la cookie OK en Chromium y Chrome (`__Host-crm_session` con `Secure`, `HttpOnly` y `SameSite=Lax`) y también en Safari 26.6.2, probado por el usuario contra el binario en `https://localhost:8443`: `signup` 201 y `/me` 200; la cookie `__Host-crm_session` con `Secure`, `HttpOnly`, `SameSite=Lax`, dominio `localhost` y `Path=/`, y no se puede leer desde `document.cookie`. Firefox queda pendiente porque no está instalado. Excepciones de versiones: TypeScript 5.9.3, ESLint y `@eslint/js` 9.39.5. `npm audit` informa 7 vulnerabilidades altas, todas en la cadena de desarrollo del CLI de shadcn (braces/micromatch, GHSA-vfj7-8cjw-p6xm), sin dependencias de producción afectadas. Pendiente de revisión.
+- **Enmienda de F0 (2026-10-15; P-F13 y P-F14 aprobadas el 2026-10-16)**: las 7 altas son de desarrollo y están por debajo de `critical`. Con ADR-027 se informan en el log y no bloquean; `braces` no tiene versión corregida. Pendientes: T-F010 (escaneo de npm) y T-F011 (log del `503`, sujeta a la decisión del `backend-architect`).
 
 ---
 
@@ -3350,6 +3372,74 @@ respuestas de `ui.md` §21.1–21.2 (sin `Strict-Transport-Security`, porque es 
   `npm run dev` y `npm run e2e`; cómo correr el E2E local contra `https://localhost:8443`; la
   tabla de diagnóstico de `ui.md` §21.3. Sin recomendar un navegador en particular.
 
+**T-F010 — Escaneo de vulnerabilidades de npm (`make web-vuln`)** · ADR-027 (aprobado por el usuario el 2026-10-16, `ui.md` P-F13), ADR-026 §3 y §5
+- Implementa: `frontend-developer`, con P-F13 aprobada.
+  1. `Makefile`: target `web-vuln` (en `.PHONY`) con las dos pasadas de ADR-027 §3. Las dos corren
+     siempre, aunque falle la primera, y el target falla si falla cualquiera. Sin `npm ci`. La
+     variable `WEB_VULN_DIR` (por defecto `web`) se fija con `=` y no con `?=`, como `VULN_DIR` (nota
+     2026-10-14 de ADR-026, punto 2). Comentario: necesita red, no entra en `web-check` ni en
+     `check-all`, remite a ADR-027.
+  2. `.github/workflows/vulncheck.yml`: job `npm-audit`, nombre visible `make web-vuln`, según
+     ADR-027 §5 (mismos SHA de `checkout` y `setup-node` que `ci.yml`; `persist-credentials: false`;
+     sin caché; un solo paso; sin `continue-on-error` ni `|| true`).
+  3. README: `make web-vuln` en la tabla de comandos y en el párrafo del workflow `vulncheck`.
+- **Controles** (Red/Green). Los proyectos de prueba se arman en un directorio temporal fuera del
+  repo y nunca se versionan (ADR-027 I-4):
+
+  | Control | Esperado |
+  |---|---|
+  | `make web-vuln` sobre `main` | Código 0. El log de la segunda pasada lista las altas de `braces` (o lo que haya ese día) |
+  | Lo mismo con `web/node_modules` borrado | Mismo resultado (S-F14). Si falla, el job agrega `npm ci --ignore-scripts` y se reporta |
+  | Proyecto temporal con una dependencia de **producción** que tiene un aviso conocido `low` o `moderate` | Primera pasada ≠ 0; `make web-vuln` ≠ 0 |
+  | Proyecto temporal con un aviso `high` solo en `devDependencies` | Las dos pasadas en 0; el aviso aparece en el log |
+  | Registro inalcanzable (`--registry` a un puerto cerrado, o sin red) | ≠ 0 (I-1, S-F14) |
+  | La primera pasada falla | La segunda corre igual y su salida está en el log |
+- **Checkpoint**: el workflow `vulncheck` en verde en el PR, con los dos jobs. Después del merge, el
+  usuario suma **`make web-vuln`** a los checks obligatorios del ruleset de `main`.
+
+**T-F011 [T] — Nivel de log del `503` de la SPA sin compilar** · plan DD-50 (*Accepted* 2026-10-16: mecanismo del `backend-architect`, P-F15 aprobada por el usuario), H-17, `ui.md` §21, P-F15
+- Implementa: `backend-developer`. El código va en
+  `internal/platform/httpx/middleware.go` (`WithStatusLogLevel` y la precedencia de `Logging`, DD-50)
+  y en `internal/app/root.go` (`spaUnlessAPI` la aplica solo a la rama de la SPA). No cambian
+  `web/`, `cmd/crm/serve.go` (el guard de T-B801 sigue igual), `RootDeps` ni `.golangci.yml`. No se
+  agrega ningún envoltorio del `ResponseWriter`.
+- **Red, `httpx`** (`Logging` con un logger que captura las líneas, alrededor de
+  `WithStatusLogLevel(503, slog.LevelWarn, h)`; con `Recover` afuera en la fila del `panic`):
+
+  | Caso | Esperado |
+  |---|---|
+  | `h` responde `503` | `WARN`, `status=503` |
+  | `h` responde `500` | `ERROR` |
+  | `h` responde `200` y `404` | `INFO` |
+  | `h` hace `panic` | `500`, `ERROR` |
+  | `h` llama a `SetLogLevel(r, slog.LevelInfo)` y responde `503` | `INFO` (`SetLogLevel` prevalece) |
+  | `h` responde `503` sin `Logging` alrededor | La respuesta no cambia y no hay `panic` |
+
+- **Red, mux raíz** (`NewRootHandler` con `NewCommonMiddleware` y un logger que captura las líneas):
+
+  | Caso | Esperado |
+  |---|---|
+  | `SPA = web.NewHandler(fstest.MapFS{})` (sin `index.html`), `GET /login` | `503`; línea del request con `level=WARN`, `route=spa`, `status=503` |
+  | Lo mismo con `Accept-Encoding: gzip` | Igual (el `503` pasa por `gzhttp`) |
+  | Lo mismo con `HEAD /` | `503` sin cuerpo, `WARN` |
+  | `POST /login` sin `index.html` | `405`, `INFO` (sin cambio) |
+  | SPA de prueba que responde `500` / que hace `panic` | `ERROR` / `500` y `ERROR` (sin cambio) |
+  | `dist` con `index.html`, `GET /` | `200`, `INFO` |
+  | `SPA = app.SPAUnavailableHandler()` | `503`, `WARN` (sin cambio) |
+  | API de prueba que responde `503`: `GET /api/v1/x` y `GET /api%2Fv1%2Fx` | `503` de la API, `ERROR` (sin cambio: la regla es solo de la rama de la SPA, INV-22) |
+  | Cabeceras y cuerpo del `503` | Idénticos a la fila de T-F007 |
+- **Mutaciones** (se aplican, el caso falla y se restauran): la regla alrededor del mux entero, de
+  la API o de todo `spaUnlessAPI` (antes del desvío de `/api%2F…`) → falla la fila de la API con
+  `503`; condición `>= 500` en vez de `== 503` → fallan las filas del `500`; `SetLogLevel(r,
+  slog.LevelWarn)` incondicional en `spaUnlessAPI` → fallan las filas de `200` y de `500`; sin la
+  regla → fallan las filas de `WARN` sobre `web.NewHandler`.
+- **Green**: pasan las dos tablas y las mutaciones; `make check` en verde, sin cambios en `depguard`
+  ni en el guard de T-B801.
+- **Refactor**: el nivel lo decide solo `Logging`; `spaUnlessAPI` declara la regla junto a
+  `WithRoute("spa", …)`; nada en `web`.
+- Mismo PR: la fila del runbook de plan §12.3 ("La interfaz no está compilada"), con el texto de la
+  decimoctava tanda de plan §18.
+
 **Checkpoint Fase F0**: `make check-all` en verde local y en CI; la prueba independiente ejecutada
 (navegador y `curl` sobre HTTPS); resultados de los spikes S-F1 y S-F2 reportados (y el de la
 cookie de T-F006, si el backend ya tiene T-B306).
@@ -3396,7 +3486,7 @@ cerró"; Chrome ofrece "Instalar app" sobre el binario en `https://localhost:844
 **T-F102 — Implementar `api/errorMessages.ts`** (`messageForError`, `fieldErrorMessage`,
 `logoRejectMessage`, `applyServerFieldErrors`).
 
-**T-F103 [T] — `safeNextPath`** · INV-F07, BR-F07
+**T-F103 [T] — `safeNextPath` y la URL de sesión vencida** · INV-F07, BR-F07, INV-F18, DD-F32
 - **Red**:
 
   | Entrada | Salida |
@@ -3406,6 +3496,10 @@ cerró"; Chrome ofrece "Instalar app" sobre el binario en `https://localhost:844
   | `//evil.example`, `/\evil.example`, `https://evil.example`, `javascript:alert(1)` | `/` |
   | `settings` (sin barra inicial) | `/` |
   | `/%2F%2Fevil.example` | `/` |
+  | *(DD-F32)* `sessionExpiredLoginPath({ pathname: '/settings/company', search: '' })` | `/login?next=%2Fsettings%2Fcompany&reason=session_expired` |
+  | `sessionExpiredLoginPath({ pathname: '/settings/users', search: '?x=1' })` | `next` = `/settings/users?x=1` codificado; `safeNextPath` de ese `next` lo devuelve igual |
+  | `isSessionExpiredRedirect` con la salida de `sessionExpiredLoginPath` | `true` |
+  | `isSessionExpiredRedirect` con `/login`, `/login?reason=logged_out`, `/settings`, `/settings?reason=session_expired` | `false` |
 - **Green**: pasa la tabla.
 
 **T-F104 [T] — Sesión, guards y manejadores globales** · ADR-017, ADR-018, INV-F01, INV-F02, INV-F03, INV-F06, BR-F04, `ui.md` §6.4, §12.4
@@ -3434,7 +3528,8 @@ cerró"; Chrome ofrece "Instalar app" sobre el binario en `https://localhost:844
 **T-F105 — Implementar sesión y guards**: `features/auth/session.ts` (`useSession`,
 `useCurrentSession`, `useCan`), `RequireSession`, `PublicOnly`, `RequirePermission`,
 `ForbiddenState`, manejadores de `createAppQueryClient` inyectados desde `main.tsx`,
-`lib/safeNextPath.ts`.
+`lib/safeNextPath.ts`, `lib/sessionExpiredRedirect.ts` (el manejador de §12.4 y la transición a
+`null` de §6.4 arman la URL con `sessionExpiredLoginPath`; DD-F32).
 
 **T-F106 [T] — Shell, Ajustes y accesibilidad base** · BR-F04, INV-F10, NFR-F06, `ui.md` §13.8, §13.13, §18
 - **Red**:
@@ -3558,6 +3653,7 @@ login con "Cerraste sesión." y atrás no muestra datos.
   | `429 login_locked` con `Retry-After: 900` y reloj en 14:20 | "…Podés volver a intentar a las 14:35 (en 15 minutos)…"; "Restablecer contraseña" lleva a `/forgot-password` con el email; "Volver a intentar" muestra el formulario |
   | `429 rate_limited` con `Retry-After: 3` (cupo por IP del login, DD-9) / con `Retry-After: 120` | "Esperá unos segundos y probá de nuevo." / "Esperá 2 minutos y probá de nuevo." (DD-F25) |
   | `reason=session_expired` / `password_changed` / `logged_out` / otro valor | el aviso correspondiente / ninguno |
+  | *(DD-F32)* `reason=session_expired` con `state.unsavedChangesLost: true` / sin `state` / `reason=logged_out` con ese `state` | "Tu sesión se cerró. Ingresá de nuevo para seguir." + "Los cambios que no habías guardado se perdieron." / solo la primera línea / solo "Cerraste sesión." |
   | "¿Olvidaste tu contraseña?" con un email escrito | `/forgot-password` con ese email |
   | `503` / sin red | mensaje con "Reintentar"; datos conservados |
   | Campos | `autocomplete` `email` y `current-password`; se puede pegar en ambos |
@@ -3844,7 +3940,7 @@ S-F10). Valida S-F8 y NFR-F13; si no hay forma de hacerla, se reporta como pendi
   del módulo 11 con resto 10 u 11 según la regla oficial.
 - **Green**: `lib/cuit.ts` (`isValidCuit`) pasa la tabla.
 
-**T-F602 [T] — Datos de la empresa** · US-4, DD-15, DD-27, BR-F09, BR-F10, INV-F04, `ui.md` §13.11
+**T-F602 [T] — Datos de la empresa** · US-4, DD-15, DD-27, BR-F09, BR-F10, INV-F04, DD-F32, INV-F18, `ui.md` §12.4, §13.11
 - **Red**:
 
   | Interacción | Resultado observable |
@@ -3858,6 +3954,13 @@ S-F10). Valida S-F8 y NFR-F13; si no hay forma de hacerla, se reporta como pendi
   | `422 invalid_tax_id` / `422 invalid_timezone` del servidor | error en "CUIT" / en "Zona horaria" |
   | `200` | toast "Guardamos los datos de la empresa."; el encabezado muestra el nombre nuevo |
   | Salir con cambios sin guardar | "Tenés cambios sin guardar. ¿Salir igual?"; "Salir" navega, "Quedarme" no |
+  | *(DD-F32)* Cambios sin guardar → "Guardar cambios" → `PATCH /tenant` `401 unauthenticated` | **sin** el aviso "Tenés cambios sin guardar"; `/login?next=%2Fsettings%2Fcompany&reason=session_expired` con "Tu sesión se cerró. Ingresá de nuevo para seguir." y "Los cambios que no habías guardado se perdieron." |
+  | Cambios sin guardar y `['session']` pasa a `null` al enfocar la ventana | lo mismo |
+  | Preparando el logo (adaptador de canvas pendiente) y `['session']` pasa a `null` | lo mismo; cuando el adaptador resuelve, no se envía `PUT /tenant/logo` |
+  | Aviso "Tenés cambios sin guardar" abierto (tocó "Ajustes") y llega el `401` | el aviso se cierra; login con las dos líneas; `next` = `/settings/company`, no `/settings` (S-F13) |
+  | Desde ese login, ingresar | vuelve a `/settings/company` con los datos del servidor; "Guardar cambios" deshabilitado |
+  | `401` sin cambios sin guardar | login solo con "Tu sesión se cerró. Ingresá de nuevo para seguir." |
+  | "Salir" en el aviso y después un `401` en otra pantalla | login sin la segunda línea (el guard ya no está activo) |
   | Zona horaria | `America/Argentina/*` primero en el selector |
   | La zona guardada de la empresa no está en `Intl.supportedValuesOf('timeZone')` (alias, S-F11) | aparece igual, seleccionada (DD-F27) |
   | `503` al guardar | mensaje con "Reintentar"; valores intactos |
@@ -3948,7 +4051,11 @@ S-F10). Valida S-F8 y NFR-F13; si no hay forma de hacerla, se reporta como pendi
 **T-F605 — Implementar** `CompanyPage`, `LogoUploader`, `useUpdateTenant`, `useUploadLogo`
 (`putTenantLogo`, con una sola parte `file`), `useDeleteLogo`, `logoUrl`, `lib/cuit.ts`,
 `features/tenant/logo/` (`limits.ts`, `sniff.ts`, `plan.ts`, `canvas.ts`, `prepareLogo.ts`); el
-encabezado pasa a mostrar el logo.
+encabezado pasa a mostrar el logo. *(Enmienda de F0, DD-F32)* `lib/unsavedChanges.ts`
+(`useUnsavedChangesGuard`, `hasUnsavedChanges`), usado una vez en `CompanyPage` con `when` =
+formulario con cambios o logo en curso. El manejador de §12.4 pasa `state: { unsavedChangesLost:
+true }` si `hasUnsavedChanges()` (leído antes de navegar). Regla `no-restricted-imports` que prohíbe
+`useBlocker` de `react-router` fuera de `src/lib/unsavedChanges.ts` (INV-F18).
 
 **Checkpoint Fase F6**: `npm run check` en verde + prueba independiente (la prueba en un celular
 real, con su resultado para S-F8, S-F10 y NFR-F13, o reportada como pendiente por H-12).
@@ -4113,4 +4220,7 @@ usó) reportado.
 | DD-46 (2) y (3) (el reset confirma el email; cupo por usuario del reenvío, con `429` y `Retry-After` desde la enmienda H-16), H-16 (resuelto), DD-F30 (reemplazada), P-F10 | T-F101, T-F404, T-F405, T-F502, T-F702 |
 | DD-44 (`401` en una acción de administración) | T-F104, T-F503 |
 | DD-F31 / INV-F17 (reenvío a un email ya confirmado: el texto sale de `/me` releído) | T-F404, T-F405, T-F406, T-F502 |
+| ADR-027 (vulnerabilidades de npm), P-F13, S-F14 | T-F010 |
+| DD-F32 / INV-F18 (`401` con cambios sin guardar), P-F14, S-F13 | T-F103, T-F105, T-F301, T-F602, T-F605 |
+| H-17 / plan DD-50 propuesta (log del `503` de la SPA sin compilar), P-F15 | T-F011 |
 | NFR-F01..F13 | T-F002 (F02, F07, F08), T-F702 (F01, F06, F10, F12), T-F703 (F09, F11), T-F704 (F03..F05), T-F705 (F06..F08), T-F706 (F13) |
