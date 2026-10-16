@@ -60,6 +60,8 @@ ajustes antes de la Fase 6). La sección Frontend no cambia: el contrato no camb
 **Decimoquinta revisión 2026-10-10** (*Accepted*, aprobada por el usuario el 2026-10-10): pendientes no bloqueantes de la revisión final de código del PR fdelillo/crm#17 (Fase 9, mergeado en `main` en `b945373`; plan §18, decimoquinta tanda), en un PR solo de tests y texto. T-B801: la regla (4) prohíbe declarar parámetros de tipo en `cmd/crm` (mutaciones (r) a (t)), y se corrige su frase sobre "otro tipo", que era falsa con genéricos. T-B911: control positivo de la sonda de `pg_stat_activity`. T-B910: casos sintéticos del autocontrol del tracer. Textos: §B-5 de `revision-14-t-b910.md`, fila 4 de la entrada de la decimocuarta parte B y fecha de la entrada de la Fase 9. Sin tareas nuevas ni cambios de código de producción. La sección Frontend no cambia: el contrato no cambia.
 **Decimosexta revisión 2026-10-12** (*Accepted*, aprobada por el usuario el 2026-10-12): auditoría de seguridad de `b945373` (plan §18, decimosexta tanda; [`revision-16-auditoria.md`](revision-16-auditoria.md)). Fase 10 nueva (T-B1001 a T-B1010): revalidación del actor bajo el lock de la empresa (DD-44), cupo del hasher antes de la conexión (DD-45), cupos de invitación (DD-48), cupo global de registros (DD-49) e invitar con email verificado (DD-46, opción B). Cambia un test existente (`TestRoleChangesAndLastAdmin`), y se adaptan los hashers instrumentados de T-B503 y T-B604. Contrato **v0.5.0**: ver "Coordinación con la sección Frontend".
 **Decimoséptima revisión 2026-10-14** (*Accepted* (aprobada por el usuario el 2026-10-14)): vulnerabilidades conocidas en dependencias Go (plan §18, decimoséptima tanda; ADR-026), la unidad bloqueada de la auditoría de `b945373`. Fase 11 nueva (T-B1101): `make vuln` y el workflow `vulncheck`. No cambia código de producción ni el contrato. La sección Frontend recibe una fila de coordinación para T-F009 (npm).
+**Decimoctava revisión 2026-10-16** (*Accepted*, aprobada por el usuario el 2026-10-16, `ui.md` P-F15): nivel de log del `503` de la SPA (plan DD-50; T-F011, en la sección Frontend, la implementa `backend-developer`) y qué error devuelve `runServe` con dos fallas (T-B911, solo texto). (Línea agregada en la decimonovena revisión.)
+**Decimonovena revisión 2026-10-16** (*Accepted*, P-6 aprobada por el usuario el 2026-10-16): `tenant_id` y `user_id` en la línea de request (plan §18, decimonovena tanda; revisión del PR #34; INV-38). Tarea nueva T-B912, al final de la Fase 9, que implementa `backend-developer`. No cambia el contrato ni la sección Frontend.
 
 ---
 
@@ -2660,6 +2662,45 @@ de la fase y se agrega a plan §11.1 en el mismo cambio (matriz §16).
 - T-B905 (corrida 1, ya reportada) y T-B910 reportada con su veredicto. El veredicto de T-B910 **no** bloquea el cierre de la fase: decide si 001 puede salir a producción con ADR-005 tal como está.
 
 **Condición de salida a producción** (no es una condición de la fase; viene de ADR-005, consecuencia 1): T-1, T-2 y T-3 de T-B910 cumplidos en las dos corridas, sin que se disparen D-c ni D-d. Si no, tiene que estar implementado el ADR que reemplace a ADR-005, o una decisión del usuario que lo evite. **Cumplida** el 2026-10-08 (T-B910, dos corridas; decimocuarta revisión, *Accepted*, aprobada por el usuario el 2026-10-08). Desde entonces rigen el techo y los disparadores de plan DD-33 R-f y §12.4.
+
+**T-B912 [T] — `tenant_id` y `user_id` en la línea de request** · plan DD-12 (enmienda), INV-38, §12.1, §12.3, P-6 · decimonovena revisión (*Accepted*, P-6; se agrega después del cierre de la Fase 9)
+- Implementa: `backend-developer`, en `chore/001-logging-followups`. El código va en `internal/platform/httpx/middleware.go` (`SetLogPrincipal`, los ids en el estado del request y las claves en `Logging`) y en `internal/identity/middleware.go` (la llamada en `Authenticate`). No cambian `authz`, `ratelimit`, la cadena común (T-B204), `RootDeps`, `cmd/crm` ni `.golangci.yml`.
+- **Firma** (plan §11.1): `func SetLogPrincipal(r *http.Request, tenantID, userID uuid.UUID)`. Anota los dos ids en el estado que `Logging` comparte con la cadena, el mismo de `SetRoute` y `SetLogLevel`. Es no-op fuera de `Logging`, y también si alguno de los dos es `uuid.Nil` (falla cerrada). `Logging` escribe `tenant_id` y `user_id` (texto canónico del UUID) solo si se anotaron, en los tres caminos de la línea: normal, `panic` y `499`. `identity.Authenticate` la llama con el `TenantID` y el `UserID` del `Principal`, después de que `ResolveSession` vuelve sin error y antes de `next`. Es su único llamador fuera de los tests (INV-38).
+- **Red, `httpx`** (unitario: `Logging` con un logger que captura las líneas; en la fila del `panic`, con `Recover` afuera):
+
+  | Caso | Esperado |
+  |---|---|
+  | `h` llama a `SetLogPrincipal(r, T, U)` y responde `200` | `tenant_id=T`, `user_id=U` |
+  | `h` no la llama | La línea no tiene las claves `tenant_id` ni `user_id` (ausentes, no vacías) |
+  | `h` la llama con `uuid.Nil` como empresa; en otro caso, como usuario | Sin ninguna de las dos claves |
+  | `h` la llama dos veces con ids distintos | Los de la segunda llamada |
+  | `h` la llama y hace `panic` | `500`, `ERROR`, con los dos ids |
+  | `h` la llama y después llama a `WriteDBError` con `db.ErrCanceled` y el contexto del request cancelado | `499`, `INFO`, `event=client_canceled`, con los dos ids |
+  | `h` la llama y responde `503` dentro de `WithStatusLogLevel(503, slog.LevelWarn, …)` | `WARN`, con los dos ids (DD-50 no cambia) |
+  | `SetLogPrincipal` sin `Logging` alrededor | No hace `panic` y la respuesta no cambia |
+
+- **Red, API** (integración en `internal/app`, con PostgreSQL real, `NewCommonMiddleware`, el router de la API y un logger que captura las líneas; los ids esperados salen del fixture, no de la respuesta):
+
+  | Caso | Esperado |
+  |---|---|
+  | `GET /api/v1/me` con sesión válida | `200`; `tenant_id` y `user_id` de esa sesión |
+  | `GET /api/v1/me` sin cookie, con una cookie inexistente y con la de una sesión revocada | `401`; sin las claves |
+  | `POST /api/v1/users/invitations` con sesión de operador | `403` (`RequirePermission`); los ids del operador |
+  | `POST /api/v1/users/invitations` de un admin con el cupo de su empresa agotado (DD-48) | `429`; `route=/api/v1/users/invitations` y el `tenant_id` de esa empresa (fila de plan §12.3) |
+  | `POST /api/v1/auth/login` correcto, enviado con la cookie de otra sesión válida | `200`; sin las claves (ruta pública: la sesión nueva no autentica ese request) |
+  | `POST /api/v1/auth/password-reset` con la cookie de una sesión válida del mismo email | `202`; sin las claves |
+  | `POST /api/v1/auth/logout` con sesión válida | `204`; sin las claves |
+  | `GET /healthz` y `GET /` (la SPA del test) con una cookie válida | Sin las claves |
+  | Todas las filas anteriores | Ninguna línea del request contiene el valor de la cookie, el `SessionID` ni el email |
+
+- **Mutaciones** (se aplican, el caso falla y se restauran):
+  - sin la llamada en `Authenticate` → fallan las filas de `/me` con sesión, del `403` y del `429`;
+  - la llamada en `authz.RequirePermission` en lugar de `Authenticate` → falla la fila de `/me` con sesión (esa ruta no usa `RequirePermission`);
+  - `Logging` escribe las dos claves siempre, vacías si no se anotaron → fallan las filas "sin las claves";
+  - sin el chequeo de `uuid.Nil` → falla la fila de `uuid.Nil`.
+- **Green**: pasan las dos tablas y las mutaciones; `make check` en verde, sin cambios en `depguard`.
+- **Refactor**: si el nombre `routeHolder` ya no describe lo que guarda, se renombra (no está exportado). Se corrige el comentario de `Logging` para que liste los campos reales (DD-12), incluidos `ip`, `event` y los dos ids.
+- Mismo PR: la entrada de estado reporta las mutaciones, cada una con el caso que falla. El texto del plan (§11.1, §12.1, INV-38) ya va en el commit de diseño.
 
 ---
 
