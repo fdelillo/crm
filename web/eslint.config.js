@@ -30,12 +30,12 @@ const canvasSelectors = [
   },
   {
     selector:
-      "CallExpression[callee.property.name='createElement'][arguments.0.value='canvas']",
+      "CallExpression[callee.property.name='createElement'][arguments.0.value=/^canvas$/i]",
     message: 'Canvas belongs in tenant/logo/canvas.ts.',
   },
   {
     selector:
-      "CallExpression[callee.property.name='createElement'][arguments.0.expressions.length=0][arguments.0.quasis.0.value.cooked='canvas']",
+      "CallExpression[callee.property.name='createElement'][arguments.0.expressions.length=0][arguments.0.quasis.0.value.cooked=/^canvas$/i]",
     message: 'Canvas belongs in tenant/logo/canvas.ts.',
   },
   {
@@ -71,6 +71,13 @@ const nonNormalizedPath = {
   regex: rx('.(?:/\\.(?:/|$)|//)'),
   message: 'Import the normalized path (no "./" in the middle, no "//").',
 }
+// Climbing out of src/ and coming back in (../../../src/..., ../../../../web/src/...).
+const reenteredRoot = {
+  regex: rx('^(?:\\./)*(?:\\.\\./)+(?:src|web)(?:/|$)'),
+  message: 'Import with the "@/" alias instead of re-entering src/ or web/.',
+}
+// Known limit: import() with expressions (`@/api/${x}`, concatenations) cannot
+// be checked statically; only literals and template literals without expressions are.
 const componentImportRegex = rx(
   '^(?:@/|(?:\\./)*(?:\\.\\./)+)(?:api|features|app)(?:/|$)',
 )
@@ -81,6 +88,7 @@ const componentPatterns = [
   },
   hiddenParentSegment,
   nonNormalizedPath,
+  reenteredRoot,
 ]
 const featurePatterns = (feature) => [
   {
@@ -101,6 +109,7 @@ const featurePatterns = (feature) => [
   },
   hiddenParentSegment,
   nonNormalizedPath,
+  reenteredRoot,
 ]
 // Covers 'x' and also a template literal without expressions: `x`.
 const dynamicImport = (regex, message) => [

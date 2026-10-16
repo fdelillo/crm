@@ -8,23 +8,46 @@ const SYNTAX = 'no-restricted-syntax'
 const ui = 'src/components/ui/probe.tsx'
 const users = 'src/features/users/probe.ts'
 
-async function ruleHit(file: string, code: string, rule: string) {
+async function ruleHit(
+  file: string,
+  code: string,
+  rule: string,
+  ruleConfigured = true,
+) {
   const results = await eslint.lintText(code, { filePath: file })
-  const errors = (results[0]?.messages ?? []).filter(
-    (message) => message.severity === 2,
-  )
+  if (results.length !== 1) throw new Error(`Expected one result for ${file}`)
+  // An ignored file or one without config would otherwise look "allowed".
+  const config = await eslint.calculateConfigForFile(file)
+  const level = config?.rules?.[rule]?.[0]
+  if (
+    config === undefined ||
+    (ruleConfigured && level !== 2 && level !== 'error')
+  ) {
+    throw new Error(`${rule} is not an error for ${file}`)
+  }
+  const messages = results[0]?.messages ?? []
   return {
-    rejected: errors.some((message) => message.ruleId === rule),
-    unexpected: errors.filter((message) => message.ruleId !== rule),
+    rejected: messages.some(
+      (message) => message.ruleId === rule && message.severity === 2,
+    ),
+    unexpected: messages.filter((message) => message.ruleId !== rule),
   }
 }
 const importOf = (path: string) =>
   `import { value } from '${path}'; export const probe = value`
 const lazyOf = (path: string) => `export const probe = () => import(${path})`
 
-type Case = [name: string, file: string, code: string, rule: string]
+// ruleConfigured is false only where the rule is intentionally absent (src/api may import openapi-fetch).
+type Case = [
+  name: string,
+  file: string,
+  code: string,
+  rule: string,
+  ruleConfigured?: boolean,
+]
 
-// T-001 (M1): import boundaries and normalized paths.
+// Import boundaries and normalized paths.
+// Note: from src/components/ui, '../../api' is the real src/api; '../../../api' does not exist but is rejected too.
 const rejected: Case[] = []
 for (const directory of ['api', 'features', 'app']) {
   for (const prefix of ['@/', '../', '../../', '../../../']) {
@@ -37,6 +60,36 @@ for (const directory of ['api', 'features', 'app']) {
   }
 }
 rejected.push(
+  [
+    'components reject ../../../src/api/client',
+    ui,
+    importOf('../../../src/api/client'),
+    IMPORTS,
+  ],
+  [
+    'users reject ../../../src/features/tenant/CompanyPage',
+    users,
+    importOf('../../../src/features/tenant/CompanyPage'),
+    IMPORTS,
+  ],
+  [
+    'users reject ../../../../web/src/features/tenant/CompanyPage',
+    users,
+    importOf('../../../../web/src/features/tenant/CompanyPage'),
+    IMPORTS,
+  ],
+  [
+    'components reject dynamic ../../../src/api/client',
+    ui,
+    lazyOf("'../../../src/api/client'"),
+    SYNTAX,
+  ],
+  [
+    'components reject createElement CANVAS',
+    ui,
+    'export const probe = () => document.createElement("CANVAS")',
+    SYNTAX,
+  ],
   [
     'components reject dynamic @/api/client',
     ui,
@@ -200,7 +253,7 @@ const allowed: Case[] = [
   ],
 ]
 
-// T-001 (M1): network and canvas stay in their modules.
+// Network and canvas stay in their modules.
 const canvas = [
   'createImageBitmap(new Blob())',
   'window.createImageBitmap(new Blob())',
@@ -247,6 +300,7 @@ for (const file of [
     file,
     'import createClient from "openapi-fetch"; export const probe = createClient',
     IMPORTS,
+    file !== 'src/api/probe.ts',
   ]
   ;(blocked || file === 'src/features/tenant/api.ts' ? rejected : allowed).push(
     client,
@@ -254,14 +308,25 @@ for (const file of [
 }
 
 describe('import and network boundaries', () => {
-  it.each(rejected)('rejects: %s', async (_name, file, code, rule) => {
-    const hit = await ruleHit(file, code, rule)
-    expect(hit.unexpected).toEqual([])
-    expect(hit.rejected).toBe(true)
+  it('the helper fails for a file ESLint ignores instead of reporting "allowed"', async () => {
+    await expect(
+      ruleHit('src/api/generated/probe.ts', importOf('@/lib/utils'), IMPORTS),
+    ).rejects.toThrow()
   })
-  it.each(allowed)('allows: %s', async (_name, file, code, rule) => {
-    const hit = await ruleHit(file, code, rule)
-    expect(hit.unexpected).toEqual([])
-    expect(hit.rejected).toBe(false)
-  })
+  it.each(rejected)(
+    'rejects: %s',
+    async (_name, file, code, rule, configured) => {
+      const hit = await ruleHit(file, code, rule, configured)
+      expect(hit.unexpected).toEqual([])
+      expect(hit.rejected).toBe(true)
+    },
+  )
+  it.each(allowed)(
+    'allows: %s',
+    async (_name, file, code, rule, configured) => {
+      const hit = await ruleHit(file, code, rule, configured)
+      expect(hit.unexpected).toEqual([])
+      expect(hit.rejected).toBe(false)
+    },
+  )
 })

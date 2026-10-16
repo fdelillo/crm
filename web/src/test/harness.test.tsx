@@ -50,6 +50,26 @@ describe('browser test harness', () => {
       await fetch(`${origin}/api/v1/caught`).catch(() => undefined)
     },
   )
+  // Pair: A fails in afterEach and must still be cleaned up; B checks the leftovers.
+  it.fails(
+    'afterEach fails an unhandled request and still cleans up',
+    async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      render(<p>Residuo del test anterior</p>)
+      sessionStorage.setItem('leftover', 'yes')
+      server.use(
+        http.get(`${origin}/api/v1/leftover`, () => HttpResponse.json({})),
+      )
+      await fetch(`${origin}/api/v1/unhandled-leftover`).catch(() => undefined)
+    },
+  )
+  it('starts clean after a test that failed in afterEach', async () => {
+    expect(screen.queryByText('Residuo del test anterior')).toBeNull()
+    expect(sessionStorage.length).toBe(0)
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    await expect(fetch(`${origin}/api/v1/leftover`)).rejects.toThrow()
+    expect(assertNoUnhandledRequests).toThrow(/api\/v1\/leftover/)
+  })
   // The next two tests are a pair and rely on running in this order (Vitest runs
   // a file's tests sequentially unless told otherwise): the first leaves state, the second checks it is gone.
   it('can populate a test cache, override a handler and save a temporary flag', () => {
