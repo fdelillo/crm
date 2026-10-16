@@ -91,7 +91,8 @@ func trackWriter(w http.ResponseWriter) *statusWriter {
 	return &statusWriter{ResponseWriter: w}
 }
 
-// routeHolder lets handlers deeper in the chain tell Logging which route label to record.
+// routeHolder is the per-request state Logging shares with the handlers below it: the route label,
+// the SetLogLevel override, the WithStatusLogLevel rules by status and the client-canceled mark.
 type routeHolder struct {
 	label    string
 	level    *slog.Level
@@ -119,6 +120,10 @@ func SetLogLevel(r *http.Request, level slog.Level) {
 // has that status, for responses that are expected even though they are 5xx (DD-50). Precedence in
 // Logging: client canceled > panic > SetLogLevel > WithStatusLogLevel > the default. It does not
 // wrap the ResponseWriter (the status comes from Logging's own) and is a no-op outside Logging.
+//
+// With two rules for the same status the innermost wins (the last one registered, since each rule
+// is recorded before calling next). A rule, once reached, holds until the end of the request, even
+// if the handler that carries it returns without writing a response.
 func WithStatusLogLevel(status int, level slog.Level, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if h, ok := r.Context().Value(routeKey).(*routeHolder); ok {
