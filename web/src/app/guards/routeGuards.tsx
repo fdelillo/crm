@@ -31,7 +31,7 @@ export function RequireSession() {
         <span>Cargando…</span>
       </main>
     )
-  if (session.isError) {
+  if (session.isLoadingError) {
     const message = messageForError(session.error, 'generic')
     return (
       <main>
