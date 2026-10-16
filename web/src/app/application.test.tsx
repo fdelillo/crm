@@ -64,6 +64,11 @@ it('reloads one failed initial chunk and exposes update after the next failed st
     ).toBeVisible()
     expect(errors[1]?.defaultPrevented).toBe(true)
     expect(reload).toHaveBeenCalledOnce()
+    // The boundary's P-F18 effect moves focus to its <h1>; wait for it first.
+    const errorHeading = await screen.findByRole('heading', {
+      name: 'Algo salió mal al mostrar esta pantalla',
+    })
+    await waitFor(() => expect(errorHeading).toHaveFocus())
     screen.getByRole('button', { name: 'Actualizar' }).focus()
     await userEvent.keyboard('{Enter}')
     expect(reload).toHaveBeenCalledTimes(2)

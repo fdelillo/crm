@@ -2,7 +2,7 @@ import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { focusManager, useMutation, useQuery } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { api } from '@/api/client'
 import { unwrap } from '@/api/errors'
 import { queryKeys } from '@/api/queryKeys'
@@ -53,6 +53,7 @@ function Probe({ mutate = false }: { mutate?: boolean }) {
 }
 // T-F104 (INV-F01/02/03/06/16): real router/cache and HTTP interception at the boundary.
 describe('session guards and global failures', () => {
+  afterEach(() => focusManager.setFocused(undefined))
   it('waits for the session without flashing login', async () => {
     server.use(http.get(`${base}/me`, async () => new Promise(() => {})))
     renderApp(['/settings/users'])
@@ -182,10 +183,9 @@ describe('session guards and global failures', () => {
       )
       expect(screen.getByRole('heading', { name: 'Ajustes' })).toBe(heading)
       expect(heading).toHaveFocus()
-      focusManager.setFocused(undefined)
     },
   )
-  it('sends a null cached session to login', async () => {
+  it('sends a 401 on first load to login', async () => {
     server.use(http.get(`${base}/me`, () => denied('unauthenticated', 401)))
     const { router } = renderApp(['/settings'])
     await screen.findByRole('heading', { name: 'Ingresar' })
@@ -324,7 +324,6 @@ describe('session guards and global failures', () => {
       })
       if (!verified) await waitFor(() => expect(me).toHaveBeenCalledTimes(2))
       else expect(me).toHaveBeenCalledTimes(1)
-      focusManager.setFocused(undefined)
     },
   )
   it('navigates only once when simultaneous queries lose the session', async () => {
