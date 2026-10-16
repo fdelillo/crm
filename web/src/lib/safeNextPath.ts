@@ -7,7 +7,8 @@ export function safeNextPath(raw: string | null): string {
       if (
         !decoded.startsWith('/') ||
         decoded.startsWith('//') ||
-        /[\\\u0000-\u0020]|[a-z][a-z0-9+.-]*:/i.test(decoded)
+        /[\\]|[a-z][a-z0-9+.-]*:/i.test(decoded) ||
+        [...decoded].some((char) => char.charCodeAt(0) <= 32)
       )
         return '/'
       const next = decodeURIComponent(decoded)
