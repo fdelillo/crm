@@ -31,3 +31,23 @@ jobs:
       # Fails closed (ADR-026 I-1): no continue-on-error and no `|| true`.
       - name: make vuln
         run: make vuln
+
+  npm-audit:
+    name: make web-vuln
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      # No cache and no `npm ci`: npm audit reads package-lock.json, so no third-party install
+      # script runs in this job (ADR-027 section 5 and I-3).
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/.nvmrc
+          package-manager-cache: false
+
+      # Fails closed (ADR-027 I-1): no continue-on-error and no `|| true`.
+      - name: make web-vuln
+        run: make web-vuln

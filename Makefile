@@ -22,7 +22,7 @@ export GOTOOLCHAIN := $(GO_TOOLCHAIN)
 # dependencies never mix with the application's.
 TOOL  = $(GO) tool -modfile=tools.mod
 
-.PHONY: generate codex-agents lint test test-int check vuln db-reset dev-certs web-build web-check build check-all
+.PHONY: generate codex-agents lint test test-int check vuln web-vuln db-reset dev-certs web-build web-check build check-all
 
 # Regenerate the sqlc code from the migrations and the queries of each module.
 generate:
@@ -60,6 +60,23 @@ check: lint test test-int
 VULN_DIR = .
 vuln:
 	$(TOOL) govulncheck -C $(VULN_DIR) -show traces,version ./...
+
+# Known vulnerabilities in the npm dependencies (ADR-027): two `npm audit` passes that read
+# package-lock.json (no `npm ci`, so no third-party install script runs). Production
+# (`--omit=dev`, what reaches web/dist) blocks from `low`; the full tree blocks only on `critical`
+# and lists the rest in the log. Both passes always run, even if the first fails, and the target
+# fails if either does (a registry error also exits non-zero: ADR-027 I-1). Needs network and its
+# result changes with the advisory database, so it is NOT part of `web-check` or `check-all`.
+# WEB_VULN_DIR is for the T-F010 controls only (another project); `=` and not `?=`, like VULN_DIR.
+WEB_VULN_DIR = web
+web-vuln:
+	@status=0; \
+	cd $(WEB_VULN_DIR) || exit 1; \
+	echo "== npm audit: production dependencies (blocks from low)"; \
+	$(NPM) audit --omit=dev --audit-level=low || status=1; \
+	echo "== npm audit: full tree (blocks only on critical)"; \
+	$(NPM) audit --audit-level=critical || status=1; \
+	exit $$status
 
 # Development only: recreate the local PostgreSQL (its roles are cluster-wide, so the whole
 # volume goes), run the bootstrap through the container's init script, then the migrations.
