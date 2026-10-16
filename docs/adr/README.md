@@ -60,6 +60,7 @@ Reglas:
 | [024](024-clasificacion-fallos-outbox-y-presupuesto-smtp.md) | Clasificación de fallos de entrega del outbox, presupuesto de tiempo del envío SMTP y aislamiento de fallos por mensaje | Accepted (ADR-025, *Accepted*, reemplaza el último párrafo de §2 y partes de §3; nota 2026-10-01 (b)) | 001 (revisión del PR #8) |
 | [025](025-saneamiento-last-error-y-codigo-extendido.md) | `last_error` sin texto del proveedor después del contenido, redacción de secuencias tipo secreto y código extendido leído del texto en todas las fases | Accepted | 001 (tercera revisión del PR #8) |
 | [026](026-vulnerabilidades-dependencias-govulncheck.md) | Vulnerabilidades conocidas en dependencias Go con govulncheck (bloqueante en PR y `main`, corrida diaria) | Accepted | 001 (auditoría de `b945373`, unidad bloqueada) |
+| [027](027-vulnerabilidades-dependencias-npm.md) | Vulnerabilidades conocidas en dependencias npm del frontend con `npm audit` (producción desde `low`, árbol completo solo `critical`) | Accepted (decisión del usuario, 2026-10-16) | 001 (frontend, cierre de F0) |
 
 Los ADR 001–014 quedaron `Accepted` el 2026-09-29, al aprobarse el plan de la spec 001.
 
@@ -82,6 +83,10 @@ contra `Problem`) sin cambiar la decisión.
 ADR-026 (2026-10-14, `Accepted`, aprobada por el usuario el 2026-10-14) cierra la unidad bloqueada
 de la auditoría de `b945373`. Aplica a todo el módulo Go; el escaneo de las dependencias del
 frontend lo define T-F009.
+
+ADR-027 (2026-10-15; aprobado por el usuario el 2026-10-16) define ese escaneo: `npm audit` en dos
+pasadas (producción desde `low`, el árbol completo solo `critical`), en el mismo workflow `vulncheck`
+y con el mismo registro de excepciones que ADR-026. ADR-026 no cambia.
 
 La nota 2026-10-15 de ADR-017 (decisión del usuario) pasa React Router de v7 a v8 sin cambiar la
 decisión: misma librería, mismo modo *data*, sin loaders, actions ni middleware.
