@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import type { QueryClient } from '@tanstack/react-query'
 import { render } from '@testing-library/react'
 import { createMemoryRouter, type InitialEntry } from 'react-router'
 import { createSessionErrorHandlers } from '@/app/sessionErrors'
@@ -8,7 +9,10 @@ import { createTestQueryClient } from './queryClient'
 
 export function renderApp(
   initialEntries: InitialEntry[] = ['/'],
-  options: { protectedPage?: ReactNode } = {},
+  options: {
+    protectedPage?: ReactNode
+    configureQueryClient?: (client: QueryClient) => void
+  } = {},
 ) {
   const routes = options.protectedPage ? structuredRoutes() : appRoutes
   function structuredRoutes(): typeof appRoutes {
@@ -30,6 +34,7 @@ export function renderApp(
     onForbidden: () => handlers.onForbidden(),
   })
   const handlers = createSessionErrorHandlers(queryClient, router)
+  options.configureQueryClient?.(queryClient)
   return {
     ...render(<Application router={router} queryClient={queryClient} />),
     router,

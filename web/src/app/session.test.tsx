@@ -95,6 +95,37 @@ describe('session guards and global failures', () => {
       await screen.findByRole('heading', { name: 'Usuarios' }),
     ).toBeVisible()
   })
+  // T-F104/T-F106 (review: same-URL recovery): focus and title follow the presented screen.
+  it('updates title and heading focus after exhausted session retries recover', async () => {
+    const me = vi.fn(() => denied('service_unavailable', 503))
+    server.use(http.get(`${base}/me`, me))
+    renderApp(['/settings/users'], {
+      configureQueryClient: (client) => {
+        const defaults = client.getDefaultOptions()
+        client.setDefaultOptions({
+          ...defaults,
+          queries: { ...defaults.queries, retry: 2, retryDelay: 0 },
+        })
+      },
+    })
+    await screen.findByRole('heading', {
+      name: 'El servicio no está disponible en este momento.',
+    })
+    expect(me).toHaveBeenCalledTimes(3)
+    expect(document.title).toBe(
+      'El servicio no está disponible en este momento.',
+    )
+    sessionHandlers()
+    await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
+    const heading = await screen.findByRole('heading', {
+      name: 'Usuarios',
+      exact: true,
+    })
+    await waitFor(() =>
+      expect(document.title).toBe('Usuarios · Empresa de prueba'),
+    )
+    await waitFor(() => expect(heading).toHaveFocus())
+  })
   it('does not mount an unauthorized page or request its data', async () => {
     sessionHandlers(
       buildSessionInfo({
