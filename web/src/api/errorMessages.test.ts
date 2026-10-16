@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { toApiError } from './errors'
 import type { ErrorCode, FieldErrorCode } from './types'
 import { problem } from '@/test/fixtures'
@@ -159,6 +159,44 @@ describe('user error messages', () => {
       description,
     }),
   )
+  // T-F101 (P-F16): fallback text for any context without its own token_invalid variant.
+  it.each(['generic', 'login'] as const)(
+    'uses the generic invalid link text in %s',
+    (context) =>
+      expect(messageForError(error('token_invalid'), context)).toMatchObject({
+        title: 'Este enlace ya no sirve.',
+        description: 'Pedí uno nuevo.',
+        retryable: false,
+      }),
+  )
+  describe('login_locked', () => {
+    const title = 'Por seguridad, pausamos el ingreso con este email.'
+    const lockedAt = (seconds: number | undefined, now: Date) => {
+      vi.useFakeTimers()
+      vi.setSystemTime(now)
+      return messageForError(error('login_locked', seconds, 429), 'login')
+    }
+    afterEach(() => vi.useRealTimers())
+    it.each([
+      [900, new Date(2026, 9, 16, 14, 20, 0), 'a las 14:35 (en 15 minutos)'],
+      [900, new Date(2026, 9, 16, 14, 20, 30), 'a las 14:36 (en 16 minutos)'],
+      [60, new Date(2026, 9, 16, 14, 20, 0), 'a las 14:21 (en 1 minuto)'],
+    ])('with Retry-After %i s: %#', (seconds, now, when) =>
+      expect(lockedAt(seconds, now)).toMatchObject({
+        title,
+        description: `Hubo varios intentos fallidos. Podés volver a intentar ${when} o restablecer tu contraseña ahora.`,
+        retryable: false,
+      }),
+    )
+    it('omits the time without Retry-After', () =>
+      expect(
+        lockedAt(undefined, new Date(2026, 9, 16, 14, 20, 0)),
+      ).toMatchObject({
+        title,
+        description:
+          'Hubo varios intentos fallidos. Podés volver a intentar en unos minutos o restablecer tu contraseña ahora.',
+      }))
+  })
   it.each([
     ['unsupported_media_type', 'El logo tiene que ser una imagen PNG o JPG.'],
     [
