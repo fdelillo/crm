@@ -30,3 +30,14 @@ createRoot(document.getElementById('root')!).render(
     </QueryClientProvider>
   </StrictMode>,
 )
+
+// ADR-020: the worker caches only the standalone offline page, never app or API data.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  const register = () => {
+    void navigator.serviceWorker
+      .register('/sw.js', { scope: '/' })
+      .catch(() => undefined)
+  }
+  if (document.readyState === 'complete') register()
+  else window.addEventListener('load', register, { once: true })
+}
