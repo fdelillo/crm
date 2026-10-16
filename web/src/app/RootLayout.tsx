@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Outlet, ScrollRestoration, useLocation } from 'react-router'
 import { OfflineBanner } from '@/components/OfflineBanner'
@@ -8,26 +8,44 @@ export function RootLayout() {
   const location = useLocation()
   const previousPath = useRef(location.pathname)
   const client = useQueryClient()
-  useEffect(() => {
-    const changed = previousPath.current !== location.pathname
+  const pendingFocus = useRef(false)
+  const lastHeading = useRef<HTMLHeadingElement | null>(null)
+  // Layout effect: mark the navigation before the observer sees the new <h1>.
+  useLayoutEffect(() => {
+    if (previousPath.current !== location.pathname) pendingFocus.current = true
     previousPath.current = location.pathname
+  }, [location.pathname])
+  useEffect(() => {
     const update = () => {
       const heading = document.querySelector('h1')
-      if (!heading) return false
+      if (!heading) return
       const session = client.getQueryData<SessionInfo | null>(queryKeys.session)
-      document.title =
+      const title =
         heading.textContent + (session ? ` · ${session.tenant.name}` : '')
-      if (changed) {
+      if (document.title !== title) document.title = title
+      if (heading === lastHeading.current) return
+      // A new screen is presented: after navigation, or in place of one whose
+      // recovery control (e.g. "Reintentar") just took the focus away with it.
+      const previous = lastHeading.current
+      const focusLost =
+        previous !== null &&
+        !previous.isConnected &&
+        (document.activeElement === null ||
+          document.activeElement === document.body)
+      lastHeading.current = heading
+      if (pendingFocus.current || focusLost) {
+        pendingFocus.current = false
         heading.tabIndex = -1
         heading.focus()
       }
-      return true
     }
-    if (update()) return
-    const observer = new MutationObserver(() => {
-      if (update()) observer.disconnect()
+    update()
+    const observer = new MutationObserver(update)
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
     })
-    observer.observe(document.body, { childList: true, subtree: true })
     return () => observer.disconnect()
   }, [location.pathname, client])
   return (
