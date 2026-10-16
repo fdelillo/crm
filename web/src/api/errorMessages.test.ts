@@ -188,6 +188,23 @@ describe('user error messages', () => {
         retryable: false,
       }),
     )
+    // T-F101 (P-F18): the time comes from receivedAt, not from the render clock.
+    it('shows the same time when the clock moves after the error arrived', () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date(2026, 9, 16, 14, 20, 0))
+      const received = error('login_locked', 900, 429)
+      const texts = [
+        new Date(2026, 9, 16, 14, 20, 0),
+        new Date(2026, 9, 16, 14, 27, 0),
+      ].map((clock) => {
+        vi.setSystemTime(clock)
+        return messageForError(received, 'login').description
+      })
+      expect(texts[0]).toBe(
+        'Hubo varios intentos fallidos. Podés volver a intentar a las 14:35 (en 15 minutos) o restablecer tu contraseña ahora.',
+      )
+      expect(texts[1]).toBe(texts[0])
+    })
     it('omits the time without Retry-After', () =>
       expect(
         lockedAt(undefined, new Date(2026, 9, 16, 14, 20, 0)),

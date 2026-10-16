@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { problem } from '@/test/fixtures'
 import { isApiError, isRetryable, toApiError, unwrap } from './errors'
 import type { ErrorCode, FieldError, ValidationProblem } from './types'
@@ -110,6 +110,40 @@ describe('API errors', () => {
     expect(
       toApiError({ cause: new TypeError('Failed to fetch') }),
     ).toMatchObject({ kind: 'network', status: null, code: null })
+  })
+  // T-F005 (P-F18): the reception instant anchors the login_locked time.
+  describe('receivedAt', () => {
+    const now = new Date(2026, 9, 16, 14, 20, 0)
+    afterEach(() => vi.useRealTimers())
+    it.each([
+      [
+        'an error response',
+        () =>
+          toApiError({
+            response: response(429, { 'Retry-After': '900' }),
+            body: problem('login_locked', 429),
+          }),
+      ],
+      [
+        'a rejected fetch',
+        () => toApiError({ cause: new TypeError('Failed to fetch') }),
+      ],
+      [
+        'a non-problem response',
+        () =>
+          toApiError({
+            response: new Response('<h1>Bad gateway</h1>', {
+              status: 502,
+              headers: { 'Content-Type': 'text/html' },
+            }),
+            body: '<h1>Bad gateway</h1>',
+          }),
+      ],
+    ])('is the fixed clock instant for %s', (_name, build) => {
+      vi.useFakeTimers()
+      vi.setSystemTime(now)
+      expect(build().receivedAt).toBe(now.getTime())
+    })
   })
   it('unwraps data and empty successful responses and throws normalized errors', () => {
     const data = { name: 'Example' }
