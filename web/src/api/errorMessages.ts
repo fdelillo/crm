@@ -1,6 +1,7 @@
 import type { FieldValues, Path, UseFormSetError } from 'react-hook-form'
 import type { ErrorCode, FieldError, FieldErrorCode } from './types'
 import { isApiError, type ApiError } from './errors'
+import { formatRetryAt } from '@/lib/format'
 export interface UserMessage {
   title: string
   description?: string
@@ -50,7 +51,7 @@ const malformed: ErrorMessageResolver = (error, context) => ({
   retryable: false,
   ...(error?.requestId ? { requestId: error.requestId } : {}),
 })
-// T-F102 (partial): contract codes are exhaustive; two unresolved design cases remain explicit.
+// T-F102 (INV-F05): one resolver per contract code, so a new ErrorCode fails to compile.
 export const errorMessages: Record<ErrorCode, ErrorMessageResolver> = {
   malformed_request: malformed,
   method_not_allowed: (error) => malformed(error, 'generic'),
@@ -145,12 +146,27 @@ export const errorMessages: Record<ErrorCode, ErrorMessageResolver> = {
         description: 'Venció, ya se usó o la reemplazó una más nueva.',
         retryable: false,
       }
-    // TODO: approve the generic token_invalid message before completing T-F101/T-F102.
-    throw new Error('Pending design approval: generic token_invalid message')
+    return {
+      title: 'Este enlace ya no sirve.',
+      description: 'Pedí uno nuevo.',
+      retryable: false,
+    }
   },
-  login_locked: () => {
-    // TODO: approve advancing formatRetryAt from T-F302 before completing T-F101/T-F102.
-    throw new Error('Pending design approval: login_locked time formatting')
+  login_locked: (error) => {
+    const title = 'Por seguridad, pausamos el ingreso con este email.'
+    const seconds = error?.retryAfterSeconds ?? null
+    const when =
+      seconds === null
+        ? 'en unos minutos'
+        : (({ time, minutes }) =>
+            `a las ${time} (en ${minutes === 1 ? '1 minuto' : `${minutes} minutos`})`)(
+            formatRetryAt(seconds, new Date()),
+          )
+    return {
+      title,
+      description: `Hubo varios intentos fallidos. Podés volver a intentar ${when} o restablecer tu contraseña ahora.`,
+      retryable: false,
+    }
   },
   rate_limited: (error, context) => {
     const wait = `Esperá ${waitText(error?.retryAfterSeconds ?? null)} y probá de nuevo.`
