@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { StrictMode, type ReactNode } from 'react'
 import type { QueryClient } from '@tanstack/react-query'
 import { render } from '@testing-library/react'
 import { createMemoryRouter, type InitialEntry } from 'react-router'
@@ -12,6 +12,7 @@ export function renderApp(
   options: {
     protectedPage?: ReactNode
     configureQueryClient?: (client: QueryClient) => void
+    strictMode?: boolean
   } = {},
 ) {
   const routes = options.protectedPage ? structuredRoutes() : appRoutes
@@ -35,8 +36,9 @@ export function renderApp(
   })
   const handlers = createSessionErrorHandlers(queryClient, router)
   options.configureQueryClient?.(queryClient)
+  const app = <Application router={router} queryClient={queryClient} />
   return {
-    ...render(<Application router={router} queryClient={queryClient} />),
+    ...render(options.strictMode ? <StrictMode>{app}</StrictMode> : app),
     router,
     queryClient,
   }

@@ -172,6 +172,26 @@ describe('application shell', () => {
       expect(document.title).toBe('Panel inicial · Empresa de prueba'),
     )
   })
+  // INV-F10 (ui.md §13): StrictMode double-invokes render and mount effects (npm run dev).
+  it('focuses the home heading after "Ir al inicio" under StrictMode', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    function BrokenPage(): never {
+      throw new Error('Test rendering failure')
+    }
+    renderApp(['/settings'], {
+      protectedPage: <BrokenPage />,
+      strictMode: true,
+    })
+    await screen.findByRole('heading', { name: 'Ajustes' })
+    await userEvent.click(screen.getByRole('link', { name: 'Usuarios' }))
+    const errorHeading = await screen.findByRole('heading', {
+      name: 'Algo salió mal al mostrar esta pantalla',
+    })
+    await waitFor(() => expect(errorHeading).toHaveFocus())
+    await userEvent.click(screen.getByRole('link', { name: 'Ir al inicio' }))
+    const home = await screen.findByRole('heading', { name: 'Panel inicial' })
+    await waitFor(() => expect(home).toHaveFocus())
+  })
   // INV-F10 (ui.md §13): leaving the render-error screen with Back also focuses the destination's <h1>.
   it('focuses the previous heading after Back from the render-error screen', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
