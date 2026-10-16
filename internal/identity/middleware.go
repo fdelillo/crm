@@ -32,6 +32,7 @@ func Authenticate(service *Service, logger *slog.Logger) func(http.Handler) http
 				httpx.WriteDBError(w, r, err, logger)
 				return
 			}
+			httpx.SetLogPrincipal(r, principal.TenantID, principal.UserID) // T-B912, INV-38
 			next.ServeHTTP(w, r.WithContext(authz.WithPrincipal(r.Context(), principal)))
 		})
 	}
