@@ -142,8 +142,8 @@ func WithStatusLogLevel(status int, level slog.Level, next http.Handler) http.Ha
 // SetLogPrincipal records the company and the user of the session that identity.Authenticate
 // resolved, so Logging writes tenant_id and user_id on the request line (DD-12, INV-38). Only
 // Authenticate calls it. Receiving two ids and not the Principal keeps the SessionID out of the
-// platform. It fails closed: if either id is uuid.Nil nothing is recorded. A later call replaces an
-// earlier one. It is a no-op outside Logging.
+// platform. It fails closed: if either id is uuid.Nil nothing is recorded. A later call with valid ids
+// replaces an earlier one. It is a no-op outside Logging.
 func SetLogPrincipal(r *http.Request, tenantID, userID uuid.UUID) {
 	if tenantID == uuid.Nil || userID == uuid.Nil {
 		return
@@ -171,8 +171,8 @@ func WithRoute(label string, next http.Handler) http.Handler {
 
 // Logging writes one structured line per request: request_id, method, route, status, event
 // (request or client_canceled), ip and duration_ms, plus tenant_id and user_id when
-// SetLogPrincipal annotated them (DD-12, INV-38). It logs from a defer so a panic that Recover (outside) turns into a 500 is
-// still logged. Bodies, cookies and headers are never logged.
+// SetLogPrincipal annotated them (DD-12, INV-38). It logs from a defer so a panic that Recover
+// (outside) turns into a 500 is still logged. Bodies, cookies and headers are never logged.
 func Logging(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
