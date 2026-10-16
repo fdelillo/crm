@@ -60,7 +60,8 @@ it('reloads one failed initial chunk and exposes update after the next failed st
     ).toBeVisible()
     expect(errors[1]?.defaultPrevented).toBe(true)
     expect(reload).toHaveBeenCalledOnce()
-    await userEvent.click(screen.getByRole('button', { name: 'Actualizar' }))
+    screen.getByRole('button', { name: 'Actualizar' }).focus()
+    await userEvent.keyboard('{Enter}')
     expect(reload).toHaveBeenCalledTimes(2)
   } finally {
     second.view.unmount()

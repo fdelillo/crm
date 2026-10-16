@@ -1,11 +1,7 @@
 import { StrictMode, lazy, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
-import { QueryClientProvider } from '@tanstack/react-query'
-import { RouterProvider } from 'react-router/dom'
-import { createAppQueryClient } from './app/queryClient'
-import { createAppRouter } from './app/router'
 import './styles/globals.css'
-import { createSessionErrorHandlers } from './app/sessionErrors'
+import { Application, createApplication } from './app/application'
 
 const QueryDevtools = import.meta.env.DEV
   ? lazy(() =>
@@ -14,20 +10,14 @@ const QueryDevtools = import.meta.env.DEV
       })),
     )
   : () => null
-const queryClient = createAppQueryClient({
-  onUnauthenticated: () => sessionErrors.onUnauthenticated(),
-  onForbidden: () => sessionErrors.onForbidden(),
-})
-const router = createAppRouter()
-const sessionErrors = createSessionErrorHandlers(queryClient, router)
+const application = createApplication()
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+    <Application {...application}>
       <Suspense>
         <QueryDevtools />
       </Suspense>
-    </QueryClientProvider>
+    </Application>
   </StrictMode>,
 )
 

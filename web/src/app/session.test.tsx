@@ -235,6 +235,7 @@ describe('session guards and global failures', () => {
     sessionHandlers()
     const { router, queryClient } = renderApp(['/settings/users'])
     await screen.findByRole('heading', { name: 'Usuarios' })
+    server.use(http.get(`${base}/me`, () => denied('unauthenticated', 401)))
     const navigate = vi.spyOn(router, 'navigate')
     server.use(
       http.get(`${base}/users`, () => denied('unauthenticated', 401)),

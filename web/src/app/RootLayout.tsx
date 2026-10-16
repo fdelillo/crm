@@ -1,12 +1,9 @@
 import { useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Outlet, ScrollRestoration, useLocation } from 'react-router'
-import { toast } from 'sonner'
-import { Toaster } from '@/components/ui/sonner'
 import { OfflineBanner } from '@/components/OfflineBanner'
 import { queryKeys } from '@/api/queryKeys'
 import type { SessionInfo } from '@/api/types'
-import { installPreloadErrorHandler } from './preloadErrors'
 export function RootLayout() {
   const location = useLocation()
   const previousPath = useRef(location.pathname)
@@ -33,20 +30,10 @@ export function RootLayout() {
     observer.observe(document.body, { childList: true, subtree: true })
     return () => observer.disconnect()
   }, [location.pathname, client])
-  useEffect(
-    () =>
-      installPreloadErrorHandler({
-        reload: () => window.location.reload(),
-        showUpdate: (title, action) =>
-          toast.info(title, { duration: Infinity, action }),
-      }),
-    [],
-  )
   return (
     <>
       <OfflineBanner />
       <Outlet />
-      <Toaster theme="light" style={{ zIndex: 200 }} />
       <ScrollRestoration />
     </>
   )
