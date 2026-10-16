@@ -16,6 +16,8 @@ export interface ApiError extends Error {
   readonly suggestedAction: SuggestedAction | null
   readonly retryAfterSeconds: number | null
   readonly requestId: string | null
+  // Date.now() when the error was normalized: anchors Retry-After (P-F18).
+  readonly receivedAt: number
 }
 
 type ErrorDetails = Omit<ApiError, keyof Error>
@@ -28,6 +30,7 @@ class NormalizedApiError extends Error implements ApiError {
   readonly suggestedAction: SuggestedAction | null
   readonly retryAfterSeconds: number | null
   readonly requestId: string | null
+  readonly receivedAt: number
 
   constructor(details: ErrorDetails, cause?: unknown) {
     super('API request failed', { cause })
@@ -40,6 +43,7 @@ class NormalizedApiError extends Error implements ApiError {
     this.suggestedAction = details.suggestedAction
     this.retryAfterSeconds = details.retryAfterSeconds
     this.requestId = details.requestId
+    this.receivedAt = details.receivedAt
   }
 }
 
@@ -112,7 +116,9 @@ export function toApiError(input: {
   cause?: unknown
 }): ApiError {
   const { response, body, cause } = input
+  const receivedAt = Date.now()
   const shared = {
+    receivedAt,
     code: null,
     problem: null,
     fieldErrors: [],
@@ -148,6 +154,7 @@ export function toApiError(input: {
     'errors' in body && Array.isArray(body.errors) ? body.errors : []
   return new NormalizedApiError(
     {
+      receivedAt,
       kind: 'problem',
       status: response.status,
       code,
@@ -176,4 +183,13 @@ export function unwrap<T>(result: {
 }
 export function isRetryable(error: unknown): boolean {
   return isApiError(error) && (error.kind === 'network' || error.status === 503)
+}
+
+/** Shared by the session query and the global error handler (INV-F02). */
+export function isUnauthenticated(error: unknown): boolean {
+  return (
+    isApiError(error) &&
+    error.status === 401 &&
+    error.code === 'unauthenticated'
+  )
 }

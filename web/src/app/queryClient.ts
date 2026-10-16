@@ -1,8 +1,36 @@
-import { QueryClient } from '@tanstack/react-query'
-import { isRetryable } from '@/api/errors'
-
-export function createAppQueryClient() {
+import { QueryClient, QueryCache, MutationCache } from '@tanstack/react-query'
+import { queryKeys } from '@/api/queryKeys'
+import { isApiError, isRetryable, isUnauthenticated } from '@/api/errors'
+export interface AppQueryClientOptions {
+  onUnauthenticated: () => void
+  onForbidden: () => void
+}
+export function createAppQueryClient(options?: AppQueryClientOptions) {
+  const onError = (error: unknown) => {
+    if (!isApiError(error)) return
+    if (isUnauthenticated(error)) options?.onUnauthenticated()
+    if (error.status === 403 && error.code === 'forbidden')
+      options?.onForbidden()
+  }
+  const authenticatedQueries = new WeakSet<object>()
+  const isSession = (query: { queryKey: readonly unknown[] }) =>
+    query.queryKey.length === 1 && query.queryKey[0] === queryKeys.session[0]
+  const queryCache = new QueryCache({
+    onError,
+    onSuccess: (data, query) => {
+      if (isSession(query) && data === null && authenticatedQueries.has(query))
+        options?.onUnauthenticated()
+    },
+  })
+  // Includes sessions seeded by login/signup as well as GET /me. Only a lifecycle
+  // marker is retained; the session itself remains solely in the query cache.
+  queryCache.subscribe((event) => {
+    if (isSession(event.query) && event.query.state.data)
+      authenticatedQueries.add(event.query)
+  })
   return new QueryClient({
+    queryCache,
+    mutationCache: new MutationCache({ onError }),
     defaultOptions: {
       queries: {
         staleTime: 30_000,

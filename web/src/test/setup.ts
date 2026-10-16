@@ -1,6 +1,7 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
 import { beforeAll, afterEach, afterAll, vi } from 'vitest'
+import { resetErrorScreenExit } from '@/app/errorScreenExit'
 import { server } from './msw/server'
 import { clearTestQueryClients } from './queryClient'
 import {
@@ -30,6 +31,7 @@ afterEach(() => {
     clearTestQueryClients()
     server.resetHandlers()
     sessionStorage.clear()
+    resetErrorScreenExit()
   }
 })
 afterAll(() => server.close())

@@ -1,3 +1,12 @@
+import { Link } from 'react-router'
+import { PageHeader } from '@/components/PageHeader'
 export function NotFoundPage() {
-  return <h1>No encontramos esta página.</h1>
+  return (
+    <main id="main" tabIndex={-1} className="mx-auto max-w-3xl p-6">
+      <PageHeader title="No encontramos esta página." />
+      <Link className="text-primary underline" to="/">
+        Ir al inicio
+      </Link>
+    </main>
+  )
 }

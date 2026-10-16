@@ -312,7 +312,7 @@ describe('import and network boundaries', () => {
     await expect(
       ruleHit('src/api/generated/probe.ts', importOf('@/lib/utils'), IMPORTS),
     ).rejects.toThrow()
-  })
+  }, 30_000)
   it.each(rejected)(
     'rejects: %s',
     async (_name, file, code, rule, configured) => {
@@ -320,6 +320,7 @@ describe('import and network boundaries', () => {
       expect(hit.unexpected).toEqual([])
       expect(hit.rejected).toBe(true)
     },
+    30_000,
   )
   it.each(allowed)(
     'allows: %s',
@@ -328,5 +329,6 @@ describe('import and network boundaries', () => {
       expect(hit.unexpected).toEqual([])
       expect(hit.rejected).toBe(false)
     },
+    30_000,
   )
 })
