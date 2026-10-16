@@ -231,7 +231,8 @@ El workflow `ci` conserva `make check` y suma `make web-check` (Node de `.nvmrc`
 sin certificados) y `make build`. El build guarda el artefacto `crm-linux-amd64` con
 `crm-linux-amd64.tar.gz`; al extraerlo con `tar -xzf`, se conserva el permiso ejecutable.
 Ese binario contiene la SPA y se reutiliza en las pruebas de navegador. Los certificados y las
-claves locales quedan fuera del artefacto. `make vuln` y `make web-vuln` conservan su workflow independiente (`vulncheck`).
+claves locales quedan fuera del artefacto. `make vuln` y `make web-vuln` corren aparte, en el
+workflow `vulncheck`.
 
 ### Base de datos: bootstrap y migraciones (ADR-004)
 
