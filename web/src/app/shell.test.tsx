@@ -151,6 +151,27 @@ describe('application shell', () => {
     await waitFor(() => expect(heading).toHaveFocus())
     expect(document.title).toBe('Algo salió mal al mostrar esta pantalla · CRM')
   })
+  // INV-F10 (ui.md §13): leaving the render-error screen focuses the destination's <h1>.
+  it('focuses the home heading after "Ir al inicio" from the render-error screen', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    function BrokenPage(): never {
+      throw new Error('Test rendering failure')
+    }
+    renderApp(['/settings'], { protectedPage: <BrokenPage /> })
+    await screen.findByRole('heading', { name: 'Ajustes' })
+    await userEvent.click(screen.getByRole('link', { name: 'Usuarios' }))
+    const errorHeading = await screen.findByRole('heading', {
+      name: 'Algo salió mal al mostrar esta pantalla',
+    })
+    await waitFor(() => expect(errorHeading).toHaveFocus())
+    screen.getByRole('link', { name: 'Ir al inicio' }).focus()
+    await userEvent.keyboard('{Enter}')
+    const home = await screen.findByRole('heading', { name: 'Panel inicial' })
+    await waitFor(() => expect(home).toHaveFocus())
+    await waitFor(() =>
+      expect(document.title).toBe('Panel inicial · Empresa de prueba'),
+    )
+  })
   // T-F106 (P-F18, ui.md §13): without a cached session every title ends in "· CRM".
   it('ends the title in "· CRM" on a screen without a session', async () => {
     renderApp(['/ruta-inexistente'])
