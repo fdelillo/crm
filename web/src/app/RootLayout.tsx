@@ -3,17 +3,14 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Outlet, ScrollRestoration, useLocation } from 'react-router'
 import { OfflineBanner } from '@/components/OfflineBanner'
 import { queryKeys } from '@/api/queryKeys'
+import { consumeErrorScreenExit } from './errorScreenExit'
 import type { SessionInfo } from '@/api/types'
 export function RootLayout() {
   const location = useLocation()
   const previousPath = useRef(location.pathname)
   const client = useQueryClient()
-  // Arriving from the error boundary's "Ir al inicio" remounts this layout, so
-  // the navigation intent travels in location.state (INV-F10).
-  const pendingFocus = useRef(
-    (location.state as { focusHeading?: boolean } | null)?.focusHeading ===
-      true,
-  )
+  // Leaving the error screen (any way) remounts this layout; the boundary left a flag.
+  const pendingFocus = useRef(consumeErrorScreenExit())
   const lastHeading = useRef<HTMLHeadingElement | null>(null)
   // Layout effect: mark the navigation before the observer sees the new <h1>.
   useLayoutEffect(() => {
