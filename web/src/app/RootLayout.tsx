@@ -20,8 +20,7 @@ export function RootLayout() {
       const heading = document.querySelector('h1')
       if (!heading) return
       const session = client.getQueryData<SessionInfo | null>(queryKeys.session)
-      const title =
-        heading.textContent + (session ? ` · ${session.tenant.name}` : '')
+      const title = `${heading.textContent} · ${session ? session.tenant.name : 'CRM'}`
       if (document.title !== title) document.title = title
       if (heading === lastHeading.current) {
         // React may reuse the same <h1> node for another route's screen.
