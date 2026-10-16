@@ -155,13 +155,11 @@ export const errorMessages: Record<ErrorCode, ErrorMessageResolver> = {
   login_locked: (error) => {
     const title = 'Por seguridad, pausamos el ingreso con este email.'
     const seconds = error?.retryAfterSeconds ?? null
-    const when =
-      seconds === null
-        ? 'en unos minutos'
-        : (({ time, minutes }) =>
-            `a las ${time} (en ${minutes === 1 ? '1 minuto' : `${minutes} minutos`})`)(
-            formatRetryAt(seconds, new Date()),
-          )
+    let when = 'en unos minutos'
+    if (seconds !== null) {
+      const { time, minutes } = formatRetryAt(seconds, new Date())
+      when = `a las ${time} (en ${minutes === 1 ? '1 minuto' : `${minutes} minutos`})`
+    }
     return {
       title,
       description: `Hubo varios intentos fallidos. Podés volver a intentar ${when} o restablecer tu contraseña ahora.`,

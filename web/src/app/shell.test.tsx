@@ -135,6 +135,35 @@ describe('application shell', () => {
       '/',
     )
   })
+  // T-F106 (INV-F10, review): two routes that render the same screen reuse the <h1> node.
+  it('moves focus to the heading when navigating between routes that reuse the same heading node', async () => {
+    server.use(
+      http.get(`${base}/me`, () =>
+        HttpResponse.json(
+          buildSessionInfo({
+            permissions: [],
+            user: buildCurrentUser({ role: 'operator' }),
+          }),
+        ),
+      ),
+    )
+    const { router } = renderApp(['/settings/users'])
+    const heading = await screen.findByRole('heading', { level: 1 })
+    const link = screen.getByRole('link', { name: 'Inicio' })
+    link.focus()
+    await act(() => router.navigate('/settings/company'))
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveFocus(),
+    )
+    expect(screen.getByRole('heading', { level: 1 })).toBe(heading)
+    // The mark was consumed: later DOM changes must not steal the focus again.
+    link.focus()
+    await act(async () => {
+      document.body.appendChild(document.createElement('div'))
+      await new Promise((r) => setTimeout(r, 20))
+    })
+    expect(link).toHaveFocus()
+  })
   it('recovers a missing chunk once and then offers an explicit update', async () => {
     const reload = vi.fn()
     const showUpdate = vi.fn()

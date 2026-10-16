@@ -23,7 +23,15 @@ export function RootLayout() {
       const title =
         heading.textContent + (session ? ` · ${session.tenant.name}` : '')
       if (document.title !== title) document.title = title
-      if (heading === lastHeading.current) return
+      if (heading === lastHeading.current) {
+        // React may reuse the same <h1> node for another route's screen.
+        if (pendingFocus.current) {
+          pendingFocus.current = false
+          heading.tabIndex = -1
+          heading.focus()
+        }
+        return
+      }
       // A new screen is presented: after navigation, or in place of one whose
       // recovery control (e.g. "Reintentar") just took the focus away with it.
       const previous = lastHeading.current
