@@ -2,10 +2,14 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, type RouteObject } from 'react-router'
 import { afterEach, expect, it, vi } from 'vitest'
+import { http, HttpResponse } from 'msw'
 import { toast } from 'sonner'
+import { buildSessionInfo, buildTenant } from '@/test/fixtures'
+import { server } from '@/test/msw/server'
 import { appRoutes } from './router'
 import { Application, createApplication } from './application'
 
+const base = 'https://localhost:5173/api/v1'
 // T-F106/T-F107 (review: initial lazy chunk failure): exercise startup before any layout mounts.
 it('reloads one failed initial chunk and exposes update after the next failed startup', async () => {
   vi.spyOn(console, 'error').mockImplementation(() => undefined)
@@ -66,6 +70,45 @@ it('reloads one failed initial chunk and exposes update after the next failed st
   } finally {
     second.view.unmount()
     second.application.dispose()
+  }
+})
+// T-F106 (P-F18): the first screen's chunk fails before RootLayout is mounted.
+it('titles and focuses the render-error screen when the first screen chunk fails', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => undefined)
+  server.use(
+    http.get(`${base}/me`, () => HttpResponse.json(buildSessionInfo())),
+    http.get(`${base}/tenant`, () => HttpResponse.json(buildTenant())),
+  )
+  const brokenIndex = (routes: RouteObject[]): RouteObject[] =>
+    routes.map((route) =>
+      route.index
+        ? {
+            index: true,
+            lazy: async () => {
+              throw new Error('Initial screen chunk is unavailable')
+            },
+          }
+        : {
+            ...route,
+            ...(route.children
+              ? { children: brokenIndex(route.children) }
+              : {}),
+          },
+    )
+  const application = createApplication({
+    createRouter: () =>
+      createMemoryRouter(brokenIndex(appRoutes), { initialEntries: ['/'] }),
+  })
+  const view = render(<Application {...application} />)
+  try {
+    const heading = await screen.findByRole('heading', {
+      name: 'Algo salió mal al mostrar esta pantalla',
+    })
+    await waitFor(() => expect(heading).toHaveFocus())
+    expect(document.title).toBe('Algo salió mal al mostrar esta pantalla · CRM')
+  } finally {
+    view.unmount()
+    application.dispose()
   }
 })
 afterEach(() => toast.dismiss())

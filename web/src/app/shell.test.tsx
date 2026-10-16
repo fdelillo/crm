@@ -135,6 +135,30 @@ describe('application shell', () => {
       '/',
     )
   })
+  // T-F106 (P-F18): the root boundary replaces RootLayout, so it sets its own title and focus.
+  it('titles and focuses the render-error screen after navigating from Settings', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    function BrokenPage(): never {
+      throw new Error('Test rendering failure')
+    }
+    renderApp(['/settings'], { protectedPage: <BrokenPage /> })
+    await screen.findByRole('heading', { name: 'Ajustes' })
+    expect(document.title).toBe('Ajustes · Empresa de prueba')
+    await userEvent.click(screen.getByRole('link', { name: 'Usuarios' }))
+    const heading = await screen.findByRole('heading', {
+      name: 'Algo salió mal al mostrar esta pantalla',
+    })
+    await waitFor(() => expect(heading).toHaveFocus())
+    expect(document.title).toBe('Algo salió mal al mostrar esta pantalla · CRM')
+  })
+  // T-F106 (P-F18, ui.md §13): without a cached session every title ends in "· CRM".
+  it('ends the title in "· CRM" on a screen without a session', async () => {
+    renderApp(['/ruta-inexistente'])
+    await screen.findByRole('heading', { name: 'No encontramos esta página.' })
+    await waitFor(() =>
+      expect(document.title).toBe('No encontramos esta página. · CRM'),
+    )
+  })
   // T-F106 (INV-F10, review): two routes that render the same screen reuse the <h1> node.
   it('moves focus to the heading when navigating between routes that reuse the same heading node', async () => {
     server.use(

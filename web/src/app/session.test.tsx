@@ -113,7 +113,7 @@ describe('session guards and global failures', () => {
     })
     expect(me).toHaveBeenCalledTimes(3)
     expect(document.title).toBe(
-      'El servicio no está disponible en este momento.',
+      'El servicio no está disponible en este momento. · CRM',
     )
     sessionHandlers()
     await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
