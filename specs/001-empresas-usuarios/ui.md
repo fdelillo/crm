@@ -1,7 +1,7 @@
 # UI (frontend): Empresas, usuarios y roles
 
 **Spec**: [`spec.md`](spec.md) · **Rama**: `001-empresas-usuarios` · **Fecha**: 2026-09-29
-**Autor**: `frontend-architect` · **Estado**: Revisión 3 aprobada por el usuario el 2026-10-12; Revisión 4 aprobada por el usuario el 2026-10-13 (P-F10: sí; P-F11: no); enmienda H-16 a la Revisión 4 aprobada por el usuario el 2026-10-13; enmienda DD-F31 *Accepted*, aprobada por el usuario el 2026-10-14; enmienda de versiones del 2026-10-15: React Router 8 por decisión del usuario, regla de versiones y excepción de TypeScript confirmadas por el usuario el 2026-10-15 (P-F12); enmienda de F0 del 2026-10-15: P-F13, P-F14 y P-F15 aprobadas por el usuario el 2026-10-16
+**Autor**: `frontend-architect` · **Estado**: Revisión 3 aprobada por el usuario el 2026-10-12; Revisión 4 aprobada por el usuario el 2026-10-13 (P-F10: sí; P-F11: no); enmienda H-16 a la Revisión 4 aprobada por el usuario el 2026-10-13; enmienda DD-F31 *Accepted*, aprobada por el usuario el 2026-10-14; enmienda de versiones del 2026-10-15: React Router 8 por decisión del usuario, regla de versiones y excepción de TypeScript confirmadas por el usuario el 2026-10-15 (P-F12); enmienda de F0 del 2026-10-15: P-F13, P-F14 y P-F15 aprobadas por el usuario el 2026-10-16; enmienda de F1 del 2026-10-16: P-F16 aprobada por el usuario el 2026-10-16
 **Contrato consumido**: [`contracts/openapi.yaml`](contracts/openapi.yaml) **v0.5.0** (**canónico**; el diseño original se hizo contra v0.3.1; la Revisión 3, contra v0.4.3)
 **Revisión 1 (2026-09-29)**: respuestas del usuario a P-F1 a P-F5 (§26) y resolución de los
 hallazgos H-1 a H-9 por el backend (`plan.md` §18, DD-22 a DD-30, §10.7, contrato v0.3.0). Cambios:
@@ -89,6 +89,15 @@ perdieron los cambios. (3) **Log del `503` de la SPA sin compilar** (H-17, para 
 `depguard`. Cambian §5, §9.2, §12.4, §13.2, §13.11, §15.4, §21, §24, §25, §26, §27.2, §28, §29 y §30.
 Tareas: T-F010 y T-F011 nuevas; cambian T-F103, T-F105, T-F301, T-F602 y T-F605. Sistema visual
 sin cambios (la línea nueva del login reutiliza la zona C).
+**Enmienda de F1 (2026-10-16; P-F16 aprobada por el usuario el 2026-10-16)**: dos huecos que
+aparecieron al implementar T-F101/T-F102 (`api/errorMessages.ts`). (1) **`token_invalid` sin
+variante de contexto**: §12.2 solo tenía los textos del restablecimiento, la verificación y la
+invitación. Para `generic` y cualquier contexto sin variante propia: "Este enlace ya no sirve." /
+"Pedí uno nuevo."; los tres textos específicos no cambian. (2) **`formatRetryAt` en F1**: el texto
+de `login_locked` (§12.2) necesita la hora de §13.2 y el mapa de mensajes es de F1, pero el helper
+estaba en T-F302 (F3). Pasa a T-F102, con la firma de §15.4 y las reglas de §13.2; T-F302 lo usa y
+no lo reimplementa. Cambian §12.2, §15.4 y §26. Tareas: cambian T-F101, T-F102 y T-F302. Sistema
+visual sin cambios.
 
 | Archivo | Contenido |
 |---|---|
@@ -810,8 +819,8 @@ pantalla cuando hace falta; la tabla muestra el texto por defecto y las variante
 | `email_not_verified` | 403 | "Confirmá tu email para invitar a tu equipo." / "Te mandamos un enlace cuando te registraste. Si no lo encontrás, pedí uno nuevo." | *(Revisión 4, contrato v0.5.0, DD-46)* Solo `POST /users/invitations` (invitar en S-10 y "Reenviar invitación" en S-09). **No** es `forbidden`: no dispara el manejador global ni el estado "Sin permiso" (INV-F16). S-10: `FormAlert` de advertencia con "Reenviar email de confirmación" (el aviso W), y lo cargado se conserva; S-09: toast con el mismo texto. En los dos, `invalidateQueries(session)`: si `/me` confirma `email_verified = false`, la pantalla pasa al estado de BR-F14. Con BR-F14 no debería ocurrir (la UI ya deshabilita): llega con la caché vieja o con un cliente manipulado |
 | `last_admin` | 409 | "Tiene que quedar al menos un administrador activo." / "Nombrá a otra persona como administrador antes de hacer este cambio." | Cierra el diálogo, toast de error, refresca la lista |
 | `invalid_state` | 409 | "El estado de este usuario cambió mientras tanto. Actualizamos la lista." | Refresca la lista |
-| `token_invalid` | 400 | Reset: "Este enlace ya no sirve." / "Vence a la hora o ya se usó. Pedí uno nuevo." · Verificación: "Este enlace de confirmación ya no sirve." / "Vence a las 48 horas o ya se usó." · Invitación: "Esta invitación ya no es válida." / "Venció, ya se usó o la reemplazó una más nueva." | Estado de "enlace inválido" de la pantalla con su salida (§13) |
-| `login_locked` | 429 | "Por seguridad, pausamos el ingreso con este email." / "Hubo varios intentos fallidos. Podés volver a intentar a las {HH:MM} (en {n} minutos) o restablecer tu contraseña ahora." | S-02 pasa al estado Bloqueado (DD-F17) |
+| `token_invalid` | 400 | Reset: "Este enlace ya no sirve." / "Vence a la hora o ya se usó. Pedí uno nuevo." · Verificación: "Este enlace de confirmación ya no sirve." / "Vence a las 48 horas o ya se usó." · Invitación: "Esta invitación ya no es válida." / "Venció, ya se usó o la reemplazó una más nueva." · *(Enmienda de F1, P-F16)* `generic` y cualquier contexto sin variante propia: "Este enlace ya no sirve." / "Pedí uno nuevo." | Estado de "enlace inválido" de la pantalla con su salida (§13). En 001 solo lo devuelven el restablecimiento, la verificación y la invitación: el texto genérico es el respaldo del `Record` (INV-F05) |
+| `login_locked` | 429 | "Por seguridad, pausamos el ingreso con este email." / "Hubo varios intentos fallidos. Podés volver a intentar a las {HH:MM} (en {n} minutos) o restablecer tu contraseña ahora." | S-02 pasa al estado Bloqueado (DD-F17). `{HH:MM}` y `{n}` salen de `formatRetryAt` (§15.4) con las reglas de §13.2 (enmienda de F1, P-F16) |
 | `rate_limited` | 429 | "Hiciste muchos intentos seguidos." / "Esperá {espera} y probá de nuevo." · *(Revisión 4, DD-F29)* Registro (`signup`): "Hubo muchos intentos de registro seguidos." / "Esperá {espera} y probá de nuevo. No se creó nada: podés reintentar con los mismos datos." · Invitar, reenviar invitación y reactivar (`invite`, `userAction`): "Por ahora no podemos enviar más invitaciones." / "Hay un límite de invitaciones y reactivaciones seguidas para cuidar el envío de emails. Esperá {espera} y probá de nuevo." · Reenvío de la confirmación (`resendVerification`): "Ya te lo mandamos hace poco." / "Esperá {espera} y probá de nuevo." | Error general (S-10: `FormAlert`, y lo cargado se conserva; S-09: toast, el diálogo de "Reactivar" se cierra y la lista no se vuelve a pedir, porque nada cambió). Sin reintento automático ni botón bloqueado durante la espera (DD-F25). `{espera}` según `Retry-After` (DD-F25): menos de 60 s → "unos segundos"; 60 s → "1 minuto"; más → "{n} minutos" con `n = ceil(s / 60)`; sin cabecera → "unos minutos". Los cupos (algunos compartidos entre pantallas o entre Administradores) están en §11.1; el texto no dice cuál se agotó porque el contrato no lo distingue. Con dos cupos agotados, el reintento puede traer otro `429` con otra espera (reenvío de la confirmación: primero ≤ 180 s del cupo por IP y después hasta 1200 s del cupo por usuario; enmienda H-16). Cada `429` muestra su propia espera y ningún texto promete que el reintento funcione |
 | `service_unavailable` | 503 | "El servicio no está disponible en este momento." / "Probá de nuevo en unos minutos." · Con `Retry-After` menor de 60 s: "Probá de nuevo en unos segundos." (en el registro, además: "No se creó nada: podés reintentar con los mismos datos.") | Botón "Reintentar"; conserva lo cargado en el formulario; sin reintento automático de mutaciones (DD-F25) |
 | `internal` | 500 | "Algo salió mal de nuestro lado." / "Probá de nuevo. Si sigue pasando, avisanos con este código: {requestId}." | Botón "Reintentar"; conserva lo cargado |
@@ -2018,7 +2027,7 @@ export function useOnlineStatus(): boolean;
 export function useDocumentTitle(title: string): void;
 export function isValidCuit(raw: string): boolean;                        // 11 dígitos + módulo 11
 export function formatDateTime(iso: string, timeZone: string, now?: Date): string; // "6/10, 14:30" (año si difiere)
-export function formatRetryAt(retryAfterSeconds: number, now: Date): { time: string; minutes: number };
+export function formatRetryAt(retryAfterSeconds: number, now: Date): { time: string; minutes: number }; // reglas de §13.2; T-F102 (F1, P-F16): lo usan messageForError (login_locked) y S-02
 ```
 
 ---
@@ -2496,6 +2505,12 @@ Preguntas de la enmienda de F0 (2026-10-15):
 | P-F13 | ¿Se aprueba ADR-027 (vulnerabilidades de npm)? La pasada de producción bloquea desde `low` y la del árbol completo solo con `critical`; corre en el workflow `vulncheck` (PR, `main` y diario), y el check `make web-vuln` pasa a ser obligatorio en el ruleset de `main` una vez mergeado | **Cerrada: sí** (el usuario, 2026-10-16) | **Sí**. Alternativas (ADR-027): solo producción (no ve lo crítico de las herramientas de CI y desarrollo) o el árbol completo desde `high` (hoy rojo por 7 avisos de `braces` sin corrección, con una excepción a renovar cada 30 días) |
 | P-F14 | Con un `401` y cambios sin guardar en Datos de la empresa, ¿el login avisa "Los cambios que no habías guardado se perdieron." (DD-F32, puntos 3 y 4)? | **Cerrada: sí** (el usuario, 2026-10-16) | **Sí**. La excepción del aviso de salida (puntos 1 y 2) no es opcional: sin ella hay un bucle de `401`. Sin el aviso se ahorra el contador y algunas filas de test, pero el usuario vuelve al formulario sin sus cambios y sin saber por qué |
 | P-F15 | ¿El `503` "La interfaz no está compilada" se loguea `WARN` en vez de `ERROR`, en todos los entornos (plan DD-50: regla por estado de `httpx`, aplicada solo a la SPA desde `spaUnlessAPI`; H-17)? | **Cerrada: sí** (el usuario, 2026-10-16; mecanismo elegido por el `backend-architect`) | **Sí**, `WARN` siempre: ninguna alerta depende del `ERROR`, y en producción lo delatan `http_requests_total{status="503"}`, la línea con `route=spa` y la app inutilizable. Alternativas: `WARN` solo en modo local (`NewRootHandler` o `RootDeps` tendrían que recibir el modo: cambia plan §11.1 y los tests que arman el mux raíz); dejar `ERROR` |
+
+Preguntas de la enmienda de F1 (2026-10-16):
+
+| ID | Pregunta | Estado | Default propuesto |
+|---|---|---|---|
+| P-F16 | Dos huecos de T-F101/T-F102 (`api/errorMessages.ts`). (1) ¿Qué dice `token_invalid` en `generic` y en un contexto sin variante propia? (2) ¿`formatRetryAt` se adelanta a T-F102 (F1), ya que el texto de `login_locked` de §12.2 lo necesita y estaba en T-F302 (F3)? | **Cerrada: sí** (el usuario, 2026-10-16) | **Sí** a los dos. (1) "Este enlace ya no sirve." / "Pedí uno nuevo.": vale para cualquier enlace, sin el plazo que solo corresponde al restablecimiento. En 001 solo lo devuelven el restablecimiento, la verificación y la invitación, así que es el texto de respaldo del `Record` (INV-F05). Alternativas: reusar el texto del restablecimiento (el plazo de una hora es falso para otros enlaces) o el de `internal` (dice que algo falló de nuestro lado, y no es así). (2) Una sola implementación, con la firma de §15.4 y las reglas de §13.2; T-F302 la usa. Alternativas: un formato provisorio en F1 que T-F302 reemplaza (dos implementaciones de la misma regla) o dejar `login_locked` sin hora hasta F3 (T-F101 no puede verificar el texto de §12.2) |
 
 **Revisión 16 del backend: cerrada para la UI** (la lista "Dependiente de la revisión 16" de la
 Revisión 3 queda resuelta en la Revisión 4):
