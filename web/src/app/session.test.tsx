@@ -125,6 +125,72 @@ describe('session guards and global failures', () => {
     )
     await waitFor(() => expect(heading).toHaveFocus())
   })
+  // T-F104 (P-F18, ui.md §6.4): a failed background refetch keeps the shell and shows no notice.
+  it.each([
+    ['a 503', () => denied('service_unavailable', 503)],
+    ['a network error', () => HttpResponse.error()],
+  ])(
+    'keeps the shell mounted when a focus refetch of the cached session fails with %s',
+    async (_name, failure) => {
+      const now = Date.now()
+      const clock = vi.spyOn(Date, 'now').mockReturnValue(now)
+      sessionHandlers()
+      const { queryClient } = renderApp(['/settings'], {
+        configureQueryClient: (client) => {
+          const defaults = client.getDefaultOptions()
+          client.setDefaultOptions({
+            ...defaults,
+            queries: { ...defaults.queries, retry: 2, retryDelay: 0 },
+          })
+        },
+      })
+      const heading = await screen.findByRole('heading', { name: 'Ajustes' })
+      heading.tabIndex = -1
+      heading.focus()
+      const nav = screen.getByRole('link', { name: 'Inicio' })
+      const me = vi.fn(failure)
+      server.use(http.get(`${base}/me`, me))
+      clock.mockReturnValue(now + 61_000)
+      await act(async () => {
+        focusManager.setFocused(false)
+        focusManager.setFocused(true)
+      })
+      await waitFor(() => expect(me).toHaveBeenCalledTimes(3))
+      await waitFor(() =>
+        expect(queryClient.getQueryState(queryKeys.session)?.status).toBe(
+          'error',
+        ),
+      )
+      expect(screen.getByRole('heading', { name: 'Ajustes' })).toBe(heading)
+      expect(heading).toHaveFocus()
+      expect(screen.getByRole('link', { name: 'Inicio' })).toBe(nav)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: 'Reintentar' }),
+      ).not.toBeInTheDocument()
+      // The next refetch succeeds and nothing visible changes.
+      sessionHandlers()
+      clock.mockReturnValue(now + 130_000)
+      await act(async () => {
+        focusManager.setFocused(false)
+        focusManager.setFocused(true)
+      })
+      await waitFor(() =>
+        expect(queryClient.getQueryState(queryKeys.session)?.status).toBe(
+          'success',
+        ),
+      )
+      expect(screen.getByRole('heading', { name: 'Ajustes' })).toBe(heading)
+      expect(heading).toHaveFocus()
+      focusManager.setFocused(undefined)
+    },
+  )
+  it('sends a null cached session to login', async () => {
+    server.use(http.get(`${base}/me`, () => denied('unauthenticated', 401)))
+    const { router } = renderApp(['/settings'])
+    await screen.findByRole('heading', { name: 'Ingresar' })
+    expect(router.state.location.pathname).toBe('/login')
+  })
   it('does not mount an unauthorized page or request its data', async () => {
     sessionHandlers(
       buildSessionInfo({
