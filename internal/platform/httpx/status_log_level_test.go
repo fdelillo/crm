@@ -43,27 +43,38 @@ func TestWithStatusLogLevel(t *testing.T) {
 		h          http.Handler
 		wantStatus int
 		wantLevel  string
+		bare       bool // no outer 503 rule: only the rules inside h apply
 	}{
-		{"503 is WARN", respond(503), 503, "WARN"},
-		{"500 stays ERROR", respond(500), 500, "ERROR"},
-		{"200 stays INFO", respond(200), 200, "INFO"},
-		{"404 stays INFO", respond(404), 404, "INFO"},
-		{"implicit 200 stays INFO", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) }), 200, "INFO"},
-		{"panic is 500 ERROR", http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic("boom") }), 500, "ERROR"},
+		{"503 is WARN", respond(503), 503, "WARN", false},
+		{"500 stays ERROR", respond(500), 500, "ERROR", false},
+		{"200 stays INFO", respond(200), 200, "INFO", false},
+		{"404 stays INFO", respond(404), 404, "INFO", false},
+		{"implicit 200 stays INFO", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) }), 200, "INFO", false},
+		{"panic is 500 ERROR", http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic("boom") }), 500, "ERROR", false},
 		{"SetLogLevel prevails over the status rule", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			SetLogLevel(r, slog.LevelInfo)
 			w.WriteHeader(503)
-		}), 503, "INFO"},
+		}), 503, "INFO", false},
+		{"innermost rule wins over an outer one for the same status",
+			WithStatusLogLevel(503, slog.LevelInfo, respond(503)), 503, "INFO", false},
+		{"a rule holds after its handler returns without writing", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			WithStatusLogLevel(503, slog.LevelWarn, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})).ServeHTTP(w, r)
+			w.WriteHeader(503)
+		}), 503, "WARN", true},
 		{"client canceled is INFO 499", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			markClientCanceled(r)
 			w.WriteHeader(503)
-		}), 499, "INFO"},
+		}), 499, "INFO", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var buf bytes.Buffer
 			logger := slog.New(slog.NewJSONHandler(&buf, nil))
-			h := Recover(logger)(Logging(logger)(WithStatusLogLevel(503, slog.LevelWarn, tc.h)))
+			inner := tc.h
+			if !tc.bare {
+				inner = WithStatusLogLevel(503, slog.LevelWarn, tc.h)
+			}
+			h := Recover(logger)(Logging(logger)(inner))
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
 			if rec.Code != tc.wantStatus && tc.wantStatus != 499 {

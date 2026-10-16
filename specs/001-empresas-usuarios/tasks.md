@@ -60,6 +60,8 @@ ajustes antes de la Fase 6). La sección Frontend no cambia: el contrato no camb
 **Decimoquinta revisión 2026-10-10** (*Accepted*, aprobada por el usuario el 2026-10-10): pendientes no bloqueantes de la revisión final de código del PR fdelillo/crm#17 (Fase 9, mergeado en `main` en `b945373`; plan §18, decimoquinta tanda), en un PR solo de tests y texto. T-B801: la regla (4) prohíbe declarar parámetros de tipo en `cmd/crm` (mutaciones (r) a (t)), y se corrige su frase sobre "otro tipo", que era falsa con genéricos. T-B911: control positivo de la sonda de `pg_stat_activity`. T-B910: casos sintéticos del autocontrol del tracer. Textos: §B-5 de `revision-14-t-b910.md`, fila 4 de la entrada de la decimocuarta parte B y fecha de la entrada de la Fase 9. Sin tareas nuevas ni cambios de código de producción. La sección Frontend no cambia: el contrato no cambia.
 **Decimosexta revisión 2026-10-12** (*Accepted*, aprobada por el usuario el 2026-10-12): auditoría de seguridad de `b945373` (plan §18, decimosexta tanda; [`revision-16-auditoria.md`](revision-16-auditoria.md)). Fase 10 nueva (T-B1001 a T-B1010): revalidación del actor bajo el lock de la empresa (DD-44), cupo del hasher antes de la conexión (DD-45), cupos de invitación (DD-48), cupo global de registros (DD-49) e invitar con email verificado (DD-46, opción B). Cambia un test existente (`TestRoleChangesAndLastAdmin`), y se adaptan los hashers instrumentados de T-B503 y T-B604. Contrato **v0.5.0**: ver "Coordinación con la sección Frontend".
 **Decimoséptima revisión 2026-10-14** (*Accepted* (aprobada por el usuario el 2026-10-14)): vulnerabilidades conocidas en dependencias Go (plan §18, decimoséptima tanda; ADR-026), la unidad bloqueada de la auditoría de `b945373`. Fase 11 nueva (T-B1101): `make vuln` y el workflow `vulncheck`. No cambia código de producción ni el contrato. La sección Frontend recibe una fila de coordinación para T-F009 (npm).
+**Decimoctava revisión 2026-10-16** (*Accepted*, aprobada por el usuario el 2026-10-16, `ui.md` P-F15): nivel de log del `503` de la SPA (plan DD-50; T-F011, en la sección Frontend, la implementa `backend-developer`) y qué error devuelve `runServe` con dos fallas (T-B911, solo texto). (Línea agregada en la decimonovena revisión.)
+**Decimonovena revisión 2026-10-16** (*Accepted*, P-6 aprobada por el usuario el 2026-10-16): `tenant_id` y `user_id` en la línea de request (plan §18, decimonovena tanda; revisión del PR #34; INV-38). Tarea nueva T-B912, al final de la Fase 9, que implementa `backend-developer`. No cambia el contrato ni la sección Frontend.
 
 ---
 
@@ -862,6 +864,22 @@ Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invo
     - **Unidad de la auditoría de `b945373` (CVE de dependencias)**: cerrada con este informe.
     - **Corrección post-revisión (2026-10-14) — PR #24** (hallazgo Mayor: `setup-go` v5 instala la última 1.27.x y, con `GOTOOLCHAIN=auto`, `toolchain` es un mínimo; ver la nota de ADR-026). Hecho: (1) el `Makefile` lee la línea `toolchain` de `go.mod` y exporta `GOTOOLCHAIN` para todos los targets; el guard es un `$(error …)` evaluado al leer el Makefile, así falla antes de cualquier target (y no hay que acordarse de declarar una dependencia en cada target nuevo) si `go.mod` no tiene `toolchain` o si `tools.mod` tiene otra; (2) `VULN_DIR = .`; (3) comentario de `ci.yml` corregido (sin cambiar SHAs ni otra línea). Controles en una copia temporal del árbol (borrada al final): V6 (`toolchain go1.27.1` en ambos archivos): `Go: go1.27.1`, `Error 3` (make 2), 11 hallazgos de la librería estándar (GO-2026-6617 entre ellos). V7 (`go.mod` go1.27.2, `tools.mod` go1.27.1): `Makefile:17: *** toolchain differs: go.mod=go1.27.2 tools.mod=go1.27.1`, make 2, govulncheck no corre; también sin `toolchain` en `go.mod`: `Makefile:14: *** go.mod has no toolchain line`, make 2. V8 (`VULN_DIR` del módulo V1 exportado en el entorno): `-C .`, `Go: go1.27.2`, "No vulnerabilities found", make 0. Mutación (sin `export GOTOOLCHAIN`, estado de V6; el Go instalado en esta máquina es go1.27.1, así que se simula el CI con `GOTOOLCHAIN=go1.27.2` en el entorno): V6 pasa a `Go: go1.27.2` y make 0, el verde en falso que el cambio evita. Local, en la rama: `make vuln` en 0 con `Go: go1.27.2`; `make check` con `GOFLAGS=-count=1` y 0 issues de lint; `TestGeneratedQueriesRunAgainstTheRealSchema` (`sqlcspike`) falló una vez porque Postgres no arrancó a tiempo en Docker (corría `make vuln` en paralelo) y pasó al re-correr el paquete. CI y SHA: ver el reporte del PR.
     - **Pendiente, después del merge**: una corrida `workflow_dispatch` de `vulncheck` sobre `main` en verde y la primera corrida programada, las dos registradas acá.
+
+- **Decimonovena revisión (2026-10-16, *Accepted*: P-6 aprobada por el usuario el 2026-10-16)**: `tenant_id` y `user_id` en la línea de request (plan §18, decimonovena tanda; INV-38). Tarea nueva T-B912, en `chore/001-logging-followups`.
+
+  - **T-B912 completa (2026-10-16)**: checkpoint con `GOFLAGS=-count=1`: `make lint` (0 issues), `make test` y `make test-int` (contra PostgreSQL 18 en testcontainers) en verde. Pendiente de revisión.
+    - **Hecho**: `httpx.SetLogPrincipal(r, tenantID, userID)` anota los ids en el estado que `Logging` comparte con la cadena (`routeHolder` pasa a `requestState`, porque ya guarda más que la ruta); es no-op fuera de `Logging` y si alguno de los dos es `uuid.Nil`. `Logging` escribe `tenant_id` y `user_id` solo si se anotaron, una sola vez para los tres caminos (normal, `panic` y `499`). Su comentario lista ahora `request_id`, `method`, `route`, `status`, `event`, `ip`, `duration_ms` y los dos ids. `identity.Authenticate` la llama después de `ResolveSession` y antes de `next`; es su único llamador. Sin cambios en `authz`, `ratelimit`, la cadena común, `RootDeps`, `cmd/crm` ni `.golangci.yml`.
+    - **Red**: con una función `SetLogPrincipal` vacía, fallaron las cinco filas de `TestLoggingPrincipal` que esperan los ids (`200`, segunda llamada, `panic`, `499`, `503` con `WARN`) y, en `TestRequestLogPrincipal`, las filas de `/me` con sesión, del `403` y del `429`. Las filas "sin las claves" y `TestSetLogPrincipalWithoutLogging` pasan sin implementación y las protegen las mutaciones.
+    - **Mutaciones** (aplicadas, vistas y restauradas; `git status` limpio):
+
+      | Mutación | Casos que fallan |
+      |---|---|
+      | Sin la llamada en `Authenticate` | `httpx`: ninguno (no la usa). API: `/me` con sesión, `403` del operador y `429` de la empresa |
+      | La llamada en `authz.RequirePermission` y no en `Authenticate` | API: `/me` con sesión (el `403` y el `429` siguen en verde porque sí usan `RequirePermission`) |
+      | `Logging` escribe las dos claves siempre, vacías si no se anotaron | `httpx`: "not annotated", "nil tenant" y "nil user". API: las filas sin cookie, cookie inexistente, sesión revocada, login, reset, logout, `/healthz` y SPA |
+      | Sin el chequeo de `uuid.Nil` en `SetLogPrincipal` | `httpx`: "nil user writes neither key" (el `uuid.Nil` de empresa sigue sin escribirse porque `Logging` también lo descarta) |
+
+    - **Revisión de lo reciente de la rama**: los comentarios y tests de `WithStatusLogLevel` del commit `4a958d6` (`TestWithStatusLogLevel*` en `httpx`, `TestRootSPALogLevel` en `app`) siguen en verde.
 
 ### Convenciones de esta sección
 
@@ -2661,6 +2679,45 @@ de la fase y se agrega a plan §11.1 en el mismo cambio (matriz §16).
 
 **Condición de salida a producción** (no es una condición de la fase; viene de ADR-005, consecuencia 1): T-1, T-2 y T-3 de T-B910 cumplidos en las dos corridas, sin que se disparen D-c ni D-d. Si no, tiene que estar implementado el ADR que reemplace a ADR-005, o una decisión del usuario que lo evite. **Cumplida** el 2026-10-08 (T-B910, dos corridas; decimocuarta revisión, *Accepted*, aprobada por el usuario el 2026-10-08). Desde entonces rigen el techo y los disparadores de plan DD-33 R-f y §12.4.
 
+**T-B912 [T] — `tenant_id` y `user_id` en la línea de request** · plan DD-12 (enmienda), INV-38, §12.1, §12.3, P-6 · decimonovena revisión (*Accepted*, P-6; se agrega después del cierre de la Fase 9)
+- Implementa: `backend-developer`, en `chore/001-logging-followups`. El código va en `internal/platform/httpx/middleware.go` (`SetLogPrincipal`, los ids en el estado del request y las claves en `Logging`) y en `internal/identity/middleware.go` (la llamada en `Authenticate`). No cambian `authz`, `ratelimit`, la cadena común (T-B204), `RootDeps`, `cmd/crm` ni `.golangci.yml`.
+- **Firma** (plan §11.1): `func SetLogPrincipal(r *http.Request, tenantID, userID uuid.UUID)`. Anota los dos ids en el estado que `Logging` comparte con la cadena, el mismo de `SetRoute` y `SetLogLevel`. Es no-op fuera de `Logging`, y también si alguno de los dos es `uuid.Nil` (falla cerrada). `Logging` escribe `tenant_id` y `user_id` (texto canónico del UUID) solo si se anotaron, en los tres caminos de la línea: normal, `panic` y `499`. `identity.Authenticate` la llama con el `TenantID` y el `UserID` del `Principal`, después de que `ResolveSession` vuelve sin error y antes de `next`. Es su único llamador fuera de los tests (INV-38).
+- **Red, `httpx`** (unitario: `Logging` con un logger que captura las líneas; en la fila del `panic`, con `Recover` afuera):
+
+  | Caso | Esperado |
+  |---|---|
+  | `h` llama a `SetLogPrincipal(r, T, U)` y responde `200` | `tenant_id=T`, `user_id=U` |
+  | `h` no la llama | La línea no tiene las claves `tenant_id` ni `user_id` (ausentes, no vacías) |
+  | `h` la llama con `uuid.Nil` como empresa; en otro caso, como usuario | Sin ninguna de las dos claves |
+  | `h` la llama dos veces con ids distintos | Los de la segunda llamada |
+  | `h` la llama y hace `panic` | `500`, `ERROR`, con los dos ids |
+  | `h` la llama y después llama a `WriteDBError` con `db.ErrCanceled` y el contexto del request cancelado | `499`, `INFO`, `event=client_canceled`, con los dos ids |
+  | `h` la llama y responde `503` dentro de `WithStatusLogLevel(503, slog.LevelWarn, …)` | `WARN`, con los dos ids (DD-50 no cambia) |
+  | `SetLogPrincipal` sin `Logging` alrededor | No hace `panic` y la respuesta no cambia |
+
+- **Red, API** (integración en `internal/app`, con PostgreSQL real, `NewCommonMiddleware`, el router de la API y un logger que captura las líneas; los ids esperados salen del fixture, no de la respuesta):
+
+  | Caso | Esperado |
+  |---|---|
+  | `GET /api/v1/me` con sesión válida | `200`; `tenant_id` y `user_id` de esa sesión |
+  | `GET /api/v1/me` sin cookie, con una cookie inexistente y con la de una sesión revocada | `401`; sin las claves |
+  | `POST /api/v1/users/invitations` con sesión de operador | `403` (`RequirePermission`); los ids del operador |
+  | `POST /api/v1/users/invitations` de un admin con el cupo de su empresa agotado (DD-48) | `429`; `route=/api/v1/users/invitations` y el `tenant_id` de esa empresa (fila de plan §12.3) |
+  | `POST /api/v1/auth/login` correcto, enviado con la cookie de otra sesión válida | `200`; sin las claves (ruta pública: la sesión nueva no autentica ese request) |
+  | `POST /api/v1/auth/password-reset` con la cookie de una sesión válida del mismo email | `202`; sin las claves |
+  | `POST /api/v1/auth/logout` con sesión válida | `204`; sin las claves |
+  | `GET /healthz` y `GET /` (la SPA del test) con una cookie válida | Sin las claves |
+  | Todas las filas anteriores | Ninguna línea del request contiene el valor de la cookie, el `SessionID` ni el email |
+
+- **Mutaciones** (se aplican, el caso falla y se restauran):
+  - sin la llamada en `Authenticate` → fallan las filas de `/me` con sesión, del `403` y del `429`;
+  - la llamada en `authz.RequirePermission` en lugar de `Authenticate` → falla la fila de `/me` con sesión (esa ruta no usa `RequirePermission`);
+  - `Logging` escribe las dos claves siempre, vacías si no se anotaron → fallan las filas "sin las claves";
+  - sin el chequeo de `uuid.Nil` → falla la fila de `uuid.Nil`.
+- **Green**: pasan las dos tablas y las mutaciones; `make check` en verde, sin cambios en `depguard`.
+- **Refactor**: si el nombre `routeHolder` ya no describe lo que guarda, se renombra (no está exportado). Se corrige el comentario de `Logging` para que liste los campos reales (DD-12), incluidos `ip`, `event` y los dos ids.
+- Mismo PR: la entrada de estado reporta las mutaciones, cada una con el caso que falla. El texto del plan (§11.1, §12.1, INV-38) ya va en el commit de diseño.
+
 ---
 
 ### Fase 10 — Endurecimiento tras la auditoría de seguridad (decimosexta revisión, *Accepted*)
@@ -3162,7 +3219,7 @@ v0.5.0, porque los tests con MSW no dependen de la Fase 10 del backend. P-F10 y 
 default y no bloquean.
 
 - **Fase F0 completa (2026-10-15)**: T-F001 a T-F009 en `feat/001-frontend-skeleton`, desde `main` en `c96cfe0`. `make check-all` en verde. Prueba independiente hecha: binario en `https://localhost:8443` y Vite en `https://localhost:5173` sin aviso de certificado; los cinco `curl -I` sin `-k` traen las cabeceras de `ui.md` §21.1–21.2 y no traen HSTS. S-F1 y S-F2 aprobados sin respaldo. Spike de la cookie OK en Chromium y Chrome (`__Host-crm_session` con `Secure`, `HttpOnly` y `SameSite=Lax`) y también en Safari 26.6.2, probado por el usuario contra el binario en `https://localhost:8443`: `signup` 201 y `/me` 200; la cookie `__Host-crm_session` con `Secure`, `HttpOnly`, `SameSite=Lax`, dominio `localhost` y `Path=/`, y no se puede leer desde `document.cookie`. Firefox queda pendiente porque no está instalado. Excepciones de versiones: TypeScript 5.9.3, ESLint y `@eslint/js` 9.39.5. `npm audit` informa 7 vulnerabilidades altas, todas en la cadena de desarrollo del CLI de shadcn (braces/micromatch, GHSA-vfj7-8cjw-p6xm), sin dependencias de producción afectadas. Pendiente de revisión.
-- **Enmienda de F0 (2026-10-15; P-F13 y P-F14 aprobadas el 2026-10-16)**: las 7 altas son de desarrollo y están por debajo de `critical`. Con ADR-027 se informan en el log y no bloquean; `braces` no tiene versión corregida. Pendientes: T-F010 (escaneo de npm) y T-F011 (log del `503`, sujeta a la decisión del `backend-architect`).
+- **Enmienda de F0 (2026-10-15; P-F13 y P-F14 aprobadas el 2026-10-16)**: las 7 altas son de desarrollo y están por debajo de `critical`. Con ADR-027 se informan en el log y no bloquean; `braces` no tiene versión corregida. T-F010 (escaneo de npm) hecha en el PR #33; S-F14 validado (`ui.md` §25). T-F011 (log del `503` en `WARN`, DD-50) hecha en el PR #34.
 
 ---
 
