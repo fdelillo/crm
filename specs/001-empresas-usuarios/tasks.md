@@ -978,7 +978,8 @@ duplican acá**. Dependen de:
 | T-F004 (tipos del contrato) y T-F101 (mensajes por `code`) | Contrato **v0.4.1** (séptima revisión) | Declara `413 payload_too_large` en las operaciones con body JSON. No agrega valores a `ErrorCode` ni cambia esquemas: el mapa de T-F101 compila igual y `ui.md` §12.2 ya cubre `payload_too_large` fuera del logo ("como `malformed_request`"). Cuando exista `web/`, `gen:api` regenera los tipos (incluyen la respuesta `413` nueva). Sin decisión de UI pendiente |
 | T-F202 (pantalla de registro) | T-B305 (tercera revisión) | El `503` del registro puede traer `Retry-After: 2` (DD-33); el mensaje de "Reintentar" puede usarlo. Decisión del `frontend-architect` |
 | T-F004 y T-F101 (tipos y mensajes), Fase F5 (usuarios e invitaciones) | Contrato **v0.5.0** (decimosexta revisión; T-B1005, T-B1009) | `ErrorCode` suma `email_not_verified`: T-F101 deja de compilar hasta tener su mensaje. `POST /users/invitations` puede responder `403 email_not_verified` (aviso y "Reenviar verificación"; `/me` ya trae `email_verified`) y `429 rate_limited` con `Retry-After`, igual que `POST /users/{userId}/reactivate`. "Reenviar invitación" usa la misma ruta que invitar (DD-5). Lo decide el `frontend-architect` en `ui.md` |
-| T-F009 (CI del frontend) | ADR-026 (T-B1101) | El escaneo de vulnerabilidades del backend no cubre npm. Sugerencia: un paso con la misma política (bloqueante en PR y en `main`, más la corrida diaria del workflow `vulncheck`), p. ej. `npm audit` sobre las dependencias de producción con un umbral. npm no analiza alcance, así que el umbral y si entran las `devDependencies` los decide el `frontend-architect` en `ui.md` |
+| T-F009 (CI del frontend) | ADR-026 (T-B1101) | El escaneo de vulnerabilidades del backend no cubre npm. **Resuelto** por ADR-027 (aprobado por el usuario el 2026-10-16, `ui.md` P-F13): `make web-vuln`, dos pasadas de `npm audit` en el workflow `vulncheck`, con la política de ADR-026. Lo implementa T-F010 (`frontend-developer`), no T-F009 |
+| T-F011 (nivel de log del `503` de la SPA; la implementa `backend-developer`) | DD-50 (decimoctava revisión del plan) y `ui.md` P-F15 | `httpx.WithStatusLogLevel` y su uso en `spaUnlessAPI`. Toca `internal/platform/httpx` e `internal/app`; no toca `web`, `cmd/crm` ni `depguard`. P-F15 aprobada por el usuario el 2026-10-16 |
 
 Orden sugerido: Fase 0 del backend completa → T-F007/T-F008 (en la misma rama o la siguiente) →
 T-F009.
@@ -2629,6 +2630,7 @@ de la fase y se agrega a plan §11.1 en el mismo cambio (matriz §16).
 
 **T-B911 [T] — Tests de `runServe`: falla de un servidor y espera del worker** · T-B904, T-B908, T-B909, DD-35, plan §9.4 · decimotercera revisión
 - **Costura**: `env` (`cmd/crm/main.go`) suma `listen func(ctx context.Context, network, address string) (net.Listener, error)`. `run` lo inicializa con `(&net.ListenConfig{}).Listen`, y `runServe` escucha `HTTP_ADDR` y `METRICS_ADDR` solo con `e.listen` (regla (4) de T-B801). Nada más cambia en `runServe`.
+- **Qué error devuelve** (decimoctava revisión del plan; observación del PR #31): `runServe` garantiza el error del primer servidor que falla (o el del bind de `METRICS_ADDR`), no el de los dos, porque si el otro falla mientras se cancela `serverCtx`, `http.Server.Serve` ve el apagado y devuelve `ErrServerClosed`, que `app.Serve` traduce a `nil`; se acepta porque ese error es posterior al que disparó el apagado y no cambia qué hacer, y ningún test lo afirma.
 - **Red** (integración en `cmd/crm`, contra el PostgreSQL del harness, con un SMTP de prueba propio del test y sin `t.Parallel()`):
 
   | Caso | Esperado |
@@ -3045,8 +3047,8 @@ convenciones (versiones), T-F001 (versiones, `tsconfig`, Node, verificación de 
 T-F006 (imports del router, sin `future` ni `middleware`, test de humo de navegación). Sin tareas
 nuevas ni cambios de orden.
 
-**Enmienda de F0 (2026-10-15; `ui.md` P-F13 y P-F14 aprobadas por el usuario el 2026-10-16, P-F15
-pendiente)** (`ui.md`, enmienda de F0;
+**Enmienda de F0 (2026-10-15; `ui.md` P-F13, P-F14 y P-F15 aprobadas por el usuario el
+2026-10-16)** (`ui.md`, enmienda de F0;
 ADR-027): (1) escaneo de vulnerabilidades de npm. ADR-027, nuevo, resuelve la fila T-F009 ↔ ADR-026.
 T-F010 es nueva: `make web-vuln` y el job `make web-vuln` del workflow `vulncheck`. (2) Un `401`
 con cambios sin guardar en S-11 ya no queda frenado por el aviso de salida (DD-F32, INV-F18).
@@ -3395,11 +3397,25 @@ respuestas de `ui.md` §21.1–21.2 (sin `Strict-Transport-Security`, porque es 
 - **Checkpoint**: el workflow `vulncheck` en verde en el PR, con los dos jobs. Después del merge, el
   usuario suma **`make web-vuln`** a los checks obligatorios del ruleset de `main`.
 
-**T-F011 [T] — Nivel de log del `503` de la SPA sin compilar** · plan DD-50 (*Proposed*: decide el `backend-architect`), H-17, `ui.md` §21, P-F15
-- Implementa: `backend-developer`, solo si el `backend-architect` acepta DD-50 (o la variante que
-  elija) y el usuario aprueba P-F15. El código va en `internal/app/root.go` (`spaUnlessAPI`). No
-  cambian `web/`, `cmd/crm/serve.go` ni `.golangci.yml`.
-- **Red** (mux raíz con `NewRootHandler` y un logger que captura las líneas):
+**T-F011 [T] — Nivel de log del `503` de la SPA sin compilar** · plan DD-50 (*Accepted* 2026-10-16: mecanismo del `backend-architect`, P-F15 aprobada por el usuario), H-17, `ui.md` §21, P-F15
+- Implementa: `backend-developer`. El código va en
+  `internal/platform/httpx/middleware.go` (`WithStatusLogLevel` y la precedencia de `Logging`, DD-50)
+  y en `internal/app/root.go` (`spaUnlessAPI` la aplica solo a la rama de la SPA). No cambian
+  `web/`, `cmd/crm/serve.go` (el guard de T-B801 sigue igual), `RootDeps` ni `.golangci.yml`. No se
+  agrega ningún envoltorio del `ResponseWriter`.
+- **Red, `httpx`** (`Logging` con un logger que captura las líneas, alrededor de
+  `WithStatusLogLevel(503, slog.LevelWarn, h)`; con `Recover` afuera en la fila del `panic`):
+
+  | Caso | Esperado |
+  |---|---|
+  | `h` responde `503` | `WARN`, `status=503` |
+  | `h` responde `500` | `ERROR` |
+  | `h` responde `200` y `404` | `INFO` |
+  | `h` hace `panic` | `500`, `ERROR` |
+  | `h` llama a `SetLogLevel(r, slog.LevelInfo)` y responde `503` | `INFO` (`SetLogLevel` prevalece) |
+  | `h` responde `503` sin `Logging` alrededor | La respuesta no cambia y no hay `panic` |
+
+- **Red, mux raíz** (`NewRootHandler` con `NewCommonMiddleware` y un logger que captura las líneas):
 
   | Caso | Esperado |
   |---|---|
@@ -3410,11 +3426,19 @@ respuestas de `ui.md` §21.1–21.2 (sin `Strict-Transport-Security`, porque es 
   | SPA de prueba que responde `500` / que hace `panic` | `ERROR` / `500` y `ERROR` (sin cambio) |
   | `dist` con `index.html`, `GET /` | `200`, `INFO` |
   | `SPA = app.SPAUnavailableHandler()` | `503`, `WARN` (sin cambio) |
-  | SPA de prueba que llama a `http.NewResponseController(w).Flush()` | No falla: el decorador expone `Unwrap` |
+  | API de prueba que responde `503`: `GET /api/v1/x` y `GET /api%2Fv1%2Fx` | `503` de la API, `ERROR` (sin cambio: la regla es solo de la rama de la SPA, INV-22) |
   | Cabeceras y cuerpo del `503` | Idénticos a la fila de T-F007 |
-- **Green**: pasa la tabla; `make check` en verde, sin cambios en `depguard`.
-- **Refactor**: un solo decorador; nada en `web`.
-- Mismo PR: la fila del runbook de plan §12.3 ("La interfaz no está compilada") con el nivel `WARN`.
+- **Mutaciones** (se aplican, el caso falla y se restauran): la regla alrededor del mux entero, de
+  la API o de todo `spaUnlessAPI` (antes del desvío de `/api%2F…`) → falla la fila de la API con
+  `503`; condición `>= 500` en vez de `== 503` → fallan las filas del `500`; `SetLogLevel(r,
+  slog.LevelWarn)` incondicional en `spaUnlessAPI` → fallan las filas de `200` y de `500`; sin la
+  regla → fallan las filas de `WARN` sobre `web.NewHandler`.
+- **Green**: pasan las dos tablas y las mutaciones; `make check` en verde, sin cambios en `depguard`
+  ni en el guard de T-B801.
+- **Refactor**: el nivel lo decide solo `Logging`; `spaUnlessAPI` declara la regla junto a
+  `WithRoute("spa", …)`; nada en `web`.
+- Mismo PR: la fila del runbook de plan §12.3 ("La interfaz no está compilada"), con el texto de la
+  decimoctava tanda de plan §18.
 
 **Checkpoint Fase F0**: `make check-all` en verde local y en CI; la prueba independiente ejecutada
 (navegador y `curl` sobre HTTPS); resultados de los spikes S-F1 y S-F2 reportados (y el de la
