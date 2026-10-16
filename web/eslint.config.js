@@ -34,6 +34,11 @@ const canvasSelectors = [
     message: 'Canvas belongs in tenant/logo/canvas.ts.',
   },
   {
+    selector:
+      "CallExpression[callee.property.name='createElement'][arguments.0.expressions.length=0][arguments.0.quasis.0.value.cooked='canvas']",
+    message: 'Canvas belongs in tenant/logo/canvas.ts.',
+  },
+  {
     selector: "JSXOpeningElement[name.name='canvas']",
     message: 'Canvas belongs in tenant/logo/canvas.ts.',
   },
@@ -61,6 +66,11 @@ const hiddenParentSegment = {
   message:
     'Do not climb with ".." after a named segment; import the target directly.',
 }
+// "./" in the middle or an empty segment ("//") can also hide the destination.
+const nonNormalizedPath = {
+  regex: rx('.(?:/\\.(?:/|$)|//)'),
+  message: 'Import the normalized path (no "./" in the middle, no "//").',
+}
 const componentImportRegex = rx(
   '^(?:@/|(?:\\./)*(?:\\.\\./)+)(?:api|features|app)(?:/|$)',
 )
@@ -70,6 +80,7 @@ const componentPatterns = [
     message: 'Shared components receive data through props.',
   },
   hiddenParentSegment,
+  nonNormalizedPath,
 ]
 const featurePatterns = (feature) => [
   {
@@ -89,13 +100,18 @@ const featurePatterns = (feature) => [
     message: 'Features may only share the auth/session module.',
   },
   hiddenParentSegment,
+  nonNormalizedPath,
 ]
-const dynamicImport = (regex, message) => ({
-  selector: `ImportExpression[source.value=/${regex}/]`,
-  message,
-})
+// Covers 'x' and also a template literal without expressions: `x`.
+const dynamicImport = (regex, message) => [
+  { selector: `ImportExpression[source.value=/${regex}/]`, message },
+  {
+    selector: `ImportExpression[source.expressions.length=0][source.quasis.0.value.cooked=/${regex}/]`,
+    message,
+  },
+]
 const dynamicImports = (patterns) =>
-  patterns.map(({ regex, message }) => dynamicImport(regex, message))
+  patterns.flatMap(({ regex, message }) => dynamicImport(regex, message))
 const dynamicClientImport = dynamicImport(
   rx('^openapi-fetch$'),
   'HTTP clients belong in api/.',
