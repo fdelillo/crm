@@ -83,6 +83,7 @@ y [`mkcert`](https://github.com/FiloSottile/mkcert#installation) para HTTPS loca
 | `make test` | Tests unitarios (`go test -race ./...`); no necesitan Docker |
 | `make test-int` | Además, tests de integración con PostgreSQL 18 real (necesita Docker) |
 | `make vuln` | `govulncheck` sobre el código del módulo (nivel símbolo, sin tests). Necesita red y su resultado cambia con la base de vulnerabilidades: no es parte de `make check`. Lo corre el workflow `vulncheck` ([ADR-026](docs/adr/026-vulnerabilidades-dependencias-govulncheck.md)) |
+| `make web-vuln` | `npm audit` en `web/`, en dos pasadas que corren siempre: producción (`--omit=dev`) bloquea desde `low`; el árbol completo bloquea solo `critical` y lista el resto. No instala nada. Necesita red y su resultado cambia con la base de avisos: no es parte de `make web-check` ni de `make check-all`. Lo corre el workflow `vulncheck` ([ADR-027](docs/adr/027-vulnerabilidades-dependencias-npm.md)) |
 | `make generate` | Regenera el código de `sqlc` |
 | `make db-reset` | Solo desarrollo: recrea el PostgreSQL local, corre el bootstrap y las migraciones |
 | `make dev-certs` | Solo desarrollo y E2E: genera `.certs/localhost.pem` y `.certs/localhost-key.pem` con mkcert |
@@ -230,7 +231,7 @@ El workflow `ci` conserva `make check` y suma `make web-check` (Node de `.nvmrc`
 sin certificados) y `make build`. El build guarda el artefacto `crm-linux-amd64` con
 `crm-linux-amd64.tar.gz`; al extraerlo con `tar -xzf`, se conserva el permiso ejecutable.
 Ese binario contiene la SPA y se reutiliza en las pruebas de navegador. Los certificados y las
-claves locales quedan fuera del artefacto. `make vuln` conserva su workflow independiente.
+claves locales quedan fuera del artefacto. `make vuln` y `make web-vuln` conservan su workflow independiente (`vulncheck`).
 
 ### Base de datos: bootstrap y migraciones (ADR-004)
 
