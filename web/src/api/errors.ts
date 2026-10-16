@@ -177,3 +177,12 @@ export function unwrap<T>(result: {
 export function isRetryable(error: unknown): boolean {
   return isApiError(error) && (error.kind === 'network' || error.status === 503)
 }
+
+/** Shared by the session query and the global error handler (INV-F02). */
+export function isUnauthenticated(error: unknown): boolean {
+  return (
+    isApiError(error) &&
+    error.status === 401 &&
+    error.code === 'unauthenticated'
+  )
+}

@@ -47,6 +47,12 @@ const canvasSelectors = [
     message: 'Canvas belongs in tenant/logo/canvas.ts.',
   },
 ]
+const restrictedBlocker = {
+  name: 'react-router',
+  importNames: ['useBlocker'],
+  message:
+    'Use lib/unsavedChanges.ts so session expiration bypasses unsaved-change prompts (INV-F18).',
+}
 const forbiddenNetworkImports = {
   name: 'openapi-fetch',
   message: 'HTTP clients belong in api/.',
@@ -128,7 +134,7 @@ const dynamicClientImport = dynamicImport(
 const syntaxRule = (...groups) => ['error', ...groups.flat()]
 const noRestrictedImports = (patterns) => [
   'error',
-  { paths: [forbiddenNetworkImports], patterns },
+  { paths: [forbiddenNetworkImports, restrictedBlocker], patterns },
 ]
 const testFiles = ['**/*.test.*', 'src/test/**']
 export default tseslint.config(
@@ -158,13 +164,17 @@ export default tseslint.config(
     rules: {
       ...reactHooks.configs.recommended.rules,
       ...jsxA11y.configs.recommended.rules,
+      'no-restricted-imports': ['error', { paths: [restrictedBlocker] }],
     },
   },
   {
     files: ['src/**/*.{ts,tsx}'],
     ignores: ['src/api/**', ...testFiles],
     rules: {
-      'no-restricted-imports': ['error', { paths: [forbiddenNetworkImports] }],
+      'no-restricted-imports': [
+        'error',
+        { paths: [forbiddenNetworkImports, restrictedBlocker] },
+      ],
       'no-restricted-syntax': syntaxRule(
         networkSelectors,
         canvasSelectors,
@@ -227,6 +237,12 @@ export default tseslint.config(
       },
     ]
   }),
+  {
+    files: ['src/lib/unsavedChanges.ts'],
+    rules: {
+      'no-restricted-imports': ['error', { paths: [forbiddenNetworkImports] }],
+    },
+  },
   // The tenant HTTP module may call fetch; the logo module is the only canvas user.
   {
     files: ['src/features/tenant/api.ts'],

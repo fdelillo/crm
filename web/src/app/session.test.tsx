@@ -121,6 +121,7 @@ describe('session guards and global failures', () => {
     const { router, queryClient } = renderApp(['/', '/settings/users'], {
       protectedPage: <Probe />,
     })
+    queryClient.setQueryDefaults(['private-data'], { gcTime: Infinity })
     queryClient.setQueryData(['private-data'], { secret: 'fixture' })
     const clear = vi.spyOn(queryClient, 'clear')
     await screen.findByText('Tu sesión se cerró. Ingresá de nuevo para seguir.')
@@ -149,6 +150,7 @@ describe('session guards and global failures', () => {
         protectedPage: <Probe mutate />,
       })
       await screen.findByRole('button', { name: 'Ejecutar acción' })
+      queryClient.setQueryDefaults(['private-data'], { gcTime: Infinity })
       queryClient.setQueryData(['private-data'], 'fixture')
       await userEvent.click(
         screen.getByRole('button', { name: 'Ejecutar acción' }),
@@ -199,13 +201,15 @@ describe('session guards and global failures', () => {
       ).toBeVisible()
       if (mutate)
         expect(
-          await screen.findByText('No tenés permiso para hacer esto.'),
+          (await screen.findAllByText('No tenés permiso para hacer esto.'))[0],
         ).toBeVisible()
     },
   )
   it.each([false, true])(
     'uses verification-aware focus refresh (%s)',
     async (verified) => {
+      const now = Date.now()
+      const clock = vi.spyOn(Date, 'now').mockReturnValue(now)
       const me = vi.fn(() =>
         HttpResponse.json(
           buildSessionInfo({
@@ -217,6 +221,7 @@ describe('session guards and global failures', () => {
       server.use(http.get(`${base}/me`, me))
       renderApp(['/settings'])
       await screen.findByRole('heading', { name: 'Ajustes' })
+      clock.mockReturnValue(now + 10_000)
       await act(async () => {
         focusManager.setFocused(false)
         focusManager.setFocused(true)
@@ -226,6 +231,35 @@ describe('session guards and global failures', () => {
       focusManager.setFocused(undefined)
     },
   )
+  it('navigates only once when simultaneous queries lose the session', async () => {
+    sessionHandlers()
+    const { router, queryClient } = renderApp(['/settings/users'])
+    await screen.findByRole('heading', { name: 'Usuarios' })
+    const navigate = vi.spyOn(router, 'navigate')
+    server.use(
+      http.get(`${base}/users`, () => denied('unauthenticated', 401)),
+      http.get(`${base}/tenant`, () => denied('unauthenticated', 401)),
+    )
+    await act(async () => {
+      await Promise.allSettled([
+        queryClient.fetchQuery({
+          queryKey: ['concurrent-users'],
+          queryFn: async () => unwrap(await api.GET('/users')),
+        }),
+        queryClient.fetchQuery({
+          queryKey: ['concurrent-tenant'],
+          queryFn: async () => unwrap(await api.GET('/tenant')),
+        }),
+      ])
+    })
+    await screen.findByText('Tu sesión se cerró. Ingresá de nuevo para seguir.')
+    expect(
+      navigate.mock.calls.filter(
+        ([to]) =>
+          typeof to === 'string' && to.includes('reason=session_expired'),
+      ),
+    ).toHaveLength(1)
+  })
   it('treats session-to-null refresh as expiration', async () => {
     sessionHandlers()
     const { queryClient, router } = renderApp(['/settings/users'])

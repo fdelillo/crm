@@ -5,6 +5,7 @@ import { RouterProvider } from 'react-router/dom'
 import { createAppQueryClient } from './app/queryClient'
 import { createAppRouter } from './app/router'
 import './styles/globals.css'
+import { createSessionErrorHandlers } from './app/sessionErrors'
 
 const QueryDevtools = import.meta.env.DEV
   ? lazy(() =>
@@ -13,8 +14,12 @@ const QueryDevtools = import.meta.env.DEV
       })),
     )
   : () => null
-const queryClient = createAppQueryClient()
+const queryClient = createAppQueryClient({
+  onUnauthenticated: () => sessionErrors.onUnauthenticated(),
+  onForbidden: () => sessionErrors.onForbidden(),
+})
 const router = createAppRouter()
+const sessionErrors = createSessionErrorHandlers(queryClient, router)
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>

@@ -1,9 +1,12 @@
 import type { QueryClient } from '@tanstack/react-query'
-import { createAppQueryClient } from '@/app/queryClient'
+import {
+  createAppQueryClient,
+  type AppQueryClientOptions,
+} from '@/app/queryClient'
 
 const clients = new Set<QueryClient>()
-export function createTestQueryClient() {
-  const client = createAppQueryClient()
+export function createTestQueryClient(options?: AppQueryClientOptions) {
+  const client = createAppQueryClient(options)
   const defaults = client.getDefaultOptions()
   client.setDefaultOptions({
     ...defaults,
