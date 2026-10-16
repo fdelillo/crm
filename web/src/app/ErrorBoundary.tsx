@@ -16,7 +16,9 @@ export function ErrorBoundary() {
         {heading}
       </h1>
       <Button onClick={() => window.location.reload()}>Recargar</Button>
-      <Link to="/">Ir al inicio</Link>
+      <Link to="/" state={{ focusHeading: true }}>
+        Ir al inicio
+      </Link>
     </main>
   )
 }

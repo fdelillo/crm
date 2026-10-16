@@ -8,7 +8,12 @@ export function RootLayout() {
   const location = useLocation()
   const previousPath = useRef(location.pathname)
   const client = useQueryClient()
-  const pendingFocus = useRef(false)
+  // Arriving from the error boundary's "Ir al inicio" remounts this layout, so
+  // the navigation intent travels in location.state (INV-F10).
+  const pendingFocus = useRef(
+    (location.state as { focusHeading?: boolean } | null)?.focusHeading ===
+      true,
+  )
   const lastHeading = useRef<HTMLHeadingElement | null>(null)
   // Layout effect: mark the navigation before the observer sees the new <h1>.
   useLayoutEffect(() => {
