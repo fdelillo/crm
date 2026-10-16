@@ -1,5 +1,4 @@
 import { createBrowserRouter, type RouteObject } from 'react-router'
-import { AppShell } from './AppShell'
 import { ErrorBoundary } from './ErrorBoundary'
 import { RootLayout } from './RootLayout'
 import {
@@ -38,7 +37,10 @@ export const appRoutes: RouteObject[] = [
         Component: RequireSession,
         children: [
           {
-            Component: AppShell,
+            // P-F18: the shell (and Radix DropdownMenu) stays out of the entry chunk.
+            lazy: async () => ({
+              Component: (await import('./AppShell')).AppShell,
+            }),
             children: [
               {
                 index: true,
