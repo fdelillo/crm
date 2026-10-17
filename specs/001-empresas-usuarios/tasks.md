@@ -3781,8 +3781,15 @@ P-F17): ninguno de los tres formatea la hora ni reimplementa `formatRetryAt` (T-
 
 **Checkpoint Fase F3**: `npm run check` en verde + prueba independiente.
 
-**Estado de implementación F3 (2026-10-17)**: T-F301–T-F304 implementadas; `npm run check`
-en verde. Prueba independiente y PR pendientes.
+**Fase F3 completa (2026-10-17)**: T-F301–T-F304 implementadas en
+`feat/001-frontend-login-logout`; `GOFLAGS=-count=1 make check-all` y `npm run check` en
+verde. Incluye el bloque de correcciones de F2: Dashboard conserva “Primeros pasos” durante
+la carga/error de `/tenant`, Signup recupera foco/errores/doble envío y se reforzaron sus
+tests y fixtures. Prueba independiente en Chromium con HTTPS estricto, backend actual y
+Postgres local: registro ficticio `example.test`, link “Invitá a tu equipo” al placeholder
+como se espera hasta F5, logout desde Ajustes con “Cerraste sesión.”, Atrás sin datos y cinco
+claves incorrectas seguidas por el bloqueo del sexto intento con hora. Revisión: pendiente
+(Claude Code).
 
 ---
 
