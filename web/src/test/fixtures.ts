@@ -1,6 +1,7 @@
 import type {
   CurrentUser,
   ErrorCode,
+  IndustryTemplate,
   Problem,
   SessionInfo,
   Tenant,
@@ -43,6 +44,11 @@ export function buildTenant(overrides: Partial<Tenant> = {}): Tenant {
     updated_at: timestamp,
     ...overrides,
   }
+}
+export function buildIndustryTemplates(
+  items: IndustryTemplate[] = [{ code: 'generic', name: 'Genérico' }],
+): { items: IndustryTemplate[] } {
+  return { items }
 }
 export function buildSessionInfo(
   overrides: Partial<SessionInfo> = {},
