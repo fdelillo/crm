@@ -1,7 +1,6 @@
-import { act, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { Application } from '@/app/application'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { buildSessionInfo, buildTenant, problem } from '@/test/fixtures'
 import { server } from '@/test/msw/server'
@@ -54,7 +53,19 @@ describe('LoginPage', () => {
         return HttpResponse.json(validSession)
       }),
     )
-    const { router, queryClient } = renderApp([entry])
+    const { router, queryClient } = renderApp([entry], {
+      configureQueryClient: (client) => {
+        const defaults = client.getDefaultOptions()
+        client.setDefaultOptions({
+          ...defaults,
+          queries: { ...defaults.queries, gcTime: Infinity },
+        })
+      },
+    })
+    await waitFor(() =>
+      expect(queryClient.getQueryData(['session'])).toBeNull(),
+    )
+    queryClient.setQueryDefaults(['stale-session-data'], { gcTime: Infinity })
     queryClient.setQueryData(['stale-session-data'], 'stale')
     const user = await fillCredentials()
     await user.click(screen.getByRole('button', { name: 'Ingresar' }))
@@ -121,7 +132,7 @@ describe('LoginPage', () => {
         serverProblem('login_locked', 429, { 'Retry-After': '900' }),
       ),
     )
-    const { router, queryClient, rerender } = renderApp(['/login'])
+    const { router } = renderApp(['/login?next=%2Fsettings'])
     const user = userEvent.setup()
     await user.type(await screen.findByLabelText('Email'), 'ana@example.test')
     await user.type(screen.getByLabelText('Contraseña'), 'clave-segura')
@@ -131,12 +142,17 @@ describe('LoginPage', () => {
         name: 'Por seguridad, pausamos el ingreso con este email.',
       }),
     ).toBeVisible()
+    expect(screen.getByRole('alert')).toHaveFocus()
     expect(screen.getByText(/a las 14:35 \(en 15 minutos\)/)).toBeVisible()
-    act(() => {
+    await act(async () => {
       now.mockReturnValue(new Date(2026, 9, 17, 14, 27, 0).getTime())
-      rerender(<Application router={router} queryClient={queryClient} />)
+      await router.navigate('/login?reason=other', {
+        replace: true,
+        state: { rerender: true },
+      })
     })
     expect(screen.getByText(/a las 14:35 \(en 15 minutos\)/)).toBeVisible()
+    expect(router.state.historyAction).toBe('REPLACE')
   })
 
   // T-F301 (P-F17): lock without Retry-After keeps both explicit exits available.
@@ -175,6 +191,7 @@ describe('LoginPage', () => {
     await user.click(screen.getByRole('button', { name: 'Volver a intentar' }))
     expect(screen.getByLabelText('Email')).toHaveValue('ana@example.test')
     expect(screen.getByLabelText('Contraseña')).toHaveValue('clave-segura')
+    expect(screen.getByLabelText('Contraseña')).toHaveFocus()
   })
 
   // T-F301 (DD-F25): rate limit waits use the Retry-After range.
@@ -222,8 +239,14 @@ describe('LoginPage', () => {
     loggedOut()
     const location = new URL(path, 'https://localhost')
     renderApp([{ pathname: location.pathname, search: location.search, state }])
+    await screen.findByRole('heading', { name: 'Ingresá a tu cuenta' })
     if (copy) expect(await screen.findByText(copy)).toBeVisible()
     else expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    if (!(state as { unsavedChangesLost?: boolean }).unsavedChangesLost) {
+      expect(
+        screen.queryByText('Los cambios que no habías guardado se perdieron.'),
+      ).not.toBeInTheDocument()
+    }
   })
 
   // T-F301: forgot-password carries the typed email in navigation state.
@@ -273,9 +296,9 @@ describe('LoginPage', () => {
     const { router } = renderApp(['/login'])
     const user = await fillCredentials()
     await user.click(screen.getByRole('button', { name: 'Ingresar' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'No hay conexión.',
-    )
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('No hay conexión.')
+    expect(alert).toHaveTextContent('Revisá tu internet y probá de nuevo.')
     expect(screen.getByLabelText('Email')).toHaveValue('ana@example.test')
     expect(screen.getByLabelText('Contraseña')).toHaveValue('clave-segura')
     recovered = true
@@ -370,6 +393,28 @@ describe('LoginPage', () => {
     await screen.findByRole('button', { name: 'Ingresando…' })
     await user.click(screen.getByRole('button', { name: 'Ingresando…' }))
     expect(login).toHaveBeenCalledOnce()
+    release()
+  })
+
+  it('submits once for two consecutive synchronous submit events', async () => {
+    loggedOut()
+    let release!: () => void
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const login = vi.fn(async () => {
+      await waiting
+      return HttpResponse.json(validSession)
+    })
+    server.use(http.post(`${base}/auth/login`, login))
+    renderApp(['/login'])
+    await fillCredentials()
+    const form = screen
+      .getByRole('button', { name: 'Ingresar' })
+      .closest('form')!
+    fireEvent.submit(form)
+    fireEvent.submit(form)
+    await waitFor(() => expect(login).toHaveBeenCalledOnce())
     release()
   })
 })

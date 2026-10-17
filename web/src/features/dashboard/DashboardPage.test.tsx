@@ -7,6 +7,7 @@ import {
   buildTenant,
   problem,
 } from '@/test/fixtures'
+import type { Permission } from '@/api/types'
 import { server } from '@/test/msw/server'
 import { renderApp } from '@/test/renderApp'
 
@@ -23,7 +24,10 @@ const tenantResponse = (industryTemplateCode = 'aluminum_carpentry') =>
       industry_template_code: industryTemplateCode,
     }),
   )
-function installSession(role: 'admin' | 'operator') {
+function installSession(
+  role: 'admin' | 'operator',
+  permissions: Permission[] = role === 'admin' ? ['settings.manage'] : [],
+) {
   // email_verified=false belongs to F5 (T-F504), not this F2 matrix.
   server.use(
     http.get(`${base}/me`, () =>
@@ -35,7 +39,7 @@ function installSession(role: 'admin' | 'operator') {
             role,
             email_verified: true,
           },
-          permissions: role === 'admin' ? ['settings.manage'] : [],
+          permissions,
         }),
       ),
     ),
@@ -86,6 +90,28 @@ describe('DashboardPage', () => {
     ).toBeVisible()
     expect(screen.queryByText('Primeros pasos')).not.toBeInTheDocument()
   })
+
+  it.each([
+    ['admin', [], false],
+    ['operator', ['settings.manage'], true],
+  ] as const)(
+    'shows first steps according to settings.manage for role %s',
+    async (role, permissions, hasSteps) => {
+      installSession(role, [...permissions])
+      server.use(http.get(`${base}/tenant`, () => tenantResponse()))
+      renderApp(['/'])
+      if (hasSteps) {
+        expect(
+          await screen.findByRole('heading', { name: 'Primeros pasos' }),
+        ).toBeVisible()
+      } else {
+        await screen.findByRole('heading', { name: 'Hola, Ana Pérez' })
+        expect(
+          screen.queryByRole('heading', { name: 'Primeros pasos' }),
+        ).not.toBeInTheDocument()
+      }
+    },
+  )
 
   it('keeps the greeting visible while the company card loads as a skeleton', async () => {
     installSession('admin')

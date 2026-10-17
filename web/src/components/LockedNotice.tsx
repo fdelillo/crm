@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { Button } from './ui/button'
 
 export interface LockedNoticeProps {
@@ -13,9 +14,14 @@ export function LockedNotice({
   onResetPassword,
   onRetry,
 }: LockedNoticeProps) {
+  const noticeRef = useRef<HTMLElement>(null)
+  useEffect(() => noticeRef.current?.focus(), [])
   return (
     <section
+      ref={noticeRef}
       aria-labelledby="locked-title"
+      role="alert"
+      tabIndex={-1}
       className="space-y-4 rounded-lg border p-4"
     >
       <div className="space-y-2">

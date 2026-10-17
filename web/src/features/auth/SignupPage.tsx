@@ -23,7 +23,6 @@ import {
 } from '@/api/errorMessages'
 import { isApiError } from '@/api/errors'
 import { queryKeys } from '@/api/queryKeys'
-import type { FieldErrorCode } from '@/api/types'
 import { useIndustryTemplates, useSignup } from './api'
 import { CurrencyPicker } from './components/CurrencyPicker'
 import { IndustryTemplatePicker } from './components/IndustryTemplatePicker'
@@ -96,7 +95,7 @@ export function SignupPage() {
           error.fieldErrors.some((fieldError) => fieldError.field === field),
         )
         if (firstField) setFocus(firstField)
-        if (unknownErrors.length === 0) return
+        if (error.fieldErrors.length > 0 && unknownErrors.length === 0) return
       }
       setSubmitError(error)
     } finally {
@@ -161,11 +160,7 @@ export function SignupPage() {
               />
               {errors.name && (
                 <FieldError id={errorId('name')}>
-                  {fieldErrorText(
-                    'name',
-                    errors.name,
-                    (errors.name.message ?? 'required') as FieldErrorCode,
-                  )}
+                  {fieldErrorText('name', errors.name)}
                 </FieldError>
               )}
             </Field>
@@ -185,11 +180,7 @@ export function SignupPage() {
               />
               {errors.email && (
                 <FieldError id={errorId('email')}>
-                  {fieldErrorText(
-                    'email',
-                    errors.email,
-                    (errors.email.message ?? 'required') as FieldErrorCode,
-                  )}
+                  {fieldErrorText('email', errors.email)}
                 </FieldError>
               )}
             </Field>
@@ -215,11 +206,7 @@ export function SignupPage() {
               </FieldDescription>
               {errors.password && (
                 <FieldError id={errorId('password')}>
-                  {fieldErrorText(
-                    'password',
-                    errors.password,
-                    (errors.password.message ?? 'required') as FieldErrorCode,
-                  )}
+                  {fieldErrorText('password', errors.password)}
                 </FieldError>
               )}
             </Field>
@@ -244,12 +231,7 @@ export function SignupPage() {
               />
               {errors.company_name && (
                 <FieldError id={errorId('company_name')}>
-                  {fieldErrorText(
-                    'company_name',
-                    errors.company_name,
-                    (errors.company_name.message ??
-                      'required') as FieldErrorCode,
-                  )}
+                  {fieldErrorText('company_name', errors.company_name)}
                 </FieldError>
               )}
             </Field>
@@ -281,8 +263,6 @@ export function SignupPage() {
                     error={fieldErrorText(
                       'industry_template_code',
                       errors.industry_template_code,
-                      (errors.industry_template_code?.message ??
-                        'required') as FieldErrorCode,
                     )}
                     disabled={signup.isPending}
                     name={field.name}
@@ -309,8 +289,6 @@ export function SignupPage() {
                     error={fieldErrorText(
                       'base_currency',
                       errors.base_currency,
-                      (errors.base_currency?.message ??
-                        'required') as FieldErrorCode,
                     )}
                   />
                 )}

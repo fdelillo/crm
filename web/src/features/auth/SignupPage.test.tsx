@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
@@ -99,6 +99,18 @@ describe('SignupPage', () => {
     ).toBeVisible()
     expect(screen.getByText('Elegí el rubro de tu empresa.')).toBeVisible()
     expect(screen.getByLabelText('Tu nombre')).toHaveFocus()
+    const passwordDescriptions = screen
+      .getByLabelText('Contraseña')
+      .getAttribute('aria-describedby')
+      ?.split(' ')
+    expect(passwordDescriptions).toContain('password-help')
+    expect(passwordDescriptions).toContain('password-error')
+    const industryDescriptions = screen
+      .getByRole('radiogroup', { name: 'Rubro de tu empresa' })
+      .getAttribute('aria-describedby')
+      ?.split(' ')
+    expect(industryDescriptions).toContain('industry_template_code-help')
+    expect(industryDescriptions).toContain('industry_template_code-error')
     expect(signup).not.toHaveBeenCalled()
   })
 
@@ -264,6 +276,74 @@ describe('SignupPage', () => {
     await waitFor(() => expect(catalogLoads).toBeGreaterThan(1))
   })
 
+  it('focuses the checked currency radio after a server validation error', async () => {
+    setupCatalog()
+    server.use(
+      http.post(`${base}/auth/signup`, () =>
+        HttpResponse.json(
+          problem('validation_failed', 422, {
+            errors: [{ field: 'base_currency', code: 'required' }],
+          }),
+          {
+            status: 422,
+            headers: { 'Content-Type': 'application/problem+json' },
+          },
+        ),
+      ),
+    )
+    renderApp(['/signup'])
+    await completeForm()
+    await userEvent.click(screen.getByRole('button', { name: 'Crear cuenta' }))
+    expect(await screen.findByText('Elegí la moneda base.')).toBeVisible()
+    expect(screen.getByRole('radio', { name: 'Pesos (ARS)' })).toHaveFocus()
+    const describedBy = screen
+      .getByRole('radiogroup', { name: 'Moneda base' })
+      .getAttribute('aria-describedby')
+      ?.split(' ')
+    expect(describedBy).toContain('base_currency-help')
+    expect(describedBy).toContain('base_currency-error')
+  })
+
+  it('submits once for two consecutive synchronous submit events', async () => {
+    setupCatalog()
+    let release!: () => void
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const signup = vi.fn(async () => {
+      await waiting
+      return HttpResponse.json(buildSessionInfo(), { status: 201 })
+    })
+    server.use(http.post(`${base}/auth/signup`, signup))
+    renderApp(['/signup'])
+    await completeForm()
+    const form = screen
+      .getByRole('button', { name: 'Crear cuenta' })
+      .closest('form')!
+    fireEvent.submit(form)
+    fireEvent.submit(form)
+    await waitFor(() => expect(signup).toHaveBeenCalledOnce())
+    release()
+  })
+
+  it('shows a generic message for an empty server validation error list', async () => {
+    setupCatalog()
+    server.use(
+      http.post(`${base}/auth/signup`, () =>
+        HttpResponse.json(problem('validation_failed', 422, { errors: [] }), {
+          status: 422,
+          headers: { 'Content-Type': 'application/problem+json' },
+        }),
+      ),
+    )
+    renderApp(['/signup'])
+    await completeForm()
+    await userEvent.click(screen.getByRole('button', { name: 'Crear cuenta' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Revisá los datos marcados.',
+    )
+  })
+
   it.each([
     [
       '720',
@@ -347,6 +427,7 @@ describe('SignupPage', () => {
         )
       } else if (name === 'network failure') {
         expect(alert).toHaveTextContent('No hay conexión.')
+        expect(alert).toHaveTextContent('Revisá tu internet y probá de nuevo.')
       }
       expect(screen.getByLabelText('Tu nombre')).toHaveValue(' Ana Pérez ')
       expect(screen.getByLabelText('Email')).toHaveValue('ANA@example.test')
