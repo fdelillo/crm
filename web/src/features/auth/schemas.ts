@@ -17,7 +17,10 @@ export const signupSchema = z
     password: z.string().min(10, 'too_short').max(128, 'too_long'),
     company_name: requiredText(120),
     base_currency: z.enum(['ARS', 'USD']),
-    industry_template_code: z.string().min(1, 'required').max(64, 'too_long'),
+    industry_template_code: z
+      .string({ error: 'required' })
+      .min(1, 'required')
+      .max(64, 'too_long'),
     timezone: z.string().max(64, 'too_long').optional(),
   })
   .superRefine((values, context) => {

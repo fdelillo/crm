@@ -12,6 +12,7 @@ const validSignup: SignupRequest = {
 }
 
 describe('signupSchema', () => {
+  // T-F201: normalized output matches the request contract and reports stable codes.
   it('normalizes email and trims text fields', () => {
     expect(
       signupSchema.parse({
@@ -47,6 +48,20 @@ describe('signupSchema', () => {
       }
     },
   )
+
+  it('uses the required code when industry_template_code is omitted', () => {
+    const request = { ...validSignup }
+    Reflect.deleteProperty(request, 'industry_template_code')
+    const result = signupSchema.safeParse(request)
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(
+        result.error.issues.find(
+          (issue) => issue.path[0] === 'industry_template_code',
+        )?.message,
+      ).toBe('required')
+    }
+  })
 
   it.each([10, 128])('accepts a password of %i characters', (length) => {
     expect(
