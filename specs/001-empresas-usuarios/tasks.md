@@ -3802,8 +3802,13 @@ la carga/error de `/tenant`, Signup recupera foco/errores/doble envío y se refo
 tests y fixtures. Prueba independiente en Chromium con HTTPS estricto, backend actual y
 Postgres local: registro ficticio `example.test`, link “Invitá a tu equipo” al placeholder
 como se espera hasta F5, logout desde Ajustes con “Cerraste sesión.”, Atrás sin datos y cinco
-claves incorrectas seguidas por el bloqueo del sexto intento con hora. revisión: pendiente
-(Claude Code).
+claves incorrectas seguidas por el bloqueo del sexto intento con hora. Review 1 del PR #38
+corregida y pusheada en `1c1d75a`, `aaf1ecd` y `bd35ae6`:
+logout conserva `logged_out` durante navegación pendiente, limpia caché antes del cambio de ruta y
+no vuelve a consultar datos privados al regresar; LockedNotice anuncia y recibe foco, Retry devuelve
+foco a contraseña; se cubren P-F18/DD-F32, caché/historial, cruces de permiso, accesibilidad y
+doble envío en Signup/Login, CurrencyPicker, errores offline/vacíos y los cuatro umbrales P-F19.
+revisión: pendiente (Claude Code).
 
 ---
 
