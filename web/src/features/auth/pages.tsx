@@ -23,9 +23,7 @@ export function LoginPage() {
     </>
   )
 }
-export function SignupPage() {
-  return <h1>Registro</h1>
-}
+export { SignupPage } from './SignupPage'
 export function ForgotPasswordPage() {
   return <h1>Olvidé mi contraseña</h1>
 }

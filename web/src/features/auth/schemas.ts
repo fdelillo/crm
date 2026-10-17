@@ -2,11 +2,7 @@ import { z } from 'zod'
 import type { SignupRequest } from '@/api/types'
 
 const requiredText = (maximum: number) =>
-  z
-    .string()
-    .trim()
-    .min(1, 'required')
-    .max(maximum, 'too_long')
+  z.string().trim().min(1, 'required').max(maximum, 'too_long')
 
 export const signupSchema = z
   .object({

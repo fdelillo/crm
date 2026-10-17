@@ -21,6 +21,17 @@ Object.defineProperty(window, 'scrollTo', {
   configurable: true,
   value: vi.fn(),
 })
+
+// Radix RadioGroup measures its hidden form input; jsdom has no layout observer.
+class ResizeObserverStub implements ResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+Object.defineProperty(globalThis, 'ResizeObserver', {
+  configurable: true,
+  value: ResizeObserverStub,
+})
 afterEach(() => {
   // Checked first so a failure while cleaning up cannot leave the pending list
   // for the next test; the finally block cleans up even when the check throws.

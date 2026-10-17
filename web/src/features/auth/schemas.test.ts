@@ -37,13 +37,16 @@ describe('signupSchema', () => {
     ['password', '123456789', 'too_short'],
     ['password', 'p'.repeat(129), 'too_long'],
     ['industry_template_code', '', 'required'],
-  ] as const)('rejects %s with the expected validation code', (field, value, code) => {
-    const result = signupSchema.safeParse({ ...validSignup, [field]: value })
-    expect(result.success).toBe(false)
-    if (!result.success) {
-      expect(result.error.issues[0]?.message).toBe(code)
-    }
-  })
+  ] as const)(
+    'rejects %s with the expected validation code',
+    (field, value, code) => {
+      const result = signupSchema.safeParse({ ...validSignup, [field]: value })
+      expect(result.success).toBe(false)
+      if (!result.success) {
+        expect(result.error.issues[0]?.message).toBe(code)
+      }
+    },
+  )
 
   it.each([10, 128])('accepts a password of %i characters', (length) => {
     expect(
