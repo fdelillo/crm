@@ -19,9 +19,11 @@ export function AppShell() {
   return session ? <AuthenticatedShell session={session} /> : null
 }
 function AuthenticatedShell({ session }: { session: SessionInfo }) {
-  const { data: tenant } = useTenant()
   const logout = useLogout()
-  const [menuOpen, setMenuOpen] = useState(false)
+  const [logoutStarted, setLogoutStarted] = useState(false)
+  const { data: tenant } = useTenant({
+    enabled: !logout.isPending && !logoutStarted,
+  })
   const role = session.user.role === 'admin' ? 'Administrador' : 'Operador'
   return (
     <div className="min-h-dvh lg:pl-60">
@@ -61,7 +63,7 @@ function AuthenticatedShell({ session }: { session: SessionInfo }) {
           ))}
         </nav>
         <div className="hidden lg:mt-auto lg:block lg:p-4">
-          <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+          <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
@@ -76,13 +78,18 @@ function AuthenticatedShell({ session }: { session: SessionInfo }) {
                 {session.user.name} · {role}
               </DropdownMenuLabel>
               <DropdownMenuItem
-                disabled={logout.isPending}
+                disabled={logout.isPending || logoutStarted}
                 onSelect={(event) => {
                   event.preventDefault()
-                  logout.mutate()
+                  setLogoutStarted(true)
+                  logout.mutate(undefined, {
+                    onError: () => setLogoutStarted(false),
+                  })
                 }}
               >
-                {logout.isPending ? 'Cerrando sesión…' : 'Cerrar sesión'}
+                {logout.isPending || logoutStarted
+                  ? 'Cerrando sesión…'
+                  : 'Cerrar sesión'}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

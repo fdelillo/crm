@@ -26,38 +26,90 @@ describe('logout navigation', () => {
   it('logs out from Settings and does not restore the old session on Back', async () => {
     let loggedOut = false
     let sessionReads = 0
+    let logoutCompleted = false
+    let tenantReadsAfterLogout = 0
     server.use(
       http.get(`${base}/me`, () => {
         sessionReads += 1
         return loggedOut ? unauthenticated() : HttpResponse.json(session)
       }),
+      http.get(`${base}/tenant`, () => {
+        if (logoutCompleted) tenantReadsAfterLogout += 1
+        return logoutCompleted
+          ? unauthenticated()
+          : HttpResponse.json(buildTenant())
+      }),
       http.post(`${base}/auth/logout`, () => {
         loggedOut = true
+        logoutCompleted = true
         return new HttpResponse(null, { status: 204 })
       }),
     )
-    const { router, queryClient } = renderApp(['/settings'])
+    const { router, queryClient } = renderApp(['/', '/settings'])
     await screen.findByRole('heading', { name: 'Ajustes' })
     await waitFor(() =>
       expect(queryClient.getQueryData(['tenant'])).toBeDefined(),
     )
+    let cacheWasEmptyAtLoggedOutLocation = false
+    const unsubscribe = router.subscribe((state) => {
+      if (
+        state.location.pathname === '/login' &&
+        state.location.search === '?reason=logged_out'
+      ) {
+        cacheWasEmptyAtLoggedOutLocation =
+          queryClient.getQueryCache().getAll().length === 0
+      }
+    })
     await userEvent.click(screen.getByRole('button', { name: 'Cerrar sesión' }))
     expect(await screen.findByText('Cerraste sesión.')).toBeVisible()
     expect(router.state.location.pathname).toBe('/login')
     expect(router.state.location.search).toBe('?reason=logged_out')
     expect(router.state.historyAction).toBe('REPLACE')
     expect(queryClient.getQueryData(['tenant'])).toBeUndefined()
+    expect(cacheWasEmptyAtLoggedOutLocation).toBe(true)
 
-    await router.navigate('/')
-    await waitFor(() => expect(sessionReads).toBeGreaterThanOrEqual(2))
-    await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
+    const readsBeforeBack = sessionReads
+    await router.navigate(-1)
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+    expect(sessionReads).toBe(readsBeforeBack)
+    expect(
+      screen.queryByRole('heading', { name: 'Ajustes' }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText('Empresa de prueba')).not.toBeInTheDocument()
+    expect(tenantReadsAfterLogout).toBe(0)
+    unsubscribe()
   })
 
   // T-F303: the desktop user menu exposes the same logout action.
-  it('offers logout from the desktop user menu', async () => {
-    const logout = vi.fn(() => new HttpResponse(null, { status: 204 }))
-    server.use(http.post(`${base}/auth/logout`, logout))
-    renderApp(['/'])
+  it('keeps the logged-out reason when authenticated reads fail during menu logout', async () => {
+    let loggedOut = false
+    let logoutCompleted = false
+    let tenantReadsAfterLogout = 0
+    let sessionReadsAfterLogout = 0
+    const logout = vi.fn(() => {
+      loggedOut = true
+      return new HttpResponse(null, { status: 204 })
+    })
+    server.use(
+      http.get(`${base}/me`, () =>
+        loggedOut
+          ? ((sessionReadsAfterLogout += 1), unauthenticated())
+          : HttpResponse.json(session),
+      ),
+      http.get(`${base}/tenant`, () => {
+        if (logoutCompleted) tenantReadsAfterLogout += 1
+        return logoutCompleted
+          ? unauthenticated()
+          : HttpResponse.json(buildTenant({ name: 'Tenant cargado' }))
+      }),
+      http.post(`${base}/auth/logout`, async () => {
+        const response = logout()
+        logoutCompleted = true
+        return response
+      }),
+    )
+    const { router } = renderApp(['/'])
+    await screen.findByText('Rubro: Genérico')
     const menu = await screen.findByRole('button', {
       name: /Persona de prueba · Administrador/,
     })
@@ -67,6 +119,13 @@ describe('logout navigation', () => {
     )
     await waitFor(() => expect(logout).toHaveBeenCalledOnce())
     expect(await screen.findByText('Cerraste sesión.')).toBeVisible()
+    await waitFor(() =>
+      expect(
+        router.state.location.pathname + router.state.location.search,
+      ).toBe('/login?reason=logged_out'),
+    )
+    await waitFor(() => expect(sessionReadsAfterLogout).toBeGreaterThan(0))
+    expect(tenantReadsAfterLogout).toBe(0)
   })
 
   // T-F303: offline logout keeps the session and reports the designed toast.
