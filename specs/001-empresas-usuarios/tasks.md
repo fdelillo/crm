@@ -3139,6 +3139,17 @@ sesión, toda pantalla termina en "· CRM". Cambian T-F005 (fila nueva, se imple
 T-F102, T-F104, T-F105, T-F106, T-F107, T-F301, T-F302, el checkpoint de F1 y la trazabilidad. Sin
 tareas nuevas ni cambios de orden. Los cuatro puntos se cierran en F1; la fila de T-F301 entra con F3.
 
+**Enmienda de F3, P-F19 (2026-10-17; `ui.md` P-F19 aprobada por el usuario el 2026-10-17)**
+(`ui.md`, enmienda de F3, P-F19): (1) las queries que usan el shell o más de una feature viven en
+`api/` (`useTenant` y `logoUrl` en `api/tenant.ts`, `useIndustryTemplates` en
+`api/industryTemplates.ts`), y `features/tenant/api.ts` y `features/auth/api.ts` las reexportan
+(`ui.md` §9.1, §15.4, §22). (2) `useIndustryTemplates` devuelve `{ items: IndustryTemplate[] }`
+(`ui.md` §11.1, §15.4). (3) La espera del `503` con `Retry-After` sigue DD-F25, como la de
+`rate_limited` (`ui.md` §12.2). (4) Una fila de T-F101 aclara que `receivedAt` queda en 14:20
+mientras el reloj del render avanza a 14:27. Cambian T-F101 (fila nueva del `503` y una fila
+aclarada), T-F107, T-F203, T-F205 y la trazabilidad. El código de F1 a F3 ya cumple los cuatro
+puntos: la fila nueva de T-F101 pasa sin cambiar código. Sin tareas nuevas ni cambios de orden.
+
 ### Convenciones de esta sección
 
 - `[T]` = tarea de test. Va **antes** de la tarea de código que la hace pasar, y el test debe
@@ -3541,7 +3552,7 @@ de mkcert instalada: abrir `https://localhost:5173/settings/users` sin sesión r
 navegador) se ve el shell; borrar la sesión en la base y navegar vuelve al login con "Tu sesión se
 cerró"; Chrome ofrece "Instalar app" sobre el binario en `https://localhost:8443`.
 
-**T-F101 [T] — Mensajes por `code` y por campo** · ADR-009, INV-F05, `ui.md` §12.2–12.3, §13.2, §15.4, P-F16, P-F17, P-F18, INV-F12
+**T-F101 [T] — Mensajes por `code` y por campo** · ADR-009, INV-F05, `ui.md` §12.2–12.3, §13.2, §15.4, P-F16, P-F17, P-F18, P-F19, INV-F12
 - **Red**:
 
   | Caso | Esperado |
@@ -3550,7 +3561,7 @@ cerró"; Chrome ofrece "Instalar app" sobre el binario en `https://localhost:844
   | `messageForError` para cada `code` de §12.2 en contexto `generic` | título y descripción de la tabla |
   | `token_invalid` en `resetConfirm`, `verifyEmail`, `invitationPreview` | los tres textos de §12.2 |
   | *(P-F16)* `token_invalid` en `generic` y en `login` (contexto sin variante propia) | "Este enlace ya no sirve." + "Pedí uno nuevo." |
-  | *(P-F16)* `login_locked` con `retryAfterSeconds` 900 y `receivedAt` a las 14:20:00 hora local (P-F18; el reloj del sistema en otra hora) | "Por seguridad, pausamos el ingreso con este email." + "Hubo varios intentos fallidos. Podés volver a intentar a las 14:35 (en 15 minutos) o restablecer tu contraseña ahora." |
+  | *(P-F16)* `login_locked` con `retryAfterSeconds` 900 y `receivedAt` a las 14:20:00 hora local (P-F18; *(P-F19)* `receivedAt` queda en 14:20:00 mientras el reloj del render avanza a 14:27:00) | "Por seguridad, pausamos el ingreso con este email." + "Hubo varios intentos fallidos. Podés volver a intentar a las 14:35 (en 15 minutos) o restablecer tu contraseña ahora.", con el reloj en 14:20:00 y en 14:27:00: las dos lecturas dicen 14:35 |
   | *(P-F16, P-F17)* `formatRetryAt(900, now)` con `now` a las 14:20:00 hora local / a las 14:20:30 | `{ time: '14:35', minutes: 15 }` / `{ time: '14:36', minutes: 16 }` (minuto siguiente y minutos de reloj, `ui.md` §13.2) |
   | *(P-F17)* `formatRetryAt(10, now)` con `now` a las 14:20:30 / `formatRetryAt(60, now)` con `now` a las 14:20:00 | `{ time: '14:21', minutes: 1 }` / lo mismo |
   | *(P-F17)* `login_locked` con `retryAfterSeconds` 60 y `receivedAt` a las 14:20:00 hora local (P-F18) | "…Podés volver a intentar a las 14:21 (en 1 minuto) o restablecer tu contraseña ahora." |
@@ -3559,6 +3570,7 @@ cerró"; Chrome ofrece "Instalar app" sobre el binario en `https://localhost:844
   | `unsupported_media_type`, `payload_too_large` y `malformed_request` en `logo` | textos del logo ("No pudimos subir el logo." con `requestId` para el `400`) |
   | `rate_limited` con `retryAfterSeconds` 3 / 60 / 61 / 1800 / `null` | "unos segundos" / "1 minuto" / "2 minutos" / "30 minutos" / "unos minutos" (DD-F25) |
   | `service_unavailable` con `retryAfterSeconds` 2 en `signup` / sin cabecera | "Probá de nuevo en unos segundos." + "No se creó nada: podés reintentar con los mismos datos." / "Probá de nuevo en unos minutos." |
+  | *(P-F19)* `service_unavailable` en `generic` con `retryAfterSeconds` 45 / 60 / 61 / 1800 | "Probá de nuevo en unos segundos." / "Probá de nuevo en 1 minuto." / "Probá de nuevo en 2 minutos." / "Probá de nuevo en 30 minutos." (DD-F25, la misma regla que `rate_limited`) |
   | `method_not_allowed` con `requestId` | "No pudimos procesar el pedido." + "Recargá la página y probá de nuevo." + código (contrato v0.4.0) |
   | `email_not_verified` en `invite`, `userAction` y `generic` (contrato v0.5.0; sin su fila, el mapa no compila) | "Confirmá tu email para invitar a tu equipo." + "Te mandamos un enlace cuando te registraste. Si no lo encontrás, pedí uno nuevo." |
   | `rate_limited` en `signup` con `retryAfterSeconds` 45 / 720 | "Hubo muchos intentos de registro seguidos." + "Esperá unos segundos y probá de nuevo. No se creó nada: podés reintentar con los mismos datos." / lo mismo con "12 minutos" (DD-F29) |
@@ -3650,7 +3662,7 @@ P-F18), navegación inferior y lateral, `SettingsPage` (sin "Cerrar sesión", qu
 `NotFoundPage`, `ErrorBoundary` raíz (fija su título con `useDocumentTitle` y enfoca su `<h1>`,
 P-F18), manejo de `vite:preloadError`, `PageHeader`, `FormAlert`,
 `ErrorState`, `EmptyState`, `AppBrand`, `OfflineBanner`, `useOnlineStatus`, `useDocumentTitle`,
-`useTenant` (lectura).
+`useTenant` (lectura) y `logoUrl`, en `api/tenant.ts`; `features/tenant/api.ts` los reexporta (`ui.md` §9.1, §15.4; P-F19).
 
 **T-F108 — PWA base** · ADR-020, `ui.md` §20
 - `public/manifest.webmanifest` (`name`/`short_name` "CRM"), íconos genéricos provisorios (P-F1),
@@ -3710,7 +3722,9 @@ de la cookie (T-F006) reportado para Chrome, Firefox y, si hay, Safari.
 - **Green**: pasa la tabla.
 
 **T-F203 — Implementar el registro**: `SignupPage`, `IndustryTemplatePicker`, `CurrencyPicker`,
-`PasswordInput`, `SubmitButton`, `useSignup`, `useIndustryTemplates`, esquema de T-F201.
+`PasswordInput`, `SubmitButton`, `useSignup`, `useIndustryTemplates` (en `api/industryTemplates.ts`,
+devuelve `{ items: IndustryTemplate[] }`; `features/auth/api.ts` lo reexporta, `ui.md` §9.1, §15.4,
+P-F19), esquema de T-F201.
 
 **T-F204 [T] — Panel inicial** · US-1 (prueba independiente), BR-F04, `ui.md` §13.7
 - **Red**:
@@ -3724,7 +3738,7 @@ de la cookie (T-F006) reportado para Chrome, Firefox y, si hay, Safari.
   | Código de rubro que no está en el catálogo | se muestra el código |
 - **Green**: pasa la tabla.
 
-**T-F205 — Implementar `DashboardPage`**.
+**T-F205 — Implementar `DashboardPage`** (lee `useTenant` y `useIndustryTemplates` de `api/`, `ui.md` §9.1, P-F19).
 
 **Checkpoint Fase F2**: `npm run check` en verde + prueba independiente (registro medido: < 3
 min en una prueba manual, SC-001).
@@ -4340,4 +4354,5 @@ usó) reportado.
 | P-F16 (`token_invalid` sin variante de contexto; `formatRetryAt` en F1), `ui.md` §12.2, §13.2, §15.4 | T-F101, T-F102, T-F302 |
 | P-F17 (`login_locked` sin `Retry-After`, minutos de `formatRetryAt`, props de `LockedNotice`), INV-F12 y ADR-023 (zona del navegador sin sesión) | T-F101, T-F102, T-F301, T-F302 |
 | P-F18 (refetch fallido de `/me` con la sesión en caché; `ApiError.receivedAt`; `AppShell` con `lazy`; título de la pantalla de error de render y "· CRM" sin sesión), `ui.md` §6.4, §11.3, §12.1, §13, §13.2, §23 | T-F005, T-F101, T-F102, T-F104, T-F105, T-F106, T-F107, T-F301, T-F302 |
+| P-F19 (queries compartidas en `api/`; catálogo `{ items }`; espera del `503` según `Retry-After`), `ui.md` §9.1, §12.2, §15.4, §22, DD-F25 | T-F101, T-F107, T-F203, T-F205 |
 | NFR-F01..F13 | T-F002 (F02, F07, F08), T-F702 (F01, F06, F10, F12), T-F703 (F09, F11), T-F704 (F03..F05), T-F705 (F06..F08), T-F706 (F13) |
