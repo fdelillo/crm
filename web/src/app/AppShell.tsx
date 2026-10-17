@@ -1,8 +1,8 @@
 import type { SessionInfo } from '@/api/types'
+import { useTenant, logoUrl } from '@/api/tenant'
 import { Home, Settings, ChevronDown } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router'
 import { useSession } from '@/features/auth/session'
-import { useTenant, logoUrl } from '@/features/tenant/api'
 import { AppBrand } from '@/components/AppBrand'
 import { Button } from '@/components/ui/button'
 import {
