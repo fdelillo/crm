@@ -261,6 +261,21 @@ describe('user error messages', () => {
         ).title,
       ).toBe(messageForError(error(code), 'generic').title)
   })
+  // T-F101 (P-F19): service_unavailable uses the approved DD-F25 wait thresholds.
+  it.each([
+    [45, 'unos segundos'],
+    [60, '1 minuto'],
+    [61, '2 minutos'],
+    [1800, '30 minutos'],
+  ] as const)(
+    'formats a service unavailable retry of %i seconds',
+    (seconds, wait) => {
+      expect(
+        messageForError(error('service_unavailable', seconds, 503), 'generic')
+          .description,
+      ).toBe(`Probá de nuevo en ${wait}.`)
+    },
+  )
   it.each([
     ['x', 'required', 'Completá este campo.'],
     ['industry_template_code', 'required', 'Elegí el rubro de tu empresa.'],
