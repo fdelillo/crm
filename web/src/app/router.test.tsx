@@ -26,12 +26,12 @@ describe('application routes', () => {
   }
   it.each([
     ['/login', 'Ingresar'],
-    ['/signup', 'Registro'],
+    ['/signup', 'Creá tu cuenta'],
     ['/forgot-password', 'Olvidé mi contraseña'],
     ['/reset-password#token=example', 'Restablecer contraseña'],
     ['/verify-email#token=example', 'Confirmá tu email'],
     ['/accept-invitation#token=example', 'Aceptar invitación'],
-    ['/', 'Panel inicial'],
+    ['/', 'Hola, Persona de prueba'],
     ['/settings', 'Ajustes'],
     ['/settings/company', 'Datos de la empresa'],
     ['/settings/users', 'Usuarios'],
@@ -49,7 +49,10 @@ describe('application routes', () => {
     session(true)
     const { router } = renderApp(['/'])
     expect(
-      await screen.findByRole('heading', { level: 1, name: 'Panel inicial' }),
+      await screen.findByRole('heading', {
+        level: 1,
+        name: 'Hola, Persona de prueba',
+      }),
     ).toBeVisible()
     await act(async () => router.navigate('/settings'))
     expect(
@@ -57,7 +60,10 @@ describe('application routes', () => {
     ).toBeVisible()
     await act(async () => router.navigate(-1))
     expect(
-      await screen.findByRole('heading', { level: 1, name: 'Panel inicial' }),
+      await screen.findByRole('heading', {
+        level: 1,
+        name: 'Hola, Persona de prueba',
+      }),
     ).toBeVisible()
     expect(error).not.toHaveBeenCalled()
   })

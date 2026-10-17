@@ -1,19 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useNavigate } from 'react-router'
 import { api } from '@/api/client'
 import { unwrap } from '@/api/errors'
 import { queryKeys } from '@/api/queryKeys'
+export { useIndustryTemplates } from '@/api/industryTemplates'
 import type { SignupRequest } from '@/api/types'
-
-export function useIndustryTemplates() {
-  return useQuery({
-    queryKey: queryKeys.industryTemplates,
-    queryFn: async ({ signal }) =>
-      unwrap(await api.GET('/industry-templates', { signal })),
-    staleTime: 3_600_000,
-  })
-}
 
 export function useSignup() {
   const client = useQueryClient()

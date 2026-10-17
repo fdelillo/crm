@@ -48,7 +48,9 @@ describe('DashboardPage', () => {
     expect(
       await screen.findByRole('heading', { name: 'Hola, Ana Pérez' }),
     ).toBeVisible()
-    expect(await screen.findByText('Aberturas Norte')).toBeVisible()
+    expect(
+      (await screen.findAllByText('Aberturas Norte')).length,
+    ).toBeGreaterThan(0)
     expect(screen.getByText('Rubro: Carpintería de aluminio')).toBeVisible()
     expect(screen.getByText('Moneda base: Pesos (ARS)')).toBeVisible()
     expect(

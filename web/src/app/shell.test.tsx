@@ -72,7 +72,7 @@ describe('application shell', () => {
   })
   it('puts the skip link first in keyboard order and focuses main', async () => {
     renderApp(['/'])
-    await screen.findByRole('heading', { name: 'Panel inicial' })
+    await screen.findByRole('heading', { name: 'Hola, Persona de prueba' })
     const user = userEvent.setup()
     await user.tab()
     expect(
@@ -100,7 +100,7 @@ describe('application shell', () => {
   })
   it('announces connectivity changes', async () => {
     renderApp(['/'])
-    await screen.findByRole('heading', { name: 'Panel inicial' })
+    await screen.findByRole('heading', { name: 'Hola, Persona de prueba' })
     Object.defineProperty(navigator, 'onLine', {
       configurable: true,
       value: false,
@@ -166,10 +166,14 @@ describe('application shell', () => {
     await waitFor(() => expect(errorHeading).toHaveFocus())
     screen.getByRole('link', { name: 'Ir al inicio' }).focus()
     await userEvent.keyboard('{Enter}')
-    const home = await screen.findByRole('heading', { name: 'Panel inicial' })
+    const home = await screen.findByRole('heading', {
+      name: 'Hola, Persona de prueba',
+    })
     await waitFor(() => expect(home).toHaveFocus())
     await waitFor(() =>
-      expect(document.title).toBe('Panel inicial · Empresa de prueba'),
+      expect(document.title).toBe(
+        'Hola, Persona de prueba · Empresa de prueba',
+      ),
     )
   })
   // INV-F10 (ui.md §13): StrictMode double-invokes render and mount effects (npm run dev).
@@ -189,7 +193,9 @@ describe('application shell', () => {
     })
     await waitFor(() => expect(errorHeading).toHaveFocus())
     await userEvent.click(screen.getByRole('link', { name: 'Ir al inicio' }))
-    const home = await screen.findByRole('heading', { name: 'Panel inicial' })
+    const home = await screen.findByRole('heading', {
+      name: 'Hola, Persona de prueba',
+    })
     await waitFor(() => expect(home).toHaveFocus())
   })
   // INV-F10 (ui.md §13): leaving the render-error screen with Back also focuses the destination's <h1>.
@@ -214,9 +220,13 @@ describe('application shell', () => {
   // ui.md §18: a reload keeps history.state, but an initial load must not move focus.
   it('does not move focus on an initial load whose history entry carries stale state', async () => {
     renderApp([{ pathname: '/', state: { focusHeading: true } }])
-    const home = await screen.findByRole('heading', { name: 'Panel inicial' })
+    const home = await screen.findByRole('heading', {
+      name: 'Hola, Persona de prueba',
+    })
     await waitFor(() =>
-      expect(document.title).toBe('Panel inicial · Empresa de prueba'),
+      expect(document.title).toBe(
+        'Hola, Persona de prueba · Empresa de prueba',
+      ),
     )
     expect(home).not.toHaveFocus()
   })
