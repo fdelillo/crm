@@ -4,11 +4,12 @@ import { unwrap } from './errors'
 import { queryKeys } from './queryKeys'
 import type { Tenant } from './types'
 
-export function useTenant() {
+export function useTenant({ enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: queryKeys.tenant,
     queryFn: async ({ signal }) => unwrap(await api.GET('/tenant', { signal })),
     staleTime: 300_000,
+    enabled,
   })
 }
 

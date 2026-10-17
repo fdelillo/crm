@@ -2,6 +2,7 @@ import { Link } from 'react-router'
 import { useSession, useCan } from '@/features/auth/session'
 import { useDocumentTitle } from '@/lib/useDocumentTitle'
 import { PageHeader } from '@/components/PageHeader'
+import { LogoutButton } from '@/features/auth/components/LogoutButton'
 export function SettingsPage() {
   const { data: session } = useSession()
   const manage = useCan('settings.manage')
@@ -41,6 +42,9 @@ export function SettingsPage() {
           </div>
         </section>
       )}
+      <div className="mt-6 border-t pt-6">
+        <LogoutButton />
+      </div>
     </>
   )
 }

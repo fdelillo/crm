@@ -1,7 +1,7 @@
 # UI (frontend): Empresas, usuarios y roles
 
 **Spec**: [`spec.md`](spec.md) · **Rama**: `001-empresas-usuarios` · **Fecha**: 2026-09-29
-**Autor**: `frontend-architect` · **Estado**: Revisión 3 aprobada por el usuario el 2026-10-12; Revisión 4 aprobada por el usuario el 2026-10-13 (P-F10: sí; P-F11: no); enmienda H-16 a la Revisión 4 aprobada por el usuario el 2026-10-13; enmienda DD-F31 *Accepted*, aprobada por el usuario el 2026-10-14; enmienda de versiones del 2026-10-15: React Router 8 por decisión del usuario, regla de versiones y excepción de TypeScript confirmadas por el usuario el 2026-10-15 (P-F12); enmienda de F0 del 2026-10-15: P-F13, P-F14 y P-F15 aprobadas por el usuario el 2026-10-16; enmienda de F1 del 2026-10-16: P-F16 y P-F17 aprobadas por el usuario el 2026-10-16
+**Autor**: `frontend-architect` · **Estado**: Revisión 3 aprobada por el usuario el 2026-10-12; Revisión 4 aprobada por el usuario el 2026-10-13 (P-F10: sí; P-F11: no); enmienda H-16 a la Revisión 4 aprobada por el usuario el 2026-10-13; enmienda DD-F31 *Accepted*, aprobada por el usuario el 2026-10-14; enmienda de versiones del 2026-10-15: React Router 8 por decisión del usuario, regla de versiones y excepción de TypeScript confirmadas por el usuario el 2026-10-15 (P-F12); enmienda de F0 del 2026-10-15: P-F13, P-F14 y P-F15 aprobadas por el usuario el 2026-10-16; enmienda de F1 del 2026-10-16: P-F16, P-F17 y P-F18 aprobadas por el usuario el 2026-10-16; enmienda de F3 del 2026-10-17: P-F19 aprobada por el usuario el 2026-10-17
 **Contrato consumido**: [`contracts/openapi.yaml`](contracts/openapi.yaml) **v0.5.0** (**canónico**; el diseño original se hizo contra v0.3.1; la Revisión 3, contra v0.4.3)
 **Revisión 1 (2026-09-29)**: respuestas del usuario a P-F1 a P-F5 (§26) y resolución de los
 hallazgos H-1 a H-9 por el backend (`plan.md` §18, DD-22 a DD-30, §10.7, contrato v0.3.0). Cambios:
@@ -119,6 +119,18 @@ render**: "Algo salió mal al mostrar esta pantalla · CRM" y foco en su `<h1>`,
 chunk de la primera pantalla; sin sesión, toda pantalla termina en "· CRM", como ya decía §13.
 Cambian §6.4, §11.3, §12.1, §13, §13.2, §15.4, §23 y §26. Tareas: cambian T-F005, T-F101, T-F102,
 T-F104, T-F105, T-F106, T-F107, T-F301 y T-F302. Sistema visual sin cambios.
+**Enmienda de F3, P-F19 (2026-10-17; aprobada por el usuario el 2026-10-17)**: cuatro puntos de la
+revisión de código de F3 (PR #38). (1) **Queries compartidas en `api/`**: `useTenant` (con
+`logoUrl`) vive en `api/tenant.ts` y `useIndustryTemplates` en `api/industryTemplates.ts`, porque las
+usan el shell y más de una feature; `features/tenant/api.ts` y `features/auth/api.ts` las
+reexportan. §9.1 mandaba lo compartido a `components/` o `lib/`, donde no puede vivir un hook de
+red. (2) **Forma del catálogo**: `useIndustryTemplates` devuelve `{ items: IndustryTemplate[] }`,
+como dice §11.1; §15.4 decía `IndustryTemplate[]`. (3) **Espera del `503` con `Retry-After`**: la
+regla de DD-F25, la misma de `rate_limited` (menos de 60 s, "unos segundos"; 60 s, "1 minuto"; más,
+`ceil(s/60)` minutos); sin cabecera, "unos minutos", como antes. §12.2 solo preveía "unos segundos"
+o "unos minutos". (4) **Redacción de una fila de T-F101** (hora estable de `login_locked`, P-F18).
+El código de F1 a F3 ya cumple los cuatro puntos. Cambian §9.1, §12.2, §15.4, §22 y §26. Tareas:
+cambian T-F101, T-F107, T-F203 y T-F205. Sistema visual sin cambios.
 
 | Archivo | Contenido |
 |---|---|
@@ -425,7 +437,7 @@ graph TB
                 TEN["tenant/<br/>datos, logo y su preparación"]
             end
             SHARED["components/ (compartidos)<br/>components/ui/ (shadcn)"]
-            API["api/<br/>client (openapi-fetch), errors,<br/>errorMessages, types generados"]
+            API["api/<br/>client (openapi-fetch), errors,<br/>errorMessages, types generados,<br/>queries compartidas (tenant, rubros)"]
             LIB["lib/<br/>format, cuit, safeNextPath,<br/>linkToken"]
         end
         CACHE[("Caché de TanStack Query<br/>(en memoria)")]
@@ -457,9 +469,18 @@ Reglas de dependencia (se verifican con `no-restricted-imports` de ESLint, T-F00
 - `components/ui/` (shadcn) y `components/` no importan `api/`, `features/` ni `app/`: son
   **presentación pura** (todo por props).
 - `features/X` no importa `features/Y` salvo `features/auth/session` (sesión y permisos, que son
-  transversales). Si otra feature necesita algo de una hermana, se mueve a `components/` o `lib/`.
+  transversales). Si otra feature necesita algo de una hermana, se mueve según lo que sea:
+  presentación, a `components/`; una función o un hook sin red, a `lib/`; una query o una mutación,
+  a `api/` *(enmienda de F3, P-F19)*. Un hook de red no puede ir a `components/`, que no importa
+  `api/`, ni a `lib/`, que reúne funciones y hooks sin red (§22).
+- *(Enmienda de F3, P-F19)* **Queries compartidas**: las que usan el shell o más de una feature
+  viven en `api/`, un archivo por recurso: `api/tenant.ts` (`useTenant` y `logoUrl`) y
+  `api/industryTemplates.ts` (`useIndustryTemplates`). El `api.ts` de la feature dueña las reexporta
+  (`features/tenant/api.ts`, `features/auth/api.ts`), así sus pantallas siguen importando de su
+  feature; el shell (`app/AppShell`) y las demás features (el panel) las importan de `api/`.
 - Solo `api/` llama a `fetch`/openapi-fetch (excepción: la subida del logo en
-  `features/tenant/api.ts`). Los componentes usan hooks de su feature.
+  `features/tenant/api.ts`). Los componentes usan hooks de su feature o las queries compartidas de
+  `api/`.
 - Solo `features/tenant/logo/canvas.ts` usa `createImageBitmap` y `<canvas>` (el adaptador que se
   sustituye en jsdom, §13.11.1).
 - `api/generated/` es derivado: nunca se edita a mano.
@@ -844,7 +865,7 @@ pantalla cuando hace falta; la tabla muestra el texto por defecto y las variante
 | `token_invalid` | 400 | Reset: "Este enlace ya no sirve." / "Vence a la hora o ya se usó. Pedí uno nuevo." · Verificación: "Este enlace de confirmación ya no sirve." / "Vence a las 48 horas o ya se usó." · Invitación: "Esta invitación ya no es válida." / "Venció, ya se usó o la reemplazó una más nueva." · *(Enmienda de F1, P-F16)* `generic` y cualquier contexto sin variante propia: "Este enlace ya no sirve." / "Pedí uno nuevo." | Estado de "enlace inválido" de la pantalla con su salida (§13). En 001 solo lo devuelven el restablecimiento, la verificación y la invitación: el texto genérico es el respaldo del `Record` (INV-F05) |
 | `login_locked` | 429 | "Por seguridad, pausamos el ingreso con este email." / "Hubo varios intentos fallidos. Podés volver a intentar a las {HH:MM} (en {n} minutos) o restablecer tu contraseña ahora." (con `n` = 1, "(en 1 minuto)") · *(Enmienda de F1, P-F17)* Sin `Retry-After` (o con un valor que no es un entero): "Hubo varios intentos fallidos. Podés volver a intentar en unos minutos o restablecer tu contraseña ahora." | S-02 pasa al estado Bloqueado (DD-F17) y `LockedNotice` muestra este texto (§15.1). `{HH:MM}` y `{n}` salen de `formatRetryAt` (§15.4) con las reglas de §13.2 (enmienda de F1, P-F16 y P-F17) |
 | `rate_limited` | 429 | "Hiciste muchos intentos seguidos." / "Esperá {espera} y probá de nuevo." · *(Revisión 4, DD-F29)* Registro (`signup`): "Hubo muchos intentos de registro seguidos." / "Esperá {espera} y probá de nuevo. No se creó nada: podés reintentar con los mismos datos." · Invitar, reenviar invitación y reactivar (`invite`, `userAction`): "Por ahora no podemos enviar más invitaciones." / "Hay un límite de invitaciones y reactivaciones seguidas para cuidar el envío de emails. Esperá {espera} y probá de nuevo." · Reenvío de la confirmación (`resendVerification`): "Ya te lo mandamos hace poco." / "Esperá {espera} y probá de nuevo." | Error general (S-10: `FormAlert`, y lo cargado se conserva; S-09: toast, el diálogo de "Reactivar" se cierra y la lista no se vuelve a pedir, porque nada cambió). Sin reintento automático ni botón bloqueado durante la espera (DD-F25). `{espera}` según `Retry-After` (DD-F25): menos de 60 s → "unos segundos"; 60 s → "1 minuto"; más → "{n} minutos" con `n = ceil(s / 60)`; sin cabecera → "unos minutos". Los cupos (algunos compartidos entre pantallas o entre Administradores) están en §11.1; el texto no dice cuál se agotó porque el contrato no lo distingue. Con dos cupos agotados, el reintento puede traer otro `429` con otra espera (reenvío de la confirmación: primero ≤ 180 s del cupo por IP y después hasta 1200 s del cupo por usuario; enmienda H-16). Cada `429` muestra su propia espera y ningún texto promete que el reintento funcione |
-| `service_unavailable` | 503 | "El servicio no está disponible en este momento." / "Probá de nuevo en unos minutos." · Con `Retry-After` menor de 60 s: "Probá de nuevo en unos segundos." (en el registro, además: "No se creó nada: podés reintentar con los mismos datos.") | Botón "Reintentar"; conserva lo cargado en el formulario; sin reintento automático de mutaciones (DD-F25) |
+| `service_unavailable` | 503 | "El servicio no está disponible en este momento." / "Probá de nuevo en {espera}." (en el registro, además: "No se creó nada: podés reintentar con los mismos datos.") · *(Enmienda de F3, P-F19)* `{espera}` según `Retry-After`, con la regla de DD-F25 que usa `rate_limited`: menos de 60 s → "unos segundos" (el `503` del registro con muchos pedidos simultáneos manda `Retry-After: 2`, DD-33); 60 s → "1 minuto"; más → "{n} minutos" con `n = ceil(s / 60)`; sin cabecera → "unos minutos" | Botón "Reintentar"; conserva lo cargado en el formulario; sin reintento automático de mutaciones (DD-F25) |
 | `internal` | 500 | "Algo salió mal de nuestro lado." / "Probá de nuevo. Si sigue pasando, avisanos con este código: {requestId}." | Botón "Reintentar"; conserva lo cargado |
 | (sin respuesta) | — | "No hay conexión." / "Revisá tu internet y probá de nuevo." | Botón "Reintentar"; conserva lo cargado |
 
@@ -1948,7 +1969,7 @@ export type ResendVerificationOutcome = 'sent' | 'already_verified' | 'unknown';
 export function useResendEmailVerification(): UseMutationResult<ResendVerificationOutcome, ApiError, void>;
 
 // features/auth/api.ts (mutaciones y queries de auth)
-export function useIndustryTemplates(): UseQueryResult<IndustryTemplate[], ApiError>;
+// useIndustryTemplates: vive en api/industryTemplates.ts y este módulo la reexporta (enmienda de F3, P-F19)
 export function useSignup(): UseMutationResult<SessionInfo, ApiError, SignupRequest>;
 export function useLogin(): UseMutationResult<SessionInfo, ApiError, LoginRequest>;
 export function useLogout(): UseMutationResult<void, ApiError, void>;
@@ -1960,12 +1981,10 @@ export function useInvitationPreview(token: string | null): UseQueryResult<Invit
 export function useAcceptInvitation(): UseMutationResult<SessionInfo, ApiError, InvitationAcceptRequest>;
 
 // features/tenant/api.ts
-export function useTenant(): UseQueryResult<Tenant, ApiError>;
+// useTenant y logoUrl: viven en api/tenant.ts y este módulo los reexporta (enmienda de F3, P-F19)
 export function useUpdateTenant(): UseMutationResult<Tenant, ApiError, TenantUpdate>;
 export function useUploadLogo(): UseMutationResult<Tenant, ApiError, File>;   // recibe el File ya preparado
 export function useDeleteLogo(): UseMutationResult<void, ApiError, void>;
-/** `/api/v1/tenant/logo?v=<encodeURIComponent(id-updated_at)>` o null si no hay logo (INV-F14). */
-export function logoUrl(tenant: Pick<Tenant, 'id' | 'updated_at' | 'has_logo'>): string | null;
 
 // features/tenant/logo/sniff.ts — puras
 export type SniffedImageType = 'png' | 'jpeg' | 'gif' | 'webp' | 'heic' | 'svg' | 'unknown';
@@ -2013,6 +2032,14 @@ export interface AppQueryClientOptions {
   onForbidden: () => void;         // invalida la sesión
 }
 export function createAppQueryClient(options: AppQueryClientOptions): QueryClient;
+
+// api/tenant.ts — query compartida (enmienda de F3, P-F19): la usan el shell, S-07 y S-11 (§9.1)
+export function useTenant(): UseQueryResult<Tenant, ApiError>;
+/** `/api/v1/tenant/logo?v=<encodeURIComponent(id-updated_at)>` o null si no hay logo (INV-F14). */
+export function logoUrl(tenant: Pick<Tenant, 'id' | 'updated_at' | 'has_logo'>): string | null;
+
+// api/industryTemplates.ts — query compartida (enmienda de F3, P-F19): la usan S-01 y S-07 (§9.1)
+export function useIndustryTemplates(): UseQueryResult<{ items: IndustryTemplate[] }, ApiError>; // la forma del contrato (§11.1), sin transformar
 
 // api/errorMessages.ts
 export interface UserMessage {
@@ -2394,7 +2421,8 @@ web/                            # también es el paquete Go `web` (embed.go)
     ├── main.tsx                # wiring: QueryClient + RouterProvider (de react-router/dom) + registro del SW
     ├── styles/globals.css      # Tailwind + tokens (§19)
     ├── app/                    # router.tsx (árbol §6.1), queryClient.ts, RootLayout, AppShell, guards/, ErrorBoundary
-    ├── api/                    # client.ts, errors.ts, errorMessages.ts, queryKeys.ts, types.ts, schema.ts
+    ├── api/                    # client.ts, errors.ts, errorMessages.ts, queryKeys.ts, types.ts, schema.ts,
+    │                           #   tenant.ts e industryTemplates.ts (queries compartidas, §9.1; P-F19)
     │   └── generated/          # 001.ts … (derivado, no se edita)
     ├── features/
     │   ├── auth/               # signup, login, logout, forgot/reset, verify, accept-invitation, session.ts, schemas.ts, api.ts
@@ -2411,7 +2439,9 @@ web/                            # también es el paquete Go `web` (embed.go)
 Cada pantalla vive con sus tests (`LoginPage.test.tsx` junto a `LoginPage.tsx`). Las carpetas de
 `features/` usan los nombres del glosario (`tenant`, `users`); `auth` agrupa sesión y credenciales.
 La preparación de imágenes vive en `features/tenant/logo/` porque solo la usa el logo; si 004
-(adjuntos) la necesita, se mueve a `lib/image/`.
+(adjuntos) la necesita, se mueve a `lib/image/`. Las queries que usan el shell o más de una
+feature viven en `api/` y la feature dueña las reexporta desde su `api.ts` (§9.1; enmienda de F3,
+P-F19).
 
 ---
 
@@ -2540,6 +2570,12 @@ Preguntas de la enmienda de F1 (2026-10-16):
 | P-F16 | Dos huecos de T-F101/T-F102 (`api/errorMessages.ts`). (1) ¿Qué dice `token_invalid` en `generic` y en un contexto sin variante propia? (2) ¿`formatRetryAt` se adelanta a T-F102 (F1), ya que el texto de `login_locked` de §12.2 lo necesita y estaba en T-F302 (F3)? | **Cerrada: sí** (el usuario, 2026-10-16) | **Sí** a los dos. (1) "Este enlace ya no sirve." / "Pedí uno nuevo.": vale para cualquier enlace, sin el plazo que solo corresponde al restablecimiento. En 001 solo lo devuelven el restablecimiento, la verificación y la invitación, así que es el texto de respaldo del `Record` (INV-F05). Alternativas: reusar el texto del restablecimiento (el plazo de una hora es falso para otros enlaces) o el de `internal` (dice que algo falló de nuestro lado, y no es así). (2) Una sola implementación, con la firma de §15.4 y las reglas de §13.2; T-F302 la usa. Alternativas: un formato provisorio en F1 que T-F302 reemplaza (dos implementaciones de la misma regla) o dejar `login_locked` sin hora hasta F3 (T-F101 no puede verificar el texto de §12.2) |
 | P-F17 | Cuatro puntos de `login_locked` que P-F16 dejó abiertos. (1) ¿Qué dice sin `Retry-After`? (2) ¿Cómo se calcula `minutes` de `formatRetryAt`, y con 1 se dice "1 minuto"? (3) ¿Qué recibe `LockedNotice`: la `Date` de §15.1, el resultado de `formatRetryAt` o el texto? (4) ¿INV-F12 admite la zona del navegador sin sesión? | **Cerrada: sí** (el usuario, 2026-10-16) | **Sí** a los cuatro. (1) "…Podés volver a intentar en unos minutos o restablecer tu contraseña ahora.", el "unos minutos" que DD-F25 usa sin cabecera. Alternativas: suponer 15 minutos (falso si el bloqueo ya venía corriendo) o el texto de `rate_limited` (pierde el estado Bloqueado y "Restablecer contraseña"). (2) Minutos de reloj entre ahora truncado al minuto y la hora mostrada, mínimo 1: a las 14:20:30 con 900 s, "a las 14:36 (en 16 minutos)", y quien mira el reloj (14:20) ve cuentas que cierran. Con 1, "(en 1 minuto)": el singular de DD-F25, sin su "unos segundos", porque acá ya hay una hora. Alternativa: `ceil(s/60)`, más simple pero un minuto desfasado de la hora mostrada. (3) `title` y `description` ya armados por `messageForError(error, 'login')`: una sola fuente del texto, y el caso sin cabecera sale solo. Son dos `string` porque `components/` no importa `api/` (§9.1). Alternativas: la `Date` (el componente rearma el texto y repite el caso sin hora) o `{ time, minutes }` (repite la frase y el singular). Costo: "en {n} minutos" no se actualiza si la pantalla queda abierta; la hora sigue siendo cierta. (4) ADR-023 ya usa la zona del navegador sin sesión; INV-F12 lo omitía. Se corrige su texto, sin ADR nuevo |
 | P-F18 | Cuatro puntos de la revisión de código de F1 (vuelta 2). (1) Si falla un refetch de `/me` con la sesión en caché, ¿`RequireSession` muestra el error a pantalla completa? (2) ¿Cómo se garantiza que la hora de `login_locked` no cambie en cada render? (3) ¿Con qué chunk entra DropdownMenu, y el shell se carga con `lazy`? (4) ¿Qué `document.title` tiene la pantalla de error de render? | **Cerrada: sí** (el usuario, 2026-10-16) | **Sí** a los cuatro. (1) Pantalla completa solo con `isLoadingError`; un refetch fallido (red, `5xx`; el `401` ya es `null`) conserva el shell y la pantalla, **sin aviso**: la sesión mostrada es la última buena, el servidor autoriza igual, el próximo refetch reintenta solo, C-02 avisa si no hay red y cada pantalla muestra sus errores. Alternativas: la pantalla completa (desmonta el shell; en F6 perdería cambios sin guardar sin el aviso de DD-F32) o un aviso no bloqueante (texto sin acción útil y otra región `aria-live`). (2) `ApiError.receivedAt` (`Date.now()` en `toApiError`) y `formatRetryAt(s, new Date(error.receivedAt))`: el texto depende solo del error, que TanStack Query conserva hasta el próximo envío, y `Retry-After` se cuenta desde la recepción (RFC 9110). Alternativas: armarlo en `onError` y guardarlo en estado (depende de que cada llamador lo recuerde), `useMemo` (React no garantiza conservar el valor) o un parámetro `now` (le pasa el problema al llamador). (3) DropdownMenu entra con el shell (menú del usuario) y Usuarios lo reusa; `AppShell` con `lazy`, como pide el grupo (2) de §23, así `/login` (NFR-F05) no lo descarga. Costo: un chunk más al entrar al panel. Alternativa: shell estático y corregir solo el texto (el menú queda en el chunk de las pantallas públicas). (4) El `ErrorBoundary` raíz fija "Algo salió mal al mostrar esta pantalla · CRM" y enfoca su `<h1>`: reemplaza a `RootLayout`, que es quien fija título y foco, así que con cualquier error de render el título quedaba en "CRM" o en el de la pantalla anterior. Usa siempre "· CRM" para no depender de la caché. Sin sesión, `RootLayout` agrega "· CRM", como ya decía §13. Alternativas: solo el `<h1>` (sin el nombre de la app en pestañas ni en el historial) o la empresa si hay sesión en caché (otra dependencia del *boundary*) |
+
+Preguntas de la enmienda de F3 (2026-10-17):
+
+| ID | Pregunta | Estado | Default propuesto |
+|---|---|---|---|
+| P-F19 | Cuatro puntos de la revisión de código de F3 (PR #38). (1) ¿Dónde viven las queries que usan el shell o más de una feature (`useTenant`, `useIndustryTemplates`), si §9.1 manda lo compartido a `components/` o `lib/`? (2) ¿Qué devuelve `useIndustryTemplates`: `{ items: IndustryTemplate[] }` (§11.1) o `IndustryTemplate[]` (§15.4)? (3) ¿Cómo se dice la espera de un `503` con `Retry-After` de 60 s o más, si §12.2 solo prevé "unos segundos" o "unos minutos"? (4) ¿Se aclara la fila de T-F101 que dice "el reloj del sistema en otra hora"? | **Cerrada: sí** (el usuario, 2026-10-17) | **Sí** a los cuatro. (1) En `api/`, un archivo por recurso: `useTenant` y `logoUrl` en `api/tenant.ts`, `useIndustryTemplates` en `api/industryTemplates.ts`. `features/tenant/api.ts` y `features/auth/api.ts` las reexportan, y el shell y el panel las importan de `api/`. `components/` no importa `api/` y `lib/` reúne funciones y hooks sin red, así que ninguno de los dos puede tener un hook de red; `api/` ya es la capa que habla con el servidor y la pueden importar `app/` y todas las features. (2) `{ items: IndustryTemplate[] }`, la forma del contrato, sin transformar; se corrige §15.4. (3) La regla de DD-F25, la misma de `rate_limited`: menos de 60 s → "unos segundos"; 60 s → "1 minuto"; más → `ceil(s/60)` minutos; sin cabecera → "unos minutos", como antes. El código ya la cumple (`api/errorMessages.ts` usa la misma función de espera para los dos códigos); T-F101 suma la fila que la fija. (4) Sí: `receivedAt` queda en 14:20 mientras el reloj del render avanza a 14:27, y las dos lecturas dicen 14:35 |
 
 **Revisión 16 del backend: cerrada para la UI** (la lista "Dependiente de la revisión 16" de la
 Revisión 3 queda resuelta en la Revisión 4):

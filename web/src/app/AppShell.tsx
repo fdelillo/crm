@@ -1,22 +1,29 @@
 import type { SessionInfo } from '@/api/types'
+import { useState } from 'react'
 import { useTenant, logoUrl } from '@/api/tenant'
 import { Home, Settings, ChevronDown } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router'
 import { useSession } from '@/features/auth/session'
 import { AppBrand } from '@/components/AppBrand'
 import { Button } from '@/components/ui/button'
+import { useLogout } from '@/features/auth/api'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuLabel,
+  DropdownMenuItem,
 } from '@/components/ui/dropdown-menu'
 export function AppShell() {
   const { data: session } = useSession()
   return session ? <AuthenticatedShell session={session} /> : null
 }
 function AuthenticatedShell({ session }: { session: SessionInfo }) {
-  const { data: tenant } = useTenant()
+  const logout = useLogout()
+  const [logoutStarted, setLogoutStarted] = useState(false)
+  const { data: tenant } = useTenant({
+    enabled: !logout.isPending && !logoutStarted,
+  })
   const role = session.user.role === 'admin' ? 'Administrador' : 'Operador'
   return (
     <div className="min-h-dvh lg:pl-60">
@@ -70,6 +77,20 @@ function AuthenticatedShell({ session }: { session: SessionInfo }) {
               <DropdownMenuLabel>
                 {session.user.name} · {role}
               </DropdownMenuLabel>
+              <DropdownMenuItem
+                disabled={logout.isPending || logoutStarted}
+                onSelect={(event) => {
+                  event.preventDefault()
+                  setLogoutStarted(true)
+                  logout.mutate(undefined, {
+                    onError: () => setLogoutStarted(false),
+                  })
+                }}
+              >
+                {logout.isPending || logoutStarted
+                  ? 'Cerrando sesión…'
+                  : 'Cerrar sesión'}
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

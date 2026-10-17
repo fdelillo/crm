@@ -1,4 +1,9 @@
-import type { FieldValues, Path, UseFormSetError } from 'react-hook-form'
+import type {
+  FieldError as FormFieldError,
+  FieldValues,
+  Path,
+  UseFormSetError,
+} from 'react-hook-form'
 import type { ErrorCode, FieldError, FieldErrorCode } from './types'
 import { isApiError, type ApiError } from './errors'
 import { formatRetryAt } from '@/lib/format'
@@ -242,6 +247,21 @@ const maximums: Record<string, number> = {
   email: 254,
   password: 128,
 }
+const knownFieldErrorCodes = {
+  required: true,
+  invalid_format: true,
+  too_short: true,
+  too_long: true,
+  invalid_value: true,
+  invalid_tax_id: true,
+  same_as_email: true,
+  unknown_template: true,
+  invalid_timezone: true,
+} satisfies Record<FieldErrorCode, true>
+function isFieldErrorCode(value: string): value is FieldErrorCode {
+  return Object.hasOwn(knownFieldErrorCodes, value)
+}
+
 export function fieldErrorMessage(field: string, code: FieldErrorCode): string {
   const long = `Es demasiado largo (máximo ${maximums[field]} caracteres).`
   const defaults: Record<FieldErrorCode, string> = {
@@ -282,6 +302,18 @@ export function fieldErrorMessage(field: string, code: FieldErrorCode): string {
     },
   }
   return variants[code]?.[field] ?? defaults[code]
+}
+export function fieldErrorText(
+  field: string,
+  error: FormFieldError | undefined,
+): string | undefined {
+  if (!error) return undefined
+  if (error.type === 'server') return error.message
+  const code =
+    error.message && isFieldErrorCode(error.message)
+      ? error.message
+      : 'required'
+  return fieldErrorMessage(field, code)
 }
 export function logoRejectMessage(reason: LogoRejectReason): string {
   return {

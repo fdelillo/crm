@@ -61,14 +61,14 @@ describe('session guards and global failures', () => {
       await screen.findByRole('status', { name: 'Cargando la aplicación' }),
     ).toHaveAttribute('aria-busy', 'true')
     expect(
-      screen.queryByRole('heading', { name: 'Ingresar' }),
+      screen.queryByRole('heading', { name: 'Ingresá a tu cuenta' }),
     ).not.toBeInTheDocument()
   })
   it('redirects an anonymous visitor without an expiration notice', async () => {
     server.use(http.get(`${base}/me`, () => denied('unauthenticated', 401)))
     const { router } = renderApp(['/settings/users'])
     expect(
-      await screen.findByRole('heading', { name: 'Ingresar' }),
+      await screen.findByRole('heading', { name: 'Ingresá a tu cuenta' }),
     ).toBeVisible()
     expect(router.state.location.pathname + router.state.location.search).toBe(
       '/login?next=%2Fsettings%2Fusers',
@@ -188,7 +188,7 @@ describe('session guards and global failures', () => {
   it('sends a 401 on first load to login', async () => {
     server.use(http.get(`${base}/me`, () => denied('unauthenticated', 401)))
     const { router } = renderApp(['/settings'])
-    await screen.findByRole('heading', { name: 'Ingresar' })
+    await screen.findByRole('heading', { name: 'Ingresá a tu cuenta' })
     expect(router.state.location.pathname).toBe('/login')
   })
   it('does not mount an unauthorized page or request its data', async () => {
@@ -227,6 +227,9 @@ describe('session guards and global failures', () => {
     expect(queryClient.getQueryData(['private-data'])).toBeUndefined()
     expect(clear).toHaveBeenCalledOnce()
     server.use(http.get(`${base}/me`, () => denied('unauthenticated', 401)))
+    await waitFor(() =>
+      expect(queryClient.getQueryData(queryKeys.session)).toBeNull(),
+    )
     await act(() => router.navigate(-1))
     await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
     expect(
