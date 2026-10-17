@@ -217,37 +217,52 @@ describe('LoginPage', () => {
       '/login?reason=session_expired',
       {},
       'Tu sesión se cerró. Ingresá de nuevo para seguir.',
+      false,
     ],
     [
       '/login?reason=password_changed',
       {},
       'Listo, cambiaste tu contraseña. Ingresá con la nueva.',
+      false,
     ],
-    ['/login?reason=logged_out', {}, 'Cerraste sesión.'],
+    ['/login?reason=logged_out', {}, 'Cerraste sesión.', false],
     [
       '/login?reason=logged_out',
       { unsavedChangesLost: true },
       'Cerraste sesión.',
+      false,
     ],
-    ['/login?reason=other', {}, null],
+    ['/login?reason=other', {}, null, false],
     [
       '/login?reason=session_expired',
       { unsavedChangesLost: true },
       'Los cambios que no habías guardado se perdieron.',
+      true,
     ],
-  ])('shows the correct notice for %s', async (path, state, copy) => {
-    loggedOut()
-    const location = new URL(path, 'https://localhost')
-    renderApp([{ pathname: location.pathname, search: location.search, state }])
-    await screen.findByRole('heading', { name: 'Ingresá a tu cuenta' })
-    if (copy) expect(await screen.findByText(copy)).toBeVisible()
-    else expect(screen.queryByRole('status')).not.toBeInTheDocument()
-    if (!(state as { unsavedChangesLost?: boolean }).unsavedChangesLost) {
-      expect(
-        screen.queryByText('Los cambios que no habías guardado se perdieron.'),
-      ).not.toBeInTheDocument()
-    }
-  })
+  ])(
+    'shows the correct notice for %s',
+    async (path, state, copy, lostLineVisible) => {
+      loggedOut()
+      const location = new URL(path, 'https://localhost')
+      renderApp([
+        { pathname: location.pathname, search: location.search, state },
+      ])
+      await screen.findByRole('heading', { name: 'Ingresá a tu cuenta' })
+      if (copy) expect(await screen.findByText(copy)).toBeVisible()
+      else expect(screen.queryByRole('status')).not.toBeInTheDocument()
+      if (lostLineVisible) {
+        expect(
+          screen.getByText('Los cambios que no habías guardado se perdieron.'),
+        ).toBeVisible()
+      } else {
+        expect(
+          screen.queryByText(
+            'Los cambios que no habías guardado se perdieron.',
+          ),
+        ).not.toBeInTheDocument()
+      }
+    },
+  )
 
   // T-F301: forgot-password carries the typed email in navigation state.
   it('passes the entered email to password recovery', async () => {
@@ -414,7 +429,9 @@ describe('LoginPage', () => {
       .closest('form')!
     fireEvent.submit(form)
     fireEvent.submit(form)
-    await waitFor(() => expect(login).toHaveBeenCalledOnce())
+    await waitFor(() => expect(login).toHaveBeenCalled())
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(login).toHaveBeenCalledOnce()
     release()
   })
 })

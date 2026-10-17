@@ -322,7 +322,9 @@ describe('SignupPage', () => {
       .closest('form')!
     fireEvent.submit(form)
     fireEvent.submit(form)
-    await waitFor(() => expect(signup).toHaveBeenCalledOnce())
+    await waitFor(() => expect(signup).toHaveBeenCalled())
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(signup).toHaveBeenCalledOnce()
     release()
   })
 
