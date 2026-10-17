@@ -3788,7 +3788,7 @@ la carga/error de `/tenant`, Signup recupera foco/errores/doble envío y se refo
 tests y fixtures. Prueba independiente en Chromium con HTTPS estricto, backend actual y
 Postgres local: registro ficticio `example.test`, link “Invitá a tu equipo” al placeholder
 como se espera hasta F5, logout desde Ajustes con “Cerraste sesión.”, Atrás sin datos y cinco
-claves incorrectas seguidas por el bloqueo del sexto intento con hora. Revisión: pendiente
+claves incorrectas seguidas por el bloqueo del sexto intento con hora. revisión: pendiente
 (Claude Code).
 
 ---
