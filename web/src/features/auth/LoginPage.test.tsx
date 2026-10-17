@@ -1,6 +1,7 @@
 import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
+import { Application } from '@/app/application'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { buildSessionInfo, problem } from '@/test/fixtures'
 import { server } from '@/test/msw/server'
@@ -39,16 +40,28 @@ describe('LoginPage', () => {
     ['/login?next=%2F%2Fevil.example', '/'],
   ])('replaces the login entry for %s with %s', async (entry, destination) => {
     loggedOut()
+    let authenticated = false
     server.use(
-      http.post(`${base}/auth/login`, () => HttpResponse.json(validSession)),
+      http.get(`${base}/me`, () =>
+        authenticated
+          ? HttpResponse.json(validSession)
+          : serverProblem('unauthenticated', 401),
+      ),
+      http.post(`${base}/auth/login`, () => {
+        authenticated = true
+        return HttpResponse.json(validSession)
+      }),
     )
-    const { router } = renderApp([entry])
+    const { router, queryClient } = renderApp([entry])
+    queryClient.setQueryData(['stale-session-data'], 'stale')
     const user = await fillCredentials()
     await user.click(screen.getByRole('button', { name: 'Ingresar' }))
     await waitFor(() =>
       expect(router.state.location.pathname).toBe(destination),
     )
     expect(router.state.historyAction).toBe('REPLACE')
+    expect(queryClient.getQueryData(['stale-session-data'])).toBeUndefined()
+    expect(queryClient.getQueryData(['session'])).toEqual(validSession)
   })
 
   // T-F301: invalid credentials keep email, clear/focus password and leave session untouched.
@@ -57,6 +70,8 @@ describe('LoginPage', () => {
     const login = vi.fn(() => serverProblem('invalid_credentials', 401))
     server.use(http.post(`${base}/auth/login`, login))
     const { router, queryClient } = renderApp(['/login'])
+    queryClient.setQueryDefaults(['unrelated-cache'], { gcTime: Infinity })
+    queryClient.setQueryData(['unrelated-cache'], 'keep')
     const user = await fillCredentials()
     await user.click(screen.getByRole('button', { name: 'Ingresar' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -67,6 +82,7 @@ describe('LoginPage', () => {
     expect(screen.getByLabelText('Contraseña')).toHaveFocus()
     expect(router.state.location.pathname).toBe('/login')
     expect(queryClient.getQueryData(['session'])).toBeNull()
+    expect(queryClient.getQueryData(['unrelated-cache'])).toBe('keep')
     expect(login).toHaveBeenCalledOnce()
   })
 
@@ -78,6 +94,7 @@ describe('LoginPage', () => {
         serverProblem('account_disabled', 403),
       ),
     )
+    renderApp(['/login'])
     const user = await fillCredentials()
     await user.click(screen.getByRole('button', { name: 'Ingresar' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -90,28 +107,28 @@ describe('LoginPage', () => {
 
   // T-F301 (P-F18): lock time stays anchored to when Retry-After was received.
   it('shows the retry time derived from the received 900 seconds', async () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date(2026, 9, 17, 14, 20, 0))
+    const receivedAt = new Date(2026, 9, 17, 14, 20, 0).getTime()
+    const now = vi.spyOn(Date, 'now').mockReturnValue(receivedAt)
     loggedOut()
     server.use(
       http.post(`${base}/auth/login`, () =>
         serverProblem('login_locked', 429, { 'Retry-After': '900' }),
       ),
     )
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
-    renderApp(['/login'])
-    await screen.findByRole('heading', { name: 'Ingresar' })
-    await user.type(screen.getByLabelText('Email'), 'ana@example.test')
+    const { router, queryClient, rerender } = renderApp(['/login'])
+    const user = userEvent.setup()
+    await user.type(await screen.findByLabelText('Email'), 'ana@example.test')
     await user.type(screen.getByLabelText('Contraseña'), 'clave-segura')
     await user.click(screen.getByRole('button', { name: 'Ingresar' }))
     expect(
-      await screen.findByRole('heading', {
+      screen.getByRole('heading', {
         name: 'Por seguridad, pausamos el ingreso con este email.',
       }),
     ).toBeVisible()
     expect(screen.getByText(/a las 14:35 \(en 15 minutos\)/)).toBeVisible()
-    await act(async () => {
-      vi.setSystemTime(new Date(2026, 9, 17, 14, 27, 0))
+    act(() => {
+      now.mockReturnValue(new Date(2026, 9, 17, 14, 27, 0).getTime())
+      rerender(<Application router={router} queryClient={queryClient} />)
     })
     expect(screen.getByText(/a las 14:35 \(en 15 minutos\)/)).toBeVisible()
   })
@@ -122,6 +139,7 @@ describe('LoginPage', () => {
     server.use(
       http.post(`${base}/auth/login`, () => serverProblem('login_locked', 429)),
     )
+    const { router } = renderApp(['/login'])
     const user = await fillCredentials()
     await user.click(screen.getByRole('button', { name: 'Ingresar' }))
     expect(
@@ -133,6 +151,24 @@ describe('LoginPage', () => {
     expect(
       screen.getByRole('heading', { name: 'Olvidé mi contraseña' }),
     ).toBeVisible()
+    expect(router.state.location.state).toEqual({ email: 'ana@example.test' })
+  })
+
+  // T-F301 (DD-F17): the locked state can return to the preserved form.
+  it('returns from the lock notice to the form without losing the email', async () => {
+    loggedOut()
+    server.use(
+      http.post(`${base}/auth/login`, () => serverProblem('login_locked', 429)),
+    )
+    renderApp(['/login'])
+    const user = await fillCredentials()
+    await user.click(screen.getByRole('button', { name: 'Ingresar' }))
+    await screen.findByRole('heading', {
+      name: 'Por seguridad, pausamos el ingreso con este email.',
+    })
+    await user.click(screen.getByRole('button', { name: 'Volver a intentar' }))
+    expect(screen.getByLabelText('Email')).toHaveValue('ana@example.test')
+    expect(screen.getByLabelText('Contraseña')).toHaveValue('clave-segura')
   })
 
   // T-F301 (DD-F25): rate limit waits use the Retry-After range.
@@ -146,6 +182,7 @@ describe('LoginPage', () => {
         serverProblem('rate_limited', 429, { 'Retry-After': seconds }),
       ),
     )
+    renderApp(['/login'])
     const user = await fillCredentials()
     await user.click(screen.getByRole('button', { name: 'Ingresar' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(copy)
@@ -231,5 +268,72 @@ describe('LoginPage', () => {
     )
     await user.keyboard('{Enter}')
     await waitFor(() => expect(login).toHaveBeenCalledOnce())
+  })
+
+  // T-F302: client validation uses the contract's field error codes before sending.
+  it('validates email format locally and focuses the invalid field', async () => {
+    loggedOut()
+    const login = vi.fn(() => HttpResponse.json(validSession))
+    server.use(http.post(`${base}/auth/login`, login))
+    renderApp(['/login'])
+    const user = userEvent.setup()
+    await user.type(await screen.findByLabelText('Email'), 'not-an-email')
+    await user.type(screen.getByLabelText('Contraseña'), 'clave-segura')
+    await user.click(screen.getByRole('button', { name: 'Ingresar' }))
+    expect(
+      await screen.findByText(
+        'Ingresá un email válido, por ejemplo nombre@empresa.com',
+      ),
+    ).toBeVisible()
+    expect(screen.getByLabelText('Email')).toHaveFocus()
+    expect(login).not.toHaveBeenCalled()
+  })
+
+  // T-F302: 422 field errors use the shared server-error mapping.
+  it('maps validation field errors to their login field and message', async () => {
+    loggedOut()
+    server.use(
+      http.post(`${base}/auth/login`, () =>
+        HttpResponse.json(
+          problem('validation_failed', 422, {
+            errors: [{ field: 'email', code: 'invalid_format' }],
+          }),
+          {
+            status: 422,
+            headers: { 'Content-Type': 'application/problem+json' },
+          },
+        ),
+      ),
+    )
+    renderApp(['/login'])
+    const user = await fillCredentials()
+    await user.click(screen.getByRole('button', { name: 'Ingresar' }))
+    expect(
+      await screen.findByText(
+        'Ingresá un email válido, por ejemplo nombre@empresa.com',
+      ),
+    ).toBeVisible()
+    expect(screen.getByLabelText('Email')).toHaveFocus()
+  })
+
+  // T-F302: the pending guard ignores rapid duplicate submits while the request is held.
+  it('sends only one login when the user submits again while pending', async () => {
+    loggedOut()
+    let release!: () => void
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const login = vi.fn(async () => {
+      await waiting
+      return HttpResponse.json(validSession)
+    })
+    server.use(http.post(`${base}/auth/login`, login))
+    renderApp(['/login'])
+    const user = await fillCredentials()
+    await user.click(screen.getByRole('button', { name: 'Ingresar' }))
+    await screen.findByRole('button', { name: 'Ingresando…' })
+    await user.click(screen.getByRole('button', { name: 'Ingresando…' }))
+    expect(login).toHaveBeenCalledOnce()
+    release()
   })
 })

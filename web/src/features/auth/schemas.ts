@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { SignupRequest } from '@/api/types'
+import type { LoginRequest, SignupRequest } from '@/api/types'
 
 const requiredText = (maximum: number) =>
   z.string().trim().min(1, 'required').max(maximum, 'too_long')
@@ -34,3 +34,16 @@ export const signupSchema = z
   }) satisfies z.ZodType<SignupRequest>
 
 export type SignupFormValues = z.input<typeof signupSchema>
+
+export const loginSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(1, 'required')
+    .max(254, 'too_long')
+    .pipe(z.email({ error: 'invalid_format' })),
+  password: z.string().min(1, 'required').max(128, 'too_long'),
+}) satisfies z.ZodType<LoginRequest>
+
+export type LoginFormValues = z.input<typeof loginSchema>
