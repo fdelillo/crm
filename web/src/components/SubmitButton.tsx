@@ -7,6 +7,7 @@ export interface SubmitButtonProps {
   pendingLabel: string
   disabled?: boolean
   variant?: 'default' | 'destructive'
+  className?: string
 }
 
 export function SubmitButton({
@@ -15,9 +16,15 @@ export function SubmitButton({
   pendingLabel,
   disabled = false,
   variant = 'default',
+  className,
 }: SubmitButtonProps) {
   return (
-    <Button type="submit" variant={variant} disabled={pending || disabled}>
+    <Button
+      type="submit"
+      variant={variant}
+      disabled={pending || disabled}
+      className={className}
+    >
       {pending && (
         <LoaderCircle
           aria-hidden="true"

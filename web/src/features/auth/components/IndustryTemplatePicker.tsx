@@ -12,6 +12,7 @@ export interface IndustryTemplatePickerProps {
   onChange: (code: string) => void
   error?: string
   name: string
+  disabled?: boolean
 }
 
 export function IndustryTemplatePicker({
@@ -22,6 +23,7 @@ export function IndustryTemplatePicker({
   onChange,
   error,
   name,
+  disabled = false,
 }: IndustryTemplatePickerProps) {
   const errorId = error ? `${name}-error` : undefined
   if (status === 'pending') {
@@ -41,7 +43,13 @@ export function IndustryTemplatePicker({
     return (
       <div className="space-y-2">
         <p>No pudimos cargar los rubros.</p>
-        <Button type="button" variant="outline" onClick={onRetry}>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-11"
+          disabled={disabled}
+          onClick={onRetry}
+        >
           Reintentar
         </Button>
       </div>
@@ -55,9 +63,11 @@ export function IndustryTemplatePicker({
         aria-invalid={Boolean(error)}
         aria-describedby={errorId}
         name={name}
+        disabled={disabled}
         value={value}
         onValueChange={onChange}
         onKeyDown={(event) => {
+          if (disabled) return
           if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
           const currentCode = (event.target as HTMLElement)
             .closest('[role="radio"]')

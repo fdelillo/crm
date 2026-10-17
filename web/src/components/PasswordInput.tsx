@@ -26,6 +26,7 @@ export const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(
         <Button
           type="button"
           variant="outline"
+          className="h-11"
           aria-pressed={visible}
           aria-controls={inputId}
           onClick={() => setVisible((current) => !current)}

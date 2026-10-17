@@ -7,6 +7,7 @@ export interface CurrencyPickerProps {
   onChange: (value: Currency) => void
   error?: string
   name: string
+  disabled?: boolean
 }
 
 export function CurrencyPicker({
@@ -14,6 +15,7 @@ export function CurrencyPicker({
   onChange,
   error,
   name,
+  disabled = false,
 }: CurrencyPickerProps) {
   const errorId = error ? `${name}-error` : undefined
   return (
@@ -23,6 +25,7 @@ export function CurrencyPicker({
         aria-invalid={Boolean(error)}
         aria-describedby={errorId}
         name={name}
+        disabled={disabled}
         value={value}
         onValueChange={(next) => onChange(next as Currency)}
         className="grid grid-cols-2 gap-3"

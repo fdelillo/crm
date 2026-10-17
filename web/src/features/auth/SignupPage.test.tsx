@@ -353,8 +353,80 @@ describe('SignupPage', () => {
       await screen.findByRole('button', { name: 'Creando cuenta…' }),
     ).toBeDisabled()
     expect(signup).toHaveBeenCalledOnce()
+    expect(screen.getByRole('radio', { name: 'Genérico' })).toBeDisabled()
+    expect(screen.getByRole('radio', { name: 'Dólares (USD)' })).toBeDisabled()
     finish(HttpResponse.json(buildSessionInfo(), { status: 201 }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+  })
+
+  it('completes and submits signup with the keyboard', async () => {
+    setupCatalog()
+    let registered = false
+    const session = buildSessionInfo({
+      user: { ...buildSessionInfo().user, name: 'Ana Pérez' },
+    })
+    const signup = vi.fn(() => {
+      registered = true
+      return HttpResponse.json(session, { status: 201 })
+    })
+    server.use(
+      http.get(`${base}/me`, () =>
+        registered
+          ? HttpResponse.json(session)
+          : serverProblem('unauthenticated', 401),
+      ),
+      http.get(`${base}/tenant`, () =>
+        HttpResponse.json({
+          id: 'tenant-id',
+          name: 'Aberturas Norte',
+          legal_name: null,
+          tax_id: null,
+          address: null,
+          phone: null,
+          email: null,
+          has_logo: false,
+          base_currency: 'ARS',
+          timezone: 'America/Argentina/Buenos_Aires',
+          industry_template_code: 'generic',
+          created_at: '2026-10-16T12:00:00Z',
+          updated_at: '2026-10-16T12:00:00Z',
+        }),
+      ),
+      http.post(`${base}/auth/signup`, signup),
+    )
+    const { router } = renderApp(['/signup'])
+    await screen.findByRole('radio', { name: 'Genérico' })
+    const user = userEvent.setup()
+    const name = screen.getByLabelText('Tu nombre')
+    for (let tab = 0; document.activeElement !== name && tab < 10; tab += 1) {
+      await user.tab()
+    }
+    expect(name).toHaveFocus()
+
+    await user.type(name, 'Ana Pérez')
+    await user.tab()
+    const email = screen.getByLabelText('Email')
+    expect(email).toHaveFocus()
+    await user.type(email, 'ana@example.test')
+    await user.tab()
+    const password = screen.getByLabelText('Contraseña')
+    expect(password).toHaveFocus()
+    await user.type(password, 'contraseña-segura')
+    await user.tab()
+    await user.tab()
+    const company = screen.getByLabelText('Nombre de la empresa')
+    expect(company).toHaveFocus()
+    await user.type(company, 'Aberturas Norte')
+    await user.tab()
+    await user.keyboard('{ArrowDown}')
+    expect(screen.getByRole('radio', { name: 'Genérico' })).toBeChecked()
+    await user.tab()
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'Crear cuenta' })).toHaveFocus()
+    await user.keyboard('{Enter}')
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+    expect(signup).toHaveBeenCalledOnce()
   })
 
   it('exposes labels and autocomplete, allows keyboard radio selection, and uses ARS by default', async () => {

@@ -155,6 +155,7 @@ export function SignupPage() {
               <FieldLabel htmlFor="name">Tu nombre</FieldLabel>
               <Input
                 id="name"
+                className="h-11"
                 autoComplete="name"
                 readOnly={signup.isPending}
                 aria-invalid={Boolean(errors.name || serverFieldErrors.name)}
@@ -177,6 +178,7 @@ export function SignupPage() {
               <Input
                 id="email"
                 type="email"
+                className="h-11"
                 autoComplete="email"
                 readOnly={signup.isPending}
                 aria-invalid={Boolean(errors.email || serverFieldErrors.email)}
@@ -200,6 +202,7 @@ export function SignupPage() {
               <FieldLabel htmlFor="password">Contraseña</FieldLabel>
               <PasswordInput
                 id="password"
+                className="h-11"
                 autoComplete="new-password"
                 readOnly={signup.isPending}
                 aria-invalid={Boolean(
@@ -237,6 +240,7 @@ export function SignupPage() {
               </FieldLabel>
               <Input
                 id="company_name"
+                className="h-11"
                 autoComplete="organization"
                 readOnly={signup.isPending}
                 aria-invalid={Boolean(
@@ -292,6 +296,7 @@ export function SignupPage() {
                           )
                         : undefined)
                     }
+                    disabled={signup.isPending}
                     name={field.name}
                   />
                 )}
@@ -314,6 +319,7 @@ export function SignupPage() {
                       field.onChange(value)
                     }}
                     name={field.name}
+                    disabled={signup.isPending}
                     error={
                       serverFieldErrors.base_currency ??
                       (errors.base_currency
@@ -354,6 +360,7 @@ export function SignupPage() {
             pending={signup.isPending}
             disabled={!templates.isSuccess || templates.data.items.length === 0}
             pendingLabel="Creando cuenta…"
+            className="h-11 w-full sm:w-auto"
           >
             Crear cuenta
           </SubmitButton>
