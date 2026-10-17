@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { Application } from '@/app/application'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { buildSessionInfo, problem } from '@/test/fixtures'
+import { buildSessionInfo, buildTenant, problem } from '@/test/fixtures'
 import { server } from '@/test/msw/server'
 import { renderApp } from '@/test/renderApp'
 
@@ -47,6 +47,8 @@ describe('LoginPage', () => {
           ? HttpResponse.json(validSession)
           : serverProblem('unauthenticated', 401),
       ),
+      http.get(`${base}/tenant`, () => HttpResponse.json(buildTenant())),
+      http.get(`${base}/users`, () => HttpResponse.json({ items: [] })),
       http.post(`${base}/auth/login`, () => {
         authenticated = true
         return HttpResponse.json(validSession)
@@ -62,6 +64,8 @@ describe('LoginPage', () => {
     expect(router.state.historyAction).toBe('REPLACE')
     expect(queryClient.getQueryData(['stale-session-data'])).toBeUndefined()
     expect(queryClient.getQueryData(['session'])).toEqual(validSession)
+    await act(async () => router.navigate(-1))
+    expect(router.state.location.pathname).toBe(destination)
   })
 
   // T-F301: invalid credentials keep email, clear/focus password and leave session untouched.
@@ -201,6 +205,11 @@ describe('LoginPage', () => {
       'Listo, cambiaste tu contraseña. Ingresá con la nueva.',
     ],
     ['/login?reason=logged_out', {}, 'Cerraste sesión.'],
+    [
+      '/login?reason=logged_out',
+      { unsavedChangesLost: true },
+      'Cerraste sesión.',
+    ],
     ['/login?reason=other', {}, null],
     [
       '/login?reason=session_expired',
@@ -242,6 +251,28 @@ describe('LoginPage', () => {
     await user.click(screen.getByRole('button', { name: 'Ingresar' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'El servicio no está disponible en este momento.',
+    )
+    expect(screen.getByLabelText('Email')).toHaveValue('ana@example.test')
+    expect(screen.getByLabelText('Contraseña')).toHaveValue('clave-segura')
+    recovered = true
+    await user.click(screen.getByRole('button', { name: 'Reintentar' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+    expect(login).toHaveBeenCalledTimes(2)
+  })
+
+  // T-F301: offline failures use the network message, preserve data, and retry on request.
+  it('preserves credentials after a network failure and retries explicitly', async () => {
+    loggedOut()
+    let recovered = false
+    const login = vi.fn(() =>
+      recovered ? HttpResponse.json(validSession) : HttpResponse.error(),
+    )
+    server.use(http.post(`${base}/auth/login`, login))
+    const { router } = renderApp(['/login'])
+    const user = await fillCredentials()
+    await user.click(screen.getByRole('button', { name: 'Ingresar' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'No hay conexión.',
     )
     expect(screen.getByLabelText('Email')).toHaveValue('ana@example.test')
     expect(screen.getByLabelText('Contraseña')).toHaveValue('clave-segura')
