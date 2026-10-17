@@ -2,15 +2,22 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
-import { buildSessionInfo, problem } from '@/test/fixtures'
+import {
+  buildIndustryTemplates,
+  buildSessionInfo,
+  buildTenant,
+  problem,
+} from '@/test/fixtures'
 import { server } from '@/test/msw/server'
 import { renderApp } from '@/test/renderApp'
 
 const base = 'https://localhost:5173/api/v1'
-const templates = [
+const templates = buildIndustryTemplates([
   { code: 'aluminum_carpentry', name: 'Carpintería de aluminio' },
   { code: 'generic', name: 'Genérico' },
-]
+])
+const tenantResponse = () =>
+  HttpResponse.json(buildTenant({ name: 'Aberturas Norte' }))
 function setupCatalog() {
   server.use(
     http.get(`${base}/me`, () =>
@@ -19,9 +26,7 @@ function setupCatalog() {
         headers: { 'Content-Type': 'application/problem+json' },
       }),
     ),
-    http.get(`${base}/industry-templates`, () =>
-      HttpResponse.json({ items: templates }),
-    ),
+    http.get(`${base}/industry-templates`, () => HttpResponse.json(templates)),
   )
 }
 async function completeForm(user = userEvent.setup()) {
@@ -47,6 +52,7 @@ function serverProblem(
 }
 
 describe('SignupPage', () => {
+  // T-F202: registration form validation, keyboard use, and API error handling.
   it('shows template loading placeholders and keeps submit disabled until loaded', async () => {
     setupCatalog()
     server.use(
@@ -64,7 +70,7 @@ describe('SignupPage', () => {
     let recovered = false
     const list = vi.fn(() =>
       recovered
-        ? HttpResponse.json({ items: templates })
+        ? HttpResponse.json(templates)
         : serverProblem('service_unavailable', 503),
     )
     server.use(http.get(`${base}/industry-templates`, list))
@@ -98,6 +104,10 @@ describe('SignupPage', () => {
 
   it('posts normalized values and the browser timezone once, then replaces the form with the dashboard', async () => {
     setupCatalog()
+    const browserOptions = new Intl.DateTimeFormat().resolvedOptions()
+    const timezoneSpy = vi
+      .spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions')
+      .mockReturnValue({ ...browserOptions, timeZone: 'Etc/Unknown' })
     const body: unknown[] = []
     let registered = false
     const session = buildSessionInfo({
@@ -119,28 +129,15 @@ describe('SignupPage', () => {
         registered = true
         return HttpResponse.json(session, { status: 201 })
       }),
-      http.get(`${base}/tenant`, () =>
-        HttpResponse.json({
-          id: 'tenant-id',
-          name: 'Aberturas Norte',
-          legal_name: null,
-          tax_id: null,
-          address: null,
-          phone: null,
-          email: null,
-          has_logo: false,
-          base_currency: 'ARS',
-          timezone: 'America/Argentina/Buenos_Aires',
-          industry_template_code: 'generic',
-          created_at: '2026-10-16T12:00:00Z',
-          updated_at: '2026-10-16T12:00:00Z',
-        }),
-      ),
+      http.get(`${base}/tenant`, tenantResponse),
     )
-    const { router } = renderApp(['/signup'])
+    const { router } = renderApp(['/login', '/signup'])
     await completeForm()
     await userEvent.click(screen.getByRole('button', { name: 'Crear cuenta' }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+    expect(router.state.historyAction).toBe('REPLACE')
+    await router.navigate(-1)
+    await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
     expect(
       (await screen.findAllByText('¡Listo! Tu empresa quedó creada.')).length,
     ).toBeGreaterThan(0)
@@ -152,16 +149,25 @@ describe('SignupPage', () => {
         company_name: 'Aberturas Norte',
         base_currency: 'ARS',
         industry_template_code: 'generic',
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        timezone: 'Etc/Unknown',
       },
     ])
+    timezoneSpy.mockRestore()
   })
 
   it('shows the existing-email recovery action and returns to signup with focus on email', async () => {
     setupCatalog()
     server.use(
       http.post(`${base}/auth/signup`, () =>
-        serverProblem('email_already_registered', 409),
+        HttpResponse.json(
+          problem('email_already_registered', 409, {
+            suggested_action: 'password_reset',
+          }),
+          {
+            status: 409,
+            headers: { 'Content-Type': 'application/problem+json' },
+          },
+        ),
       ),
     )
     const { router } = renderApp(['/signup'])
@@ -208,6 +214,56 @@ describe('SignupPage', () => {
     expect(screen.getByLabelText('Nombre de la empresa')).toHaveFocus()
   })
 
+  it('focuses the first industry radio when every other field is valid', async () => {
+    setupCatalog()
+    renderApp(['/signup'])
+    await screen.findByRole('radio', { name: 'Carpintería de aluminio' })
+    await userEvent.type(screen.getByLabelText('Tu nombre'), 'Ana Pérez')
+    await userEvent.type(screen.getByLabelText('Email'), 'ana@example.test')
+    await userEvent.type(
+      screen.getByLabelText('Contraseña'),
+      'contraseña-segura',
+    )
+    await userEvent.type(
+      screen.getByLabelText('Nombre de la empresa'),
+      'Aberturas Norte',
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Crear cuenta' }))
+    expect(
+      screen.getByRole('radio', { name: 'Carpintería de aluminio' }),
+    ).toHaveFocus()
+  })
+
+  it('focuses the industry radio after an unknown-template server error', async () => {
+    setupCatalog()
+    let catalogLoads = 0
+    server.use(
+      http.get(`${base}/industry-templates`, () => {
+        catalogLoads += 1
+        return HttpResponse.json(templates)
+      }),
+      http.post(`${base}/auth/signup`, () =>
+        HttpResponse.json(
+          problem('validation_failed', 422, {
+            errors: [
+              { field: 'industry_template_code', code: 'unknown_template' },
+            ],
+          }),
+          {
+            status: 422,
+            headers: { 'Content-Type': 'application/problem+json' },
+          },
+        ),
+      ),
+    )
+    renderApp(['/signup'])
+    await completeForm()
+    await userEvent.click(screen.getByRole('button', { name: 'Crear cuenta' }))
+    expect(await screen.findByText('Elegí un rubro de la lista.')).toBeVisible()
+    expect(screen.getByRole('radio', { name: 'Genérico' })).toHaveFocus()
+    await waitFor(() => expect(catalogLoads).toBeGreaterThan(1))
+  })
+
   it.each([
     [
       '720',
@@ -230,11 +286,18 @@ describe('SignupPage', () => {
       await userEvent.click(
         screen.getByRole('button', { name: 'Crear cuenta' }),
       )
-      expect(await screen.findByRole('alert')).toHaveTextContent(description)
+      expect(
+        await screen.findByText('Hubo muchos intentos de registro seguidos.'),
+      ).toBeVisible()
+      expect(screen.getByRole('alert')).toHaveTextContent(description)
       expect(screen.getByLabelText('Nombre de la empresa')).toHaveValue(
         ' Aberturas Norte ',
       )
       expect(signup).toHaveBeenCalledOnce()
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Crear cuenta' }),
+      )
+      await waitFor(() => expect(signup).toHaveBeenCalledTimes(2))
     },
   )
 
@@ -250,7 +313,7 @@ describe('SignupPage', () => {
     ],
   ])(
     'preserves values on %s and retries only after the user asks',
-    async (_name, response) => {
+    async (name, response) => {
       setupCatalog()
       let registered = false
       const session = buildSessionInfo({
@@ -269,23 +332,7 @@ describe('SignupPage', () => {
             ? HttpResponse.json(session)
             : serverProblem('unauthenticated', 401),
         ),
-        http.get(`${base}/tenant`, () =>
-          HttpResponse.json({
-            id: 'tenant-id',
-            name: 'Aberturas Norte',
-            legal_name: null,
-            tax_id: null,
-            address: null,
-            phone: null,
-            email: null,
-            has_logo: false,
-            base_currency: 'ARS',
-            timezone: 'America/Argentina/Buenos_Aires',
-            industry_template_code: 'generic',
-            created_at: '2026-10-16T12:00:00Z',
-            updated_at: '2026-10-16T12:00:00Z',
-          }),
-        ),
+        http.get(`${base}/tenant`, tenantResponse),
         http.post(`${base}/auth/signup`, signup),
       )
       const { router } = renderApp(['/signup'])
@@ -293,7 +340,19 @@ describe('SignupPage', () => {
       await userEvent.click(
         screen.getByRole('button', { name: 'Crear cuenta' }),
       )
-      expect(await screen.findByRole('alert')).toHaveTextContent('Reintentar')
+      const alert = await screen.findByRole('alert')
+      if (name === '503 with a short retry header') {
+        expect(alert).toHaveTextContent(
+          'Probá de nuevo en unos segundos. No se creó nada: podés reintentar con los mismos datos.',
+        )
+      } else if (name === 'network failure') {
+        expect(alert).toHaveTextContent('No hay conexión.')
+      }
+      expect(screen.getByLabelText('Tu nombre')).toHaveValue(' Ana Pérez ')
+      expect(screen.getByLabelText('Email')).toHaveValue('ANA@example.test')
+      expect(screen.getByLabelText('Contraseña')).toHaveValue(
+        'contraseña-segura',
+      )
       expect(signup).toHaveBeenCalledOnce()
       await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
       await waitFor(() => expect(router.state.location.pathname).toBe('/'))
@@ -326,23 +385,7 @@ describe('SignupPage', () => {
           ? HttpResponse.json(session)
           : serverProblem('unauthenticated', 401),
       ),
-      http.get(`${base}/tenant`, () =>
-        HttpResponse.json({
-          id: 'tenant-id',
-          name: 'Aberturas Norte',
-          legal_name: null,
-          tax_id: null,
-          address: null,
-          phone: null,
-          email: null,
-          has_logo: false,
-          base_currency: 'ARS',
-          timezone: 'America/Argentina/Buenos_Aires',
-          industry_template_code: 'generic',
-          created_at: '2026-10-16T12:00:00Z',
-          updated_at: '2026-10-16T12:00:00Z',
-        }),
-      ),
+      http.get(`${base}/tenant`, tenantResponse),
       http.post(`${base}/auth/signup`, signup),
     )
     const { router } = renderApp(['/signup'])
@@ -375,23 +418,7 @@ describe('SignupPage', () => {
           ? HttpResponse.json(session)
           : serverProblem('unauthenticated', 401),
       ),
-      http.get(`${base}/tenant`, () =>
-        HttpResponse.json({
-          id: 'tenant-id',
-          name: 'Aberturas Norte',
-          legal_name: null,
-          tax_id: null,
-          address: null,
-          phone: null,
-          email: null,
-          has_logo: false,
-          base_currency: 'ARS',
-          timezone: 'America/Argentina/Buenos_Aires',
-          industry_template_code: 'generic',
-          created_at: '2026-10-16T12:00:00Z',
-          updated_at: '2026-10-16T12:00:00Z',
-        }),
-      ),
+      http.get(`${base}/tenant`, tenantResponse),
       http.post(`${base}/auth/signup`, signup),
     )
     const { router } = renderApp(['/signup'])
@@ -418,8 +445,13 @@ describe('SignupPage', () => {
     expect(company).toHaveFocus()
     await user.type(company, 'Aberturas Norte')
     await user.tab()
-    await user.keyboard('{ArrowDown}')
-    expect(screen.getByRole('radio', { name: 'Genérico' })).toBeChecked()
+    expect(
+      screen.getByRole('radio', { name: 'Carpintería de aluminio' }),
+    ).toHaveFocus()
+    await user.keyboard(' ')
+    expect(
+      screen.getByRole('radio', { name: 'Carpintería de aluminio' }),
+    ).toBeChecked()
     await user.tab()
     await user.tab()
     expect(screen.getByRole('button', { name: 'Crear cuenta' })).toHaveFocus()
@@ -455,32 +487,18 @@ describe('SignupPage', () => {
       name: 'Carpintería de aluminio',
     })
     template.focus()
-    await user.keyboard('{ArrowDown}')
-    expect(screen.getByRole('radio', { name: 'Genérico' })).toBeChecked()
+    await user.keyboard(' ')
+    expect(
+      screen.getByRole('radio', { name: 'Carpintería de aluminio' }),
+    ).toBeChecked()
   })
 
   it('redirects a visitor with a current session to the panel', async () => {
     server.use(
       http.get(`${base}/me`, () => HttpResponse.json(buildSessionInfo())),
-      http.get(`${base}/tenant`, () =>
-        HttpResponse.json({
-          id: 'tenant-id',
-          name: 'Empresa de prueba',
-          legal_name: null,
-          tax_id: null,
-          address: null,
-          phone: null,
-          email: null,
-          has_logo: false,
-          base_currency: 'ARS',
-          timezone: 'America/Argentina/Buenos_Aires',
-          industry_template_code: 'generic',
-          created_at: '2026-10-16T12:00:00Z',
-          updated_at: '2026-10-16T12:00:00Z',
-        }),
-      ),
+      http.get(`${base}/tenant`, () => HttpResponse.json(buildTenant())),
       http.get(`${base}/industry-templates`, () =>
-        HttpResponse.json({ items: templates }),
+        HttpResponse.json(templates),
       ),
     )
     const { router } = renderApp(['/signup'])

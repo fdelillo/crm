@@ -1,4 +1,9 @@
-import type { FieldValues, Path, UseFormSetError } from 'react-hook-form'
+import type {
+  FieldError as FormFieldError,
+  FieldValues,
+  Path,
+  UseFormSetError,
+} from 'react-hook-form'
 import type { ErrorCode, FieldError, FieldErrorCode } from './types'
 import { isApiError, type ApiError } from './errors'
 import { formatRetryAt } from '@/lib/format'
@@ -282,6 +287,15 @@ export function fieldErrorMessage(field: string, code: FieldErrorCode): string {
     },
   }
   return variants[code]?.[field] ?? defaults[code]
+}
+export function fieldErrorText(
+  field: string,
+  error: FormFieldError | undefined,
+  code: FieldErrorCode,
+): string | undefined {
+  if (!error) return undefined
+  if (error.type === 'server') return error.message
+  return fieldErrorMessage(field, code)
 }
 export function logoRejectMessage(reason: LogoRejectReason): string {
   return {

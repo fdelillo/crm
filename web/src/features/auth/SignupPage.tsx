@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Link, useNavigate } from 'react-router'
 import { AppBrand } from '@/components/AppBrand'
 import { FormAlert } from '@/components/FormAlert'
+import { PageHeader } from '@/components/PageHeader'
 import { PasswordInput } from '@/components/PasswordInput'
 import { SubmitButton } from '@/components/SubmitButton'
 import {
@@ -17,9 +19,11 @@ import { Input } from '@/components/ui/input'
 import {
   messageForError,
   applyServerFieldErrors,
-  fieldErrorMessage,
+  fieldErrorText,
 } from '@/api/errorMessages'
 import { isApiError } from '@/api/errors'
+import { queryKeys } from '@/api/queryKeys'
+import type { FieldErrorCode } from '@/api/types'
 import { useIndustryTemplates, useSignup } from './api'
 import { CurrencyPicker } from './components/CurrencyPicker'
 import { IndustryTemplatePicker } from './components/IndustryTemplatePicker'
@@ -36,12 +40,11 @@ const signupFields = [
 
 export function SignupPage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const submitLock = useRef(false)
   const templates = useIndustryTemplates()
   const signup = useSignup()
   const [submitError, setSubmitError] = useState<unknown>(null)
-  const [serverFieldErrors, setServerFieldErrors] = useState<
-    Partial<Record<(typeof signupFields)[number], string>>
-  >({})
   const form = useForm<SignupFormValues>({
     resolver: zodResolver(signupSchema),
     mode: 'onSubmit',
@@ -51,7 +54,6 @@ export function SignupPage() {
       email: '',
       password: '',
       company_name: '',
-      industry_template_code: '',
       base_currency: 'ARS',
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     },
@@ -60,41 +62,45 @@ export function SignupPage() {
     register,
     handleSubmit,
     setError,
+    clearErrors,
     setFocus,
     control,
     formState: { errors },
   } = form
 
   async function onSubmit(values: SignupFormValues) {
+    if (submitLock.current) return
+    submitLock.current = true
     setSubmitError(null)
-    setServerFieldErrors({})
     try {
       await signup.mutateAsync(signupSchema.parse(values))
     } catch (error) {
       if (isApiError(error) && error.code === 'validation_failed') {
+        if (
+          error.fieldErrors.some(
+            (fieldError) =>
+              fieldError.field === 'industry_template_code' &&
+              fieldError.code === 'unknown_template',
+          )
+        ) {
+          void queryClient.invalidateQueries({
+            queryKey: queryKeys.industryTemplates,
+          })
+        }
         const unknownErrors = applyServerFieldErrors(
           setError,
           error.fieldErrors,
           signupFields,
         )
-        const mappedErrors = Object.fromEntries(
-          error.fieldErrors
-            .filter((fieldError) =>
-              signupFields.includes(
-                fieldError.field as (typeof signupFields)[number],
-              ),
-            )
-            .map((fieldError) => [
-              fieldError.field,
-              fieldErrorMessage(fieldError.field, fieldError.code),
-            ]),
-        ) as Partial<Record<(typeof signupFields)[number], string>>
-        setServerFieldErrors(mappedErrors)
-        const firstField = signupFields.find((field) => mappedErrors[field])
+        const firstField = signupFields.find((field) =>
+          error.fieldErrors.some((fieldError) => fieldError.field === field),
+        )
         if (firstField) setFocus(firstField)
         if (unknownErrors.length === 0) return
       }
       setSubmitError(error)
+    } finally {
+      submitLock.current = false
     }
   }
 
@@ -114,20 +120,13 @@ export function SignupPage() {
     setFocus('email')
   }
 
-  function clearServerFieldError(field: (typeof signupFields)[number]) {
-    setServerFieldErrors((current) => {
-      if (!current[field]) return current
-      const next = { ...current }
-      delete next[field]
-      return next
-    })
-  }
-
   const message = submitError ? messageForError(submitError, 'signup') : null
   const existingEmail =
     isApiError(submitError) && submitError.code === 'email_already_registered'
+  const canRecoverPassword =
+    isApiError(submitError) && submitError.suggestedAction === 'password_reset'
   const errorId = (field: (typeof signupFields)[number]) =>
-    errors[field] || serverFieldErrors[field] ? `${field}-error` : undefined
+    errors[field] ? `${field}-error` : undefined
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-xl flex-col justify-center px-4 py-8 sm:px-6">
@@ -135,12 +134,10 @@ export function SignupPage() {
         <AppBrand name="CRM" logoSrc={null} />
       </div>
       <section className="space-y-6 rounded-xl border bg-card p-5 shadow-sm sm:p-8">
-        <header className="space-y-2">
-          <h1 tabIndex={-1}>Creá tu cuenta</h1>
-          <p className="text-muted-foreground">
-            Registrá tu empresa y empezá a usar el sistema.
-          </p>
-        </header>
+        <PageHeader
+          title="Creá tu cuenta"
+          description="Registrá tu empresa y empezá a usar el sistema."
+        />
 
         <form
           className="space-y-6"
@@ -149,31 +146,30 @@ export function SignupPage() {
         >
           <FieldSet className="gap-4">
             <legend className="text-base font-medium">Tus datos</legend>
-            <Field
-              data-invalid={Boolean(errors.name || serverFieldErrors.name)}
-            >
+            <Field data-invalid={Boolean(errors.name)}>
               <FieldLabel htmlFor="name">Tu nombre</FieldLabel>
               <Input
                 id="name"
                 className="h-11"
                 autoComplete="name"
                 readOnly={signup.isPending}
-                aria-invalid={Boolean(errors.name || serverFieldErrors.name)}
+                aria-invalid={Boolean(errors.name)}
                 aria-describedby={errorId('name')}
                 {...register('name', {
-                  onChange: () => clearServerFieldError('name'),
+                  onChange: () => clearErrors('name'),
                 })}
               />
-              {(errors.name || serverFieldErrors.name) && (
+              {errors.name && (
                 <FieldError id={errorId('name')}>
-                  {serverFieldErrors.name ??
-                    fieldErrorMessage('name', errors.name?.message as never)}
+                  {fieldErrorText(
+                    'name',
+                    errors.name,
+                    (errors.name.message ?? 'required') as FieldErrorCode,
+                  )}
                 </FieldError>
               )}
             </Field>
-            <Field
-              data-invalid={Boolean(errors.email || serverFieldErrors.email)}
-            >
+            <Field data-invalid={Boolean(errors.email)}>
               <FieldLabel htmlFor="email">Email</FieldLabel>
               <Input
                 id="email"
@@ -181,48 +177,49 @@ export function SignupPage() {
                 className="h-11"
                 autoComplete="email"
                 readOnly={signup.isPending}
-                aria-invalid={Boolean(errors.email || serverFieldErrors.email)}
+                aria-invalid={Boolean(errors.email)}
                 aria-describedby={errorId('email')}
                 {...register('email', {
-                  onChange: () => clearServerFieldError('email'),
+                  onChange: () => clearErrors('email'),
                 })}
               />
-              {(errors.email || serverFieldErrors.email) && (
+              {errors.email && (
                 <FieldError id={errorId('email')}>
-                  {serverFieldErrors.email ??
-                    fieldErrorMessage('email', errors.email?.message as never)}
+                  {fieldErrorText(
+                    'email',
+                    errors.email,
+                    (errors.email.message ?? 'required') as FieldErrorCode,
+                  )}
                 </FieldError>
               )}
             </Field>
-            <Field
-              data-invalid={Boolean(
-                errors.password || serverFieldErrors.password,
-              )}
-            >
+            <Field data-invalid={Boolean(errors.password)}>
               <FieldLabel htmlFor="password">Contraseña</FieldLabel>
               <PasswordInput
                 id="password"
                 className="h-11"
                 autoComplete="new-password"
                 readOnly={signup.isPending}
-                aria-invalid={Boolean(
-                  errors.password || serverFieldErrors.password,
-                )}
-                aria-describedby={errorId('password') ?? 'password-help'}
+                aria-invalid={Boolean(errors.password)}
+                aria-describedby={
+                  ['password-help', errorId('password')]
+                    .filter(Boolean)
+                    .join(' ') || undefined
+                }
                 {...register('password', {
-                  onChange: () => clearServerFieldError('password'),
+                  onChange: () => clearErrors('password'),
                 })}
               />
               <FieldDescription id="password-help">
                 Mínimo 10 caracteres.
               </FieldDescription>
-              {(errors.password || serverFieldErrors.password) && (
+              {errors.password && (
                 <FieldError id={errorId('password')}>
-                  {serverFieldErrors.password ??
-                    fieldErrorMessage(
-                      'password',
-                      errors.password?.message as never,
-                    )}
+                  {fieldErrorText(
+                    'password',
+                    errors.password,
+                    (errors.password.message ?? 'required') as FieldErrorCode,
+                  )}
                 </FieldError>
               )}
             </Field>
@@ -230,11 +227,7 @@ export function SignupPage() {
 
           <FieldSet className="gap-4">
             <legend className="text-base font-medium">Tu empresa</legend>
-            <Field
-              data-invalid={Boolean(
-                errors.company_name || serverFieldErrors.company_name,
-              )}
-            >
+            <Field data-invalid={Boolean(errors.company_name)}>
               <FieldLabel htmlFor="company_name">
                 Nombre de la empresa
               </FieldLabel>
@@ -243,31 +236,27 @@ export function SignupPage() {
                 className="h-11"
                 autoComplete="organization"
                 readOnly={signup.isPending}
-                aria-invalid={Boolean(
-                  errors.company_name || serverFieldErrors.company_name,
-                )}
+                aria-invalid={Boolean(errors.company_name)}
                 aria-describedby={errorId('company_name')}
                 {...register('company_name', {
-                  onChange: () => clearServerFieldError('company_name'),
+                  onChange: () => clearErrors('company_name'),
                 })}
               />
-              {(errors.company_name || serverFieldErrors.company_name) && (
+              {errors.company_name && (
                 <FieldError id={errorId('company_name')}>
-                  {serverFieldErrors.company_name ??
-                    fieldErrorMessage(
-                      'company_name',
-                      errors.company_name?.message as never,
-                    )}
+                  {fieldErrorText(
+                    'company_name',
+                    errors.company_name,
+                    (errors.company_name.message ??
+                      'required') as FieldErrorCode,
+                  )}
                 </FieldError>
               )}
             </Field>
-            <Field
-              data-invalid={Boolean(
-                errors.industry_template_code ||
-                serverFieldErrors.industry_template_code,
-              )}
-            >
-              <FieldLabel>Rubro de tu empresa</FieldLabel>
+            <Field data-invalid={Boolean(errors.industry_template_code)}>
+              <FieldLabel id="industry-template-heading">
+                Rubro de tu empresa
+              </FieldLabel>
               <Controller
                 control={control}
                 name="industry_template_code"
@@ -283,52 +272,46 @@ export function SignupPage() {
                     }
                     onRetry={() => void templates.refetch()}
                     value={field.value}
+                    ref={field.ref}
+                    labelledBy="industry-template-heading"
                     onChange={(value) => {
-                      clearServerFieldError('industry_template_code')
+                      clearErrors('industry_template_code')
                       field.onChange(value)
                     }}
-                    error={
-                      serverFieldErrors.industry_template_code ??
-                      (errors.industry_template_code
-                        ? fieldErrorMessage(
-                            'industry_template_code',
-                            errors.industry_template_code.message as never,
-                          )
-                        : undefined)
-                    }
+                    error={fieldErrorText(
+                      'industry_template_code',
+                      errors.industry_template_code,
+                      (errors.industry_template_code?.message ??
+                        'required') as FieldErrorCode,
+                    )}
                     disabled={signup.isPending}
                     name={field.name}
                   />
                 )}
               />
             </Field>
-            <Field
-              data-invalid={Boolean(
-                errors.base_currency || serverFieldErrors.base_currency,
-              )}
-            >
-              <FieldLabel>Moneda base</FieldLabel>
+            <Field data-invalid={Boolean(errors.base_currency)}>
+              <FieldLabel id="base-currency-heading">Moneda base</FieldLabel>
               <Controller
                 control={control}
                 name="base_currency"
                 render={({ field }) => (
                   <CurrencyPicker
                     value={field.value}
+                    ref={field.ref}
+                    labelledBy="base-currency-heading"
                     onChange={(value) => {
-                      clearServerFieldError('base_currency')
+                      clearErrors('base_currency')
                       field.onChange(value)
                     }}
                     name={field.name}
                     disabled={signup.isPending}
-                    error={
-                      serverFieldErrors.base_currency ??
-                      (errors.base_currency
-                        ? fieldErrorMessage(
-                            'base_currency',
-                            errors.base_currency.message as never,
-                          )
-                        : undefined)
-                    }
+                    error={fieldErrorText(
+                      'base_currency',
+                      errors.base_currency,
+                      (errors.base_currency?.message ??
+                        'required') as FieldErrorCode,
+                    )}
                   />
                 )}
               />
@@ -342,7 +325,7 @@ export function SignupPage() {
               description={message.description}
               requestId={message.requestId}
               action={
-                existingEmail
+                canRecoverPassword
                   ? { label: 'Recuperar contraseña', onClick: recoverPassword }
                   : message.retryable
                     ? { label: 'Reintentar', onClick: retrySubmit }
