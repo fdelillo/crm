@@ -1,15 +1,18 @@
 import type { SessionInfo } from '@/api/types'
+import { useState } from 'react'
 import { useTenant, logoUrl } from '@/api/tenant'
 import { Home, Settings, ChevronDown } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router'
 import { useSession } from '@/features/auth/session'
 import { AppBrand } from '@/components/AppBrand'
 import { Button } from '@/components/ui/button'
+import { useLogout } from '@/features/auth/api'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuLabel,
+  DropdownMenuItem,
 } from '@/components/ui/dropdown-menu'
 export function AppShell() {
   const { data: session } = useSession()
@@ -17,6 +20,8 @@ export function AppShell() {
 }
 function AuthenticatedShell({ session }: { session: SessionInfo }) {
   const { data: tenant } = useTenant()
+  const logout = useLogout()
+  const [menuOpen, setMenuOpen] = useState(false)
   const role = session.user.role === 'admin' ? 'Administrador' : 'Operador'
   return (
     <div className="min-h-dvh lg:pl-60">
@@ -56,7 +61,7 @@ function AuthenticatedShell({ session }: { session: SessionInfo }) {
           ))}
         </nav>
         <div className="hidden lg:mt-auto lg:block lg:p-4">
-          <DropdownMenu>
+          <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
@@ -70,6 +75,15 @@ function AuthenticatedShell({ session }: { session: SessionInfo }) {
               <DropdownMenuLabel>
                 {session.user.name} · {role}
               </DropdownMenuLabel>
+              <DropdownMenuItem
+                disabled={logout.isPending}
+                onSelect={(event) => {
+                  event.preventDefault()
+                  logout.mutate()
+                }}
+              >
+                {logout.isPending ? 'Cerrando sesión…' : 'Cerrar sesión'}
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

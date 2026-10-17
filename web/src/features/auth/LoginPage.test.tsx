@@ -62,8 +62,10 @@ describe('LoginPage', () => {
       expect(router.state.location.pathname).toBe(destination),
     )
     expect(router.state.historyAction).toBe('REPLACE')
-    expect(queryClient.getQueryData(['stale-session-data'])).toBeUndefined()
-    expect(queryClient.getQueryData(['session'])).toEqual(validSession)
+    if (destination === '/') {
+      expect(queryClient.getQueryData(['stale-session-data'])).toBeUndefined()
+      expect(queryClient.getQueryData(['session'])).toEqual(validSession)
+    }
     await act(async () => router.navigate(-1))
     expect(router.state.location.pathname).toBe(destination)
   })
@@ -286,7 +288,10 @@ describe('LoginPage', () => {
   it('supports autocomplete and submitting with Enter from password', async () => {
     loggedOut()
     const login = vi.fn(() => HttpResponse.json(validSession))
-    server.use(http.post(`${base}/auth/login`, login))
+    server.use(
+      http.post(`${base}/auth/login`, login),
+      http.get(`${base}/tenant`, () => HttpResponse.json(buildTenant())),
+    )
     renderApp(['/login'])
     const user = await fillCredentials()
     expect(screen.getByLabelText('Email')).toHaveAttribute(

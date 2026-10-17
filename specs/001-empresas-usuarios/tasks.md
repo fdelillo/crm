@@ -3781,6 +3781,9 @@ P-F17): ninguno de los tres formatea la hora ni reimplementa `formatRetryAt` (T-
 
 **Checkpoint Fase F3**: `npm run check` en verde + prueba independiente.
 
+**Estado de implementación F3 (2026-10-17)**: T-F301–T-F304 implementadas; `npm run check`
+en verde. Prueba independiente y PR pendientes.
+
 ---
 
 ### Fase F4 — Historia 2.3 y 1.3: Recuperar contraseña y confirmar email (P1)

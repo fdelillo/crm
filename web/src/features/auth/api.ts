@@ -1,10 +1,10 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { useNavigate } from 'react-router'
-import { useLocation } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 import { api } from '@/api/client'
-import { unwrap } from '@/api/errors'
+import { isApiError, unwrap, type ApiError } from '@/api/errors'
 import { queryKeys } from '@/api/queryKeys'
+import { messageForError } from '@/api/errorMessages'
 export { useIndustryTemplates } from '@/api/industryTemplates'
 import type { LoginRequest, SignupRequest } from '@/api/types'
 import { safeNextPath } from '@/lib/safeNextPath'
@@ -38,6 +38,31 @@ export function useLogin() {
       client.setQueryData(queryKeys.session, session)
       const next = new URLSearchParams(location.search).get('next')
       void navigate(safeNextPath(next), { replace: true })
+    },
+  })
+}
+
+export function useLogout() {
+  const client = useQueryClient()
+  const navigate = useNavigate()
+  return useMutation<void, ApiError, void>({
+    mutationFn: async () => {
+      unwrap<void>(await api.POST('/auth/logout'))
+    },
+    onSuccess: async () => {
+      await client.cancelQueries()
+      client.clear()
+      void navigate('/login?reason=logged_out', { replace: true })
+    },
+    onError: (error) => {
+      if (isApiError(error) && error.kind === 'network') {
+        toast.error('No pudimos cerrar la sesión. Revisá tu conexión.')
+        return
+      }
+      const message = messageForError(error, 'generic')
+      toast.error(message.title, {
+        ...(message.description ? { description: message.description } : {}),
+      })
     },
   })
 }
