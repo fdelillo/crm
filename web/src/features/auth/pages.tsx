@@ -1,9 +1,7 @@
 export { LoginPage } from './LoginPage'
 export { SignupPage } from './SignupPage'
 export { ForgotPasswordPage } from './ForgotPasswordPage'
-export function ResetPasswordPage() {
-  return <h1>Restablecer contraseña</h1>
-}
+export { ResetPasswordPage } from './ResetPasswordPage'
 export function VerifyEmailPage() {
   return <h1>Confirmá tu email</h1>
 }
