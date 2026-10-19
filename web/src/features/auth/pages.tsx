@@ -1,8 +1,6 @@
 export { LoginPage } from './LoginPage'
 export { SignupPage } from './SignupPage'
-export function ForgotPasswordPage() {
-  return <h1>Olvidé mi contraseña</h1>
-}
+export { ForgotPasswordPage } from './ForgotPasswordPage'
 export function ResetPasswordPage() {
   return <h1>Restablecer contraseña</h1>
 }
