@@ -1,12 +1,14 @@
 import type { SessionInfo } from '@/api/types'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTenant, logoUrl } from '@/api/tenant'
 import { Home, Settings, ChevronDown } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router'
-import { useSession } from '@/features/auth/session'
+import { useResendEmailVerification, useSession } from '@/features/auth/session'
 import { AppBrand } from '@/components/AppBrand'
 import { Button } from '@/components/ui/button'
 import { useLogout } from '@/features/auth/api'
+import { messageForError } from '@/api/errorMessages'
+import { EmailVerificationBanner, useEmailVerificationDismissed, type EmailVerificationNoticeStatus } from '@/components/EmailVerificationBanner'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -25,6 +27,13 @@ function AuthenticatedShell({ session }: { session: SessionInfo }) {
     enabled: !logout.isPending && !logoutStarted,
   })
   const role = session.user.role === 'admin' ? 'Administrador' : 'Operador'
+  const previouslyVerified = useRef(session.user.email_verified)
+  useEffect(() => {
+    if (!previouslyVerified.current && session.user.email_verified) {
+      document.querySelector<HTMLElement>('#main h1')?.focus()
+    }
+    previouslyVerified.current = session.user.email_verified
+  }, [session.user.email_verified])
   return (
     <div className="min-h-dvh lg:pl-60">
       <a
@@ -95,6 +104,7 @@ function AuthenticatedShell({ session }: { session: SessionInfo }) {
           </DropdownMenu>
         </div>
       </div>
+      {!session.user.email_verified && <SessionVerificationBanner key={session.user.email} email={session.user.email} />}
       <main
         id="main"
         tabIndex={-1}
@@ -104,4 +114,27 @@ function AuthenticatedShell({ session }: { session: SessionInfo }) {
       </main>
     </div>
   )
+}
+
+function SessionVerificationBanner({ email }: { email: string }) {
+  const resend = useResendEmailVerification()
+  const [dismissed, dismiss] = useEmailVerificationDismissed(email)
+  const [outcome, setOutcome] = useState<'sent' | 'unknown' | null>(null)
+  const [error, setError] = useState<unknown>(null)
+  const status: EmailVerificationNoticeStatus = resend.isPending ? 'pending' : outcome ?? (error ? 'error' : 'idle')
+  const errorMessage = error ? messageForError(error, 'resendVerification').description ?? messageForError(error, 'resendVerification').title : undefined
+
+  async function sendAgain() {
+    setOutcome(null)
+    setError(null)
+    try {
+      const result = await resend.mutateAsync()
+      if (result === 'sent' || result === 'unknown') setOutcome(result)
+    } catch (reason) {
+      setError(reason)
+    }
+  }
+
+  if (dismissed) return null
+  return <EmailVerificationBanner email={email} status={status} errorMessage={errorMessage} onResend={() => void sendAgain()} onDismiss={dismiss} />
 }
