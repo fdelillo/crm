@@ -20,14 +20,22 @@ export function expireSession(
 export function createSessionErrorHandlers(
   client: QueryClient,
   router: {
-    state: { location: Location }
+    state: {
+      location: Location
+      navigation: { location?: Location }
+    }
     navigate: (to: string, options: NavigateOptions) => Promise<void>
   },
 ) {
   let redirecting = false
   return {
     onUnauthenticated: () => {
-      if (redirecting || router.state.location.pathname === '/login') return
+      if (
+        redirecting ||
+        router.state.location.pathname === '/login' ||
+        router.state.navigation.location?.pathname === '/login'
+      )
+        return
       redirecting = true
       void Promise.resolve(
         expireSession(client, router.state.location, (to, options) =>

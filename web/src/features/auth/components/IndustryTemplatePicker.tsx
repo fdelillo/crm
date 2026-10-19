@@ -1,3 +1,4 @@
+import type { Ref } from 'react'
 import { Button } from '@/components/ui/button'
 import { FieldDescription, FieldError } from '@/components/ui/field'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
@@ -13,6 +14,8 @@ export interface IndustryTemplatePickerProps {
   error?: string
   name: string
   disabled?: boolean
+  ref?: Ref<HTMLButtonElement>
+  labelledBy?: string
 }
 
 export function IndustryTemplatePicker({
@@ -24,24 +27,40 @@ export function IndustryTemplatePicker({
   error,
   name,
   disabled = false,
+  ref,
+  labelledBy,
 }: IndustryTemplatePickerProps) {
   const errorId = error ? `${name}-error` : undefined
+  const helpId = `${name}-help`
+  const describedBy = [helpId, errorId].filter(Boolean).join(' ')
+  const hasSelectedTemplate = templates?.some(
+    (template) => template.code === value,
+  )
+  const help = (
+    <FieldDescription id={helpId}>
+      Precargamos la configuración típica de tu rubro.
+    </FieldDescription>
+  )
   if (status === 'pending') {
     return (
-      <div
-        role="status"
-        aria-label="Cargando rubros"
-        aria-busy="true"
-        className="space-y-3"
-      >
-        <Skeleton className="h-11 w-full" />
-        <Skeleton className="h-11 w-full" />
+      <div className="space-y-2">
+        {help}
+        <div
+          role="status"
+          aria-label="Cargando rubros"
+          aria-busy="true"
+          className="space-y-3"
+        >
+          <Skeleton className="h-11 w-full" />
+          <Skeleton className="h-11 w-full" />
+        </div>
       </div>
     )
   }
   if (status === 'error' || !templates?.length) {
     return (
       <div className="space-y-2">
+        {help}
         <p>No pudimos cargar los rubros.</p>
         <Button
           type="button"
@@ -57,51 +76,40 @@ export function IndustryTemplatePicker({
   }
   return (
     <div className="space-y-2">
+      {help}
+      {/* Radix handles radio arrow keys; E2E arrow-key coverage belongs to T-F702. */}
       <RadioGroup
-        aria-label="Rubro de tu empresa"
+        aria-labelledby={labelledBy}
+        aria-label={labelledBy ? undefined : 'Rubro de tu empresa'}
         orientation="vertical"
         aria-invalid={Boolean(error)}
-        aria-describedby={errorId}
+        aria-describedby={describedBy}
         name={name}
         disabled={disabled}
-        value={value}
+        value={value ?? ''}
         onValueChange={onChange}
-        onKeyDown={(event) => {
-          if (disabled) return
-          if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
-          const currentCode = (event.target as HTMLElement)
-            .closest('[role="radio"]')
-            ?.getAttribute('value')
-          const currentIndex = templates.findIndex(
-            (template) => template.code === currentCode,
-          )
-          if (currentIndex < 0) return
-          const delta = event.key === 'ArrowDown' ? 1 : -1
-          const nextIndex =
-            (currentIndex + delta + templates.length) % templates.length
-          const nextTemplate = templates[nextIndex]
-          if (nextTemplate) onChange(nextTemplate.code)
-        }}
         className="gap-2"
       >
         {templates.map((template, index) => {
           const itemId = `${name}-${index}`
+          const receivesRef =
+            template.code === value || (!hasSelectedTemplate && index === 0)
           return (
-            <div
+            <label
               key={template.code}
-              className="flex min-h-11 items-center gap-3 rounded-md border px-3 py-2"
+              htmlFor={itemId}
+              className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border px-3 py-2"
             >
-              <RadioGroupItem id={itemId} value={template.code} />
-              <label htmlFor={itemId} className="flex-1 cursor-pointer">
-                {template.name}
-              </label>
-            </div>
+              <RadioGroupItem
+                ref={receivesRef ? ref : undefined}
+                id={itemId}
+                value={template.code}
+              />
+              <span className="flex-1">{template.name}</span>
+            </label>
           )
         })}
       </RadioGroup>
-      <FieldDescription>
-        Precargamos la configuración típica de tu rubro.
-      </FieldDescription>
       {error && <FieldError id={errorId}>{error}</FieldError>}
     </div>
   )

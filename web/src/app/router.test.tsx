@@ -25,7 +25,7 @@ describe('application routes', () => {
     )
   }
   it.each([
-    ['/login', 'Ingresar'],
+    ['/login', 'Ingresá a tu cuenta'],
     ['/signup', 'Creá tu cuenta'],
     ['/forgot-password', 'Olvidé mi contraseña'],
     ['/reset-password#token=example', 'Restablecer contraseña'],
