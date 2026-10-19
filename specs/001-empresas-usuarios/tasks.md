@@ -3809,7 +3809,7 @@ no vuelve a consultar datos privados al regresar; LockedNotice anuncia y recibe 
 foco a contraseña; se cubren P-F18/DD-F32, caché/historial, cruces de permiso, accesibilidad y
 doble envío en Signup/Login, CurrencyPicker, errores offline/vacíos y los cuatro umbrales P-F19.
 revisión 2 (Claude Code): merge OK con menores; 1 importante y 2 menores de tests, corregidos en 66b5d89 y be2cfc9.
-revisión: pendiente (Claude Code).
+verificación final (Claude Code): merge OK en 24bd60b; PR #38 mergeado en b1d4678.
 
 ---
 
