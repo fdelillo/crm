@@ -14,17 +14,29 @@ describe('ResetPasswordPage', () => {
     const request = vi.fn(async ({ request: req }: { request: Request }) => {
       expect(new URL(req.url).hash).toBe('')
       expect(new URL(req.url).search).toBe('')
-      expect(await req.json()).toEqual({ token: 'abc-_123', password: 'nueva-clave-segura' })
+      expect(await req.json()).toEqual({
+        token: 'abc-_123',
+        password: 'nueva-clave-segura',
+      })
       return new HttpResponse(null, { status: 204 })
     })
     server.use(http.post(`${base}/auth/password-reset/confirm`, request))
-    const { router, queryClient } = renderApp(['/reset-password#token=abc-_123'], {
-      routes: [{ path: '/reset-password', Component: ResetPasswordPage }],
-    })
+    const { router, queryClient } = renderApp(
+      ['/reset-password#token=abc-_123'],
+      {
+        routes: [{ path: '/reset-password', Component: ResetPasswordPage }],
+      },
+    )
     queryClient.setQueryData(['stale-session'], 'secret')
     const user = userEvent.setup()
-    await user.type(await screen.findByLabelText('Nueva contraseña'), 'nueva-clave-segura')
-    expect(screen.getByLabelText('Nueva contraseña')).toHaveAttribute('autocomplete', 'new-password')
+    await user.type(
+      await screen.findByLabelText('Nueva contraseña'),
+      'nueva-clave-segura',
+    )
+    expect(screen.getByLabelText('Nueva contraseña')).toHaveAttribute(
+      'autocomplete',
+      'new-password',
+    )
     await user.click(screen.getByRole('button', { name: 'Guardar contraseña' }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
     expect(router.state.location.search).toBe('?reason=password_changed')
@@ -36,25 +48,62 @@ describe('ResetPasswordPage', () => {
   it('shows the incomplete-link exit and validates short passwords without a request', async () => {
     const request = vi.fn()
     server.use(http.post(`${base}/auth/password-reset/confirm`, request))
-    renderApp(['/reset-password'], { routes: [{ path: '/reset-password', Component: ResetPasswordPage }] })
+    renderApp(['/reset-password'], {
+      routes: [{ path: '/reset-password', Component: ResetPasswordPage }],
+    })
     expect(screen.getByText('Este enlace está incompleto.')).toBeVisible()
-    expect(screen.getByRole('link', { name: 'Pedir un enlace nuevo' })).toHaveAttribute('href', '/forgot-password')
-    renderApp(['/reset-password#token=abc-_123'], { routes: [{ path: '/reset-password', Component: ResetPasswordPage }] })
+    expect(
+      screen.getByRole('link', { name: 'Pedir un enlace nuevo' }),
+    ).toHaveAttribute('href', '/forgot-password')
+    renderApp(['/reset-password#token=abc-_123'], {
+      routes: [{ path: '/reset-password', Component: ResetPasswordPage }],
+    })
     const user = userEvent.setup()
-    await user.type(await screen.findByLabelText('Nueva contraseña'), 'shortpass')
+    await user.type(
+      await screen.findByLabelText('Nueva contraseña'),
+      'shortpass',
+    )
     await user.click(screen.getByRole('button', { name: 'Guardar contraseña' }))
-    expect(await screen.findByText('La contraseña tiene que tener al menos 10 caracteres.')).toBeVisible()
+    expect(
+      await screen.findByText(
+        'La contraseña tiene que tener al menos 10 caracteres.',
+      ),
+    ).toBeVisible()
     expect(request).not.toHaveBeenCalled()
   })
 
   it('shows a generic invalid-token explanation and a fresh-link action', async () => {
-    server.use(http.post(`${base}/auth/password-reset/confirm`, () => HttpResponse.json({ type: '/problems/token_invalid', title: 'bad', status: 400, code: 'token_invalid' }, { status: 400, headers: { 'Content-Type': 'application/problem+json' } })))
-    renderApp(['/reset-password#token=abc-_123'], { routes: [{ path: '/reset-password', Component: ResetPasswordPage }] })
+    server.use(
+      http.post(`${base}/auth/password-reset/confirm`, () =>
+        HttpResponse.json(
+          {
+            type: '/problems/token_invalid',
+            title: 'bad',
+            status: 400,
+            code: 'token_invalid',
+          },
+          {
+            status: 400,
+            headers: { 'Content-Type': 'application/problem+json' },
+          },
+        ),
+      ),
+    )
+    renderApp(['/reset-password#token=abc-_123'], {
+      routes: [{ path: '/reset-password', Component: ResetPasswordPage }],
+    })
     const user = userEvent.setup()
-    await user.type(await screen.findByLabelText('Nueva contraseña'), 'nueva-clave-segura')
+    await user.type(
+      await screen.findByLabelText('Nueva contraseña'),
+      'nueva-clave-segura',
+    )
     await user.click(screen.getByRole('button', { name: 'Guardar contraseña' }))
     expect(await screen.findByText('Este enlace ya no sirve.')).toBeVisible()
-    expect(screen.getByText('Vence a la hora o ya se usó. Pedí uno nuevo.')).toBeVisible()
-    await user.click(screen.getByRole('link', { name: 'Pedir un enlace nuevo' }))
+    expect(
+      screen.getByText('Vence a la hora o ya se usó. Pedí uno nuevo.'),
+    ).toBeVisible()
+    await user.click(
+      screen.getByRole('link', { name: 'Pedir un enlace nuevo' }),
+    )
   })
 })

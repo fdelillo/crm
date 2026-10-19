@@ -1,7 +1,11 @@
 import { StrictMode, type ReactNode } from 'react'
 import type { QueryClient } from '@tanstack/react-query'
 import { render } from '@testing-library/react'
-import { createMemoryRouter, type InitialEntry, type RouteObject } from 'react-router'
+import {
+  createMemoryRouter,
+  type InitialEntry,
+  type RouteObject,
+} from 'react-router'
 import { createSessionErrorHandlers } from '@/app/sessionErrors'
 import { Application } from '@/app/application'
 import { appRoutes } from '@/app/router'
@@ -16,7 +20,8 @@ export function renderApp(
     routes?: RouteObject[]
   } = {},
 ) {
-  const routes = options.routes ?? (options.protectedPage ? structuredRoutes() : appRoutes)
+  const routes =
+    options.routes ?? (options.protectedPage ? structuredRoutes() : appRoutes)
   function structuredRoutes(): typeof appRoutes {
     const copy = (routes: typeof appRoutes): typeof appRoutes =>
       routes.map((route) => {

@@ -29,19 +29,36 @@ export function ResetPasswordPage() {
     reValidateMode: 'onChange',
     defaultValues: { password: '' },
   })
-  const { register, handleSubmit, setFocus, clearErrors, setError, formState: { errors, isSubmitting } } = form
+  const {
+    register,
+    handleSubmit,
+    setFocus,
+    clearErrors,
+    setError,
+    formState: { errors, isSubmitting },
+  } = form
 
   async function onSubmit(values: ResetPasswordValues) {
     if (!token || submitLock.current) return
     submitLock.current = true
     setSubmitError(null)
     try {
-      await confirmReset.mutateAsync(passwordResetConfirmSchema.parse({ ...values, token }))
+      await confirmReset.mutateAsync(
+        passwordResetConfirmSchema.parse({ ...values, token }),
+      )
     } catch (error) {
       if (isApiError(error) && error.code === 'validation_failed') {
-        const field = error.fieldErrors.find((item) => item.field === 'password')
+        const field = error.fieldErrors.find(
+          (item) => item.field === 'password',
+        )
         if (field) {
-          setError('password', { type: 'server', message: fieldErrorText('password', { type: 'server', message: field.code }) })
+          setError('password', {
+            type: 'server',
+            message: fieldErrorText('password', {
+              type: 'server',
+              message: field.code,
+            }),
+          })
           setFocus('password')
           return
         }
@@ -52,28 +69,99 @@ export function ResetPasswordPage() {
     }
   }
 
-  const error = submitError ? messageForError(submitError, 'resetConfirm') : null
+  const error = submitError
+    ? messageForError(submitError, 'resetConfirm')
+    : null
+  function submitForm(event: React.FormEvent<HTMLFormElement>) {
+    void handleSubmit(onSubmit)(event)
+  }
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-xl flex-col justify-center px-4 py-8 sm:px-6">
-      <div className="mb-6"><AppBrand name="CRM" logoSrc={null} /></div>
+      <div className="mb-6">
+        <AppBrand name="CRM" logoSrc={null} />
+      </div>
       <section className="space-y-6 rounded-xl border bg-card p-5 shadow-sm sm:p-8">
         <PageHeader title="Creá una contraseña nueva" />
         {!token ? (
           <>
-            <FormAlert variant="warning" title="Este enlace está incompleto." description="Abrilo de nuevo desde el email o pedí uno nuevo." />
-            <Link className="inline-flex min-h-11 items-center text-primary underline" to="/forgot-password">Pedir un enlace nuevo</Link>
+            <FormAlert
+              variant="warning"
+              title="Este enlace está incompleto."
+              description="Abrilo de nuevo desde el email o pedí uno nuevo."
+            />
+            <Link
+              className="inline-flex min-h-11 items-center text-primary underline"
+              to="/forgot-password"
+            >
+              Pedir un enlace nuevo
+            </Link>
           </>
         ) : (
-          <form noValidate className="space-y-5" onSubmit={handleSubmit(onSubmit)}>
+          <form noValidate className="space-y-5" onSubmit={submitForm}>
             <Field data-invalid={Boolean(errors.password)}>
               <FieldLabel htmlFor="new-password">Nueva contraseña</FieldLabel>
-              <PasswordInput id="new-password" className="h-11" autoComplete="new-password" readOnly={confirmReset.isPending} aria-invalid={Boolean(errors.password)} aria-describedby={errors.password ? 'new-password-error' : undefined} {...register('password', { onChange: () => { clearErrors('password'); setSubmitError(null) } })} />
-              {errors.password ? <FieldError id="new-password-error">{fieldErrorText('password', errors.password)}</FieldError> : <p className="text-sm text-muted-foreground">Mínimo 10 caracteres.</p>}
+              <PasswordInput
+                id="new-password"
+                className="h-11"
+                autoComplete="new-password"
+                readOnly={confirmReset.isPending}
+                aria-invalid={Boolean(errors.password)}
+                aria-describedby={
+                  errors.password ? 'new-password-error' : undefined
+                }
+                {...register('password', {
+                  onChange: () => {
+                    clearErrors('password')
+                    setSubmitError(null)
+                  },
+                })}
+              />
+              {errors.password ? (
+                <FieldError id="new-password-error">
+                  {fieldErrorText('password', errors.password)}
+                </FieldError>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Mínimo 10 caracteres.
+                </p>
+              )}
             </Field>
-            <p>Al guardarla se cierran tus sesiones abiertas en otros dispositivos.</p>
-            {error && <FormAlert variant="error" title={error.title} description={error.description} requestId={error.requestId} action={error.retryable ? { label: 'Reintentar', onClick: () => void handleSubmit(onSubmit)() } : undefined} />}
-            {isApiError(submitError) && submitError.code === 'token_invalid' && <Link className="inline-flex min-h-11 items-center text-primary underline" to="/forgot-password">Pedir un enlace nuevo</Link>}
-            <SubmitButton pending={confirmReset.isPending || isSubmitting} pendingLabel="Guardando…" className="h-11 w-full">Guardar contraseña</SubmitButton>
+            <p>
+              Al guardarla se cierran tus sesiones abiertas en otros
+              dispositivos.
+            </p>
+            {error && (
+              <FormAlert
+                variant="error"
+                title={error.title}
+                description={error.description}
+                requestId={error.requestId}
+                action={
+                  error.retryable
+                    ? {
+                        label: 'Reintentar',
+                        onClick: () => void handleSubmit(onSubmit)(),
+                      }
+                    : undefined
+                }
+              />
+            )}
+            {isApiError(submitError) &&
+              submitError.code === 'token_invalid' && (
+                <Link
+                  className="inline-flex min-h-11 items-center text-primary underline"
+                  to="/forgot-password"
+                >
+                  Pedir un enlace nuevo
+                </Link>
+              )}
+            <SubmitButton
+              pending={confirmReset.isPending || isSubmitting}
+              pendingLabel="Guardando…"
+              className="h-11 w-full"
+            >
+              Guardar contraseña
+            </SubmitButton>
           </form>
         )}
       </section>

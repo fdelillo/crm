@@ -25,7 +25,9 @@ export function PageHeader({
         </Link>
       )}
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <h1 ref={titleRef} tabIndex={-1}>{title}</h1>
+        <h1 ref={titleRef} tabIndex={-1}>
+          {title}
+        </h1>
         {actions}
       </div>
       {description && <p className="text-muted-foreground">{description}</p>}

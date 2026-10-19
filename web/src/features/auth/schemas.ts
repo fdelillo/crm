@@ -50,7 +50,13 @@ export const loginSchema = z.object({
 export type LoginFormValues = z.input<typeof loginSchema>
 
 export const passwordResetSchema = z.object({
-  email: z.string().trim().toLowerCase().min(1, 'required').max(254, 'too_long').pipe(z.email({ error: 'invalid_format' })),
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(1, 'required')
+    .max(254, 'too_long')
+    .pipe(z.email({ error: 'invalid_format' })),
 }) satisfies z.ZodType<PasswordResetRequest>
 
 export type PasswordResetFormValues = z.input<typeof passwordResetSchema>

@@ -21,7 +21,9 @@ describe('useLinkToken', () => {
     const { router } = renderApp(['/reset-password#token=abc-_123'], {
       routes: [{ path: '/reset-password', Component: LinkTokenProbe }],
     })
-    expect(await screen.findByLabelText('Token del enlace')).toHaveTextContent('abc-_123|||abc-_123')
+    expect(await screen.findByLabelText('Token del enlace')).toHaveTextContent(
+      'abc-_123|||abc-_123',
+    )
     await waitFor(() => expect(router.state.location.hash).toBe(''))
     expect(router.state.location.search).toBe('')
     expect(router.state.location.state).toEqual({ linkToken: 'abc-_123' })
@@ -30,14 +32,22 @@ describe('useLinkToken', () => {
       replace: true,
       state: router.state.location.state,
     })
-    expect(await screen.findByLabelText('Token del enlace')).toHaveTextContent('abc-_123')
+    expect(await screen.findByLabelText('Token del enlace')).toHaveTextContent(
+      'abc-_123',
+    )
     consoleSpy.mockRestore()
   })
 
-  it.each(['/reset-password', '/reset-password#token=', '/reset-password#foo=bar'])(
-    'returns no token for %s', async (entry) => {
-      renderApp([entry], { routes: [{ path: '/reset-password', Component: LinkTokenProbe }] })
-      expect(await screen.findByLabelText('Token del enlace')).toHaveTextContent('sin token')
-    },
-  )
+  it.each([
+    '/reset-password',
+    '/reset-password#token=',
+    '/reset-password#foo=bar',
+  ])('returns no token for %s', async (entry) => {
+    renderApp([entry], {
+      routes: [{ path: '/reset-password', Component: LinkTokenProbe }],
+    })
+    expect(await screen.findByLabelText('Token del enlace')).toHaveTextContent(
+      'sin token',
+    )
+  })
 })

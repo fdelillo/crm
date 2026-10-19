@@ -6,7 +6,13 @@ import { isApiError, unwrap, type ApiError } from '@/api/errors'
 import { queryKeys } from '@/api/queryKeys'
 import { messageForError } from '@/api/errorMessages'
 export { useIndustryTemplates } from '@/api/industryTemplates'
-import type { LoginRequest, PasswordResetConfirmRequest, PasswordResetRequest, SignupRequest, TokenRequest } from '@/api/types'
+import type {
+  LoginRequest,
+  PasswordResetConfirmRequest,
+  PasswordResetRequest,
+  SignupRequest,
+  TokenRequest,
+} from '@/api/types'
 import { safeNextPath } from '@/lib/safeNextPath'
 
 export function useSignup() {
@@ -97,7 +103,10 @@ export function useConfirmEmailVerification() {
       unwrap<void>(await api.POST('/auth/email-verification/confirm', { body }))
     },
     onSuccess: async () => {
-      await client.invalidateQueries({ queryKey: queryKeys.session, exact: true })
+      await client.invalidateQueries({
+        queryKey: queryKeys.session,
+        exact: true,
+      })
     },
   })
 }

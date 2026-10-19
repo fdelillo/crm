@@ -8,7 +8,11 @@ import { AppBrand } from '@/components/AppBrand'
 import { Button } from '@/components/ui/button'
 import { useLogout } from '@/features/auth/api'
 import { messageForError } from '@/api/errorMessages'
-import { EmailVerificationBanner, useEmailVerificationDismissed, type EmailVerificationNoticeStatus } from '@/components/EmailVerificationBanner'
+import {
+  EmailVerificationBanner,
+  useEmailVerificationDismissed,
+  type EmailVerificationNoticeStatus,
+} from '@/components/EmailVerificationBanner'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -104,7 +108,12 @@ function AuthenticatedShell({ session }: { session: SessionInfo }) {
           </DropdownMenu>
         </div>
       </div>
-      {!session.user.email_verified && <SessionVerificationBanner key={session.user.email} email={session.user.email} />}
+      {!session.user.email_verified && (
+        <SessionVerificationBanner
+          key={session.user.email}
+          email={session.user.email}
+        />
+      )}
       <main
         id="main"
         tabIndex={-1}
@@ -121,8 +130,13 @@ function SessionVerificationBanner({ email }: { email: string }) {
   const [dismissed, dismiss] = useEmailVerificationDismissed(email)
   const [outcome, setOutcome] = useState<'sent' | 'unknown' | null>(null)
   const [error, setError] = useState<unknown>(null)
-  const status: EmailVerificationNoticeStatus = resend.isPending ? 'pending' : outcome ?? (error ? 'error' : 'idle')
-  const errorMessage = error ? messageForError(error, 'resendVerification').description ?? messageForError(error, 'resendVerification').title : undefined
+  const status: EmailVerificationNoticeStatus = resend.isPending
+    ? 'pending'
+    : (outcome ?? (error ? 'error' : 'idle'))
+  const errorMessage = error
+    ? (messageForError(error, 'resendVerification').description ??
+      messageForError(error, 'resendVerification').title)
+    : undefined
 
   async function sendAgain() {
     setOutcome(null)
@@ -136,5 +150,13 @@ function SessionVerificationBanner({ email }: { email: string }) {
   }
 
   if (dismissed) return null
-  return <EmailVerificationBanner email={email} status={status} errorMessage={errorMessage} onResend={() => void sendAgain()} onDismiss={dismiss} />
+  return (
+    <EmailVerificationBanner
+      email={email}
+      status={status}
+      errorMessage={errorMessage}
+      onResend={() => void sendAgain()}
+      onDismiss={dismiss}
+    />
+  )
 }
