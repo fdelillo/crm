@@ -1,7 +1,7 @@
 # UI (frontend): Empresas, usuarios y roles
 
 **Spec**: [`spec.md`](spec.md) · **Rama**: `001-empresas-usuarios` · **Fecha**: 2026-09-29
-**Autor**: `frontend-architect` · **Estado**: Revisión 3 aprobada por el usuario el 2026-10-12; Revisión 4 aprobada por el usuario el 2026-10-13 (P-F10: sí; P-F11: no); enmienda H-16 a la Revisión 4 aprobada por el usuario el 2026-10-13; enmienda DD-F31 *Accepted*, aprobada por el usuario el 2026-10-14; enmienda de versiones del 2026-10-15: React Router 8 por decisión del usuario, regla de versiones y excepción de TypeScript confirmadas por el usuario el 2026-10-15 (P-F12); enmienda de F0 del 2026-10-15: P-F13, P-F14 y P-F15 aprobadas por el usuario el 2026-10-16; enmienda de F1 del 2026-10-16: P-F16, P-F17 y P-F18 aprobadas por el usuario el 2026-10-16; enmienda de F3 del 2026-10-17: P-F19 aprobada por el usuario el 2026-10-17
+**Autor**: `frontend-architect` · **Estado**: Revisión 3 aprobada por el usuario el 2026-10-12; Revisión 4 aprobada por el usuario el 2026-10-13 (P-F10: sí; P-F11: no); enmienda H-16 a la Revisión 4 aprobada por el usuario el 2026-10-13; enmienda DD-F31 *Accepted*, aprobada por el usuario el 2026-10-14; enmienda de versiones del 2026-10-15: React Router 8 por decisión del usuario, regla de versiones y excepción de TypeScript confirmadas por el usuario el 2026-10-15 (P-F12); enmienda de F0 del 2026-10-15: P-F13, P-F14 y P-F15 aprobadas por el usuario el 2026-10-16; enmienda de F1 del 2026-10-16: P-F16, P-F17 y P-F18 aprobadas por el usuario el 2026-10-16; enmienda de F3 del 2026-10-17: P-F19 aprobada por el usuario el 2026-10-17; enmienda de F4 del 2026-10-20: P-F20 aprobada por el usuario el 2026-10-20
 **Contrato consumido**: [`contracts/openapi.yaml`](contracts/openapi.yaml) **v0.5.0** (**canónico**; el diseño original se hizo contra v0.3.1; la Revisión 3, contra v0.4.3)
 **Revisión 1 (2026-09-29)**: respuestas del usuario a P-F1 a P-F5 (§26) y resolución de los
 hallazgos H-1 a H-9 por el backend (`plan.md` §18, DD-22 a DD-30, §10.7, contrato v0.3.0). Cambios:
@@ -131,6 +131,22 @@ regla de DD-F25, la misma de `rate_limited` (menos de 60 s, "unos segundos"; 60 
 o "unos minutos". (4) **Redacción de una fila de T-F101** (hora estable de `login_locked`, P-F18).
 El código de F1 a F3 ya cumple los cuatro puntos. Cambian §9.1, §12.2, §15.4, §22 y §26. Tareas:
 cambian T-F101, T-F107, T-F203 y T-F205. Sistema visual sin cambios.
+
+**Enmienda de F4, P-F20 (2026-10-20; aprobada por el usuario el 2026-10-20)**: tres puntos de la
+revisión 1 del PR #39. (1) **Marca del aviso C-01**: `crm.verifyBanner.dismissed` = `'true'`, clave
+fija y sin el email (el código guardaba `email-verification-dismissed:{email}`, que sobrevivía al
+logout). Vive en `lib/verifyBannerDismissal.ts` y la borran los mismos puntos que vacían la caché
+por cambio de sesión (INV-F03), así otra cuenta en la misma pestaña ve su aviso. (2) **Props de
+C-01 y del aviso W**: `resendStatus` y `errorMessage`, que es el objeto de
+`messageForError(error, 'resendVerification')` tal cual (título obligatorio, descripción y, en W,
+`retryable`), nunca un texto suelto: con uno solo se perdía el título del `429` (DD-F29). (3)
+**INV-F19**: todo mensaje con anuncio cortés que aparece sin mover el foco se escribe en una
+`LiveRegion` montada y vacía antes que su texto; los `role="alert"` pueden nacer con su texto.
+Corrige C-01, S-05 y C-02, y fija W y "Preparando la imagen…". T-F705 suma NVDA, porque VoiceOver
+anuncia igual las regiones que nacen con texto y no detecta el defecto. Cambian §8, §9.2, §10.1,
+§13.5, §13.9, §13.11, §13.13, §15.1, §15.4, §17, §18, §22, §26 y §29. Tareas: cambian T-F106,
+T-F404, T-F405, T-F406, T-F502, T-F505, T-F506, T-F603, T-F703 y T-F705. Sistema visual sin
+cambios.
 
 | Archivo | Contenido |
 |---|---|
@@ -412,7 +428,7 @@ después de 24 h), se trata igual que el `401` global (§12.4): caché vacía y 
 | NFR-F06 | Accesibilidad | WCAG 2.2 AA | axe en E2E por pantalla + checklist manual (T-F702, T-F705) |
 | NFR-F07 | Objetivos táctiles | ≥ 44×44 CSS px, separados ≥ 8 px (WCAG 2.5.8 pide 24) | Revisión visual + tokens |
 | NFR-F08 | Texto | Cuerpo 16 px; inputs ≥ 16 px (evita el zoom automático de iOS); zoom del navegador nunca bloqueado | Tokens + E2E |
-| NFR-F09 | Almacenamiento local | Ningún dato de negocio ni token en `localStorage`, `IndexedDB` ni Cache Storage. `sessionStorage` solo para marcas de UI (aviso ocultado, recarga por versión nueva) | Revisión + test de SW (T-F703) |
+| NFR-F09 | Almacenamiento local | Ningún dato de negocio ni token en `localStorage`, `IndexedDB` ni Cache Storage. `sessionStorage` solo para marcas de UI (aviso ocultado, recarga por versión nueva), con clave fija y valor booleano: ningún email ni otro dato de la sesión en la clave o en el valor (P-F20) | Revisión + test de SW (T-F703) |
 | NFR-F10 | Seguridad del documento | CSP con `script-src 'self'` sin scripts inline (ADR-019, plan §10.7) | E2E sin violaciones de CSP (T-F702) |
 | NFR-F11 | Instalable | Chrome Android: "Instalar app"; iOS: "Agregar a inicio" con ícono y nombre "CRM" (provisorios, P-F1) | T-F703 + prueba manual (necesita un origen HTTPS accesible desde el teléfono, H-12) |
 | NFR-F12 | SC-001 | Registro en una pantalla, 6 campos, 1 request | E2E cronometrado (< 10 s automatizado) + prueba con un usuario real (< 3 min) |
@@ -493,7 +509,7 @@ Propiedades que se rompen **sin que falle la compilación**. Cada una tiene un t
 |---|---|---|
 | INV-F01 | Ningún dato del servidor se copia a un store, Context, `useState` ni almacenamiento del navegador: se lee de la caché de TanStack Query. (Los formularios copian valores **iniciales** a React Hook Form; eso es estado de edición, no una segunda fuente de verdad.) | Revisión + T-F104 |
 | INV-F02 | Todo `401` con `code = unauthenticated` en cualquier query o mutación dispara el mismo manejador global; `401 invalid_credentials` (login) **nunca** lo dispara. | T-F104, T-F301 |
-| INV-F03 | Cerrar sesión, perderla (401) o iniciar una sesión nueva (login, registro, aceptar invitación) ejecuta `queryClient.clear()` **antes** de mostrar la pantalla siguiente. | T-F104, T-F303, T-F505 |
+| INV-F03 | Cerrar sesión, perderla (401) o iniciar una sesión nueva (login, registro, aceptar invitación) ejecuta `queryClient.clear()` **antes** de mostrar la pantalla siguiente y, en el mismo punto, borra la marca del aviso C-01 (`clearVerifyBannerDismissed`, §10.1; enmienda de F4, P-F20): lo ocultado en una sesión no pasa a la siguiente. | T-F104, T-F303, T-F405, T-F505 |
 | INV-F04 | Toda mutación actualiza o invalida las queries que afecta (tabla §10.3). Ninguna pantalla muestra un dato que la mutación dejó viejo. | Tests de cada pantalla |
 | INV-F05 | Los tipos de requests y responses salen de `api/generated/` (derivados del contrato). No hay interfaces de API escritas a mano. El mapa de mensajes es `Record<ErrorCode, …>`: si el contrato agrega un `code`, **no compila** hasta tener mensaje. | `npm run typecheck`, T-F004, T-F101 |
 | INV-F06 | Ocultar una opción por permiso es UX: ninguna regla de autorización vive solo en el cliente; toda acción la valida el servidor y la UI maneja su `403`. | T-F104, T-F502 |
@@ -509,6 +525,7 @@ Propiedades que se rompen **sin que falle la compilación**. Cada una tiene un t
 | INV-F16 | *(Revisión 4)* El manejador global de `403` (§12.4) dispara **solo** con `code = forbidden`. El `403 email_not_verified` (DD-46) lo maneja la pantalla que invitó: nunca muestra "Sin permiso" ni "No tenés permiso para hacer esto.". Se rompe sin que falle la compilación si el manejador pasa a mirar `status === 403`. | T-F104, T-F504 |
 | INV-F17 | *(Enmienda DD-F31)* Ningún texto dice que se reenvió la confirmación sin una lectura de `/me` posterior al `202` que traiga `email_verified = false`. Se rompe sin que falle la compilación si el hook vuelve a resolver con el `202` solo o lee `/me` de la caché. | T-F404, T-F405, T-F502 |
 | INV-F18 | *(Enmienda de F0, DD-F32)* Ninguna navegación de sesión vencida (§12.4, §6.4) queda frenada por un aviso de cambios sin guardar. La URL sale siempre de `sessionExpiredLoginPath`, y todo bloqueo de salida usa `useUnsavedChangesGuard`: `useBlocker` no se importa en ningún otro archivo (`no-restricted-imports`). Se rompe sin que falle la compilación si un formulario usa `useBlocker` directo o si el manejador arma la URL a mano. | T-F103, T-F602, lint (T-F605) |
+| INV-F19 | *(Enmienda de F4, P-F20)* Todo mensaje con anuncio cortés (`role="status"` o `aria-live="polite"`) que aparece sin mover el foco se escribe en una región que ya estaba en el DOM, vacía, desde que se montó su contenedor: cambia el contenido, nunca el nodo. La región es `LiveRegion` (§15.1), una por lugar donde aparece el mensaje, y no contiene otra región viva; mientras la acción está pendiente se vacía, así un resultado igual al anterior se vuelve a anunciar. Excepciones: un error con `role="alert"` (`FormAlert` de error, `FieldError`, `LockedNotice`) puede montarse con su texto; un mensaje presente al entrar a la pantalla no se anuncia (se lee después del `<h1>`, INV-F10); los toasts los anuncia `sonner`, cuyo contenedor está siempre montado. Se rompe sin que falle la compilación si un componente monta `{texto && <p aria-live="polite">…}` o un `FormAlert` de éxito junto con su texto. | T-F106, T-F404, T-F405, T-F502, T-F603 (la región existe vacía antes del mensaje y es el mismo nodo después) + T-F705 (lector de pantalla, con NVDA) |
 
 ---
 
@@ -533,7 +550,7 @@ Propiedades que se rompen **sin que falle la compilación**. Cada una tiene un t
 | Preparación del logo en curso (`processing`), error del cliente | Client local | `useState` de `CompanyPage` | El archivo preparado no se guarda: se sube y se descarta |
 | Mostrar/ocultar contraseña | Client local | `PasswordInput` | |
 | Hay conexión | Client global (del navegador) | `useOnlineStatus()` sobre `online`/`offline` | No es un store: se lee del navegador |
-| Aviso de verificación ocultado | Client local persistido | `sessionStorage` (`crm.verifyBanner.dismissed`) | Solo una marca booleana |
+| Aviso de verificación ocultado | Client local persistido | `sessionStorage` (`crm.verifyBanner.dismissed` = `'true'`; `lib/verifyBannerDismissal.ts`) | Solo una marca booleana: clave fija, sin el email ni otro dato de la sesión. Vale para la sesión de la pestaña: la borran los puntos de INV-F03 (cerrar sesión, `401`, login, registro, restablecer contraseña, aceptar invitación), así otra cuenta en la misma pestaña ve su aviso. Si otra pestaña cambia de cuenta sin pasar por `null`, la marca queda (sin coordinación entre pestañas, §17) (enmienda de F4, P-F20) |
 | Toasts | Client global | `sonner` (`<Toaster/>` en `RootLayout`) | Librería traída por shadcn |
 
 **No hay store global** (ni Context propio de datos): la única información que varias ramas
@@ -1169,6 +1186,14 @@ persona.
 | Éxito | `204` → `invalidateQueries(session)`; con sesión "Ir al inicio", sin sesión "Ingresar". No dice "ya podés invitar", porque el `204` no dice de quién era el token: el enlace puede ser de otra cuenta que la de la sesión abierta. El aviso C-01 y BR-F14 se actualizan solos con `/me` |
 | Sin permiso / Sesión vencida | N/A (funciona con o sin sesión) |
 
+Anuncios (INV-F19; enmienda de F4, P-F20): la pantalla monta desde el inicio dos `LiveRegion`
+vacías. Debajo del título, la del resultado de confirmar ("¡Listo! Tu email quedó confirmado.");
+al pie, la del resultado del reenvío ("Listo, te lo reenviamos…" o "Si todavía no lo
+confirmaste…"). Las dos llevan un `FormAlert` con `announce={false}`. Cada error va una sola vez,
+en un `FormAlert` de error (`role="alert"`). "Tu email ya está confirmado. No hace falta otro
+enlace." no lleva región: al entrar se lee después del `<h1>`, y tras el reenvío lo anuncia el
+toast (DD-F31).
+
 ### 13.6 S-06 Aceptar invitación (`/accept-invitation#token=`) · US-3.2, DD-1, DD-4
 
 ```text
@@ -1317,10 +1342,10 @@ aviso (`aria-describedby`):
 └──────────────────────────────────┘
 ```
 
-W: `VerifyToInviteNotice` (§15.1), un `FormAlert` de advertencia (`role="status"`). Título:
+W: `VerifyToInviteNotice` (§15.1), un `FormAlert` de advertencia sin `role` propio (`announce={false}`, P-F20). Título:
 "Confirmá tu email para invitar a tu equipo."; descripción: "Te mandamos un enlace a {email}. Si no
 lo encontrás, pedí uno nuevo."; acción: "Reenviar email de confirmación"
-(`POST /auth/email-verification/resend`). El resultado se anuncia en el mismo aviso:
+(`POST /auth/email-verification/resend`). El resultado se escribe en la `LiveRegion` del aviso, montada vacía con él (INV-F19), siempre con título y descripción juntos (DD-F29; P-F20):
 - `202` y `/me` releído con `email_verified = false` → "Listo, te lo reenviamos. Revisá también el
   correo no deseado." (enmienda H-16: un `202` siempre envía salvo con el email ya confirmado;
   DD-F30 reemplazada);
@@ -1470,7 +1495,7 @@ Para un invitado, {nombre} es su email (`name` es `null` hasta que acepta).
 | Vacío | Campos opcionales vacíos con su ayuda; logo con iniciales y "Todavía no subiste un logo" |
 | Error de carga | `ErrorState` "No pudimos cargar los datos de tu empresa." + "Reintentar" |
 | Error al guardar | `422` por campo (`invalid_tax_id`, `invalid_format`, `required` e `invalid_value` en el nombre, `invalid_value` en los opcionales largos, `invalid_timezone`; §12.3); `400` (bug del cliente, con `requestId`; INV-F15 lo evita); `503`/`500`/red con "Reintentar" y lo cargado intacto (reintentar es seguro, DD-43) |
-| Preparando el logo | "Preparando la imagen…" (`aria-live="polite"`); "Cambiar logo" y "Quitar" deshabilitados |
+| Preparando el logo | "Preparando la imagen…" en la `LiveRegion` de `LogoUploader`, montada vacía con el control (INV-F19, P-F20); "Cambiar logo" y "Quitar" deshabilitados |
 | Error de logo | Del cliente (§13.11.1, sin request) · Del servidor (en el control del logo, §12.2–12.3): `413`, `415`, `422` con `field: file` (`invalid_value`: "No pudimos leer la imagen o mide más de 2000 × 2000 px…"; `required`), `400` (con `requestId`), `503`/`500`/red: primero se vuelve a pedir `GET /tenant`; si muestra que el logo se guardó (o se quitó), es éxito; si no, mensaje con "Reintentar" (DD-42, DD-F26) |
 | Enviando | "Guardando…" / "Subiendo logo…" / "Quitando logo…" |
 | Éxito | Toast "Guardamos los datos de la empresa." / "Logo actualizado." (si se achicó: "Logo actualizado. Lo achicamos para que pese menos.") / "Quitamos el logo."; el encabezado se actualiza sin recargar (nueva URL con `v`) |
@@ -1597,7 +1622,8 @@ contenido" como primer elemento enfocable. El menú del usuario (escritorio) tie
 "Cerrar sesión".
 
 **C-01 Aviso "Confirmá tu email"** (BR-F05): "Confirmá tu email: te mandamos un enlace a
-{email}." + "Reenviar" + botón "Ocultar" con nombre accesible. Resultado de "Reenviar":
+{email}." + "Reenviar" + botón "Ocultar" con nombre accesible ("Ocultar" lo esconde en esta pestaña
+hasta que cambie la sesión, §10.1; P-F20). Resultado de "Reenviar":
 - `202`: se vuelve a pedir `/me` ("Enviando…" sigue hasta la respuesta) y el texto sale de esa
   lectura (DD-F31): con `email_verified = false`, "Listo, te lo reenviamos. Revisá también el correo
   no deseado." (enmienda H-16: un `202` siempre envía, salvo con el email ya confirmado; DD-F30
@@ -1606,17 +1632,24 @@ contenido" como primer elemento enfocable. El menú del usuario (escritorio) tie
   y el foco va al `<h1>`; si `/me` falla, "Si todavía no lo confirmaste, te mandamos un enlace
   nuevo. Revisá también el correo no deseado.";
 - `429` (cupo por IP o por usuario, §11.1; el contrato no dice cuál): "Ya te lo mandamos hace
-  poco. Esperá {espera} y probá de nuevo.". `{espera}` va de "unos segundos" a "20 minutos"
+  poco." (título) + "Esperá {espera} y probá de nuevo." (descripción), siempre los dos (DD-F29,
+  P-F20). `{espera}` va de "unos segundos" a "20 minutos"
   (DD-F25). Con los dos cupos agotados, el primer `429` trae la espera del cupo por IP (≤ 180 s)
   y, al reintentar, puede llegar otro con la del cupo por usuario: cada uno muestra su espera y
-  ninguno promete que el reintento funcione.
+  ninguno promete que el reintento funcione;
+- red, `503` o `500`: título y descripción de §12.2 (contexto `resendVerification`); "Reenviar"
+  sigue habilitado (P-F20).
 
-El resultado se anuncia en una región `aria-live="polite"`. En S-07, S-09 y S-10 convive con el
+El resultado, también el de error, se escribe en una sola `LiveRegion` (`role="status"`) que está
+en el aviso, vacía, desde que aparece. Mientras dice "Enviando…" se vacía, así un resultado igual
+al anterior se vuelve a anunciar (INV-F19; P-F20). En S-07, S-09 y S-10 convive con el
 aviso W de BR-F14, que tiene su propio "Reenviar email de confirmación" (P-F11). Desaparece solo
 cuando `/me` trae `email_verified = true`, también después de restablecer la contraseña
 (DD-46 (2)).
 
-**C-02 Aviso "Sin conexión"**: aparece con el evento `offline`, desaparece con `online`.
+**C-02 Aviso "Sin conexión"**: aparece con el evento `offline`, desaparece con `online`. El texto se
+escribe en una `LiveRegion` que `RootLayout` mantiene montada, y vacía mientras hay conexión
+(INV-F19; P-F20).
 
 ---
 
@@ -1797,7 +1830,7 @@ export interface SubmitButtonProps {
   variant?: 'default' | 'destructive';
 }
 
-// src/components/FormAlert.tsx — role="alert" si variant = error; si no, role="status"
+// src/components/FormAlert.tsx — role="alert" si variant = error; si no, role="status"; sin role con announce = false (P-F20)
 export interface FormAlertProps {
   variant: 'error' | 'warning' | 'info' | 'success';
   title: string;
@@ -1805,11 +1838,21 @@ export interface FormAlertProps {
   requestId?: string | null;     // "Código: …" para soporte
   action?: { label: string; onClick: () => void };
   secondaryAction?: { label: string; onClick: () => void };
+  announce?: boolean;            // por defecto true; false = sin role: dentro de un LiveRegion o como contenedor que tiene uno (aviso W) (INV-F19, P-F20)
+}
+
+// src/components/LiveRegion.tsx — INV-F19 (enmienda de F4, P-F20)
+// <div role="status" aria-atomic="true"> que se monta con su contenedor y no se desmonta mientras
+// el contenedor vive: lo que cambia es children. Vacía no se ve ni ocupa lugar. Nunca contiene
+// otro role="status" ni role="alert".
+export interface LiveRegionProps {
+  children?: React.ReactNode;    // null / undefined / false = región vacía
+  className?: string;            // posición en el layout; el estilo del mensaje va en el hijo
 }
 
 // src/components/ErrorState.tsx — error de carga de una sección o pantalla
 export interface ErrorStateProps {
-  message: UserMessage;          // de messageForError
+  message: { title: string; description?: string; retryable: boolean; requestId?: string }; // un UserMessage de messageForError, por estructura: components/ no importa api/ (§9.1; P-F20)
   onRetry?: () => void;
   retrying?: boolean;
 }
@@ -1844,24 +1887,28 @@ export interface LockedNoticeProps {
   onRetry: () => void;
 }
 
-// src/components/EmailVerificationBanner.tsx (C-01)
+// src/components/EmailVerificationBanner.tsx (C-01) — un solo LiveRegion para el resultado (INV-F19, P-F20)
+/** Estado del reenvío; lo comparten C-01 y el aviso W. 'unknown': 202 sin poder releer /me (DD-F31);
+ *  'already_verified' no llega: el aviso se desmonta. */
+export type EmailVerificationNoticeStatus = 'idle' | 'pending' | 'sent' | 'unknown' | 'error';
 export interface EmailVerificationBannerProps {
   email: string;
-  resendStatus: 'idle' | 'pending' | 'sent' | 'unknown' | 'error';  // 'unknown': 202 sin poder releer /me (DD-F31); 'already_verified' no llega: el aviso se desmonta
-  errorMessage?: string;
+  resendStatus: EmailVerificationNoticeStatus;
+  errorMessage?: { title: string; description?: string };  // messageForError(error, 'resendVerification') tal cual, sin desarmar; se muestra con resendStatus = 'error', título y descripción juntos (DD-F29, P-F20)
   onResend: () => void;
-  onDismiss: () => void;
+  onDismiss: () => void;          // el contenedor marca crm.verifyBanner.dismissed (useVerifyBannerDismissed, §15.4)
 }
 
 // src/components/VerifyToInviteNotice.tsx (aviso W: S-07, S-09, S-10; revisión 4, BR-F14, P-F8)
-// FormAlert variant="warning" (role="status") con título, descripción y la acción de reenviar.
-// Los controles deshabilitados de BR-F14 lo referencian con aria-describedby={id}.
+// FormAlert variant="warning" announce={false} con título, descripción, la acción de reenviar y un
+// LiveRegion para el resultado (INV-F19, P-F20). Los controles deshabilitados de BR-F14 lo
+// referencian con aria-describedby={id}.
 export interface VerifyToInviteNoticeProps {
   id: string;                    // destino de aria-describedby de "+ Invitar" e "Invitá a tu equipo"
   email: string;                 // session.user.email
-  resendStatus: 'idle' | 'pending' | 'sent' | 'unknown' | 'error';  // como EmailVerificationBanner (DD-F31)
-  errorMessage?: string;         // de messageForError(error, 'resendVerification')
-  onResend: () => void;
+  resendStatus: EmailVerificationNoticeStatus;  // de EmailVerificationBanner.tsx (DD-F31)
+  errorMessage?: { title: string; description?: string; retryable: boolean };  // messageForError(error, 'resendVerification') tal cual; "Reintentar" solo si retryable (P-F20)
+  onResend: () => void;          // también el "Reintentar" de red, 503 o 500
 }
 
 // src/components/OfflineBanner.tsx (C-02) — sin props; usa useOnlineStatus()
@@ -2072,6 +2119,12 @@ export interface SessionExpiredLoginState { unsavedChangesLost?: true }   // loc
 export function useUnsavedChangesGuard(when: boolean): Blocker;
 export function hasUnsavedChanges(): boolean;   // lo lee el manejador de §12.4 antes de navegar
 
+// lib/verifyBannerDismissal.ts — enmienda de F4, P-F20: marca del aviso C-01 (§10.1)
+/** sessionStorage['crm.verifyBanner.dismissed'] = 'true'. Clave fija, sin email ni otro dato de la sesión (NFR-F09). */
+export function useVerifyBannerDismissed(): [dismissed: boolean, dismiss: () => void];
+/** La llaman los mismos puntos que ejecutan queryClient.clear() por cambio de sesión (INV-F03). */
+export function clearVerifyBannerDismissed(): void;
+
 // lib/*
 export function safeNextPath(raw: string | null): string;                 // '/' si no es interna
 export function useLinkToken(): string | null;                            // §6.2
@@ -2135,9 +2188,10 @@ export function formatRetryAt(retryAfterSeconds: number, now: Date): { time: str
   un rechazo responde `403 problem+json forbidden`, DD-30). El cliente solo tiene que mandar
   `Content-Type: application/json` (openapi-fetch lo hace) y nunca llamar a la API desde otro
   origen.
-- **Al salir**: `POST /auth/logout` → `queryClient.clear()` → login. No hay nada más que limpiar:
-  no se guardan datos en el navegador (NFR-F09), la API responde `no-store` y el service worker no
-  la cachea.
+- **Al salir**: `POST /auth/logout` → `queryClient.clear()` y borrar la marca del aviso C-01
+  (`crm.verifyBanner.dismissed`, INV-F03; enmienda de F4, P-F20) → login. No hay nada más que
+  limpiar: no se guardan datos en el navegador (NFR-F09), la API responde `no-store` y el service
+  worker no la cachea.
 - **Varias pestañas**: sin coordinación en el MVP; cada pestaña se entera en su próximo request o
   al recibir el foco.
 - **Desarrollo local**: siempre sobre HTTPS con un certificado de `localhost` de una CA local de
@@ -2160,7 +2214,7 @@ export function formatRetryAt(retryAfterSeconds: number, now: Date): { time: str
 | Formularios | `<label>` visible en cada campo (nunca solo *placeholder*); ayuda persistente con `aria-describedby`; errores de campo junto al campo y enlazados; error general `role="alert"`; requeridos marcados | 1.3.1, 3.3.1, 3.3.2 |
 | Autenticación accesible | Se permite pegar y usar gestores de contraseñas (`autocomplete` correcto); sin CAPTCHA ni pruebas cognitivas | 3.3.8 |
 | Entrada redundante | El email escrito pasa a "Olvidé mi contraseña" (Ingresar y Registro) | 3.3.7 |
-| Cambios dinámicos | Toasts y resultados en regiones `aria-live="polite"`; errores en `role="alert"`; *skeletons* con `aria-busy`; "Preparando la imagen…" anunciado | 4.1.3 |
+| Cambios dinámicos | Resultados en una `LiveRegion` (`role="status"`) montada y vacía antes del mensaje (INV-F19, P-F20); toasts en el contenedor de `sonner`, siempre montado; errores en `role="alert"`, que pueden montarse con su texto; *skeletons* con `aria-busy`; "Preparando la imagen…" anunciado | 4.1.3 |
 | Contraste | Texto ≥ 4,5:1; bordes de campos e íconos con significado ≥ 3:1 (tokens §19) | 1.4.3, 1.4.11 |
 | Color | Estados de usuario con texto; errores con ícono + texto | 1.4.1 |
 | Tamaño de objetivos | ≥ 44×44 CSS px | 2.5.8 (supera) |
@@ -2172,7 +2226,10 @@ export function formatRetryAt(retryAfterSeconds: number, now: Date): { time: str
 
 **Lo que no se garantiza automáticamente**: axe detecta una parte de los problemas; la
 navegación con lector de pantalla (TalkBack/VoiceOver en el celular, NVDA en escritorio) se
-verifica a mano en T-F705 con un checklist. Nada de 001 queda por debajo de AA a sabiendas.
+verifica a mano en T-F705 con un checklist. Los anuncios de INV-F19 se verifican también con NVDA:
+el fallo conocido de las regiones que nacen con texto se reportó en NVDA y JAWS, mientras VoiceOver
+las anuncia igual, así que VoiceOver solo no lo detecta; los tests estructurales de INV-F19 son la
+garantía si no hay NVDA (P-F20). Nada de 001 queda por debajo de AA a sabiendas.
 
 ---
 
@@ -2432,7 +2489,7 @@ web/                            # también es el paquete Go `web` (embed.go)
     │       └── logo/           # limits.ts, sniff.ts, plan.ts, canvas.ts (adaptador), prepareLogo.ts
     ├── components/             # presentación compartida (§15.1)
     │   └── ui/                 # generados por shadcn
-    ├── lib/                    # utils (cn), format, cuit, safeNextPath, linkToken, onlineStatus
+    ├── lib/                    # utils (cn), format, cuit, safeNextPath, linkToken, onlineStatus, verifyBannerDismissal (P-F20)
     └── test/                   # setup.ts, msw/ (server, handlers), fixtures.ts, renderApp.tsx
 ```
 
@@ -2577,6 +2634,12 @@ Preguntas de la enmienda de F3 (2026-10-17):
 |---|---|---|---|
 | P-F19 | Cuatro puntos de la revisión de código de F3 (PR #38). (1) ¿Dónde viven las queries que usan el shell o más de una feature (`useTenant`, `useIndustryTemplates`), si §9.1 manda lo compartido a `components/` o `lib/`? (2) ¿Qué devuelve `useIndustryTemplates`: `{ items: IndustryTemplate[] }` (§11.1) o `IndustryTemplate[]` (§15.4)? (3) ¿Cómo se dice la espera de un `503` con `Retry-After` de 60 s o más, si §12.2 solo prevé "unos segundos" o "unos minutos"? (4) ¿Se aclara la fila de T-F101 que dice "el reloj del sistema en otra hora"? | **Cerrada: sí** (el usuario, 2026-10-17) | **Sí** a los cuatro. (1) En `api/`, un archivo por recurso: `useTenant` y `logoUrl` en `api/tenant.ts`, `useIndustryTemplates` en `api/industryTemplates.ts`. `features/tenant/api.ts` y `features/auth/api.ts` las reexportan, y el shell y el panel las importan de `api/`. `components/` no importa `api/` y `lib/` reúne funciones y hooks sin red, así que ninguno de los dos puede tener un hook de red; `api/` ya es la capa que habla con el servidor y la pueden importar `app/` y todas las features. (2) `{ items: IndustryTemplate[] }`, la forma del contrato, sin transformar; se corrige §15.4. (3) La regla de DD-F25, la misma de `rate_limited`: menos de 60 s → "unos segundos"; 60 s → "1 minuto"; más → `ceil(s/60)` minutos; sin cabecera → "unos minutos", como antes. El código ya la cumple (`api/errorMessages.ts` usa la misma función de espera para los dos códigos); T-F101 suma la fila que la fija. (4) Sí: `receivedAt` queda en 14:20 mientras el reloj del render avanza a 14:27, y las dos lecturas dicen 14:35 |
 
+Preguntas de la enmienda de F4 (2026-10-20):
+
+| ID | Pregunta | Estado | Default propuesto |
+|---|---|---|---|
+| P-F20 | Tres puntos de la revisión 1 del PR #39 (F4). (1) ¿Qué clave usa la marca del aviso C-01, si el código guarda `email-verification-dismissed:{email}` y §10.1 dice `crm.verifyBanner.dismissed`, y la borra el logout? (2) ¿Qué forma tienen las props de error de C-01 y del aviso W, si `b2967dd` cambió §15.1 a dos textos sueltos y W todavía recibe uno solo? (3) ¿Se fija ya una regla para las regiones `aria-live` que nacen con su texto, o queda para T-F705? | **Cerrada: sí** (el usuario, 2026-10-20) | **Sí** a los tres. (1) Clave fija `crm.verifyBanner.dismissed` = `'true'` en `lib/verifyBannerDismissal.ts`, borrada junto con `queryClient.clear()` en los puntos de INV-F03: sin datos de la sesión en el navegador (NFR-F09, T-F703) y otra cuenta en la misma pestaña ve su aviso, que era lo que resolvía el email. Alternativas: clave fija sin borrado (una línea, pero si A ocultó el aviso, B no lo ve), el `user.id` como valor (identifica a la persona y sobrevive al logout) o estado en memoria (vuelve con cada recarga; cambia §10.1). Costo: si otra pestaña cambia de cuenta sin pasar por `null`, la marca queda. (2) `resendStatus` + `errorMessage` = el objeto de `messageForError(error, 'resendVerification')` tal cual, por estructura (`{ title; description? }` en C-01; con `retryable` en W), como `ErrorState`: el título es obligatorio por tipo y el llamador no puede elegir un solo campo. Alternativas: dos textos opcionales (el tipo no evita el bug y W necesita un tercer prop) o pasar el error crudo (`components/` no importa `api/`, §9.1). (3) INV-F19 ya, con `LiveRegion` compartido: lo cortés se escribe en una región montada y vacía antes del texto; los `role="alert"` pueden nacer con su texto. Se corrigen C-01, S-05 (F4) y C-02 (F1) en la rama del PR #39, y T-F705 suma NVDA. Alternativas: solo verificar en T-F705 (VoiceOver anuncia igual y no lo detecta; sin Windows no hay NVDA; F5 y F6 nacerían con el patrón actual), la regla sin componente (cada pantalla la reimplementa) o escribir el texto en el *tick* siguiente (depende del tiempo e inestable en tests) |
+
 **Revisión 16 del backend: cerrada para la UI** (la lista "Dependiente de la revisión 16" de la
 Revisión 3 queda resuelta en la Revisión 4):
 - S-01 y §14.2: `429` del cupo global (DD-49, DD-F29); sin prueba anti-bots (P-F9).
@@ -2716,6 +2779,8 @@ La actualización va **en el mismo cambio** que el código.
 | Una versión mayor de una librería con ADR (p. ej. React Router 8), o una versión fijada por debajo de su última estable (hoy, TypeScript 5.9.3) | Nota fechada en su ADR + §0 + RF-1 + tabla de excepciones de `tasks.md` (Frontend, convenciones) + las tareas afectadas + `package-lock.json` en el mismo PR |
 | Una dependencia npm (agregarla, subirla, quitarla o moverla entre `dependencies` y `devDependencies`) | Clasificación de ADR-027 §2 + `make web-vuln` en verde + tabla de versiones de `tasks.md` si queda por debajo de la última estable o lleva `overrides` + `docs/seguridad/vulnerabilidades-aceptadas.md` si cambia una excepción |
 | Un formulario que pide confirmación al salir, o la URL de sesión vencida | `useUnsavedChangesGuard` (nunca `useBlocker` directo) + `lib/sessionExpiredRedirect.ts` + INV-F18 + DD-F32 + el test de la pantalla (las filas de T-F602 como modelo) |
+| Un mensaje que aparece sin mover el foco (resultado de una acción, aviso, progreso) | `LiveRegion` montada con su contenedor (INV-F19) + la fila "la región existe vacía antes y es el mismo nodo después" en el test de la pantalla + checklist de T-F705 |
+| Una marca de `sessionStorage` | §10.1 + NFR-F09 (clave fija, valor booleano, sin datos de la sesión) + INV-F03 si depende de la sesión + T-F703 |
 
 ## 30. Fuentes consultadas
 
