@@ -19,6 +19,7 @@ export function VerifyEmailPage() {
   const heading = useRef<HTMLHeadingElement>(null)
   const submitLock = useRef(false)
   const resendLock = useRef(false)
+  const invalidLinkFocused = useRef(false)
   const [confirmed, setConfirmed] = useState(false)
   const [invalidLink, setInvalidLink] = useState(false)
   const [confirmError, setConfirmError] = useState<unknown>(null)
@@ -32,13 +33,20 @@ export function VerifyEmailPage() {
       confirmed ||
       resendResult === 'already_verified' ||
       (verified && !token)
-    )
+    ) {
       heading.current?.focus()
-  }, [confirmed, resendResult, token, verified])
+      return
+    }
+    if (invalidLink && !invalidLinkFocused.current) {
+      heading.current?.focus()
+      invalidLinkFocused.current = true
+    }
+  }, [confirmed, invalidLink, resendResult, token, verified])
 
   async function confirm() {
     if (!token || submitLock.current) return
     submitLock.current = true
+    invalidLinkFocused.current = false
     setInvalidLink(false)
     setConfirmError(null)
     try {

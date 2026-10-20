@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { Link } from 'react-router'
@@ -25,6 +25,7 @@ interface ResetPasswordValues {
 export function ResetPasswordPage() {
   const token = useLinkToken()
   const confirmReset = useConfirmPasswordReset()
+  const heading = useRef<HTMLHeadingElement>(null)
   const submitLock = useRef(false)
   const [submitError, setSubmitError] = useState<unknown>(null)
   const form = useForm<ResetPasswordValues>({
@@ -74,6 +75,11 @@ export function ResetPasswordPage() {
     : null
   const invalidToken =
     isApiError(submitError) && submitError.code === 'token_invalid'
+
+  useEffect(() => {
+    if (invalidToken) heading.current?.focus()
+  }, [invalidToken])
+
   function submitForm(event: React.FormEvent<HTMLFormElement>) {
     void handleSubmit(onSubmit)(event)
   }
@@ -83,7 +89,7 @@ export function ResetPasswordPage() {
         <AppBrand name="CRM" logoSrc={null} />
       </div>
       <section className="space-y-6 rounded-xl border bg-card p-5 shadow-sm sm:p-8">
-        <PageHeader title="Creá una contraseña nueva" />
+        <PageHeader title="Creá una contraseña nueva" titleRef={heading} />
         {!token ? (
           <>
             <FormAlert
