@@ -18,55 +18,62 @@ export function VerifyEmailPage() {
   const resend = useResendEmailVerification()
   const heading = useRef<HTMLHeadingElement>(null)
   const submitLock = useRef(false)
+  const resendLock = useRef(false)
   const [confirmed, setConfirmed] = useState(false)
   const [invalidLink, setInvalidLink] = useState(false)
-  const [submitError, setSubmitError] = useState<unknown>(null)
+  const [confirmError, setConfirmError] = useState<unknown>(null)
+  const [resendResult, setResendResult] = useState<
+    'sent' | 'already_verified' | 'unknown' | { error: unknown } | null
+  >(null)
   const verified = session?.user.email_verified === true
 
   useEffect(() => {
-    if (verified && !token) heading.current?.focus()
-  }, [token, verified])
+    if (confirmed || resendResult === 'already_verified' || (verified && !token))
+      heading.current?.focus()
+  }, [confirmed, resendResult, token, verified])
 
   async function confirm() {
     if (!token || submitLock.current) return
     submitLock.current = true
-    setSubmitError(null)
+    setInvalidLink(false)
+    setConfirmError(null)
     try {
       await confirmEmail.mutateAsync({ token })
       setConfirmed(true)
     } catch (error) {
       if (isApiError(error) && error.code === 'token_invalid')
         setInvalidLink(true)
-      setSubmitError(error)
+      setConfirmError(error)
     } finally {
       submitLock.current = false
     }
   }
 
   async function resendLink() {
+    if (resendLock.current) return
+    resendLock.current = true
+    setResendResult(null)
     try {
       const outcome = await resend.mutateAsync()
-      if (outcome === 'sent') setSubmitError({ resendOutcome: outcome })
-      if (outcome === 'unknown') setSubmitError({ resendOutcome: outcome })
+      setResendResult(outcome)
     } catch (error) {
-      setSubmitError(error)
+      setResendResult({ error })
+    } finally {
+      resendLock.current = false
     }
   }
 
-  const invalidToken =
-    invalidLink ||
-    (isApiError(submitError) && submitError.code === 'token_invalid')
-  const message = invalidToken
-    ? messageForError(submitError, 'verifyEmail')
-    : submitError && !('resendOutcome' in (submitError as object))
-      ? messageForError(submitError, 'resendVerification')
+  const invalidToken = invalidLink
+  const confirmMessage = confirmError
+    ? messageForError(confirmError, 'verifyEmail')
+    : null
+  const resendError =
+    resendResult && typeof resendResult === 'object' && 'error' in resendResult
+      ? resendResult.error
       : null
-  const resendOutcome =
-    submitError &&
-    typeof submitError === 'object' &&
-    'resendOutcome' in submitError
-      ? (submitError as { resendOutcome: string }).resendOutcome
-      : null
+  const resendMessage = resendError
+    ? messageForError(resendError, 'resendVerification')
+    : null
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-xl flex-col justify-center px-4 py-8 sm:px-6">
@@ -88,7 +95,9 @@ export function VerifyEmailPage() {
               {session ? 'Ir al inicio' : 'Ingresar'}
             </Link>
           </>
-        ) : verified ? (
+        ) :
+          resendResult === 'already_verified' ||
+          (verified && (!token || invalidToken)) ? (
           <>
             <FormAlert
               variant="success"
@@ -109,8 +118,11 @@ export function VerifyEmailPage() {
                 type="button"
                 className="min-h-11 underline"
                 onClick={() => void resendLink()}
+                disabled={resend.isPending}
               >
-                Reenviar email de confirmación
+                {resend.isPending
+                  ? 'Enviando…'
+                  : 'Reenviar email de confirmación'}
               </button>
             ) : (
               <Link
@@ -126,9 +138,10 @@ export function VerifyEmailPage() {
             <FormAlert
               variant="error"
               title={
-                message?.title ?? 'Este enlace de confirmación ya no sirve.'
+                confirmMessage?.title ??
+                'Este enlace de confirmación ya no sirve.'
               }
-              description={message?.description}
+              description={confirmMessage?.description}
             />
             {session ? (
               <button
@@ -137,7 +150,9 @@ export function VerifyEmailPage() {
                 onClick={() => void resendLink()}
                 disabled={resend.isPending}
               >
-                Reenviar email de confirmación
+                {resend.isPending
+                  ? 'Enviando…'
+                  : 'Reenviar email de confirmación'}
               </button>
             ) : (
               <>
@@ -158,13 +173,13 @@ export function VerifyEmailPage() {
               Si no creaste una cuenta con este email, no lo confirmes:
               confirmarlo le daría acceso a quien la creó.
             </p>
-            {message && (
+            {confirmMessage && (
               <FormAlert
                 variant="error"
-                title={message.title}
-                description={message.description}
+                title={confirmMessage.title}
+                description={confirmMessage.description}
                 action={
-                  message.retryable
+                  confirmMessage.retryable
                     ? { label: 'Reintentar', onClick: () => void confirm() }
                     : undefined
                 }
@@ -186,25 +201,25 @@ export function VerifyEmailPage() {
             </form>
           </>
         )}
-        {resendOutcome === 'sent' && (
+        {resendResult === 'sent' && (
           <FormAlert
             variant="success"
             title="Listo, te lo reenviamos. Revisá también el correo no deseado."
           />
         )}
-        {resendOutcome === 'unknown' && (
+        {resendResult === 'unknown' && (
           <FormAlert
             variant="info"
             title="Si todavía no lo confirmaste, te mandamos un enlace nuevo. Revisá también el correo no deseado."
           />
         )}
-        {message && !invalidToken && !resendOutcome && (
+        {resendMessage && (
           <FormAlert
             variant="error"
-            title={message.title}
-            description={message.description}
+            title={resendMessage.title}
+            description={resendMessage.description}
             action={
-              message.retryable
+              resendMessage.retryable
                 ? { label: 'Reintentar', onClick: () => void resendLink() }
                 : undefined
             }
