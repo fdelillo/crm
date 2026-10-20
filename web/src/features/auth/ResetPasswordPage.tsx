@@ -8,7 +8,11 @@ import { PageHeader } from '@/components/PageHeader'
 import { PasswordInput } from '@/components/PasswordInput'
 import { SubmitButton } from '@/components/SubmitButton'
 import { Field, FieldError, FieldLabel } from '@/components/ui/field'
-import { fieldErrorText, messageForError } from '@/api/errorMessages'
+import {
+  applyServerFieldErrors,
+  fieldErrorText,
+  messageForError,
+} from '@/api/errorMessages'
 import { isApiError } from '@/api/errors'
 import { useConfirmPasswordReset } from './api'
 import { passwordResetConfirmSchema } from './schemas'
@@ -48,20 +52,16 @@ export function ResetPasswordPage() {
       )
     } catch (error) {
       if (isApiError(error) && error.code === 'validation_failed') {
-        const field = error.fieldErrors.find(
-          (item) => item.field === 'password',
+        const unknownErrors = applyServerFieldErrors(
+          setError,
+          error.fieldErrors,
+          ['password'],
         )
-        if (field) {
-          setError('password', {
-            type: 'server',
-            message: fieldErrorText('password', {
-              type: 'server',
-              message: field.code,
-            }),
-          })
-          setFocus('password')
-          return
-        }
+        const hasPasswordError = error.fieldErrors.some(
+          (fieldError) => fieldError.field === 'password',
+        )
+        if (hasPasswordError) setFocus('password')
+        if (error.fieldErrors.length > 0 && unknownErrors.length === 0) return
       }
       setSubmitError(error)
     } finally {
@@ -72,6 +72,8 @@ export function ResetPasswordPage() {
   const error = submitError
     ? messageForError(submitError, 'resetConfirm')
     : null
+  const invalidToken =
+    isApiError(submitError) && submitError.code === 'token_invalid'
   function submitForm(event: React.FormEvent<HTMLFormElement>) {
     void handleSubmit(onSubmit)(event)
   }
@@ -88,6 +90,20 @@ export function ResetPasswordPage() {
               variant="warning"
               title="Este enlace está incompleto."
               description="Abrilo de nuevo desde el email o pedí uno nuevo."
+            />
+            <Link
+              className="inline-flex min-h-11 items-center text-primary underline"
+              to="/forgot-password"
+            >
+              Pedir un enlace nuevo
+            </Link>
+          </>
+        ) : invalidToken ? (
+          <>
+            <FormAlert
+              variant="error"
+              title={error?.title ?? 'Este enlace ya no sirve.'}
+              description={error?.description}
             />
             <Link
               className="inline-flex min-h-11 items-center text-primary underline"
@@ -146,15 +162,6 @@ export function ResetPasswordPage() {
                 }
               />
             )}
-            {isApiError(submitError) &&
-              submitError.code === 'token_invalid' && (
-                <Link
-                  className="inline-flex min-h-11 items-center text-primary underline"
-                  to="/forgot-password"
-                >
-                  Pedir un enlace nuevo
-                </Link>
-              )}
             <SubmitButton
               pending={confirmReset.isPending || isSubmitting}
               pendingLabel="Guardando…"

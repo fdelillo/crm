@@ -38,9 +38,11 @@ export function useResendEmailVerification() {
     mutationFn: async () => {
       unwrap<void>(await api.POST('/auth/email-verification/resend'))
       try {
+        await client.cancelQueries({ queryKey: queryKeys.session, exact: true })
         const session = await client.fetchQuery<SessionInfo>({
           queryKey: queryKeys.session,
-          queryFn: async () => unwrap(await api.GET('/me')),
+          queryFn: async ({ signal }) =>
+            unwrap(await api.GET('/me', { signal })),
           staleTime: 0,
         })
         return session.user.email_verified ? 'already_verified' : 'sent'

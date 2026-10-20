@@ -142,7 +142,8 @@ describe('LoginPage', () => {
         name: 'Por seguridad, pausamos el ingreso con este email.',
       }),
     ).toBeVisible()
-    expect(screen.getByRole('alert')).toHaveFocus()
+    const alert = screen.getByRole('alert')
+    await waitFor(() => expect(alert).toHaveFocus())
     expect(screen.getByText(/a las 14:35 \(en 15 minutos\)/)).toBeVisible()
     await act(async () => {
       now.mockReturnValue(new Date(2026, 9, 17, 14, 27, 0).getTime())

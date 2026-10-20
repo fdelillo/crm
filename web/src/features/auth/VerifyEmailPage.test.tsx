@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { buildSessionInfo, problem } from '@/test/fixtures'
 import { server } from '@/test/msw/server'
 import { renderApp } from '@/test/renderApp'
+import { queryKeys } from '@/api/queryKeys'
 import { VerifyEmailPage } from './VerifyEmailPage'
 
 const base = 'https://localhost:5173/api/v1'
@@ -253,8 +254,9 @@ describe('VerifyEmailPage', () => {
         meReads += 1
         return HttpResponse.json(buildSessionInfo())
       }),
-      http.post(`${base}/auth/email-verification/confirm`, () =>
-        new HttpResponse(null, { status: 204 }),
+      http.post(
+        `${base}/auth/email-verification/confirm`,
+        () => new HttpResponse(null, { status: 204 }),
       ),
     )
     const { router } = renderApp(['/verify-email#token=valid-token'], {
@@ -347,9 +349,7 @@ describe('VerifyEmailPage', () => {
       ),
     ).toBeVisible()
     const user = userEvent.setup()
-    await user.click(
-      screen.getByRole('button', { name: 'Confirmar mi email' }),
-    )
+    await user.click(screen.getByRole('button', { name: 'Confirmar mi email' }))
     expect(
       await screen.findByText('¡Listo! Tu email quedó confirmado.'),
     ).toBeVisible()
@@ -360,8 +360,9 @@ describe('VerifyEmailPage', () => {
   it('moves focus to the heading after confirmation succeeds', async () => {
     server.use(
       http.get(`${base}/me`, () => HttpResponse.json(buildSessionInfo())),
-      http.post(`${base}/auth/email-verification/confirm`, () =>
-        new HttpResponse(null, { status: 204 }),
+      http.post(
+        `${base}/auth/email-verification/confirm`,
+        () => new HttpResponse(null, { status: 204 }),
       ),
     )
     renderApp(['/verify-email#token=valid-token'], {
@@ -416,5 +417,55 @@ describe('VerifyEmailPage', () => {
       'href',
       '/login',
     )
+  })
+
+  // T-F406 (DD-F31, INV-F17): post-resend /me must not reuse an older in-flight read.
+  it('cancels an in-flight session refresh before reading the resend outcome', async () => {
+    let sessionReads = 0
+    let cancelledReads = 0
+    server.use(
+      http.get(`${base}/me`, async ({ request }) => {
+        sessionReads += 1
+        if (sessionReads === 2) {
+          request.signal.addEventListener('abort', () => {
+            cancelledReads += 1
+          })
+          await new Promise((resolve) => setTimeout(resolve, 1000))
+        }
+        return HttpResponse.json(buildSessionInfo())
+      }),
+      http.post(`${base}/auth/email-verification/confirm`, () =>
+        serverProblem('token_invalid', 400),
+      ),
+      http.post(
+        `${base}/auth/email-verification/resend`,
+        () => new HttpResponse(null, { status: 202 }),
+      ),
+    )
+    const { queryClient } = renderApp(['/verify-email#token=expired-token'], {
+      routes: [{ path: '/verify-email', Component: VerifyEmailPage }],
+    })
+    const user = userEvent.setup()
+    await user.click(
+      await screen.findByRole('button', { name: 'Confirmar mi email' }),
+    )
+    await screen.findByRole('button', {
+      name: 'Reenviar email de confirmación',
+    })
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.session,
+      exact: true,
+    })
+    await waitFor(() => expect(sessionReads).toBe(2))
+    await user.click(
+      screen.getByRole('button', { name: 'Reenviar email de confirmación' }),
+    )
+    expect(
+      await screen.findByText(
+        'Listo, te lo reenviamos. Revisá también el correo no deseado.',
+      ),
+    ).toBeVisible()
+    expect(sessionReads).toBe(3)
+    expect(cancelledReads).toBe(1)
   })
 })

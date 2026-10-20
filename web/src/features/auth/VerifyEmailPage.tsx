@@ -28,7 +28,11 @@ export function VerifyEmailPage() {
   const verified = session?.user.email_verified === true
 
   useEffect(() => {
-    if (confirmed || resendResult === 'already_verified' || (verified && !token))
+    if (
+      confirmed ||
+      resendResult === 'already_verified' ||
+      (verified && !token)
+    )
       heading.current?.focus()
   }, [confirmed, resendResult, token, verified])
 
@@ -95,8 +99,7 @@ export function VerifyEmailPage() {
               {session ? 'Ir al inicio' : 'Ingresar'}
             </Link>
           </>
-        ) :
-          resendResult === 'already_verified' ||
+        ) : resendResult === 'already_verified' ||
           (verified && (!token || invalidToken)) ? (
           <>
             <FormAlert

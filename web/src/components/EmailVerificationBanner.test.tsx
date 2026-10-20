@@ -1,8 +1,8 @@
-import { screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
-import { buildSessionInfo, buildTenant } from '@/test/fixtures'
+import { buildSessionInfo, buildTenant, problem } from '@/test/fixtures'
 import { server } from '@/test/msw/server'
 import { renderApp } from '@/test/renderApp'
 
@@ -21,13 +21,29 @@ function loggedIn(emailVerified = false) {
 }
 
 describe('EmailVerificationBanner', () => {
+  it('does not show the notice for an already verified session', async () => {
+    loggedIn(true)
+    renderApp(['/settings/users'], { protectedPage: <h1>Usuarios</h1> })
+    await screen.findByRole('heading', { name: 'Usuarios' })
+    expect(screen.queryByText(/Confirmá tu email:/)).not.toBeInTheDocument()
+  })
+
   // T-F405 (BR-F05, DD-46, DD-F31, INV-F17): the signed-in shell reflects the server session after a resend.
   it('shows the verification email, waits for resend, then announces success from a fresh /me read', async () => {
-    loggedIn(false)
-    let sends = 0
+    const events: string[] = []
     server.use(
+      http.get(`${base}/me`, () => {
+        events.push('me')
+        return HttpResponse.json(
+          buildSessionInfo({
+            user: { ...buildSessionInfo().user, email_verified: false },
+          }),
+        )
+      }),
+      http.get(`${base}/tenant`, () => HttpResponse.json(buildTenant())),
       http.post(`${base}/auth/email-verification/resend`, async () => {
-        sends += 1
+        events.push('resend')
+        await new Promise((resolve) => setTimeout(resolve, 50))
         return new HttpResponse(null, { status: 202 })
       }),
     )
@@ -41,14 +57,20 @@ describe('EmailVerificationBanner', () => {
     ).toBeVisible()
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: 'Reenviar' }))
+    expect(screen.getByRole('button', { name: 'Enviando…' })).toBeDisabled()
     expect(
       await screen.findByText(
         'Listo, te lo reenviamos. Revisá también el correo no deseado.',
       ),
     ).toBeVisible()
+    expect(
+      screen.getByText(
+        'Listo, te lo reenviamos. Revisá también el correo no deseado.',
+      ),
+    ).toHaveAttribute('aria-live', 'polite')
     expect(screen.getByRole('button', { name: 'Reenviar' })).toBeEnabled()
     expect(screen.queryByText(/20 minutos/)).not.toBeInTheDocument()
-    expect(sends).toBe(1)
+    expect(events).toEqual(['me', 'resend', 'me'])
   })
 
   it('recognizes an email confirmed in another window and removes the notice with focus on the page heading', async () => {
@@ -87,6 +109,48 @@ describe('EmailVerificationBanner', () => {
     ).not.toBeInTheDocument()
   })
 
+  // T-F405 (DD-F28, INV-F10): a background session refresh preserves active user focus.
+  it('keeps focus in the active field when a session refresh learns the email is verified', async () => {
+    let verified = false
+    let sessionReads = 0
+    server.use(
+      http.get(`${base}/me`, () => {
+        sessionReads += 1
+        return HttpResponse.json(
+          buildSessionInfo({
+            user: { ...buildSessionInfo().user, email_verified: verified },
+          }),
+        )
+      }),
+      http.get(`${base}/tenant`, () => HttpResponse.json(buildTenant())),
+    )
+    const { queryClient } = renderApp(['/settings/users'], {
+      protectedPage: (
+        <>
+          <h1 tabIndex={-1}>Usuarios</h1>
+          <input aria-label="Buscar usuarios" />
+        </>
+      ),
+    })
+    const input = await screen.findByRole('textbox', {
+      name: 'Buscar usuarios',
+    })
+    expect(screen.getByText(/Confirmá tu email:/)).toBeVisible()
+    input.focus()
+    verified = true
+    await act(async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['session'],
+        exact: true,
+      })
+    })
+    await waitFor(() =>
+      expect(screen.queryByText(/Confirmá tu email:/)).not.toBeInTheDocument(),
+    )
+    expect(sessionReads).toBe(2)
+    expect(input).toHaveFocus()
+  })
+
   it('keeps the notice and gives neutral text if the follow-up session read fails', async () => {
     loggedIn(false)
     let meCalls = 0
@@ -98,18 +162,10 @@ describe('EmailVerificationBanner', () => {
                 user: { ...buildSessionInfo().user, email_verified: false },
               }),
             )
-          : HttpResponse.json(
-              {
-                type: '/problems/internal',
-                title: 'err',
-                status: 500,
-                code: 'internal',
-              },
-              {
-                status: 500,
-                headers: { 'Content-Type': 'application/problem+json' },
-              },
-            ),
+          : HttpResponse.json(problem('internal', 500), {
+              status: 500,
+              headers: { 'Content-Type': 'application/problem+json' },
+            }),
       ),
       http.post(
         `${base}/auth/email-verification/resend`,
@@ -140,21 +196,13 @@ describe('EmailVerificationBanner', () => {
       loggedIn(false)
       server.use(
         http.post(`${base}/auth/email-verification/resend`, () =>
-          HttpResponse.json(
-            {
-              type: '/problems/rate_limited',
-              title: 'limit',
-              status: 429,
-              code: 'rate_limited',
+          HttpResponse.json(problem('rate_limited', 429), {
+            status: 429,
+            headers: {
+              'Content-Type': 'application/problem+json',
+              'Retry-After': seconds,
             },
-            {
-              status: 429,
-              headers: {
-                'Content-Type': 'application/problem+json',
-                'Retry-After': seconds,
-              },
-            },
-          ),
+          }),
         ),
       )
       renderApp(['/settings/users'], { protectedPage: <h1>Usuarios</h1> })
@@ -178,21 +226,13 @@ describe('EmailVerificationBanner', () => {
       http.post(`${base}/auth/email-verification/resend`, () => {
         requests += 1
         const seconds = requests === 1 ? '180' : '1200'
-        return HttpResponse.json(
-          {
-            type: '/problems/rate_limited',
-            title: 'limit',
-            status: 429,
-            code: 'rate_limited',
+        return HttpResponse.json(problem('rate_limited', 429), {
+          status: 429,
+          headers: {
+            'Content-Type': 'application/problem+json',
+            'Retry-After': seconds,
           },
-          {
-            status: 429,
-            headers: {
-              'Content-Type': 'application/problem+json',
-              'Retry-After': seconds,
-            },
-          },
-        )
+        })
       }),
     )
     renderApp(['/settings/users'], { protectedPage: <h1>Usuarios</h1> })
@@ -220,21 +260,13 @@ describe('EmailVerificationBanner', () => {
     loggedIn(false)
     server.use(
       http.post(`${base}/auth/email-verification/resend`, () =>
-        HttpResponse.json(
-          {
-            type: '/problems/service_unavailable',
-            title: 'unavailable',
-            status: 503,
-            code: 'service_unavailable',
+        HttpResponse.json(problem('service_unavailable', 503), {
+          status: 503,
+          headers: {
+            'Content-Type': 'application/problem+json',
+            'Retry-After': '60',
           },
-          {
-            status: 503,
-            headers: {
-              'Content-Type': 'application/problem+json',
-              'Retry-After': '60',
-            },
-          },
-        ),
+        }),
       ),
     )
     renderApp(['/settings/users'], { protectedPage: <h1>Usuarios</h1> })
@@ -249,9 +281,25 @@ describe('EmailVerificationBanner', () => {
     expect(await screen.findByText('Probá de nuevo en 1 minuto.')).toBeVisible()
   })
 
-  it('can hide the notice for the lifetime of the browser tab session', async () => {
+  it('exposes named keyboard controls in resend then dismiss order', async () => {
     loggedIn(false)
     renderApp(['/settings/users'], { protectedPage: <h1>Usuarios</h1> })
+    await screen.findByText(/Confirmá tu email:/)
+    const resend = screen.getByRole('button', { name: 'Reenviar' })
+    const dismiss = screen.getByRole('button', {
+      name: 'Ocultar aviso de confirmación de email',
+    })
+    resend.focus()
+    await userEvent.setup().tab()
+    expect(dismiss).toHaveFocus()
+  })
+
+  it('keeps a dismissed notice hidden across navigation and restores it after session storage is cleared', async () => {
+    sessionStorage.clear()
+    loggedIn(false)
+    const { router, unmount } = renderApp(['/settings/users'], {
+      protectedPage: <h1>Usuarios</h1>,
+    })
     await screen.findByText(/Confirmá tu email:/)
     const user = userEvent.setup()
     await user.click(
@@ -262,5 +310,17 @@ describe('EmailVerificationBanner', () => {
     await waitFor(() =>
       expect(screen.queryByText(/Confirmá tu email:/)).not.toBeInTheDocument(),
     )
+    expect(
+      screen.queryByRole('button', { name: 'Reenviar' }),
+    ).not.toBeInTheDocument()
+    await act(async () => router.navigate('/settings'))
+    expect(screen.queryByText(/Confirmá tu email:/)).not.toBeInTheDocument()
+
+    sessionStorage.clear()
+    unmount()
+    renderApp(['/settings/users'], {
+      protectedPage: <h1>Usuarios</h1>,
+    })
+    expect(await screen.findByText(/Confirmá tu email:/)).toBeVisible()
   })
 })

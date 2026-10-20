@@ -17,9 +17,14 @@ function LinkTokenProbe() {
 describe('useLinkToken', () => {
   // T-F401 (DD-14, DD-F2): removes link credentials from the visible URL and preserves same-tab reloads.
   it('moves a fragment token into router state and restores it after remount', async () => {
-    const consoleSpy = vi.spyOn(console, 'log')
-    const { router } = renderApp(['/reset-password#token=abc-_123'], {
+    const methods = ['debug', 'error', 'info', 'log', 'warn'] as const
+    const consoleSpies = methods.map((method) =>
+      vi.spyOn(console, method).mockImplementation(() => undefined),
+    )
+    const routes = [{ path: '/reset-password', Component: LinkTokenProbe }]
+    const { router, unmount } = renderApp(['/reset-password#token=abc-_123'], {
       routes: [{ path: '/reset-password', Component: LinkTokenProbe }],
+      strictMode: true,
     })
     expect(await screen.findByLabelText('Token del enlace')).toHaveTextContent(
       'abc-_123|||abc-_123',
@@ -27,15 +32,20 @@ describe('useLinkToken', () => {
     await waitFor(() => expect(router.state.location.hash).toBe(''))
     expect(router.state.location.search).toBe('')
     expect(router.state.location.state).toEqual({ linkToken: 'abc-_123' })
-    expect(consoleSpy).not.toHaveBeenCalled()
-    await router.navigate('/reset-password', {
-      replace: true,
-      state: router.state.location.state,
-    })
-    expect(await screen.findByLabelText('Token del enlace')).toHaveTextContent(
-      'abc-_123',
+    const savedState = router.state.location.state
+    unmount()
+    const remounted = renderApp(
+      [{ pathname: '/reset-password', state: savedState }],
+      { routes, strictMode: true },
     )
-    consoleSpy.mockRestore()
+    expect(await screen.findByLabelText('Token del enlace')).toHaveTextContent(
+      'abc-_123|||abc-_123',
+    )
+    expect(remounted.router.state.location.search).toBe('')
+    for (const spy of consoleSpies) {
+      expect(spy).not.toHaveBeenCalled()
+      spy.mockRestore()
+    }
   })
 
   it.each([

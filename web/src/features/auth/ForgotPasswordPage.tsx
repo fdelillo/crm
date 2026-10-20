@@ -8,7 +8,11 @@ import { PageHeader } from '@/components/PageHeader'
 import { SubmitButton } from '@/components/SubmitButton'
 import { Field, FieldError, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
-import { fieldErrorText, messageForError } from '@/api/errorMessages'
+import {
+  applyServerFieldErrors,
+  fieldErrorText,
+  messageForError,
+} from '@/api/errorMessages'
 import { isApiError } from '@/api/errors'
 import { useRequestPasswordReset } from './api'
 import { passwordResetSchema, type PasswordResetFormValues } from './schemas'
@@ -20,6 +24,7 @@ export function ForgotPasswordPage() {
   const [sent, setSent] = useState(false)
   const [submitError, setSubmitError] = useState<unknown>(null)
   const heading = useRef<HTMLHeadingElement>(null)
+  const focusEmailOnRetry = useRef(false)
   const entryState = location.state as { email?: string } | null
   const form = useForm<PasswordResetFormValues>({
     resolver: zodResolver(passwordResetSchema),
@@ -37,8 +42,13 @@ export function ForgotPasswordPage() {
   } = form
 
   useEffect(() => {
-    if (sent) heading.current?.focus()
-  }, [sent])
+    if (sent) {
+      heading.current?.focus()
+    } else if (focusEmailOnRetry.current) {
+      focusEmailOnRetry.current = false
+      setFocus('email')
+    }
+  }, [sent, setFocus])
 
   async function onSubmit(values: PasswordResetFormValues) {
     if (submitLock.current) return
@@ -49,18 +59,16 @@ export function ForgotPasswordPage() {
       setSent(true)
     } catch (error) {
       if (isApiError(error) && error.code === 'validation_failed') {
-        const field = error.fieldErrors.find((item) => item.field === 'email')
-        if (field) {
-          setError('email', {
-            type: 'server',
-            message: fieldErrorText('email', {
-              type: 'server',
-              message: field.code,
-            }),
-          })
+        const unknownErrors = applyServerFieldErrors(
+          setError,
+          error.fieldErrors,
+          ['email'],
+        )
+        if (
+          error.fieldErrors.some((fieldError) => fieldError.field === 'email')
+        )
           setFocus('email')
-          return
-        }
+        if (error.fieldErrors.length > 0 && unknownErrors.length === 0) return
       }
       setSubmitError(error)
     } finally {
@@ -102,7 +110,10 @@ export function ForgotPasswordPage() {
             <button
               className="min-h-11 text-primary underline"
               type="button"
-              onClick={() => setSent(false)}
+              onClick={() => {
+                focusEmailOnRetry.current = true
+                setSent(false)
+              }}
             >
               ¿No llegó? Pedilo de nuevo
             </button>

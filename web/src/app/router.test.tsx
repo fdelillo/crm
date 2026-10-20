@@ -37,13 +37,17 @@ describe('application routes', () => {
     ['/settings/users', 'Usuarios'],
     ['/settings/users/invite', 'Invitar usuario'],
     ['/does-not-exist', 'No encontramos esta página.'],
-  ])('shows the heading for %s', async (path, heading) => {
-    session(path === '/' || path.startsWith('/settings'))
-    renderApp([path])
-    expect(
-      await screen.findByRole('heading', { level: 1, name: heading }),
-    ).toBeVisible()
-  })
+  ])(
+    'shows the heading for %s',
+    async (path, heading) => {
+      session(path === '/' || path.startsWith('/settings'))
+      renderApp([path])
+      expect(
+        await screen.findByRole('heading', { level: 1, name: heading }),
+      ).toBeVisible()
+    },
+    5_000,
+  )
   it('navigates from home to settings and back without console errors', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     session(true)

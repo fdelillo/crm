@@ -1,5 +1,5 @@
 import type { SessionInfo } from '@/api/types'
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { useTenant, logoUrl } from '@/api/tenant'
 import { Home, Settings, ChevronDown } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router'
@@ -31,13 +31,6 @@ function AuthenticatedShell({ session }: { session: SessionInfo }) {
     enabled: !logout.isPending && !logoutStarted,
   })
   const role = session.user.role === 'admin' ? 'Administrador' : 'Operador'
-  const previouslyVerified = useRef(session.user.email_verified)
-  useEffect(() => {
-    if (!previouslyVerified.current && session.user.email_verified) {
-      document.querySelector<HTMLElement>('#main h1')?.focus()
-    }
-    previouslyVerified.current = session.user.email_verified
-  }, [session.user.email_verified])
   return (
     <div className="min-h-dvh lg:pl-60">
       <a
@@ -143,6 +136,9 @@ function SessionVerificationBanner({ email }: { email: string }) {
     try {
       const result = await resend.mutateAsync()
       if (result === 'sent' || result === 'unknown') setOutcome(result)
+      if (result === 'already_verified') {
+        document.querySelector<HTMLElement>('#main h1')?.focus()
+      }
     } catch (reason) {
       setError(reason)
     }
