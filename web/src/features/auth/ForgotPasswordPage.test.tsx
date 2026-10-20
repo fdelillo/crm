@@ -75,6 +75,37 @@ describe('ForgotPasswordPage', () => {
     await waitFor(() => expect(request).toHaveBeenCalledOnce())
   })
 
+  // T-F402 (DD-20): server validation codes render localized field text and focus the email.
+  it('maps an invalid-format server error to the email field', async () => {
+    const request = vi.fn(() =>
+      HttpResponse.json(
+        problem('validation_failed', 422, {
+          errors: [{ field: 'email', code: 'invalid_format' }],
+        }),
+        {
+          status: 422,
+          headers: { 'Content-Type': 'application/problem+json' },
+        },
+      ),
+    )
+    server.use(http.post(`${base}/auth/password-reset`, request))
+    renderApp(['/forgot-password'], {
+      routes: [{ path: '/forgot-password', Component: ForgotPasswordPage }],
+    })
+    const user = userEvent.setup()
+    const email = await screen.findByLabelText('Email')
+    await user.type(email, 'ana@aberturasnorte.com')
+    expect(email).toHaveValue('ana@aberturasnorte.com')
+    await user.click(screen.getByRole('button', { name: 'Enviar enlace' }))
+    expect(
+      await screen.findByText(
+        'Ingresá un email válido, por ejemplo nombre@empresa.com',
+      ),
+    ).toBeVisible()
+    await waitFor(() => expect(email).toHaveFocus())
+    expect(request).toHaveBeenCalledOnce()
+  })
+
   // T-F402 (DD-20): an offline request keeps the form available for explicit retry.
   it('offers a retry after a network error and resubmits with the same email', async () => {
     let attempts = 0

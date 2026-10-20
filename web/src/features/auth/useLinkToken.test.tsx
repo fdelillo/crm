@@ -23,7 +23,7 @@ describe('useLinkToken', () => {
     )
     const routes = [{ path: '/reset-password', Component: LinkTokenProbe }]
     const { router, unmount } = renderApp(['/reset-password#token=abc-_123'], {
-      routes: [{ path: '/reset-password', Component: LinkTokenProbe }],
+      routes,
       strictMode: true,
     })
     expect(await screen.findByLabelText('Token del enlace')).toHaveTextContent(

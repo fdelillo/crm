@@ -2,11 +2,17 @@ import { act, screen } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/msw/server'
 import { buildSessionInfo, buildTenant, problem } from '@/test/fixtures'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderApp } from '@/test/renderApp'
 
 // T-F006 (ADR-017), T-F402–T-F404: data-router routes expose their accessible headings.
 describe('application routes', () => {
+  beforeAll(async () => {
+    await Promise.all([
+      import('@/features/auth/pages'),
+      import('@/app/AppShell'),
+    ])
+  })
   beforeEach(() =>
     server.use(
       http.get('*/api/v1/tenant', () => HttpResponse.json(buildTenant())),
@@ -37,17 +43,13 @@ describe('application routes', () => {
     ['/settings/users', 'Usuarios'],
     ['/settings/users/invite', 'Invitar usuario'],
     ['/does-not-exist', 'No encontramos esta página.'],
-  ])(
-    'shows the heading for %s',
-    async (path, heading) => {
-      session(path === '/' || path.startsWith('/settings'))
-      renderApp([path])
-      expect(
-        await screen.findByRole('heading', { level: 1, name: heading }),
-      ).toBeVisible()
-    },
-    5_000,
-  )
+  ])('shows the heading for %s', async (path, heading) => {
+    session(path === '/' || path.startsWith('/settings'))
+    renderApp([path])
+    expect(
+      await screen.findByRole('heading', { level: 1, name: heading }),
+    ).toBeVisible()
+  })
   it('navigates from home to settings and back without console errors', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     session(true)

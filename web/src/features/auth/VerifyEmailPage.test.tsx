@@ -67,6 +67,11 @@ describe('VerifyEmailPage', () => {
     expect(
       await screen.findByText('Este enlace de confirmación ya no sirve.'),
     ).toBeVisible()
+    await waitFor(() =>
+      expect(
+        screen.getByRole('heading', { name: 'Confirmá tu email' }),
+      ).toHaveFocus(),
+    )
     expect(
       screen.getByRole('button', { name: 'Reenviar email de confirmación' }),
     ).toBeVisible()
@@ -118,10 +123,19 @@ describe('VerifyEmailPage', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Confirmar mi email' }),
     )
+    expect(
+      await screen.findByText(
+        'Tu email ya está confirmado. No hace falta otro enlace.',
+      ),
+    ).toBeVisible()
+    expect(screen.getByRole('link', { name: 'Ir al inicio' })).toHaveAttribute(
+      'href',
+      '/',
+    )
     await waitFor(() =>
       expect(
         screen.getByRole('heading', { name: 'Confirmá tu email' }),
-      ).toBeVisible(),
+      ).toHaveFocus(),
     )
     expect(
       screen.queryByRole('button', { name: 'Reenviar email de confirmación' }),
@@ -166,6 +180,15 @@ describe('VerifyEmailPage', () => {
           'Tu email ya está confirmado. No hace falta otro enlace.',
         ).length,
       ).toBeGreaterThanOrEqual(1),
+    )
+    expect(screen.getByRole('link', { name: 'Ir al inicio' })).toHaveAttribute(
+      'href',
+      '/',
+    )
+    await waitFor(() =>
+      expect(
+        screen.getByRole('heading', { name: 'Confirmá tu email' }),
+      ).toHaveFocus(),
     )
     expect(
       screen.queryByText(/Listo, te lo reenviamos/),
@@ -269,6 +292,10 @@ describe('VerifyEmailPage', () => {
     expect(
       await screen.findByText('¡Listo! Tu email quedó confirmado.'),
     ).toBeVisible()
+    expect(screen.getByRole('link', { name: 'Ir al inicio' })).toHaveAttribute(
+      'href',
+      '/',
+    )
     expect(screen.getByRole('link', { name: 'Ir al inicio' })).toHaveAttribute(
       'href',
       '/',
@@ -393,6 +420,32 @@ describe('VerifyEmailPage', () => {
       'href',
       '/login',
     )
+  })
+
+  // T-F404 (DD-F31): a pending resend prevents a second send and announces its pending state.
+  it('locks resend during a pending request and sends only once on double click', async () => {
+    const resend = vi.fn(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      return new HttpResponse(null, { status: 202 })
+    })
+    server.use(
+      http.get(`${base}/me`, () => HttpResponse.json(buildSessionInfo())),
+      http.post(`${base}/auth/email-verification/resend`, resend),
+    )
+    renderApp(['/verify-email'], {
+      routes: [{ path: '/verify-email', Component: VerifyEmailPage }],
+    })
+    const user = userEvent.setup()
+    await user.dblClick(
+      await screen.findByRole('button', {
+        name: 'Reenviar email de confirmación',
+      }),
+    )
+    expect(screen.getByRole('button', { name: 'Enviando…' })).toBeDisabled()
+    await screen.findByText(
+      'Listo, te lo reenviamos. Revisá también el correo no deseado.',
+    )
+    expect(resend).toHaveBeenCalledOnce()
   })
 
   // T-F404 (DD-13): invalid tokens without a session must keep the login exit.

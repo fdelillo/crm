@@ -114,9 +114,7 @@ describe('ResetPasswordPage', () => {
     expect(screen.queryByText(/Confirmá tu email:/)).not.toBeInTheDocument()
   })
 
-  it('shows the incomplete-link exit and validates short passwords without a request', async () => {
-    const request = vi.fn()
-    server.use(http.post(`${base}/auth/password-reset/confirm`, request))
+  it('shows the incomplete-link exit', async () => {
     renderApp(['/reset-password'], {
       routes: [{ path: '/reset-password', Component: ResetPasswordPage }],
     })
@@ -178,8 +176,14 @@ describe('ResetPasswordPage', () => {
       screen.getByText('Vence a la hora o ya se usó. Pedí uno nuevo.'),
     ).toBeVisible()
     expect(screen.queryByLabelText('Nueva contraseña')).not.toBeInTheDocument()
-    await user.click(
-      screen.getByRole('link', { name: 'Pedir un enlace nuevo' }),
+    const freshLink = screen.getByRole('link', {
+      name: 'Pedir un enlace nuevo',
+    })
+    expect(freshLink).toHaveAttribute('href', '/forgot-password')
+    await waitFor(() =>
+      expect(
+        screen.getByRole('heading', { name: 'Creá una contraseña nueva' }),
+      ).toHaveFocus(),
     )
   })
 
