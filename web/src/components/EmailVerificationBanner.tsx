@@ -7,7 +7,8 @@ export type EmailVerificationNoticeStatus =
 export interface EmailVerificationBannerProps {
   email: string
   status: EmailVerificationNoticeStatus
-  errorMessage?: string
+  errorTitle?: string
+  errorDescription?: string
   onResend: () => void
   onDismiss: () => void
 }
@@ -15,7 +16,8 @@ export interface EmailVerificationBannerProps {
 export function EmailVerificationBanner({
   email,
   status,
-  errorMessage,
+  errorTitle,
+  errorDescription,
   onResend,
   onDismiss,
 }: EmailVerificationBannerProps) {
@@ -24,7 +26,7 @@ export function EmailVerificationBanner({
       ? 'Listo, te lo reenviamos. Revisá también el correo no deseado.'
       : status === 'unknown'
         ? 'Si todavía no lo confirmaste, te mandamos un enlace nuevo. Revisá también el correo no deseado.'
-        : errorMessage
+        : undefined
 
   return (
     <section
@@ -56,6 +58,12 @@ export function EmailVerificationBanner({
         <p className="w-full" aria-live="polite">
           {message}
         </p>
+      )}
+      {status === 'error' && (errorTitle || errorDescription) && (
+        <div className="w-full" aria-live="polite">
+          {errorTitle && <p>{errorTitle}</p>}
+          {errorDescription && <p>{errorDescription}</p>}
+        </div>
       )}
     </section>
   )

@@ -134,8 +134,7 @@ function SessionVerificationBanner({ email }: { email: string }) {
     ? 'pending'
     : (outcome ?? (error ? 'error' : 'idle'))
   const errorMessage = error
-    ? (messageForError(error, 'resendVerification').description ??
-      messageForError(error, 'resendVerification').title)
+    ? messageForError(error, 'resendVerification')
     : undefined
 
   async function sendAgain() {
@@ -154,7 +153,8 @@ function SessionVerificationBanner({ email }: { email: string }) {
     <EmailVerificationBanner
       email={email}
       status={status}
-      errorMessage={errorMessage}
+      errorTitle={errorMessage?.title}
+      errorDescription={errorMessage?.description}
       onResend={() => void sendAgain()}
       onDismiss={dismiss}
     />

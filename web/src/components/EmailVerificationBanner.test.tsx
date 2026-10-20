@@ -162,11 +162,90 @@ describe('EmailVerificationBanner', () => {
       const user = userEvent.setup()
       await user.click(screen.getByRole('button', { name: 'Reenviar' }))
       expect(
+        await screen.findByText('Ya te lo mandamos hace poco.'),
+      ).toBeVisible()
+      expect(
         await screen.findByText(`Esperá ${wait} y probá de nuevo.`),
       ).toBeVisible()
       expect(screen.getByRole('button', { name: 'Reenviar' })).toBeEnabled()
     },
   )
+
+  it('updates both rate-limit texts when an IP limit is followed by the user limit', async () => {
+    loggedIn(false)
+    let requests = 0
+    server.use(
+      http.post(`${base}/auth/email-verification/resend`, () => {
+        requests += 1
+        const seconds = requests === 1 ? '180' : '1200'
+        return HttpResponse.json(
+          {
+            type: '/problems/rate_limited',
+            title: 'limit',
+            status: 429,
+            code: 'rate_limited',
+          },
+          {
+            status: 429,
+            headers: {
+              'Content-Type': 'application/problem+json',
+              'Retry-After': seconds,
+            },
+          },
+        )
+      }),
+    )
+    renderApp(['/settings/users'], { protectedPage: <h1>Usuarios</h1> })
+    await screen.findByText(/Confirmá tu email:/)
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'Reenviar' }))
+    expect(
+      await screen.findByText('Ya te lo mandamos hace poco.'),
+    ).toBeVisible()
+    expect(
+      await screen.findByText('Esperá 3 minutos y probá de nuevo.'),
+    ).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: 'Reenviar' }))
+    expect(
+      await screen.findByText('Ya te lo mandamos hace poco.'),
+    ).toBeVisible()
+    expect(
+      await screen.findByText('Esperá 20 minutos y probá de nuevo.'),
+    ).toBeVisible()
+    expect(requests).toBe(2)
+  })
+
+  it('shows both title and description for other resend errors', async () => {
+    loggedIn(false)
+    server.use(
+      http.post(`${base}/auth/email-verification/resend`, () =>
+        HttpResponse.json(
+          {
+            type: '/problems/service_unavailable',
+            title: 'unavailable',
+            status: 503,
+            code: 'service_unavailable',
+          },
+          {
+            status: 503,
+            headers: {
+              'Content-Type': 'application/problem+json',
+              'Retry-After': '60',
+            },
+          },
+        ),
+      ),
+    )
+    renderApp(['/settings/users'], { protectedPage: <h1>Usuarios</h1> })
+    await screen.findByText(/Confirmá tu email:/)
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'Reenviar' }))
+    expect(
+      await screen.findByText('El servicio no está disponible en este momento.'),
+    ).toBeVisible()
+    expect(await screen.findByText('Probá de nuevo en 1 minuto.')).toBeVisible()
+  })
 
   it('can hide the notice for the lifetime of the browser tab session', async () => {
     loggedIn(false)
