@@ -242,7 +242,9 @@ describe('EmailVerificationBanner', () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: 'Reenviar' }))
     expect(
-      await screen.findByText('El servicio no está disponible en este momento.'),
+      await screen.findByText(
+        'El servicio no está disponible en este momento.',
+      ),
     ).toBeVisible()
     expect(await screen.findByText('Probá de nuevo en 1 minuto.')).toBeVisible()
   })
