@@ -41,7 +41,7 @@ describe('application routes', () => {
     ['/settings', 'Ajustes'],
     ['/settings/company', 'Datos de la empresa'],
     ['/settings/users', 'Usuarios'],
-    ['/settings/users/invite', 'Invitar usuario'],
+    ['/settings/users/invite', 'Invitar a alguien'],
     ['/does-not-exist', 'No encontramos esta página.'],
   ])('shows the heading for %s', async (path, heading) => {
     session(path === '/' || path.startsWith('/settings'))

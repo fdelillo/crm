@@ -10,9 +10,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { messageForError } from '@/api/errorMessages'
 import {
   useCan,
-  useCurrentSession,
   useInviteBlockedReason,
   useResendEmailVerification,
+  useSession,
 } from '@/features/auth/session'
 
 const currencyNames = {
@@ -21,7 +21,7 @@ const currencyNames = {
 } as const
 
 export function DashboardPage() {
-  const session = useCurrentSession()
+  const sessionQuery = useSession()
   const tenant = useTenant()
   const industryTemplates = useIndustryTemplates()
   const canManageSettings = useCan('settings.manage')
@@ -37,6 +37,8 @@ export function DashboardPage() {
   const resendError = resendVerification.error
     ? messageForError(resendVerification.error, 'resendVerification')
     : undefined
+  const session = sessionQuery.data
+  if (!session) return null
 
   return (
     <>

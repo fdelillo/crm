@@ -12,7 +12,7 @@ import {
 } from '@/api/errorMessages'
 import { queryKeys } from '@/api/queryKeys'
 import { formatDateTime } from '@/lib/format'
-import type { User } from '@/api/types'
+import type { SessionInfo, User } from '@/api/types'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { EmptyState } from '@/components/EmptyState'
 import { ErrorState } from '@/components/ErrorState'
@@ -31,9 +31,9 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { SubmitButton } from '@/components/SubmitButton'
 import { VerifyToInviteNotice } from '@/components/VerifyToInviteNotice'
 import {
-  useCurrentSession,
   useInviteBlockedReason,
   useResendEmailVerification,
+  useSession,
 } from '@/features/auth/session'
 import {
   useChangeUserRole,
@@ -96,7 +96,7 @@ function confirmation(user: User, action: UserAction, self: boolean) {
 }
 
 export function UsersPage() {
-  const session = useCurrentSession()
+  const sessionQuery = useSession()
   const users = useUsers()
   const queryClient = useQueryClient()
   const blockedReason = useInviteBlockedReason()
@@ -120,6 +120,10 @@ export function UsersPage() {
       restoreTrigger.current = null
     }
   }, [target])
+
+  const session = sessionQuery.data
+  if (!session) return null
+  const currentSession: SessionInfo = session
 
   const resendStatus = resend.isPending
     ? 'pending'
@@ -151,7 +155,7 @@ export function UsersPage() {
         toast(
           `${displayName} ahora es ${changed.role === 'admin' ? 'Administrador' : 'Operador'}`,
         )
-        if (user.id === session.user.id)
+        if (user.id === currentSession.user.id)
           await queryClient.invalidateQueries({
             queryKey: queryKeys.session,
             exact: true,
@@ -216,7 +220,7 @@ export function UsersPage() {
     ? confirmation(
         target.user,
         target.action,
-        target.user.id === session.user.id,
+        target.user.id === currentSession.user.id,
       )
     : null
   return (
@@ -243,7 +247,7 @@ export function UsersPage() {
       {blockedReason && (
         <VerifyToInviteNotice
           id="verify-to-invite-notice"
-          email={session.user.email}
+          email={currentSession.user.email}
           resendStatus={resendStatus}
           errorMessage={resendError}
           onResend={sendVerification}
@@ -275,20 +279,20 @@ export function UsersPage() {
               <UserListItem
                 key={user.id}
                 user={user}
-                isCurrentUser={user.id === session.user.id}
+                isCurrentUser={user.id === currentSession.user.id}
                 actions={availableUserActions(user, {
-                  currentUserId: session.user.id,
+                  currentUserId: currentSession.user.id,
                   activeAdminCount,
-                  actorEmailVerified: session.user.email_verified,
+                  actorEmailVerified: currentSession.user.email_verified,
                 })}
-                timeZone={session.tenant.timezone}
+                timeZone={currentSession.tenant.timezone}
                 pendingAction={pendingAction}
                 onAction={(action, trigger) => onAction(user, action, trigger)}
               />
             ))}
           </ul>
           {list.length === 1 &&
-            list[0]?.id === session.user.id &&
+            list[0]?.id === currentSession.user.id &&
             (blockedReason ? (
               <section className="mt-4 space-y-3 rounded-lg border bg-card p-6">
                 <h2 className="text-lg font-semibold">
@@ -338,7 +342,7 @@ export function UsersPage() {
 export function InviteUserPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const session = useCurrentSession()
+  const sessionQuery = useSession()
   const blockedReason = useInviteBlockedReason()
   const resend = useResendEmailVerification()
   const invitation = useInviteUser()
@@ -360,6 +364,9 @@ export function InviteUserPage() {
     clearErrors,
     formState: { errors },
   } = form
+  const session = sessionQuery.data
+  if (!session) return null
+  const currentSession: SessionInfo = session
   const cachedUsers = queryClient.getQueryData<User[]>(queryKeys.users)
   const resendStatus = resend.isPending
     ? 'pending'
@@ -401,7 +408,7 @@ export function InviteUserPage() {
         const expiry = created.invitation_expires_at
           ? formatDateTime(
               created.invitation_expires_at,
-              session.tenant.timezone,
+              currentSession.tenant.timezone,
             )
           : ''
         toast(`Invitación enviada a ${email}. Vence el ${expiry}.`)
@@ -463,7 +470,7 @@ export function InviteUserPage() {
         <div className="space-y-4">
           <VerifyToInviteNotice
             id="verify-to-invite-notice"
-            email={session.user.email}
+            email={currentSession.user.email}
             description={forcedBlocked ? message?.description : undefined}
             resendStatus={resendStatus}
             errorMessage={resendError}
