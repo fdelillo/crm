@@ -21,7 +21,17 @@ export interface ConfirmDialogProps {
   onConfirm: () => void
 }
 
-export function ConfirmDialog({ open, onOpenChange, title, description, confirmLabel, pendingLabel, destructive = false, pending, onConfirm }: ConfirmDialogProps) {
+export function ConfirmDialog({
+  open,
+  onOpenChange,
+  title,
+  description,
+  confirmLabel,
+  pendingLabel,
+  destructive = false,
+  pending,
+  onConfirm,
+}: ConfirmDialogProps) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
@@ -31,7 +41,12 @@ export function ConfirmDialog({ open, onOpenChange, title, description, confirmL
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={pending}>Cancelar</AlertDialogCancel>
-          <Button type="button" variant={destructive ? 'destructive' : 'default'} disabled={pending} onClick={onConfirm}>
+          <Button
+            type="button"
+            variant={destructive ? 'destructive' : 'default'}
+            disabled={pending}
+            onClick={onConfirm}
+          >
             {pending ? pendingLabel : confirmLabel}
           </Button>
         </AlertDialogFooter>

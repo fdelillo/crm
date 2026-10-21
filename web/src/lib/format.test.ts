@@ -28,9 +28,21 @@ describe('formatRetryAt', () => {
 // T-F501 (ADR-023, DD-25): dates use the company zone and include the year only when needed.
 describe('formatDateTime', () => {
   it('formats invitation expiry in the company time zone and omits the current year', () => {
-    expect(formatDateTime('2026-10-06T17:30:00Z', 'America/Argentina/Buenos_Aires', new Date('2026-09-29T12:00:00Z'))).toBe('6/10, 14:30')
+    expect(
+      formatDateTime(
+        '2026-10-06T17:30:00Z',
+        'America/Argentina/Buenos_Aires',
+        new Date('2026-09-29T12:00:00Z'),
+      ),
+    ).toBe('6/10, 14:30')
   })
   it('includes the year when the invitation expires in another year', () => {
-    expect(formatDateTime('2026-10-06T17:30:00Z', 'America/Argentina/Buenos_Aires', new Date('2025-09-29T12:00:00Z'))).toBe('6/10/2026, 14:30')
+    expect(
+      formatDateTime(
+        '2026-10-06T17:30:00Z',
+        'America/Argentina/Buenos_Aires',
+        new Date('2025-09-29T12:00:00Z'),
+      ),
+    ).toBe('6/10/2026, 14:30')
   })
 })

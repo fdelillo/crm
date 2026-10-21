@@ -37,7 +37,12 @@ export function FormAlert({
       {(action || secondaryAction) && (
         <div className="flex flex-wrap gap-2">
           {action && (
-            <Button type="button" className="h-11" onClick={action.onClick} disabled={action.disabled}>
+            <Button
+              type="button"
+              className="h-11"
+              onClick={action.onClick}
+              disabled={action.disabled}
+            >
               {action.label}
             </Button>
           )}
