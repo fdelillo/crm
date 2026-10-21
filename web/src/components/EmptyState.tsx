@@ -1,15 +1,26 @@
 import { Link } from 'react-router'
 import { Button } from './ui/button'
+
+type EmptyStateAction =
+  | {
+      label: string
+      to: string
+      onClick?: never
+      disabled?: boolean
+      ariaDescribedBy?: string
+    }
+  | {
+      label: string
+      to?: never
+      onClick: () => void
+      disabled?: boolean
+      ariaDescribedBy?: string
+    }
+
 export interface EmptyStateProps {
   title: string
   description?: string
-  action?: {
-    label: string
-    to?: string
-    onClick?: () => void
-    disabled?: boolean
-    ariaDescribedBy?: string
-  }
+  action?: EmptyStateAction
 }
 export function EmptyState({ title, description, action }: EmptyStateProps) {
   return (
