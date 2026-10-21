@@ -38,6 +38,7 @@ describe('LoginPage', () => {
     ['/login?next=%2Fsettings%2Fusers', '/settings/users'],
     ['/login?next=%2F%2Fevil.example', '/'],
   ])('replaces the login entry for %s with %s', async (entry, destination) => {
+    sessionStorage.setItem('crm.verifyBanner.dismissed', 'true')
     loggedOut()
     let authenticated = false
     server.use(
@@ -76,6 +77,8 @@ describe('LoginPage', () => {
     if (destination === '/') {
       expect(queryClient.getQueryData(['stale-session-data'])).toBeUndefined()
       expect(queryClient.getQueryData(['session'])).toEqual(validSession)
+      expect(sessionStorage.getItem('crm.verifyBanner.dismissed')).toBeNull()
+      expect(await screen.findByText(/Confirmá tu email:/)).toBeVisible()
     }
     await act(async () => router.navigate(-1))
     expect(router.state.location.pathname).toBe(destination)
@@ -142,7 +145,8 @@ describe('LoginPage', () => {
         name: 'Por seguridad, pausamos el ingreso con este email.',
       }),
     ).toBeVisible()
-    expect(screen.getByRole('alert')).toHaveFocus()
+    const alert = screen.getByRole('alert')
+    await waitFor(() => expect(alert).toHaveFocus())
     expect(screen.getByText(/a las 14:35 \(en 15 minutos\)/)).toBeVisible()
     await act(async () => {
       now.mockReturnValue(new Date(2026, 9, 17, 14, 27, 0).getTime())
@@ -171,7 +175,7 @@ describe('LoginPage', () => {
       screen.getByRole('button', { name: 'Restablecer contraseña' }),
     )
     expect(
-      screen.getByRole('heading', { name: 'Olvidé mi contraseña' }),
+      screen.getByRole('heading', { name: 'Recuperá tu contraseña' }),
     ).toBeVisible()
     expect(router.state.location.state).toEqual({ email: 'ana@example.test' })
   })
@@ -249,7 +253,7 @@ describe('LoginPage', () => {
       ])
       await screen.findByRole('heading', { name: 'Ingresá a tu cuenta' })
       if (copy) expect(await screen.findByText(copy)).toBeVisible()
-      else expect(screen.queryByRole('status')).not.toBeInTheDocument()
+      else expect(screen.getByRole('status')).toBeEmptyDOMElement()
       if (lostLineVisible) {
         expect(
           screen.getByText('Los cambios que no habías guardado se perdieron.'),

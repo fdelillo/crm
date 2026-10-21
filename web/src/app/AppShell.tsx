@@ -3,10 +3,16 @@ import { useState } from 'react'
 import { useTenant, logoUrl } from '@/api/tenant'
 import { Home, Settings, ChevronDown } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router'
-import { useSession } from '@/features/auth/session'
+import { useResendEmailVerification, useSession } from '@/features/auth/session'
 import { AppBrand } from '@/components/AppBrand'
 import { Button } from '@/components/ui/button'
 import { useLogout } from '@/features/auth/api'
+import { messageForError } from '@/api/errorMessages'
+import {
+  EmailVerificationBanner,
+  type EmailVerificationNoticeStatus,
+} from '@/components/EmailVerificationBanner'
+import { useVerifyBannerDismissed } from '@/lib/verifyBannerDismissal'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -95,6 +101,12 @@ function AuthenticatedShell({ session }: { session: SessionInfo }) {
           </DropdownMenu>
         </div>
       </div>
+      {!session.user.email_verified && (
+        <SessionVerificationBanner
+          key={session.user.email}
+          email={session.user.email}
+        />
+      )}
       <main
         id="main"
         tabIndex={-1}
@@ -103,5 +115,43 @@ function AuthenticatedShell({ session }: { session: SessionInfo }) {
         <Outlet />
       </main>
     </div>
+  )
+}
+
+function SessionVerificationBanner({ email }: { email: string }) {
+  const resend = useResendEmailVerification()
+  const [dismissed, dismiss] = useVerifyBannerDismissed()
+  const [outcome, setOutcome] = useState<'sent' | 'unknown' | null>(null)
+  const [error, setError] = useState<unknown>(null)
+  const status: EmailVerificationNoticeStatus = resend.isPending
+    ? 'pending'
+    : (outcome ?? (error ? 'error' : 'idle'))
+  const errorMessage = error
+    ? messageForError(error, 'resendVerification')
+    : undefined
+
+  async function sendAgain() {
+    setOutcome(null)
+    setError(null)
+    try {
+      const result = await resend.mutateAsync()
+      if (result === 'sent' || result === 'unknown') setOutcome(result)
+      if (result === 'already_verified') {
+        document.querySelector<HTMLElement>('#main h1')?.focus()
+      }
+    } catch (reason) {
+      setError(reason)
+    }
+  }
+
+  if (dismissed) return null
+  return (
+    <EmailVerificationBanner
+      email={email}
+      resendStatus={status}
+      errorMessage={errorMessage}
+      onResend={() => void sendAgain()}
+      onDismiss={dismiss}
+    />
   )
 }

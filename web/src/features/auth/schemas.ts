@@ -1,5 +1,10 @@
 import { z } from 'zod'
-import type { LoginRequest, SignupRequest } from '@/api/types'
+import type {
+  LoginRequest,
+  PasswordResetConfirmRequest,
+  PasswordResetRequest,
+  SignupRequest,
+} from '@/api/types'
 
 const requiredText = (maximum: number) =>
   z.string().trim().min(1, 'required').max(maximum, 'too_long')
@@ -47,3 +52,20 @@ export const loginSchema = z.object({
 }) satisfies z.ZodType<LoginRequest>
 
 export type LoginFormValues = z.input<typeof loginSchema>
+
+export const passwordResetSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(1, 'required')
+    .max(254, 'too_long')
+    .pipe(z.email({ error: 'invalid_format' })),
+}) satisfies z.ZodType<PasswordResetRequest>
+
+export type PasswordResetFormValues = z.input<typeof passwordResetSchema>
+
+export const passwordResetConfirmSchema = z.object({
+  token: z.string().min(1).max(128),
+  password: z.string().min(10, 'too_short').max(128, 'too_long'),
+}) satisfies z.ZodType<PasswordResetConfirmRequest>

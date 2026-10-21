@@ -105,22 +105,28 @@ describe('application shell', () => {
   it('announces connectivity changes', async () => {
     renderApp(['/'])
     await screen.findByRole('heading', { name: 'Hola, Persona de prueba' })
+    const liveRegion = screen
+      .getAllByRole('status')
+      .find((region) => region.hasAttribute('aria-atomic'))!
+    expect(liveRegion).toBeEmptyDOMElement()
+    expect(liveRegion).toHaveAttribute('aria-atomic', 'true')
     Object.defineProperty(navigator, 'onLine', {
       configurable: true,
       value: false,
     })
     act(() => window.dispatchEvent(new Event('offline')))
     expect(
-      await screen.findByRole('status', { name: 'Sin conexión' }),
-    ).toHaveTextContent('Sin conexión. Revisá tu internet.')
+      await screen.findByText('Sin conexión. Revisá tu internet.'),
+    ).toBeVisible()
+    expect(screen.getAllByRole('status')).toContain(liveRegion)
+    expect(liveRegion).toHaveTextContent('Sin conexión. Revisá tu internet.')
     Object.defineProperty(navigator, 'onLine', {
       configurable: true,
       value: true,
     })
     act(() => window.dispatchEvent(new Event('online')))
-    expect(
-      screen.queryByRole('status', { name: 'Sin conexión' }),
-    ).not.toBeInTheDocument()
+    expect(screen.getAllByRole('status')).toContain(liveRegion)
+    expect(liveRegion).toBeEmptyDOMElement()
   })
   it('shows recovery actions after a render error', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
@@ -319,6 +325,14 @@ it('exposes status, error and empty-state actions', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Continuar' }))
   expect(action).toHaveBeenCalledOnce()
   unmount()
+  const quietAlert = render(
+    <FormAlert variant="success" title="Confirmado" announce={false} />,
+  )
+  expect(within(quietAlert.container).getByText('Confirmado')).toBeVisible()
+  expect(
+    within(quietAlert.container).queryByRole('status'),
+  ).not.toBeInTheDocument()
+  quietAlert.unmount()
   const error = render(
     <ErrorState
       message={{

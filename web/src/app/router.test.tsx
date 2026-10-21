@@ -2,11 +2,17 @@ import { act, screen } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/msw/server'
 import { buildSessionInfo, buildTenant, problem } from '@/test/fixtures'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderApp } from '@/test/renderApp'
 
-// T-F006 (ADR-017): all data-router routes expose their provisional accessible heading.
+// T-F006 (ADR-017), T-F402–T-F404: data-router routes expose their accessible headings.
 describe('application routes', () => {
+  beforeAll(async () => {
+    await Promise.all([
+      import('@/features/auth/pages'),
+      import('@/app/AppShell'),
+    ])
+  })
   beforeEach(() =>
     server.use(
       http.get('*/api/v1/tenant', () => HttpResponse.json(buildTenant())),
@@ -27,8 +33,8 @@ describe('application routes', () => {
   it.each([
     ['/login', 'Ingresá a tu cuenta'],
     ['/signup', 'Creá tu cuenta'],
-    ['/forgot-password', 'Olvidé mi contraseña'],
-    ['/reset-password#token=example', 'Restablecer contraseña'],
+    ['/forgot-password', 'Recuperá tu contraseña'],
+    ['/reset-password#token=example', 'Creá una contraseña nueva'],
     ['/verify-email#token=example', 'Confirmá tu email'],
     ['/accept-invitation#token=example', 'Aceptar invitación'],
     ['/', 'Hola, Persona de prueba'],

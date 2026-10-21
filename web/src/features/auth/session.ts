@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { api } from '@/api/client'
 import { isUnauthenticated, unwrap, type ApiError } from '@/api/errors'
 import { queryKeys } from '@/api/queryKeys'
@@ -26,4 +27,32 @@ export function useCurrentSession() {
 }
 export function useCan(permission: Permission): boolean {
   return useSession().data?.permissions.includes(permission) ?? false
+}
+
+export type ResendVerificationOutcome = 'sent' | 'already_verified' | 'unknown'
+
+/** DD-F31: the post-send session read bypasses the cached staleTime result. */
+export function useResendEmailVerification() {
+  const client = useQueryClient()
+  return useMutation<ResendVerificationOutcome, ApiError, void>({
+    mutationFn: async () => {
+      unwrap<void>(await api.POST('/auth/email-verification/resend'))
+      try {
+        await client.cancelQueries({ queryKey: queryKeys.session, exact: true })
+        const session = await client.fetchQuery<SessionInfo>({
+          queryKey: queryKeys.session,
+          queryFn: async ({ signal }) =>
+            unwrap(await api.GET('/me', { signal })),
+          staleTime: 0,
+        })
+        return session.user.email_verified ? 'already_verified' : 'sent'
+      } catch {
+        return 'unknown'
+      }
+    },
+    onSuccess: (outcome) => {
+      if (outcome === 'already_verified')
+        toast('Tu email ya está confirmado. No hace falta otro enlace.')
+    },
+  })
 }

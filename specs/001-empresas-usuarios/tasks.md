@@ -3150,6 +3150,16 @@ mientras el reloj del render avanza a 14:27. Cambian T-F101 (fila nueva del `503
 aclarada), T-F107, T-F203, T-F205 y la trazabilidad. El código de F1 a F3 ya cumple los cuatro
 puntos: la fila nueva de T-F101 pasa sin cambiar código. Sin tareas nuevas ni cambios de orden.
 
+**Enmienda de F4, P-F20 (2026-10-20; `ui.md` P-F20 aprobada por el usuario el 2026-10-20)**
+(`ui.md`, enmienda de F4, P-F20): tres puntos de la revisión 1 del PR #39. (1) La marca del aviso
+C-01 es `crm.verifyBanner.dismissed` = `'true'`, sin el email, en `lib/verifyBannerDismissal.ts`;
+la borran los puntos de INV-F03. (2) `EmailVerificationBanner` y `VerifyToInviteNotice` reciben
+`resendStatus` y `errorMessage`, que es el objeto de `messageForError(error,
+'resendVerification')` tal cual, nunca un texto suelto (DD-F29). (3) INV-F19: los mensajes con
+anuncio cortés se escriben en una `LiveRegion` montada antes que su texto. Cambian T-F106 (fila de
+C-02), T-F404, T-F405 y T-F406, que se corrigen en la rama del PR #39; T-F502, T-F505 y T-F506
+(F5); T-F603 (F6); T-F703 y T-F705 (F7), y la trazabilidad. Sin tareas nuevas ni cambios de orden.
+
 ### Convenciones de esta sección
 
 - `[T]` = tarea de test. Va **antes** de la tarea de código que la hace pasar, y el test debe
@@ -3637,7 +3647,7 @@ hora de `login_locked` con `formatRetryAt(s, new Date(error.receivedAt))`, nunca
 `lib/safeNextPath.ts`, `lib/sessionExpiredRedirect.ts` (el manejador de §12.4 y la transición a
 `null` de §6.4 arman la URL con `sessionExpiredLoginPath`; DD-F32).
 
-**T-F106 [T] — Shell, Ajustes y accesibilidad base** · BR-F04, INV-F10, NFR-F06, `ui.md` §12.1, §13, §13.8, §13.13, §18, P-F18
+**T-F106 [T] — Shell, Ajustes y accesibilidad base** · BR-F04, INV-F10, INV-F19, NFR-F06, `ui.md` §12.1, §13, §13.8, §13.13, §18, P-F18, P-F20
 - **Red**:
 
   | Caso | Esperado |
@@ -3648,7 +3658,7 @@ hora de `login_locked` con `formatRetryAt(s, new Date(error.receivedAt))`, nunca
   | Navegar de Inicio a Ajustes | foco en el `<h1>` "Ajustes"; `document.title` = "Ajustes · {Empresa}" |
   | Ítem de navegación actual | `aria-current="page"` |
   | Encabezado | nombre de la empresa de `['tenant']`; mientras carga, `session.tenant.name`; sin logo, iniciales |
-  | Evento `offline` / `online` | aparece / desaparece "Sin conexión. Revisá tu internet." (`role="status"`) |
+  | Evento `offline` / `online` | aparece / desaparece "Sin conexión. Revisá tu internet." dentro de una región `role="status"` que ya estaba en el DOM, vacía, antes del `offline` y sigue (vacía) después del `online`: el mismo nodo (*(P-F20)* INV-F19) |
   | Una pantalla que lanza un error al renderizar | "Algo salió mal al mostrar esta pantalla" con "Recargar" e "Ir al inicio" |
   | *(P-F18)* Falla el chunk de la primera pantalla (el `lazy` de `/` rechaza en la carga inicial) / una pantalla lanza al renderizar después de navegar desde Ajustes | `document.title` = "Algo salió mal al mostrar esta pantalla · CRM" (no "CRM" ni "Ajustes · {Empresa}"); foco en el `<h1>` |
   | *(P-F18)* Ruta inexistente sin sesión | `document.title` = "No encontramos esta página. · CRM" |
@@ -3809,7 +3819,7 @@ no vuelve a consultar datos privados al regresar; LockedNotice anuncia y recibe 
 foco a contraseña; se cubren P-F18/DD-F32, caché/historial, cruces de permiso, accesibilidad y
 doble envío en Signup/Login, CurrencyPicker, errores offline/vacíos y los cuatro umbrales P-F19.
 revisión 2 (Claude Code): merge OK con menores; 1 importante y 2 menores de tests, corregidos en 66b5d89 y be2cfc9.
-revisión: pendiente (Claude Code).
+verificación final (Claude Code): merge OK en 24bd60b; PR #38 mergeado en b1d4678.
 
 ---
 
@@ -3871,7 +3881,7 @@ antes: repetir con las ventanas sin superponerse.
   | Campo | `autocomplete="new-password"`; "Mostrar"/"Ocultar" con `aria-pressed` |
 - **Green**: pasa la tabla.
 
-**T-F404 [T] — Confirmar email** · US-1.3, DD-13, DD-F3, DD-F31, INV-F17, `ui.md` §13.5
+**T-F404 [T] — Confirmar email** · US-1.3, DD-13, DD-F3, DD-F31, INV-F17, INV-F19, `ui.md` §13.5, P-F20
 - **Red**:
 
   | Interacción | Resultado observable |
@@ -3884,41 +3894,72 @@ antes: repetir con las ventanas sin superponerse.
   | `400 token_invalid` con sesión y `email_verified: false` en caché → "Reenviar" → `202`; `/me` → `email_verified: true` | toast "Tu email ya está confirmado. No hace falta otro enlace."; nunca "Listo, te lo reenviamos"; la pantalla pasa a la fila anterior y el foco va al `<h1>` (DD-F31, INV-F17) |
   | `400 token_invalid` sin sesión | mensaje + "Ingresar" |
   | Sin token | "Este enlace está incompleto." |
+  | *(P-F20)* Con token → "Confirmar mi email" → `204` | "¡Listo! Tu email quedó confirmado." dentro de una región `role="status"` que ya estaba en el DOM, vacía, antes del click (el mismo nodo antes y después; INV-F19) |
+  | *(P-F20)* `400 token_invalid` con sesión y `email_verified: false` → "Reenviar email de confirmación" → `202` y `/me` en `false` / `202` y `/me` → `500` | "Listo, te lo reenviamos…" / "Si todavía no lo confirmaste, te mandamos un enlace nuevo…" dentro de una región `role="status"` que existía vacía antes del click; ningún error aparece dos veces (INV-F19) |
 - **Mutaciones** (se aplican, el caso falla y se restauran; DD-F31): ofrecer "Reenviar" sin mirar
   `email_verified` → falla la fila del email ya confirmado; mostrar el éxito con el `202` sin releer
-  `/me` → falla la fila siguiente.
+  `/me` → falla la fila siguiente. *(P-F20)* Montar la región del éxito solo cuando hay texto → falla
+  la fila de "Confirmar mi email" → `204` de INV-F19.
 - **Green**: pasa la tabla.
 
-**T-F405 [T] — Aviso "Confirmá tu email"** · US-1.3, P-2, BR-F05, DD-46 (3) con la enmienda H-16, DD-F31, INV-F17, `ui.md` §13.13
+**T-F405 [T] — Aviso "Confirmá tu email"** · US-1.3, P-2, BR-F05, DD-46 (3) con la enmienda H-16, DD-F29, DD-F31, INV-F03, INV-F17, INV-F19, `ui.md` §10.1, §13.13, P-F20
 - **Red**:
 
   | Caso | Esperado |
   |---|---|
   | `email_verified: false` | aviso con el email en todas las pantallas con sesión |
   | `email_verified: true` | sin aviso |
-  | "Reenviar" → `202`; `/me` → `email_verified: false` | un `GET /me` después del `POST`, aunque no pasaron los 60 s de `staleTime`; "Enviando…" hasta que responde; después "Listo, te lo reenviamos. Revisá también el correo no deseado." anunciado en `aria-live`; el texto no menciona esperar 20 minutos (DD-F30 reemplazada, enmienda H-16: un `202` siempre envía salvo con el email ya confirmado) |
+  | "Reenviar" → `202`; `/me` → `email_verified: false` | un `GET /me` después del `POST`, aunque no pasaron los 60 s de `staleTime`; "Enviando…" hasta que responde; después "Listo, te lo reenviamos. Revisá también el correo no deseado." en la región `role="status"` del aviso (INV-F19, P-F20); el texto no menciona esperar 20 minutos (DD-F30 reemplazada, enmienda H-16: un `202` siempre envía salvo con el email ya confirmado) |
   | Caché con `email_verified: false`, la pestaña siempre visible; "Reenviar" → `202`; `/me` → `email_verified: true` (confirmado en otra ventana o dispositivo) | nunca aparece "Listo, te lo reenviamos"; toast "Tu email ya está confirmado. No hace falta otro enlace."; el aviso desaparece y el foco va al `<h1>` de la pantalla (DD-F31, INV-F17) |
   | "Reenviar" → `202`; `/me` → `500` / sin red | "Si todavía no lo confirmaste, te mandamos un enlace nuevo. Revisá también el correo no deseado."; el aviso sigue visible (DD-F31) |
   | "Reenviar" → `429` con `Retry-After: 300` (cupo por IP o por usuario; el contrato no los distingue) | "Ya te lo mandamos hace poco. Esperá 5 minutos y probá de nuevo." |
   | "Reenviar" → `429` con `Retry-After: 1200` (cupo por usuario agotado) | "Ya te lo mandamos hace poco. Esperá 20 minutos y probá de nuevo." |
-  | "Reenviar" → `429` con `Retry-After: 180`; "Reenviar" otra vez → `429` con `Retry-After: 1200` (los dos cupos agotados) | primero "Esperá 3 minutos y probá de nuevo." y después "Esperá 20 minutos y probá de nuevo.", cada uno anunciado en `aria-live`; "Reenviar" sigue habilitado; un solo `POST` por toque |
+  | "Reenviar" → `429` con `Retry-After: 180`; "Reenviar" otra vez → `429` con `Retry-After: 1200` (los dos cupos agotados) | primero "Ya te lo mandamos hace poco." + "Esperá 3 minutos y probá de nuevo." y después "Ya te lo mandamos hace poco." + "Esperá 20 minutos y probá de nuevo.", cada uno en la región `role="status"` del aviso, que queda vacía mientras dice "Enviando…" (INV-F19, P-F20); "Reenviar" sigue habilitado; un solo `POST` por toque |
   | Ingresar después de restablecer la contraseña: la respuesta del login trae `email_verified: true` (DD-46 (2)) | sin aviso |
-  | "Ocultar" | desaparece y sigue oculto al navegar; con `sessionStorage` vacío vuelve a aparecer |
+  | "Ocultar" | desaparece y sigue oculto al navegar y al volver a montar la app en la misma pestaña; `sessionStorage` tiene `crm.verifyBanner.dismissed` = `"true"` y ninguna clave ni valor contiene el email (*(P-F20)* NFR-F09); con `sessionStorage` vacío vuelve a aparecer |
+  | *(P-F20)* "Ocultar" → "Cerrar sesión" (`204`) / "Ocultar" → una query responde `401 unauthenticated` / con `crm.verifyBanner.dismissed` en `sessionStorage`, ingresar (o registrarse) con una cuenta con `email_verified: false` | en los tres casos, `sessionStorage` sin `crm.verifyBanner.dismissed`; en el tercero, el aviso aparece con el email de esa cuenta (INV-F03) |
+  | *(P-F20)* Aviso visible, antes de tocar "Reenviar" → cada resultado (`202` con `/me` en `false`, `202` con `/me` → `500`, `429`, `503`) | el aviso tiene una sola región `role="status"`, vacía antes del click; el resultado aparece en ese mismo nodo (INV-F19) |
+  | *(P-F20)* "Reenviar" → `503` con `Retry-After: 60` | "El servicio no está disponible en este momento." + "Probá de nuevo en 1 minuto." (título y descripción juntos, DD-F29) |
   | Teclado | "Reenviar" y "Ocultar" alcanzables con Tab y con nombre accesible |
 - **Mutaciones** (se aplican, el caso falla y se restauran; DD-F31): resolver `'sent'` con el `202`
   sin releer `/me` → falla la fila de `email_verified: true`; leer `/me` de la caché, o pedirlo
   respetando el `staleTime`, → falla la misma fila (MSW cuenta un solo `GET /me`); tratar el fallo
-  de `/me` como `'sent'` → falla la fila de `/me` → `500`.
+  de `/me` como `'sent'` → falla la fila de `/me` → `500`. *(P-F20)* Pasar `description ?? title`
+  como un solo texto → fallan las filas de `429` y `503`; montar la región solo cuando hay texto →
+  falla la fila de INV-F19; volver a poner el email en la clave → falla la fila de "Ocultar".
 - **Green**: pasa la tabla.
 
 **T-F406 — Implementar** `useLinkToken`, `ForgotPasswordPage`, `ResetPasswordPage`,
 `VerifyEmailPage`, `EmailVerificationBanner` y sus hooks. `useResendEmailVerification` va en
 `features/auth/session.ts` (revisión 4: lo usan también S-07, S-09 y S-10, `ui.md` §15.4) y
-resuelve `ResendVerificationOutcome` releyendo `/me` tras el `202` (DD-F31).
+resuelve `ResendVerificationOutcome` releyendo `/me` tras el `202` (DD-F31). *(P-F20)*
+`components/LiveRegion.tsx`, la prop `announce` de `FormAlert`, la región siempre montada de
+`OfflineBanner` (INV-F19) y `lib/verifyBannerDismissal.ts`, con `clearVerifyBannerDismissed` junto
+a cada `queryClient.clear()` por cambio de sesión (INV-F03).
 
 **Checkpoint Fase F4**: `npm run check` en verde + prueba independiente.
 
+**Fase F4 completa (2026-10-20)**: T-F401–T-F406 implementadas en `feat/001-frontend-email-links`; commits `43263c4`, `33b9f01`, `9a43312`, `6aff083`, `6332d20`, `3eb5404`, más la corrección `b2967dd` (`fix(001): show resend error titles and descriptions`). `GOFLAGS=-count=1 make check-all` pasó con Node 24: Go vet, golangci-lint, sqlc/sync, unitarios e integración con race, `web-check` (26 archivos; 413 passed, 2 expected-fail) y build. El primer intento válido de integración tuvo un timeout al provisionar un rol de tenant en Testcontainers; pasó en el reintento único. Una corrida intermedia con Node 26 tuvo un fallo de foco en un test existente de `LoginPage`; pasó con Node 24. Prueba independiente reportada por Claude Code: origen `https://localhost:5173`; reset de contraseña, reapertura del enlace rechazado, confirmación de email y reset que confirma email (DD-46) pasaron. En H-16, Mailpit contó 1→2→3→4 mensajes en los tres reenvíos exitosos y el cuarto fue limitado a 20 minutos sin email adicional. En DD-F31, con la primera página visible (`visibilityState === 'visible'`) al reenviar tras confirmar en la segunda ventana, el aviso desapareció con el texto de email ya confirmado y Mailpit recibió 0 emails extra. Hallazgo T-F405/DD-F29: el aviso mostraba solo la descripción y ocultaba el título del error 429. Corregido en `b2967dd` para mostrar título y descripción también en los demás errores; la mutación `description ?? title` hizo fallar 4/8 aserciones del test enfocado y, restaurado el código, pasó 8/8. Revisión 1 de Claude Code del PR #39: no mergear; 1 bloqueante y 5 importantes. El bloqueante se corrigió en `2f5cf54`; las correcciones restantes, en `e2e2cd3`. Las mutaciones de T-F404 (reenviar con sesión ya confirmada; omitir la relectura de `/me`), T-F405 (omitir la relectura, reutilizar caché fresca y tratar el error de `/me` como envío correcto) y `description ?? title` hicieron fallar sus tests sonda; restauradas las implementaciones correctas, la verificación enfocada pasó (77/77) y `npm run check` pasó con Node 24 (413 passed, 2 expected-fail). Revisión 2 de Claude Code del PR #39: merge OK con menores; corregidos en `897542f` y `10166df`. Se protegió el foco DD-F31 tras `already_verified` y al recibir un token inválido; al quitar temporalmente `resendResult === 'already_verified'`, el test del resultado de `/me` falló en `toHaveFocus()` (el foco quedó en `body`), y pasó restaurada la condición. Se añadieron la prueba 422 de Forgot, la protección de doble envío de S-05, el destino del enlace Reset, las aserciones de “Ir al inicio” y la precarga de módulos en tests de rutas/sesión. `npm run check` con Node 24 pasó: 26 archivos, 415 passed y 2 expected-fail.
+
 ---
+
+**P-F20 implementada en F4 (2026-10-20; T-F106, T-F404, T-F405 y T-F406)**: marca fija de
+`sessionStorage` y limpieza al cambiar de sesión; `EmailVerificationBanner` recibe los props
+`resendStatus` y `errorMessage` intactos; `FormAlert announce`; regiones `LiveRegion` siempre
+montadas para C-01, S-05 y C-02. En estado vacío usan `sr-only` para permanecer accesibles sin
+reservar espacio visual. `npm test -- --run src/components/LiveRegion.test.tsx
+src/app/shell.test.tsx src/components/EmailVerificationBanner.test.tsx
+src/features/auth/VerifyEmailPage.test.tsx` con Node 24 pasó: 4 archivos, 45 tests.
+Mutaciones ejecutadas y restauradas: (1) `LiveRegion` retorna `null` sin hijos; `LiveRegion.test.tsx`
+falló al no encontrar `role="status"` en la carga vacía. (2) C-01 pasa
+`description ?? title` como título y quita la descripción; los tests de `Retry-After` 300/1200 y
+503 fallaron porque no encontraron el título. (3) la clave cambia a
+`crm.verifyBanner.dismissed:persona@example.test`; la sonda de ocultar falló con `null` en
+`sessionStorage.getItem('crm.verifyBanner.dismissed')` en vez de `"true"`. Restauradas las tres
+mutaciones, el enfoque pasó 45/45. `npm run check` con Node 24 pasó: lint/Prettier, typecheck,
+419 tests y 2 expected-fail de 421, build. Los cinco checks del PR #39 pasaron en CI: `make build` (1m32s), `make check` (10m02s), `make vuln` (35s), `make web-check` (1m12s) y `make web-vuln` (11s). El check `make vuln` detectó GO-2026-6809; se actualizó el toolchain de Go a 1.27.3 en `go.mod` y `tools.mod` (commit `2e704fd`). El push de ese parche dejó los cinco checks verdes.
+Verificación final de Claude Code (cabeza `d0269c2`): merge OK con menores. Las tres mutaciones de P-F20 fallan donde corresponde; sacar cada `clearVerifyBannerDismissed()` (signup, login, logout, reset, `expireSession`) hace fallar su test; `make vuln` pasa en `d0269c2` y falla en `main` (`b1d4678`) por GO-2026-6809, que afecta go1.27.0 a go1.27.2. Prueba de navegador independiente sobre `d0269c2`: 1 passed (mismos flujos y conteos de Mailpit que en `ce1967c`). Seguimientos para un PR posterior: (1) `LiveRegion` decide el vacío con `children` y un array de expresiones falsas cuenta como contenido, así que en C-01 y en la región de reenvío de S-05 la región vacía no queda `sr-only` (contradice §15.1 y la frase de arriba); (2) "Tu email ya está confirmado. No hace falta otro enlace." en S-05 nace con `role="status"` y §13.5 dice que no lleva región (`announce={false}`); (3) en `VerifyEmailPage.test.tsx`, la aserción de "Ir al inicio" sigue duplicada y falta en "keeps the confirmation action for a token even when the signed-in email is verified"; (4) la línea de la revisión 1 de esta entrada omite "y 5 menores"; (5) `plan.md` sigue diciendo go1.27.2.
+`revisión: merge OK con menores (Claude Code, 2026-10-20)`.
 
 ### Fase F5 — Historia 3: Usuarios e invitaciones (P2)
 
@@ -3956,7 +3997,7 @@ desactivar a un usuario y ver que su ventana vuelve al login con "Tu sesión se 
   | Misma fecha con `now` en otro año | incluye el año |
 - **Green**: pasa la tabla.
 
-**T-F502 [T] — Lista de usuarios** · US-3, FR-005, FR-007, DD-25, `ui.md` §13.9
+**T-F502 [T] — Lista de usuarios** · US-3, FR-005, FR-007, DD-25, DD-F29, INV-F19, `ui.md` §13.9, P-F20
 - **Red**:
 
   | Caso | Resultado observable |
@@ -3969,9 +4010,12 @@ desactivar a un usuario y ver que su ventana vuelve al login con "Tu sesión se 
   | `500` con `instance` | "No pudimos cargar los usuarios." + código + "Reintentar" |
   | Nombre de 120 caracteres | el texto completo está en el DOM (sin truncar) |
   | Sesión con `email_verified: false` (revisión 4, BR-F14) | aviso "Confirmá tu email para invitar a tu equipo." con "Te mandamos un enlace a {email}…" y "Reenviar email de confirmación"; "+ Invitar" deshabilitado, con `aria-describedby` que apunta al aviso; en el estado vacío, "Invitar" también deshabilitado |
-  | "Reenviar email de confirmación" → `202` / `429` con `Retry-After: 120` / `429` con `Retry-After: 1200` | en el aviso (`role="status"`): "Listo, te lo reenviamos. Revisá también el correo no deseado." (sin la línea de los 20 minutos, enmienda H-16) / "Ya te lo mandamos hace poco." + "Esperá 2 minutos y probá de nuevo." / lo mismo con "Esperá 20 minutos y probá de nuevo." |
+  | "Reenviar email de confirmación" → `202` / `429` con `Retry-After: 120` / `429` con `Retry-After: 1200` | en la región `role="status"` del aviso (INV-F19): "Listo, te lo reenviamos. Revisá también el correo no deseado." (sin la línea de los 20 minutos, enmienda H-16) / "Ya te lo mandamos hace poco." + "Esperá 2 minutos y probá de nuevo." / lo mismo con "Esperá 20 minutos y probá de nuevo." |
   | Con el aviso visible, la pestaña vuelve a enfocarse y `/me` responde `email_verified: true` | el aviso desaparece y "+ Invitar" queda habilitado, sin recargar (DD-F28) |
   | "Reenviar email de confirmación" → `202`; `/me` → `email_verified: true` | toast "Tu email ya está confirmado. No hace falta otro enlace."; nunca "Listo, te lo reenviamos"; el aviso desaparece, "+ Invitar" queda habilitado y el foco va al `<h1>` (DD-F31) |
+  | *(P-F20)* "Reenviar email de confirmación" → `503` con `Retry-After: 60` / sin red | "El servicio no está disponible en este momento." + "Probá de nuevo en 1 minuto." / el título y la descripción de `network` de §12.2; los dos con "Reintentar" (título y descripción siempre juntos, DD-F29) |
+  | *(P-F20)* Aviso W visible, antes de reenviar → cualquier resultado | el aviso no tiene `role` propio; adentro hay una región `role="status"` vacía, y el resultado aparece en ese mismo nodo (INV-F19) |
+- **Mutación** (P-F20): pasar a `VerifyToInviteNotice` un solo texto (`description ?? title`) → fallan las filas de `429` y `503`.
 - **Green**: pasa la tabla.
 
 **T-F503 [T] — Acciones sobre usuarios** · US-3.3, US-3.4, FR-005, P-3, DD-5, DD-26, DD-F7, DD-F8, INV-F04, INV-F10, `ui.md` §13.9
@@ -4037,14 +4081,17 @@ desactivar a un usuario y ver que su ventana vuelve al login con "Tu sesión se 
   | Aceptar → `422` con `{field: 'name', code: 'invalid_value'}` / `{field: 'password', code: 'too_short'}` | "Tiene que tener entre 1 y 120 caracteres." en "Tu nombre" / "La contraseña tiene que tener al menos 10 caracteres." en "Contraseña" |
   | Vista previa → `429` con `Retry-After: 180` (cupo compartido con la aceptación, DD-9) | "Hiciste muchos intentos seguidos. Esperá 3 minutos y probá de nuevo." + "Reintentar"; sin formulario |
   | Con otra sesión abierta | "Tenés una sesión abierta como {email}. Si aceptás, se va a cerrar." |
+  | *(P-F20)* Con `crm.verifyBanner.dismissed` en `sessionStorage`, aceptar → `201` | la marca se borró junto con la caché (INV-F03); si la sesión nueva tiene `email_verified: false`, el aviso C-01 aparece |
 - **Green**: pasa la tabla.
 
 **T-F506 — Implementar** `UsersPage`, `UserListItem`, `UserStatusBadge`, `ConfirmDialog`,
 `InviteUserPage`, `AcceptInvitationPage`, `features/users/rules.ts`, `lib/format.ts`
 (`formatDateTime`) y los hooks de `features/users/api.ts` y de invitación. Revisión 4:
-`VerifyToInviteNotice`, `useInviteBlockedReason` (en `features/auth/session.ts`), el contexto
-`actorEmailVerified` de `availableUserActions` y el paso "Invitá a tu equipo" de `DashboardPage`
-con BR-F14.
+`VerifyToInviteNotice` (con `resendStatus`, `errorMessage` = el objeto de `messageForError` tal
+cual y un `LiveRegion` para el resultado; P-F20), `useInviteBlockedReason` (en
+`features/auth/session.ts`), el contexto `actorEmailVerified` de `availableUserActions` y el paso
+"Invitá a tu equipo" de `DashboardPage` con BR-F14. `useAcceptInvitation` llama a
+`clearVerifyBannerDismissed` junto con `queryClient.clear()` (INV-F03, P-F20).
 
 **Checkpoint Fase F5**: `npm run check` en verde + prueba independiente.
 
@@ -4116,7 +4163,7 @@ S-F10). Valida S-F8 y NFR-F13; si no hay forma de hacerla, se reporta como pendi
   | `has_logo: true` | `<img alt="Logo de {empresa}">` con `src` = `/api/v1/tenant/logo?v=` + `encodeURIComponent(id-updated_at)` en S-11 y en el encabezado |
   | Elegir un PNG chico dentro de los límites | sin "Preparando…" visible más de un instante; `PUT /tenant/logo` multipart con **una sola** parte `file` con los **mismos bytes** del archivo; toast "Logo actualizado." |
   | Elegir un PNG de 1000×1000 de **exactamente 2 097 152 bytes** (encabezado real + relleno) | se sube tal cual (mismos bytes); los falsos del canvas no se llamaron |
-  | Elegir un JPEG de 5 MB y 4000×3000 (bytes de fixture con encabezado real) | "Preparando la imagen…" anunciado; "Cambiar logo" y "Quitar" deshabilitados; luego "Subiendo logo…"; `PUT` con un archivo `image/jpeg` ≤ 2 097 152 bytes; toast "Logo actualizado. Lo achicamos para que pese menos."; `src` con el `updated_at` nuevo en S-11 y en el encabezado |
+  | Elegir un JPEG de 5 MB y 4000×3000 (bytes de fixture con encabezado real) | "Preparando la imagen…" en la región `role="status"` de `LogoUploader`, presente y vacía antes de elegir el archivo (el mismo nodo; INV-F19, P-F20); "Cambiar logo" y "Quitar" deshabilitados; luego "Subiendo logo…"; `PUT` con un archivo `image/jpeg` ≤ 2 097 152 bytes; toast "Logo actualizado. Lo achicamos para que pese menos."; `src` con el `updated_at` nuevo en S-11 y en el encabezado |
   | Elegir un SVG / un GIF / un WebP | mensaje de §13.11.1 para cada uno; **ningún** request |
   | Elegir un archivo con bytes que no son imagen | "No pudimos leer la imagen. Probá con otro archivo PNG o JPG."; ningún request |
   | El adaptador falla al decodificar | mismo mensaje de "no pudimos leer"; ningún request |
@@ -4264,7 +4311,7 @@ métricas de Lighthouse y el resultado del supuesto S-12.
   | Contexto sin conexión → navegar a `/settings` | se ve "Sin conexión. Para usar la app necesitás internet." |
   | Cache Storage | solo `crm-offline-v1` con `offline.html`; ninguna URL `/api/` ni `/assets/` |
   | Sin conexión, `fetch('/api/v1/me')` desde la página | falla (el SW no lo sirve) |
-  | Después de cerrar sesión | `localStorage` e IndexedDB sin datos; `sessionStorage` solo con marcas de UI |
+  | Después de cerrar sesión | `localStorage` e IndexedDB sin datos; `sessionStorage` solo con marcas de UI que no dependen de la sesión (p. ej. `crm.preloadReloaded`): sin `crm.verifyBanner.dismissed` y sin ninguna clave ni valor que contenga el email de la sesión (*(P-F20)* NFR-F09, INV-F03) |
   | Solo si se aplicó el respaldo de S-12 (`ignoreHTTPSErrors`) en algún navegador | en ese navegador el SW también queda activo; si no, el respaldo no es válido y se vuelve al arquitecto |
 - **Green**: pasa la tabla.
 
@@ -4274,7 +4321,7 @@ métricas de Lighthouse y el resultado del supuesto S-12.
   en un Android de gama media a mano, con el origen de H-12). **Si un objetivo no se cumple, frenar
   y volver al arquitecto** con los números.
 
-**T-F705 — Verificación manual de accesibilidad** · NFR-F06, NFR-F07, NFR-F08, `ui.md` §18
+**T-F705 — Verificación manual de accesibilidad** · NFR-F06, NFR-F07, NFR-F08, INV-F19, `ui.md` §18, P-F20
 - Checklist: todos los flujos solo con teclado; TalkBack (Chrome Android) y VoiceOver (Safari
   iOS) en registro, ingresar, usuarios y datos de la empresa (incluida la subida del logo y el
   anuncio "Preparando la imagen…"), con el origen HTTPS de H-12 (si no hay, VoiceOver de macOS y
@@ -4282,6 +4329,17 @@ métricas de Lighthouse y el resultado del supuesto S-12.
   contraste de cada par de tokens de §19.1 con una herramienta; objetivos táctiles ≥ 44 px; foco
   nunca tapado por la barra inferior. Resultado en el reporte de la fase, con cada hallazgo y su
   corrección.
+- *(P-F20)* **Anuncios sin mover el foco (INV-F19)**, con NVDA (Firefox o Chrome en Windows)
+  **además** de VoiceOver: VoiceOver anuncia igual las regiones que nacen con texto, así que solo
+  NVDA muestra el defecto. Criterio de aceptación: con el foco quieto, cada mensaje se lee una vez,
+  completo (título y descripción juntos), sin tocar nada más. (1) C-01: "Listo, te lo
+  reenviamos…", "Si todavía no lo confirmaste…" y dos `429` seguidos (los dos se leen); (2) S-05:
+  el éxito de confirmar y los dos resultados del reenvío; (3) C-02: "Sin conexión. Revisá tu
+  internet." al cortar la red; (4) el aviso W y "Preparando la imagen…"; (5) un error `role="alert"`
+  insertado (p. ej. `401 invalid_credentials` en Ingresar), para confirmar la excepción de
+  INV-F19. Si uno no se lee, va a T-F707 con su test de regresión; si falla (5), los errores
+  también pasan a una `LiveRegion`. Sin Windows con NVDA, el reporte dice "INV-F19 no verificada en
+  NVDA" y la garantía queda en los tests estructurales.
 
 **T-F706 [T] — Preparación del logo en navegadores reales** · DD-F20, DD-F21, DD-F22, INV-F13, NFR-F13, S-F7, S-F9, `ui.md` §13.11.1
 - **Red** (Playwright, Chromium y WebKit; cada caso sube por la UI y después descarga
@@ -4361,4 +4419,5 @@ usó) reportado.
 | P-F17 (`login_locked` sin `Retry-After`, minutos de `formatRetryAt`, props de `LockedNotice`), INV-F12 y ADR-023 (zona del navegador sin sesión) | T-F101, T-F102, T-F301, T-F302 |
 | P-F18 (refetch fallido de `/me` con la sesión en caché; `ApiError.receivedAt`; `AppShell` con `lazy`; título de la pantalla de error de render y "· CRM" sin sesión), `ui.md` §6.4, §11.3, §12.1, §13, §13.2, §23 | T-F005, T-F101, T-F102, T-F104, T-F105, T-F106, T-F107, T-F301, T-F302 |
 | P-F19 (queries compartidas en `api/`; catálogo `{ items }`; espera del `503` según `Retry-After`), `ui.md` §9.1, §12.2, §15.4, §22, DD-F25 | T-F101, T-F107, T-F203, T-F205 |
+| P-F20 (marca del aviso C-01 fija y sin email, borrada en los puntos de INV-F03; props de C-01 y del aviso W con el objeto de `messageForError`; INV-F19, regiones corteses montadas antes que su texto), `ui.md` §8, §9.2, §10.1, §13.5, §13.9, §13.11, §13.13, §15.1, §15.4, §17, §18, §22, DD-F29 | T-F106, T-F404, T-F405, T-F406, T-F502, T-F505, T-F506, T-F603, T-F703, T-F705 |
 | NFR-F01..F13 | T-F002 (F02, F07, F08), T-F702 (F01, F06, F10, F12), T-F703 (F09, F11), T-F704 (F03..F05), T-F705 (F06..F08), T-F706 (F13) |

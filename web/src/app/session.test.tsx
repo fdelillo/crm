@@ -2,7 +2,7 @@ import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { focusManager, useMutation, useQuery } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { api } from '@/api/client'
 import { unwrap } from '@/api/errors'
 import { queryKeys } from '@/api/queryKeys'
@@ -53,6 +53,12 @@ function Probe({ mutate = false }: { mutate?: boolean }) {
 }
 // T-F104 (INV-F01/02/03/06/16): real router/cache and HTTP interception at the boundary.
 describe('session guards and global failures', () => {
+  beforeAll(async () => {
+    await Promise.all([
+      import('@/features/auth/pages'),
+      import('@/app/AppShell'),
+    ])
+  })
   afterEach(() => focusManager.setFocused(undefined))
   it('waits for the session without flashing login', async () => {
     server.use(http.get(`${base}/me`, async () => new Promise(() => {})))
