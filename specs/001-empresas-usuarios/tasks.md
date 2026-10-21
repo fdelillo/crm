@@ -4112,9 +4112,10 @@ la URL), toast “¡Bienvenido/a a Empresa Prueba F5!” y panel “Primeros pas
 ese usuario a Operador; al abrir `/settings/users`, la sesión mostró “No tenés acceso a esta
 sección”. Admin desactivó al Operador (toast y fila “Operador · Desactivado”) y lo reactivó (toast
 y fila “Operador · Activo”). La aceptación, el cambio de rol, la desactivación y la reactivación no
-generaron emails. No se verificaron DD-F28 con visibilidad/foco observables ni el cierre de una
-sesión de Operador simultánea: el IAB no expone `document.visibilityState` ni permite contextos
-privados. Playwright tampoco inició Chrome: macOS terminó Chrome con SIGABRT y
+generaron emails. El usuario verificó DD-F28: al volver a la pestaña ocurrió `visibilitychange`,
+`+ Invitar` quedó habilitado sin recargar. No se completó el cierre de una sesión de Operador
+simultánea: el IAB no permite contextos privados y Playwright no inició Chrome; macOS terminó
+Chrome con SIGABRT y
 `bootstrap_check_in ... MachPortRendezvousServer: Permission denied (1100)`. PR #41:
 https://github.com/fdelillo/crm/pull/41, abierto; `make check`, `make build`, `make web-check`,
 `make vuln` y `make web-vuln` en verde. Revisión: pendiente (Claude Code).
