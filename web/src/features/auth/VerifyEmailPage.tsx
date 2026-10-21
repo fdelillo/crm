@@ -119,6 +119,7 @@ export function VerifyEmailPage() {
             <FormAlert
               variant="success"
               title="Tu email ya está confirmado. No hace falta otro enlace."
+              announce={false}
             />
             <Link
               className="inline-flex min-h-11 items-center text-primary underline"

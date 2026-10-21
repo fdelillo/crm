@@ -35,6 +35,8 @@ describe('VerifyEmailPage', () => {
     expect(liveRegions).toHaveLength(2)
     expect(liveRegions[0]).toBeEmptyDOMElement()
     expect(liveRegions[1]).toBeEmptyDOMElement()
+    expect(liveRegions[0]).toHaveClass('sr-only')
+    expect(liveRegions[1]).toHaveClass('sr-only')
     expect(liveRegions[0]).toHaveAttribute('aria-atomic', 'true')
     expect(liveRegions[1]).toHaveAttribute('aria-atomic', 'true')
     expect(
@@ -114,6 +116,9 @@ describe('VerifyEmailPage', () => {
         ),
       ).toBeVisible(),
     )
+    expect(
+      within(screen.getByRole('main')).getAllByRole('status'),
+    ).toHaveLength(2)
     expect(
       screen.queryByRole('button', { name: 'Reenviar email de confirmación' }),
     ).not.toBeInTheDocument()
@@ -321,10 +326,6 @@ describe('VerifyEmailPage', () => {
       'href',
       '/',
     )
-    expect(screen.getByRole('link', { name: 'Ir al inicio' })).toHaveAttribute(
-      'href',
-      '/',
-    )
     expect(meReads).toBeGreaterThanOrEqual(2)
     expect(screen.queryByText(/invitar/)).not.toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/verify-email')
@@ -405,6 +406,10 @@ describe('VerifyEmailPage', () => {
     expect(
       await screen.findByText('¡Listo! Tu email quedó confirmado.'),
     ).toBeVisible()
+    expect(screen.getByRole('link', { name: 'Ir al inicio' })).toHaveAttribute(
+      'href',
+      '/',
+    )
     expect(confirm).toHaveBeenCalledOnce()
   })
 
