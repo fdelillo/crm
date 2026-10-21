@@ -87,6 +87,7 @@ describe('EmailVerificationBanner', () => {
     ).getByRole('status')
     expect(liveRegion).toBeEmptyDOMElement()
     expect(liveRegion).toHaveAttribute('aria-atomic', 'true')
+    expect(liveRegion).toHaveClass('sr-only')
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: 'Reenviar' }))
     expect(screen.getByRole('button', { name: 'Enviando…' })).toBeDisabled()
