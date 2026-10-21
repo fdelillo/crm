@@ -9,6 +9,8 @@ import {
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
+import { queryKeys } from '@/api/queryKeys'
+import { useVerifyToInviteNotice } from '@/features/auth/session'
 import { buildSessionInfo, buildTenant, problem } from '@/test/fixtures'
 import { server } from '@/test/msw/server'
 import { renderApp } from '@/test/renderApp'
@@ -30,6 +32,57 @@ function loggedIn(emailVerified = false) {
 }
 
 describe('EmailVerificationBanner', () => {
+  it('does not announce resend success when the session was already verified', async () => {
+    server.use(
+      http.get(`${base}/me`, () =>
+        HttpResponse.json(
+          buildSessionInfo({
+            user: { ...buildSessionInfo().user, email_verified: true },
+          }),
+        ),
+      ),
+      http.get(`${base}/tenant`, () => HttpResponse.json(buildTenant())),
+      http.post(
+        `${base}/auth/email-verification/resend`,
+        () => new HttpResponse(null, { status: 202 }),
+      ),
+    )
+    function HookBoundBanner() {
+      const notice = useVerifyToInviteNotice()
+      return (
+        <EmailVerificationBanner
+          email="persona@example.test"
+          resendStatus={notice.status}
+          errorMessage={notice.errorMessage}
+          onResend={notice.sendAgain}
+          onDismiss={() => undefined}
+        />
+      )
+    }
+    renderApp(['/settings/users'], {
+      protectedPage: <HookBoundBanner />,
+      configureQueryClient: (client) =>
+        client.setQueryData(
+          queryKeys.session,
+          buildSessionInfo({
+            user: { ...buildSessionInfo().user, email_verified: false },
+          }),
+        ),
+    })
+
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Reenviar' }))
+
+    expect(
+      await screen.findByText(
+        'Tu email ya está confirmado. No hace falta otro enlace.',
+      ),
+    ).toBeVisible()
+    expect(
+      screen.queryByText(/Listo, te lo reenviamos/),
+    ).not.toBeInTheDocument()
+  })
+
   it('renders both parts of an error message passed as one value', () => {
     render(
       <EmailVerificationBanner
