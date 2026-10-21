@@ -81,6 +81,12 @@ describe('AcceptInvitationPage', () => {
   })
 
   it('previews with the fragment token in the body only and shows read only invitation details', async () => {
+    const buenosAiresDateTimeOptions = new Intl.DateTimeFormat('es-AR', {
+      timeZone: 'America/Argentina/Buenos_Aires',
+    }).resolvedOptions()
+    vi.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions').mockReturnValue(
+      buenosAiresDateTimeOptions,
+    )
     const request = vi.fn(async ({ request: req }: { request: Request }) => {
       const url = new URL(req.url)
       expect(url.hash).toBe('')

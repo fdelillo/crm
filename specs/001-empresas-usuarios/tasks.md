@@ -4144,6 +4144,13 @@ en línea con §15.4.
 
 Revisión: pendiente (Claude Code); PR #41 sigue abierto y sin merge.
 
+Seguimiento CI de Revisión 1: `make web-check` falló en UTC porque el test de vista previa de
+invitación esperaba `09:00` de Buenos Aires usando implícitamente la zona de la máquina; Red
+reproducida con `TZ=UTC` (render `12:00`). Se fijó explícitamente `America/Argentina/Buenos_Aires`
+en el test manteniendo la aserción exacta `27/10, 09:00`; Green: prueba focal bajo `TZ=UTC` y
+`npm run check` con Node 24 (33 archivos, 474 passed, 2 expected-fail, build). Seguimiento en
+commit de corrección posterior a `f4e7aa4`.
+
 ---
 
 ### Fase F6 — Historia 4: Datos de la empresa y logo (P2)
