@@ -196,6 +196,7 @@ describe('InviteUserPage', () => {
     )
     renderInvite(true, {
       configureQueryClient: (client) => {
+        client.setQueryDefaults(queryKeys.users, { gcTime: 5 * 60_000 })
         client.setQueryData(queryKeys.users, [existing])
       },
     })
@@ -375,7 +376,7 @@ describe('InviteUserPage', () => {
     ).toBeVisible()
     expect(
       screen.getByText(
-        'Te mandamos un enlace cuando te registraste. Si no lo encontrás, pedí uno nuevo.',
+        'Te mandamos un enlace a persona@example.test. Si no lo encontrás, pedí uno nuevo.',
       ),
     ).toBeVisible()
     expect(
@@ -409,31 +410,104 @@ describe('InviteUserPage', () => {
   })
 
   it('keeps the invite form visible when an email_not_verified response is followed by a verified session', async () => {
+    let finishMe!: (response: Response) => void
+    const pendingMe = new Promise<Response>((resolve) => {
+      finishMe = resolve
+    })
+    const me = vi.fn(() => pendingMe)
+    const invite = vi.fn(() =>
+      HttpResponse.json(problem('email_not_verified', 403), {
+        status: 403,
+        headers: { 'Content-Type': 'application/problem+json' },
+      }),
+    )
+    const resend = vi.fn(() => new HttpResponse(null, { status: 202 }))
+    server.use(
+      http.get(`${base}/me`, me),
+      http.post(`${base}/users/invitations`, invite),
+      http.post(`${base}/auth/email-verification/resend`, resend),
+    )
+    renderInvite(true)
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('Email'), 'persona@example.test')
+    await user.click(screen.getByRole('radio', { name: /Administrador/ }))
+    await user.click(screen.getByRole('button', { name: 'Enviar invitación' }))
+    await waitFor(() => expect(me).toHaveBeenCalledOnce())
+    expect(screen.getByLabelText('Email')).toHaveValue('persona@example.test')
+    expect(screen.getByRole('radio', { name: /Administrador/ })).toBeChecked()
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Confirmá tu email para invitar a tu equipo.',
+    )
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Te mandamos un enlace cuando te registraste. Si no lo encontrás, pedí uno nuevo.',
+    )
+    expect(
+      screen.getByRole('button', { name: 'Reenviar email de confirmación' }),
+    ).toBeVisible()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+    finishMe(
+      HttpResponse.json(
+        buildSessionInfo({
+          user: { ...buildSessionInfo().user, email_verified: true },
+        }),
+      ),
+    )
+    expect(await screen.findByLabelText('Email')).toHaveValue(
+      'persona@example.test',
+    )
+    expect(screen.getByRole('radio', { name: /Administrador/ })).toBeChecked()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Reenviar email de confirmación' }),
+    ).not.toBeInTheDocument()
+    expect(invite).toHaveBeenCalledOnce()
+    expect(resend).not.toHaveBeenCalled()
+    expect(
+      screen.queryByText(
+        'Tu email ya está confirmado. No hace falta otro enlace.',
+      ),
+    ).not.toBeInTheDocument()
+    expect(
+      document.getElementById('verify-to-invite-notice'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('keeps the warning and resend action when the verification refetch fails', async () => {
+    const invite = vi.fn(() =>
+      HttpResponse.json(problem('email_not_verified', 403), {
+        status: 403,
+        headers: { 'Content-Type': 'application/problem+json' },
+      }),
+    )
     server.use(
       http.get(`${base}/me`, () =>
-        HttpResponse.json(
-          buildSessionInfo({
-            user: { ...buildSessionInfo().user, email_verified: true },
-          }),
-        ),
-      ),
-      http.post(`${base}/users/invitations`, () =>
-        HttpResponse.json(problem('email_not_verified', 403), {
-          status: 403,
+        HttpResponse.json(problem('internal', 500), {
+          status: 500,
           headers: { 'Content-Type': 'application/problem+json' },
         }),
+      ),
+      http.post(`${base}/users/invitations`, invite),
+      http.post(
+        `${base}/auth/email-verification/resend`,
+        () => new HttpResponse(null, { status: 202 }),
       ),
     )
     renderInvite(true)
     const user = userEvent.setup()
     await user.type(screen.getByLabelText('Email'), 'persona@example.test')
     await user.click(screen.getByRole('button', { name: 'Enviar invitación' }))
-    expect(await screen.findByLabelText('Email')).toHaveValue(
-      'persona@example.test',
-    )
+    expect(await screen.findByRole('status')).toBeVisible()
     expect(
-      document.getElementById('verify-to-invite-notice'),
-    ).not.toBeInTheDocument()
+      screen.getByText(
+        'Te mandamos un enlace cuando te registraste. Si no lo encontrás, pedí uno nuevo.',
+      ),
+    ).toBeVisible()
+    expect(screen.getByLabelText('Email')).toHaveValue('persona@example.test')
+    expect(
+      screen.getByRole('button', { name: 'Reenviar email de confirmación' }),
+    ).toBeVisible()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('shows the role error beside the group and retains the form after a rate limit', async () => {

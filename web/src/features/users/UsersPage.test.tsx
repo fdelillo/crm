@@ -1,6 +1,7 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
+import { toast } from 'sonner'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { UsersPage } from './pages'
 import { buildSessionInfo, buildUser, problem } from '@/test/fixtures'
@@ -9,6 +10,8 @@ import { renderApp } from '@/test/renderApp'
 import { queryKeys } from '@/api/queryKeys'
 import { focusManager } from '@tanstack/react-query'
 import type { SessionInfo } from '@/api/types'
+import { Outlet } from 'react-router'
+import { RequirePermission, RequireSession } from '@/app/guards/routeGuards'
 
 const base = 'https://localhost:5173/api/v1'
 
@@ -252,6 +255,8 @@ describe('UsersPage', () => {
     expect(
       await screen.findByText('Confirmá tu email para invitar a tu equipo.'),
     ).toBeVisible()
+    const heading = screen.getByRole('heading', { name: 'Usuarios' })
+    heading.focus()
     const invite = screen.getByRole('button', { name: '+ Invitar' })
     expect(invite).toBeDisabled()
     expect(invite).toHaveAttribute(
@@ -275,6 +280,7 @@ describe('UsersPage', () => {
     })
     expect(resendInvitation).toHaveAttribute('aria-disabled', 'true')
     await userEvent.setup().keyboard('{Escape}')
+    heading.focus()
     confirmed = true
     await act(async () => {
       focusManager.setFocused(false)
@@ -289,6 +295,7 @@ describe('UsersPage', () => {
     await waitFor(() =>
       expect(screen.getByRole('link', { name: '+ Invitar' })).toBeEnabled(),
     )
+    expect(heading).toHaveFocus()
   })
 
   it('uses the shared email verification resend flow and announces its result in the existing region', async () => {
@@ -319,6 +326,67 @@ describe('UsersPage', () => {
     expect(resendRequest).toHaveBeenCalledOnce()
     expect(screen.getAllByRole('status')).toHaveLength(1)
   })
+
+  it.each([
+    {
+      name: '503 with a retry delay',
+      firstResponse: () =>
+        HttpResponse.json(problem('service_unavailable', 503), {
+          status: 503,
+          headers: {
+            'Content-Type': 'application/problem+json',
+            'Retry-After': '60',
+          },
+        }),
+      expectedTitle: 'El servicio no está disponible en este momento.',
+      expectedDescription: 'Probá de nuevo en 1 minuto.',
+    },
+    {
+      name: 'a network failure',
+      firstResponse: () => HttpResponse.error(),
+      expectedTitle: 'No hay conexión.',
+      expectedDescription: 'Revisá tu internet y probá de nuevo.',
+    },
+  ])(
+    'shows the page-level resend error and retries after $name',
+    async ({ firstResponse, expectedTitle, expectedDescription }) => {
+      let attempts = 0
+      const resend = vi.fn(() => {
+        attempts += 1
+        return attempts === 1
+          ? firstResponse()
+          : new HttpResponse(null, { status: 202 })
+      })
+      const unverified = buildSessionInfo({
+        user: { ...buildSessionInfo().user, email_verified: false },
+      })
+      server.use(
+        http.get(`${base}/me`, () => HttpResponse.json(unverified)),
+        http.get(`${base}/users`, () => HttpResponse.json({ items: [] })),
+        http.post(`${base}/auth/email-verification/resend`, resend),
+      )
+      renderApp(['/settings/users'], {
+        routes: [{ path: '/settings/users', Component: UsersPage }],
+        configureQueryClient: (client) =>
+          client.setQueryData(queryKeys.session, unverified),
+      })
+      const user = userEvent.setup()
+      await user.click(
+        await screen.findByRole('button', {
+          name: 'Reenviar email de confirmación',
+        }),
+      )
+      expect(await screen.findByText(expectedTitle)).toBeVisible()
+      expect(screen.getByText(expectedDescription)).toBeVisible()
+      await user.click(screen.getByRole('button', { name: 'Reintentar' }))
+      expect(
+        await screen.findByText(
+          'Listo, te lo reenviamos. Revisá también el correo no deseado.',
+        ),
+      ).toBeVisible()
+      expect(resend).toHaveBeenCalledTimes(2)
+    },
+  )
 
   it.each([
     [120, '2 minutos'],
@@ -419,6 +487,15 @@ describe('UsersPage', () => {
       document.getElementById('verify-to-invite-notice'),
     ).toHaveTextContent('Confirmá tu email para invitar a tu equipo.')
     expect(me).toHaveBeenCalled()
+    await waitFor(() =>
+      expect(
+        screen.getByRole('region', { name: /Notifications/ }),
+      ).toHaveTextContent('Confirmá tu email para invitar a tu equipo.'),
+    )
+    expect(screen.queryByText('Sin permiso')).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('No tenés permiso para hacer esto.'),
+    ).not.toBeInTheDocument()
     await user.click(
       screen.getByRole('button', { name: 'Acciones para equipo@example.test' }),
     )
@@ -538,6 +615,14 @@ describe('UsersPage', () => {
     expect(
       await screen.findByText('equipo@example.test ahora es Administrador'),
     ).toBeVisible()
+    expect(
+      screen.getAllByText(
+        (_, element) =>
+          element?.textContent?.includes(
+            'La invitación vence el 27/10, 09:00',
+          ) ?? false,
+      ).length,
+    ).toBeGreaterThan(0)
     await waitFor(() =>
       expect(screen.getAllByText('Administrador')).toHaveLength(2),
     )
@@ -582,6 +667,60 @@ describe('UsersPage', () => {
     await user.click(screen.getByRole('button', { name: 'Cancelar' }))
     await waitFor(() => expect(menuButton).toHaveFocus())
     expect(changeRequest).not.toHaveBeenCalled()
+  })
+
+  it('promotes an active operator and restores focus to the row action', async () => {
+    const operator = buildUser({
+      id: 'operator',
+      name: 'Lucía',
+      email: 'lucia@example.test',
+      role: 'operator',
+      status: 'active',
+    })
+    const changeRole = vi.fn(async ({ request }: { request: Request }) => {
+      expect(await request.json()).toEqual({ role: 'admin' })
+      return HttpResponse.json({ ...operator, role: 'admin' })
+    })
+    server.use(
+      http.get(`${base}/users`, () =>
+        HttpResponse.json({
+          items: [buildUser({ role: 'admin', email_verified: true }), operator],
+        }),
+      ),
+      http.put(`${base}/users/${operator.id}/role`, changeRole),
+    )
+    renderApp(['/settings/users'], {
+      routes: [{ path: '/settings/users', Component: UsersPage }],
+      configureQueryClient: (client) =>
+        client.setQueryData(
+          queryKeys.session,
+          buildSessionInfo({
+            user: { ...buildSessionInfo().user, email_verified: true },
+          }),
+        ),
+    })
+    const user = userEvent.setup()
+    const trigger = await screen.findByRole('button', {
+      name: 'Acciones para Lucía',
+    })
+    await user.click(trigger)
+    await user.click(
+      screen.getByRole('menuitem', { name: 'Hacer Administrador' }),
+    )
+    await user.click(
+      screen.getByRole('button', { name: 'Hacer Administrador' }),
+    )
+    expect(
+      await screen.findByText('Lucía ahora es Administrador'),
+    ).toBeVisible()
+    await waitFor(() => expect(trigger).toHaveFocus())
+    expect(changeRole).toHaveBeenCalledOnce()
+    expect(
+      screen.getByText(
+        (_, element) =>
+          element?.textContent?.replace(/\s/g, '') === 'Administrador·Activo',
+      ),
+    ).toBeVisible()
   })
 
   it('disables both destructive actions for the only active administrator', async () => {
@@ -666,6 +805,52 @@ describe('UsersPage', () => {
     await waitFor(() => expect(screen.getAllByText('Activo')).toHaveLength(2))
   })
 
+  it('announces when reactivating a disabled user creates a new invitation', async () => {
+    const disabled = buildUser({
+      id: 'disabled-invited',
+      name: null,
+      email: 'nuevo@example.test',
+      role: 'operator',
+      status: 'disabled',
+    })
+    let current = disabled
+    const reactivate = vi.fn(() => {
+      current = { ...disabled, status: 'invited' }
+      return HttpResponse.json(current)
+    })
+    server.use(
+      http.get(`${base}/users`, () =>
+        HttpResponse.json({ items: [buildUser({ role: 'admin' }), current] }),
+      ),
+      http.post(`${base}/users/${disabled.id}/reactivate`, reactivate),
+    )
+    renderApp(['/settings/users'], {
+      routes: [{ path: '/settings/users', Component: UsersPage }],
+      configureQueryClient: (client) =>
+        client.setQueryData(
+          queryKeys.session,
+          buildSessionInfo({
+            user: { ...buildSessionInfo().user, email_verified: true },
+          }),
+        ),
+    })
+    const user = userEvent.setup()
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Acciones para nuevo@example.test',
+      }),
+    )
+    await user.click(screen.getByRole('menuitem', { name: 'Reactivar' }))
+    await user.click(screen.getByRole('button', { name: 'Reactivar' }))
+    expect(
+      await screen.findByText(
+        'Le enviamos una invitación nueva a nuevo@example.test',
+      ),
+    ).toBeVisible()
+    expect(reactivate).toHaveBeenCalledOnce()
+    await waitFor(() => expect(screen.getByText('Invitado')).toBeVisible())
+  })
+
   it('announces invitation rate limits without requesting the users list again', async () => {
     const invited = buildUser({
       id: 'invited',
@@ -679,17 +864,18 @@ describe('UsersPage', () => {
         items: [buildUser({ role: 'admin', email_verified: true }), invited],
       }),
     )
+    const invite = vi.fn(() =>
+      HttpResponse.json(problem('rate_limited', 429), {
+        status: 429,
+        headers: {
+          'Content-Type': 'application/problem+json',
+          'Retry-After': '360',
+        },
+      }),
+    )
     server.use(
       http.get(`${base}/users`, getUsers),
-      http.post(`${base}/users/invitations`, () =>
-        HttpResponse.json(problem('rate_limited', 429), {
-          status: 429,
-          headers: {
-            'Content-Type': 'application/problem+json',
-            'Retry-After': '360',
-          },
-        }),
-      ),
+      http.post(`${base}/users/invitations`, invite),
     )
     renderApp(['/settings/users'], {
       routes: [{ path: '/settings/users', Component: UsersPage }],
@@ -715,9 +901,10 @@ describe('UsersPage', () => {
     ).toBeVisible()
     expect(screen.getByText(/Esperá 6 minutos y probá de nuevo/)).toBeVisible()
     expect(getUsers).toHaveBeenCalledTimes(1)
+    expect(invite).toHaveBeenCalledOnce()
   })
 
-  it('keeps another user’s confirmation available while a resend is still pending', async () => {
+  it('keeps another row’s actions usable while a resend is pending', async () => {
     const invited = buildUser({
       id: 'invited',
       email: 'equipo@example.test',
@@ -725,27 +912,41 @@ describe('UsersPage', () => {
       role: 'operator',
       status: 'invited',
     })
-    const otherAdmin = buildUser({
-      id: 'other-admin',
+    const otherInvitedAdmin = buildUser({
+      id: 'other-invited-admin',
       email: 'otra@example.test',
-      name: 'Otra Admin',
+      name: null,
       role: 'admin',
-      status: 'active',
+      status: 'invited',
     })
+    let otherStatus: 'invited' | 'disabled' = 'invited'
     let finishResend!: (response: Response) => void
     const resendResponse = new Promise<Response>((resolve) => {
       finishResend = resolve
     })
-    const deactivate = vi.fn(() =>
-      HttpResponse.json({ ...otherAdmin, status: 'disabled' }),
-    )
-    const resend = vi.fn(() => resendResponse)
+    const deactivate = vi.fn(() => {
+      otherStatus = 'disabled'
+      return HttpResponse.json({ ...otherInvitedAdmin, status: otherStatus })
+    })
+    const resend = vi.fn(async ({ request }: { request: Request }) => {
+      expect(await request.json()).toEqual({
+        email: 'equipo@example.test',
+        role: 'operator',
+      })
+      return resendResponse
+    })
     server.use(
       http.get(`${base}/users`, () =>
-        HttpResponse.json({ items: [buildUser(), invited, otherAdmin] }),
+        HttpResponse.json({
+          items: [
+            buildUser(),
+            invited,
+            { ...otherInvitedAdmin, status: otherStatus },
+          ],
+        }),
       ),
       http.post(`${base}/users/invitations`, resend),
-      http.post(`${base}/users/${otherAdmin.id}/deactivate`, deactivate),
+      http.post(`${base}/users/${otherInvitedAdmin.id}/deactivate`, deactivate),
     )
     renderApp(['/settings/users'], {
       routes: [{ path: '/settings/users', Component: UsersPage }],
@@ -768,10 +969,25 @@ describe('UsersPage', () => {
     )
     await waitFor(() => expect(resend).toHaveBeenCalledOnce())
     await user.click(
-      screen.getByRole('button', { name: 'Acciones para Otra Admin' }),
+      screen.getByRole('button', { name: 'Acciones para otra@example.test' }),
     )
+    expect(screen.getByRole('menuitem', { name: 'Desactivar' })).toBeVisible()
+    expect(
+      screen.getByRole('menuitem', { name: 'Reenviar invitación' }),
+    ).toBeVisible()
+    expect(screen.queryByText('Procesando…')).not.toBeInTheDocument()
     await user.click(screen.getByRole('menuitem', { name: 'Desactivar' }))
     expect(screen.getByRole('alertdialog')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Desactivar' }))
+    expect(
+      await screen.findByText('Desactivaste a otra@example.test'),
+    ).toBeVisible()
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument(),
+    )
+    expect(deactivate).toHaveBeenCalledOnce()
+    await waitFor(() => expect(screen.getByText('Desactivado')).toBeVisible())
+
     finishResend(
       HttpResponse.json(
         { ...invited, invitation_expires_at: '2026-10-27T12:00:00Z' },
@@ -781,10 +997,7 @@ describe('UsersPage', () => {
     expect(
       await screen.findByText('Reenviamos la invitación a equipo@example.test'),
     ).toBeVisible()
-    expect(screen.getByRole('alertdialog')).toBeVisible()
-    await user.click(screen.getByRole('button', { name: 'Desactivar' }))
-    expect(await screen.findByText('Desactivaste a Otra Admin')).toBeVisible()
-    expect(deactivate).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   })
 
   it('sends one request when the confirmation button is double-clicked', async () => {
@@ -880,6 +1093,60 @@ describe('UsersPage', () => {
     await waitFor(() => expect(getUsers).toHaveBeenCalledTimes(2))
   })
 
+  it.each([
+    {
+      code: 'not_found' as const,
+      status: 404,
+      copy: 'Ese usuario ya no está en tu empresa. Actualizamos la lista.',
+    },
+    {
+      code: 'invalid_state' as const,
+      status: 409,
+      copy: 'El estado de este usuario cambió mientras tanto. Actualizamos la lista.',
+    },
+  ])(
+    'announces $code and refreshes users after a stale action',
+    async ({ code, status, copy }) => {
+      const target = buildUser({
+        id: 'operator',
+        name: 'Lucía',
+        email: 'lucia@example.test',
+        role: 'operator',
+        status: 'active',
+      })
+      const getUsers = vi.fn(() =>
+        HttpResponse.json({ items: [buildUser({ role: 'admin' }), target] }),
+      )
+      server.use(
+        http.get(`${base}/users`, getUsers),
+        http.post(`${base}/users/${target.id}/deactivate`, () =>
+          HttpResponse.json(problem(code, status), {
+            status,
+            headers: { 'Content-Type': 'application/problem+json' },
+          }),
+        ),
+      )
+      renderApp(['/settings/users'], {
+        routes: [{ path: '/settings/users', Component: UsersPage }],
+        configureQueryClient: (client) =>
+          client.setQueryData(
+            queryKeys.session,
+            buildSessionInfo({
+              user: { ...buildSessionInfo().user, email_verified: true },
+            }),
+          ),
+      })
+      const user = userEvent.setup()
+      await user.click(
+        await screen.findByRole('button', { name: 'Acciones para Lucía' }),
+      )
+      await user.click(screen.getByRole('menuitem', { name: 'Desactivar' }))
+      await user.click(screen.getByRole('button', { name: 'Desactivar' }))
+      expect(await screen.findByText(copy)).toBeVisible()
+      await waitFor(() => expect(getUsers).toHaveBeenCalledTimes(2))
+    },
+  )
+
   it('shows only the global forbidden message for a denied user action', async () => {
     const target = buildUser({
       id: 'other-admin',
@@ -888,14 +1155,15 @@ describe('UsersPage', () => {
       role: 'admin',
       status: 'active',
     })
-    server.use(
-      http.get(`${base}/me`, () =>
-        HttpResponse.json(
-          buildSessionInfo({
-            user: { ...buildSessionInfo().user, email_verified: true },
-          }),
-        ),
+    const me = vi.fn(() =>
+      HttpResponse.json(
+        buildSessionInfo({
+          user: { ...buildSessionInfo().user, email_verified: true },
+        }),
       ),
+    )
+    server.use(
+      http.get(`${base}/me`, me),
       http.get(`${base}/users`, () =>
         HttpResponse.json({ items: [buildUser(), target] }),
       ),
@@ -928,6 +1196,168 @@ describe('UsersPage', () => {
     expect(
       screen.getAllByText('No tenés permiso para hacer esto.'),
     ).toHaveLength(1)
+    await waitFor(() => expect(me).toHaveBeenCalledOnce())
+  })
+
+  it('does not show a screen toast when a deactivate action returns 401', async () => {
+    toast.dismiss()
+    const target = buildUser({
+      id: 'me',
+      name: 'Ana Pérez',
+      email: 'ana@example.test',
+      role: 'admin',
+      status: 'active',
+    })
+    server.use(
+      http.get(`${base}/users`, () =>
+        HttpResponse.json({
+          items: [
+            target,
+            buildUser({
+              id: 'other-admin',
+              name: 'Otra Admin',
+              email: 'otra@example.test',
+              role: 'admin',
+              status: 'active',
+            }),
+          ],
+        }),
+      ),
+      http.post(`${base}/users/${target.id}/deactivate`, () =>
+        HttpResponse.json(problem('unauthenticated', 401), {
+          status: 401,
+          headers: { 'Content-Type': 'application/problem+json' },
+        }),
+      ),
+    )
+    const onUnauthenticated = vi.fn()
+    renderApp(['/settings/users'], {
+      routes: [{ path: '/settings/users', Component: UsersPage }],
+      onUnauthenticated,
+      configureQueryClient: (client) =>
+        client.setQueryData(
+          queryKeys.session,
+          buildSessionInfo({
+            user: {
+              ...buildSessionInfo().user,
+              id: 'me',
+              name: 'Ana Pérez',
+              email: 'ana@example.test',
+              email_verified: true,
+            },
+          }),
+        ),
+    })
+    const user = userEvent.setup()
+    await user.click(
+      await screen.findByRole('button', { name: /Acciones para Ana Pérez/ }),
+    )
+    await user.click(screen.getByRole('menuitem', { name: 'Desactivar' }))
+    expect(screen.getByText('Se va a cerrar tu sesión.')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Desactivar' }))
+    await waitFor(() => expect(onUnauthenticated).toHaveBeenCalledOnce())
+    expect(
+      screen.getByRole('region', { name: /Notifications/ }),
+    ).toBeEmptyDOMElement()
+  })
+
+  it('warns before self-downgrade and refreshes permissions afterward', async () => {
+    const self = buildUser({
+      id: 'self',
+      name: 'Ana Pérez',
+      email: 'ana@example.test',
+      role: 'admin',
+      status: 'active',
+    })
+    const otherAdmin = buildUser({
+      id: 'other-admin',
+      name: 'Otra Admin',
+      email: 'otra@example.test',
+      role: 'admin',
+      status: 'active',
+    })
+    let meRole: 'admin' | 'operator' = 'admin'
+    const me = vi.fn(() =>
+      HttpResponse.json(
+        buildSessionInfo({
+          user: {
+            ...buildSessionInfo().user,
+            id: 'self',
+            name: 'Ana Pérez',
+            email: 'ana@example.test',
+            role: meRole,
+            email_verified: true,
+          },
+          permissions: meRole === 'admin' ? ['settings.manage'] : [],
+        }),
+      ),
+    )
+    const changeRole = vi.fn(() => {
+      meRole = 'operator'
+      return HttpResponse.json({ ...self, role: 'operator' })
+    })
+    server.use(
+      http.get(`${base}/me`, me),
+      http.get(`${base}/users`, () =>
+        HttpResponse.json({ items: [self, otherAdmin] }),
+      ),
+      http.put(`${base}/users/${self.id}/role`, changeRole),
+    )
+    const { queryClient } = renderApp(['/settings/users'], {
+      routes: [
+        {
+          path: '/',
+          element: <Outlet />,
+          children: [
+            {
+              element: <RequireSession />,
+              children: [
+                {
+                  element: <RequirePermission />,
+                  children: [
+                    { path: 'settings/users', element: <UsersPage /> },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      configureQueryClient: (client) =>
+        client.setQueryData(
+          queryKeys.session,
+          buildSessionInfo({
+            user: {
+              ...buildSessionInfo().user,
+              id: 'self',
+              name: 'Ana Pérez',
+              email: 'ana@example.test',
+              email_verified: true,
+            },
+          }),
+        ),
+    })
+    const user = userEvent.setup()
+    await user.click(
+      await screen.findByRole('button', { name: 'Acciones para Ana Pérez' }),
+    )
+    await user.click(
+      screen.getByRole('menuitem', { name: /Cambiar a Operador/ }),
+    )
+    expect(screen.getByText('Vas a perder el acceso a Ajustes.')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Cambiar a Operador' }))
+    expect(
+      await screen.findByRole('heading', {
+        name: 'No tenés acceso a esta sección',
+      }),
+    ).toBeVisible()
+    await waitFor(() =>
+      expect(
+        queryClient.getQueryData<SessionInfo>(queryKeys.session)?.user.role,
+      ).toBe('operator'),
+    )
+    expect(me).toHaveBeenCalledOnce()
+    expect(changeRole).toHaveBeenCalledOnce()
   })
 
   it('keeps a disabled user after reactivation is rate-limited and restores row focus', async () => {

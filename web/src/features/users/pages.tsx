@@ -441,6 +441,8 @@ export function InviteUserPage() {
           queryKey: queryKeys.session,
           exact: true,
         })
+        if (queryClient.getQueryState(queryKeys.session)?.status === 'success')
+          setSubmitError(null)
         return
       }
       if (isApiError(error) && error.code === 'validation_failed') {
@@ -463,6 +465,8 @@ export function InviteUserPage() {
   }
 
   const message = submitError ? messageForError(submitError, 'invite') : null
+  const verificationError =
+    isApiError(submitError) && submitError.code === 'email_not_verified'
   const retrySubmit = () => void handleSubmit(onSubmit)()
   return (
     <>
@@ -476,7 +480,6 @@ export function InviteUserPage() {
           <VerifyToInviteNotice
             id="verify-to-invite-notice"
             email={currentSession.user.email}
-            description={message?.description}
             resendStatus={verificationNotice.status}
             errorMessage={verificationNotice.errorMessage}
             onResend={() => {
@@ -575,7 +578,20 @@ export function InviteUserPage() {
               </FieldError>
             )}
           </Field>
-          {message && (
+          {verificationError && message ? (
+            <FormAlert
+              variant="warning"
+              title={message.title}
+              description={message.description}
+              action={{
+                label: 'Reenviar email de confirmación',
+                onClick: () => {
+                  if (!resend.isPending) void verificationNotice.sendAgain()
+                },
+                disabled: resend.isPending,
+              }}
+            />
+          ) : message ? (
             <FormAlert
               variant="error"
               title={message.title}
@@ -587,7 +603,7 @@ export function InviteUserPage() {
                   : undefined
               }
             />
-          )}
+          ) : null}
           <div className="flex flex-wrap gap-3">
             <SubmitButton
               pending={invitation.isPending}
