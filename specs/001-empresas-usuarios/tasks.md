@@ -4187,7 +4187,16 @@ test nuevo de `401` se corrigieron en `c4a78fa`, `b3fbf4a`, `18b7c62`, `616f344`
 `3f1c5ff` (seis commits funcionales). `npm run check` con Node 24: 34 archivos, 486 passed,
 2 expected-fail, typecheck y build; suite focal: 8 archivos, 88 passed. El test real del handler
 global primero falló al mutar temporalmente su callback (no abría login) y pasó al restaurarlo; el
-caso de aviso `already_verified` también se probó en rojo y verde. Revisión: pendiente (Claude Code).
+caso de aviso `already_verified` también se probó en rojo y verde.
+
+**Revisión de los seguimientos de F5** (Claude Code, 2026-10-21, cabeza `918c8ba`): merge OK con 2 nits. Mutaciones: `already_verified`
+→ `'sent'` detectada; `EmptyState` con `to` opcional detectada por el `@ts-expect-error`; `expireSession`
+sin navegar detectada por el test nuevo del `401`; `expireSession` sin `client.clear()` detectada por
+4 tests de T-F104, pero no por el test nuevo. Nits: (1) en ese test, las aserciones de caché vacía
+pasan aunque no se limpie nada, porque el cliente de test usa `gcTime: 0` y ninguna query tiene
+observadores (la misma trampa que tenía M12); (2) `InvitationFormValues` (`schemas.ts:15`) quedó
+exportado sin uso. `npm run check` con Node 24: 34 archivos, 486 passed, 2 expected-fail, typecheck y
+build. Revisión: merge OK (Claude Code, 2026-10-21).
 
 ---
 
