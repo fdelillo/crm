@@ -3962,7 +3962,8 @@ Verificación final de Claude Code (cabeza `d0269c2`): merge OK con menores. Las
 `revisión: merge OK con menores (Claude Code, 2026-10-20)`.
 
 **Seguimientos F4 implementados (2026-10-21, `fix/001-live-region-followups`)**: `LiveRegion` detecta contenido renderizable para que C-01 y las dos regiones de S-05 vacías usen `sr-only`; el estado S-05 de email confirmado desactiva `FormAlert` y el test verifica que no aparezca una tercera región; la aserción de `Ir al inicio` quedó en el caso del token con sesión verificada. Commit frontend `b0e7924`. Las pruebas de cada cambio fallaron con su mutación y pasaron restauradas. `npm run check` con Node 24 pasó: 28 archivos, 419 tests y 2 expected-fail, typecheck y build. Las cuatro suites opcionales de timeouts pasaron 52/52 sin reproducir fallos; no se agregó precarga. Esta entrada también corrige el conteo de la revisión 1 a 1 bloqueante, 5 importantes y 5 menores y actualiza `plan.md` a Go 1.27.3 por GO-2026-6809.
-`revisión: pendiente (Claude Code)`.
+Revisión de Claude Code (PR #40, cabeza `c816664`): merge OK. Mutaciones repetidas: volver a decidir el vacío con `children` hace fallar la región vacía de C-01 y la de S-05 (`sr-only`); quitar `announce={false}` del estado de email confirmado hace fallar el conteo de regiones de S-05; cambiar el destino de "Ir al inicio" tras la confirmación hace fallar los dos tests que lo verifican. `npm run check` con Node 24: 28 archivos, 419 passed y 2 expected-fail. Sin prueba de navegador: los cambios son de clase y semántica de las regiones, cubiertos por los tests. F4 quedó en `main` con el PR #39 (`9e87d90`).
+`revisión: merge OK (Claude Code, 2026-10-21)`.
 
 ### Fase F5 — Historia 3: Usuarios e invitaciones (P2)
 
