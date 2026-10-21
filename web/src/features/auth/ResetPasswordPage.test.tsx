@@ -14,6 +14,7 @@ const base = 'https://localhost:5173/api/v1'
 describe('ResetPasswordPage', () => {
   // T-F403 (US-2.3, BR-F06, DD-F16): confirms a new password with the hidden link token and clears the cached session.
   it('sends the fragment token only in the request body and replaces with the changed-password login', async () => {
+    sessionStorage.setItem('crm.verifyBanner.dismissed', 'true')
     const request = vi.fn(async ({ request: req }: { request: Request }) => {
       expect(new URL(req.url).hash).toBe('')
       expect(new URL(req.url).search).toBe('')
@@ -53,6 +54,7 @@ describe('ResetPasswordPage', () => {
     )
     await user.click(screen.getByRole('button', { name: 'Guardar contraseña' }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
+    expect(sessionStorage.getItem('crm.verifyBanner.dismissed')).toBeNull()
     expect(router.state.location.search).toBe('?reason=password_changed')
     expect(router.state.historyAction).toBe('REPLACE')
     expect(queryClient.getQueryData(queryKeys.session)).toBeUndefined()

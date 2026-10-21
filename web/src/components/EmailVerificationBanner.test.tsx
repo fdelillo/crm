@@ -1,4 +1,4 @@
-import { act, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
@@ -7,6 +7,7 @@ import { server } from '@/test/msw/server'
 import { renderApp } from '@/test/renderApp'
 
 const base = 'https://localhost:5173/api/v1'
+const dismissalKey = 'crm.verifyBanner.dismissed'
 function loggedIn(emailVerified = false) {
   server.use(
     http.get(`${base}/me`, () =>
@@ -307,6 +308,12 @@ describe('EmailVerificationBanner', () => {
         name: 'Ocultar aviso de confirmación de email',
       }),
     )
+    expect(sessionStorage.getItem(dismissalKey)).toBe('true')
+    expect(
+      [...Array(sessionStorage.length)].map((_, index) =>
+        sessionStorage.key(index),
+      ),
+    ).toEqual([dismissalKey])
     await waitFor(() =>
       expect(screen.queryByText(/Confirmá tu email:/)).not.toBeInTheDocument(),
     )
@@ -316,8 +323,14 @@ describe('EmailVerificationBanner', () => {
     await act(async () => router.navigate('/settings'))
     expect(screen.queryByText(/Confirmá tu email:/)).not.toBeInTheDocument()
 
-    sessionStorage.clear()
     unmount()
+    renderApp(['/settings/users'], {
+      protectedPage: <h1>Usuarios</h1>,
+    })
+    expect(screen.queryByText(/Confirmá tu email:/)).not.toBeInTheDocument()
+
+    sessionStorage.clear()
+    cleanup()
     renderApp(['/settings/users'], {
       protectedPage: <h1>Usuarios</h1>,
     })

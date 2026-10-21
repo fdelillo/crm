@@ -24,6 +24,7 @@ beforeEach(() =>
 describe('logout navigation', () => {
   // T-F303: settings logout clears server-state cache, replaces to logged-out login, and requires /me again.
   it('logs out from Settings and does not restore the old session on Back', async () => {
+    sessionStorage.setItem('crm.verifyBanner.dismissed', 'true')
     let loggedOut = false
     let sessionReads = 0
     let logoutCompleted = false
@@ -66,6 +67,7 @@ describe('logout navigation', () => {
     expect(router.state.location.search).toBe('?reason=logged_out')
     expect(router.state.historyAction).toBe('REPLACE')
     expect(queryClient.getQueryData(['tenant'])).toBeUndefined()
+    expect(sessionStorage.getItem('crm.verifyBanner.dismissed')).toBeNull()
     expect(cacheWasEmptyAtLoggedOutLocation).toBe(true)
 
     const readsBeforeBack = sessionReads

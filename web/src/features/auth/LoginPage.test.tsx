@@ -38,6 +38,7 @@ describe('LoginPage', () => {
     ['/login?next=%2Fsettings%2Fusers', '/settings/users'],
     ['/login?next=%2F%2Fevil.example', '/'],
   ])('replaces the login entry for %s with %s', async (entry, destination) => {
+    sessionStorage.setItem('crm.verifyBanner.dismissed', 'true')
     loggedOut()
     let authenticated = false
     server.use(
@@ -76,6 +77,8 @@ describe('LoginPage', () => {
     if (destination === '/') {
       expect(queryClient.getQueryData(['stale-session-data'])).toBeUndefined()
       expect(queryClient.getQueryData(['session'])).toEqual(validSession)
+      expect(sessionStorage.getItem('crm.verifyBanner.dismissed')).toBeNull()
+      expect(await screen.findByText(/Confirmá tu email:/)).toBeVisible()
     }
     await act(async () => router.navigate(-1))
     expect(router.state.location.pathname).toBe(destination)

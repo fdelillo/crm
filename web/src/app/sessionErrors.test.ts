@@ -48,11 +48,13 @@ describe('createSessionErrorHandlers', () => {
   })
 
   it('expires the session when navigation is idle', () => {
+    sessionStorage.setItem('crm.verifyBanner.dismissed', 'true')
     const { clear, navigate, handlers } = setup()
 
     handlers.onUnauthenticated()
 
     expect(clear).toHaveBeenCalledOnce()
+    expect(sessionStorage.getItem('crm.verifyBanner.dismissed')).toBeNull()
     expect(navigate).toHaveBeenCalledOnce()
   })
 })

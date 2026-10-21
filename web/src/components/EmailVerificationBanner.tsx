@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 
 export type EmailVerificationNoticeStatus =
@@ -67,20 +66,4 @@ export function EmailVerificationBanner({
       )}
     </section>
   )
-}
-
-export function useEmailVerificationDismissed(
-  email: string,
-): [boolean, () => void] {
-  const key = `email-verification-dismissed:${email}`
-  const [dismissed, setDismissed] = useState(
-    () => sessionStorage.getItem(key) === '1',
-  )
-  return [
-    dismissed,
-    () => {
-      sessionStorage.setItem(key, '1')
-      setDismissed(true)
-    },
-  ]
 }

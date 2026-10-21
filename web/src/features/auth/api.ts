@@ -14,6 +14,7 @@ import type {
   TokenRequest,
 } from '@/api/types'
 import { safeNextPath } from '@/lib/safeNextPath'
+import { clearVerifyBannerDismissed } from '@/lib/verifyBannerDismissal'
 
 export function useSignup() {
   const client = useQueryClient()
@@ -24,6 +25,7 @@ export function useSignup() {
     onSuccess: async (session) => {
       await client.cancelQueries()
       client.clear()
+      clearVerifyBannerDismissed()
       client.setQueryData(queryKeys.session, session)
       toast.success('¡Listo! Tu empresa quedó creada.')
       void navigate('/', { replace: true })
@@ -41,6 +43,7 @@ export function useLogin() {
     onSuccess: async (session) => {
       await client.cancelQueries()
       client.clear()
+      clearVerifyBannerDismissed()
       client.setQueryData(queryKeys.session, session)
       const next = new URLSearchParams(location.search).get('next')
       void navigate(safeNextPath(next), { replace: true })
@@ -58,6 +61,7 @@ export function useLogout() {
     onSuccess: async () => {
       await client.cancelQueries()
       client.clear()
+      clearVerifyBannerDismissed()
       void navigate('/login?reason=logged_out', { replace: true })
     },
     onError: (error) => {
@@ -91,6 +95,7 @@ export function useConfirmPasswordReset() {
     onSuccess: async () => {
       await client.cancelQueries()
       client.clear()
+      clearVerifyBannerDismissed()
       void navigate('/login?reason=password_changed', { replace: true })
     },
   })

@@ -10,9 +10,9 @@ import { useLogout } from '@/features/auth/api'
 import { messageForError } from '@/api/errorMessages'
 import {
   EmailVerificationBanner,
-  useEmailVerificationDismissed,
   type EmailVerificationNoticeStatus,
 } from '@/components/EmailVerificationBanner'
+import { useVerifyBannerDismissed } from '@/lib/verifyBannerDismissal'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -120,7 +120,7 @@ function AuthenticatedShell({ session }: { session: SessionInfo }) {
 
 function SessionVerificationBanner({ email }: { email: string }) {
   const resend = useResendEmailVerification()
-  const [dismissed, dismiss] = useEmailVerificationDismissed(email)
+  const [dismissed, dismiss] = useVerifyBannerDismissed()
   const [outcome, setOutcome] = useState<'sent' | 'unknown' | null>(null)
   const [error, setError] = useState<unknown>(null)
   const status: EmailVerificationNoticeStatus = resend.isPending

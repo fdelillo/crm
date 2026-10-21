@@ -115,6 +115,7 @@ describe('SignupPage', () => {
   })
 
   it('posts normalized values and the browser timezone once, then replaces the form with the dashboard', async () => {
+    sessionStorage.setItem('crm.verifyBanner.dismissed', 'true')
     setupCatalog()
     const browserOptions = new Intl.DateTimeFormat().resolvedOptions()
     const timezoneSpy = vi
@@ -147,6 +148,8 @@ describe('SignupPage', () => {
     await completeForm()
     await userEvent.click(screen.getByRole('button', { name: 'Crear cuenta' }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+    expect(sessionStorage.getItem('crm.verifyBanner.dismissed')).toBeNull()
+    expect(await screen.findByText(/Confirmá tu email:/)).toBeVisible()
     expect(router.state.historyAction).toBe('REPLACE')
     await router.navigate(-1)
     await waitFor(() => expect(router.state.location.pathname).toBe('/login'))

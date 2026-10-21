@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { queryKeys } from '@/api/queryKeys'
 import { sessionExpiredLoginPath } from '@/lib/sessionExpiredRedirect'
 import { hasUnsavedChanges } from '@/lib/unsavedChanges'
+import { clearVerifyBannerDismissed } from '@/lib/verifyBannerDismissal'
 export function expireSession(
   client: QueryClient,
   location: Pick<Location, 'pathname' | 'search'>,
@@ -12,6 +13,7 @@ export function expireSession(
   if (location.pathname === '/login') return
   const unsavedChangesLost = hasUnsavedChanges()
   client.clear()
+  clearVerifyBannerDismissed()
   return navigate(sessionExpiredLoginPath(location), {
     replace: true,
     ...(unsavedChangesLost ? { state: { unsavedChangesLost: true } } : {}),
