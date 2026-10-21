@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { queryKeys } from '@/api/queryKeys'
-import { buildSessionInfo, problem } from '@/test/fixtures'
+import { buildSessionInfo, buildTenant, problem } from '@/test/fixtures'
 import { server } from '@/test/msw/server'
 import { renderApp } from '@/test/renderApp'
 import { AcceptInvitationPage } from './pages'
@@ -36,6 +36,38 @@ function renderAccept(
 }
 
 describe('AcceptInvitationPage', () => {
+  it('shows the verification banner after accepting into an unverified session', async () => {
+    const unverifiedSession = buildSessionInfo({
+      user: {
+        ...buildSessionInfo().user,
+        name: 'Ana Pérez',
+        email: 'ana@example.test',
+        role: 'operator',
+        email_verified: false,
+      },
+    })
+    server.use(
+      http.post(`${base}/auth/invitations/preview`, () =>
+        HttpResponse.json(preview),
+      ),
+      http.post(`${base}/auth/invitations/accept`, () =>
+        HttpResponse.json(unverifiedSession, { status: 201 }),
+      ),
+      http.get(`${base}/me`, () => HttpResponse.json(unverifiedSession)),
+      http.get(`${base}/tenant`, () => HttpResponse.json(buildTenant())),
+    )
+    renderApp([`/accept-invitation#token=${token}`])
+    const user = userEvent.setup()
+    await user.type(await screen.findByLabelText('Tu nombre'), 'Ana Pérez')
+    await user.type(screen.getByLabelText('Contraseña'), 'clave-segura-123')
+    await user.click(screen.getByRole('button', { name: 'Aceptar invitación' }))
+    expect(
+      await screen.findByText(
+        'Confirmá tu email: te mandamos un enlace a ana@example.test.',
+      ),
+    ).toBeVisible()
+  })
+
   it('explains when the link has no token and does not call the preview endpoint', () => {
     const previewRequest = vi.fn()
     server.use(http.post(`${base}/auth/invitations/preview`, previewRequest))
@@ -63,20 +95,42 @@ describe('AcceptInvitationPage', () => {
     ).toBeVisible()
     expect(screen.getByLabelText('Email')).toHaveValue('ana@example.test')
     expect(screen.getByLabelText('Email')).toHaveAttribute('readonly')
+    expect(
+      screen.getByText('La invitación vence el 27/10, 09:00.'),
+    ).toBeVisible()
     await waitFor(() => expect(router.state.location.hash).toBe(''))
     expect(router.state.location.search).toBe('')
     expect(request).toHaveBeenCalledOnce()
   })
 
+  it('shows a pending preview skeleton while the preview request is unresolved', () => {
+    server.use(
+      http.post(
+        `${base}/auth/invitations/preview`,
+        () => new Promise(() => {}),
+      ),
+    )
+    renderAccept()
+    expect(
+      screen.getByRole('region', { name: 'Cargando invitación', busy: true }),
+    ).toBeVisible()
+    expect(screen.queryByLabelText('Tu nombre')).not.toBeInTheDocument()
+  })
+
   it('shows a session conflict notice when another account is signed in', async () => {
+    const otherSession = buildSessionInfo({
+      user: { ...buildSessionInfo().user, email: 'otra@example.test' },
+    })
     server.use(
       http.post(`${base}/auth/invitations/preview`, () =>
         HttpResponse.json(preview),
       ),
     )
-    renderAccept(undefined, buildSessionInfo())
+    renderAccept(`/accept-invitation#token=${token}`, otherSession)
     expect(
-      await screen.findByText(/Tenés una sesión abierta como/),
+      await screen.findByText(
+        'Tenés una sesión abierta como otra@example.test. Si aceptás, se va a cerrar.',
+      ),
     ).toBeVisible()
   })
 
@@ -148,12 +202,14 @@ describe('AcceptInvitationPage', () => {
       await screen.findByText('Esta invitación ya no es válida.'),
     ).toBeVisible()
     expect(
-      screen.getByRole('link', { name: 'Pedir una nueva con tu email' }),
+      screen.getByText('Venció, ya se usó o la reemplazó una más nueva.'),
+    ).toBeVisible()
+    expect(
+      screen.getByRole('link', { name: 'pedí una nueva con tu email' }),
     ).toHaveAttribute('href', '/forgot-password')
-    expect(screen.getByRole('link', { name: 'Ingresá' })).toHaveAttribute(
-      'href',
-      '/login',
-    )
+    expect(
+      screen.getByRole('link', { name: '¿Ya tenés usuario? Ingresá' }),
+    ).toHaveAttribute('href', '/login')
     expect(screen.queryByLabelText('Tu nombre')).not.toBeInTheDocument()
   })
 
@@ -179,7 +235,7 @@ describe('AcceptInvitationPage', () => {
     ).toBeVisible()
     expect(screen.queryByLabelText('Tu nombre')).not.toBeInTheDocument()
     expect(
-      screen.getByRole('link', { name: 'Pedir una nueva con tu email' }),
+      screen.getByRole('link', { name: 'pedí una nueva con tu email' }),
     ).toHaveAttribute('href', '/forgot-password')
   })
 

@@ -4,6 +4,8 @@ import { api } from '@/api/client'
 import { isUnauthenticated, unwrap, type ApiError } from '@/api/errors'
 import { queryKeys } from '@/api/queryKeys'
 import type { Permission, SessionInfo } from '@/api/types'
+import { messageForError } from '@/api/errorMessages'
+import type { EmailVerificationNoticeStatus } from '@/components/EmailVerificationBanner'
 export function useSession() {
   return useQuery<SessionInfo | null, ApiError>({
     queryKey: queryKeys.session,
@@ -62,4 +64,33 @@ export function useResendEmailVerification() {
         toast('Tu email ya está confirmado. No hace falta otro enlace.')
     },
   })
+}
+
+export function useVerifyToInviteNotice() {
+  const resend = useResendEmailVerification()
+  const status: EmailVerificationNoticeStatus = resend.isPending
+    ? 'pending'
+    : resend.isError
+      ? 'error'
+      : resend.data === 'already_verified'
+        ? 'sent'
+        : (resend.data ?? 'idle')
+  const errorMessage = resend.error
+    ? messageForError(resend.error, 'resendVerification')
+    : undefined
+
+  async function sendAgain() {
+    try {
+      const outcome = await resend.mutateAsync()
+      if (outcome === 'already_verified')
+        (
+          document.querySelector<HTMLElement>('#main h1') ??
+          document.querySelector<HTMLElement>('h1')
+        )?.focus()
+    } catch {
+      // useMutation exposes the error to the notice's live region.
+    }
+  }
+
+  return { resend, status, errorMessage, sendAgain }
 }

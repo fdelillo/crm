@@ -8,23 +8,19 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import type { User } from '@/api/types'
-import type { UserAction, UserActionAvailability } from '../rules'
+import {
+  userActionLabels,
+  type UserAction,
+  type UserActionAvailability,
+} from '../rules'
 import { UserStatusBadge } from './UserStatusBadge'
-
-const actionLabels: Record<UserAction, string> = {
-  makeAdmin: 'Hacer Administrador',
-  makeOperator: 'Cambiar a Operador',
-  deactivate: 'Desactivar',
-  reactivate: 'Reactivar',
-  resendInvitation: 'Reenviar invitación',
-}
 
 export interface UserListItemProps {
   user: User
   isCurrentUser: boolean
   actions: UserActionAvailability[]
   timeZone: string
-  pendingAction: UserAction | null
+  pendingActions: UserAction[]
   onAction: (action: UserAction, trigger: HTMLButtonElement) => void
 }
 
@@ -33,7 +29,7 @@ export function UserListItem({
   isCurrentUser,
   actions,
   timeZone,
-  pendingAction,
+  pendingActions,
   onAction,
 }: UserListItemProps) {
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -72,16 +68,16 @@ export function UserListItem({
             {actions.map((item) => (
               <DropdownMenuItem
                 key={item.action}
-                disabled={!item.enabled || pendingAction === item.action}
+                disabled={!item.enabled || pendingActions.includes(item.action)}
                 onSelect={() => {
                   if (triggerRef.current)
                     onAction(item.action, triggerRef.current)
                 }}
               >
                 <span>
-                  {pendingAction === item.action
+                  {pendingActions.includes(item.action)
                     ? 'Procesando…'
-                    : actionLabels[item.action]}
+                    : userActionLabels[item.action]}
                 </span>
                 {item.disabledReason && (
                   <span className="ml-2 text-xs text-muted-foreground">

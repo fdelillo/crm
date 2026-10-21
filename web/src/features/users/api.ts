@@ -15,13 +15,13 @@ export function useUsers() {
 export function useInviteUser() {
   const client = useQueryClient()
   return useMutation<
-    { user: User; httpStatus: number },
+    { user: User; reissued: boolean },
     ApiError,
     InvitationRequest
   >({
     mutationFn: async (body) => {
       const result = await api.POST('/users/invitations', { body })
-      return { user: unwrap(result), httpStatus: result.response.status }
+      return { user: unwrap(result), reissued: result.response.status === 200 }
     },
     onSuccess: async () =>
       client.invalidateQueries({ queryKey: queryKeys.users }),
@@ -33,12 +33,12 @@ export function useChangeUserRole() {
   return useMutation<
     User,
     ApiError,
-    { id: string; role: RoleChangeRequest['role'] }
+    { userId: string; role: RoleChangeRequest['role'] }
   >({
-    mutationFn: async ({ id, role }) =>
+    mutationFn: async ({ userId, role }) =>
       unwrap(
         await api.PUT('/users/{userId}/role', {
-          params: { path: { userId: id } },
+          params: { path: { userId } },
           body: { role },
         }),
       ),
@@ -49,11 +49,11 @@ export function useChangeUserRole() {
 
 export function useDeactivateUser() {
   const client = useQueryClient()
-  return useMutation<User, ApiError, string>({
-    mutationFn: async (id) =>
+  return useMutation<User, ApiError, { userId: string }>({
+    mutationFn: async ({ userId }) =>
       unwrap(
         await api.POST('/users/{userId}/deactivate', {
-          params: { path: { userId: id } },
+          params: { path: { userId } },
         }),
       ),
     onSuccess: async () =>
@@ -63,11 +63,11 @@ export function useDeactivateUser() {
 
 export function useReactivateUser() {
   const client = useQueryClient()
-  return useMutation<User, ApiError, string>({
-    mutationFn: async (id) =>
+  return useMutation<User, ApiError, { userId: string }>({
+    mutationFn: async ({ userId }) =>
       unwrap(
         await api.POST('/users/{userId}/reactivate', {
-          params: { path: { userId: id } },
+          params: { path: { userId } },
         }),
       ),
     onSuccess: async () =>

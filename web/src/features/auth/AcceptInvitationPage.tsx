@@ -128,19 +128,18 @@ export function AcceptInvitationPage() {
             title="Esta invitación ya no es válida."
             description="Venció, ya se usó o la reemplazó una más nueva."
           />
-          <p>Si todavía no la aceptaste, pedí una nueva con tu email.</p>
-          <div className="flex flex-wrap gap-3">
-            <Link
-              className="inline-flex min-h-11 items-center text-primary underline"
-              to="/forgot-password"
-            >
-              Pedir una nueva con tu email
+          <p>
+            Si todavía no la aceptaste,{' '}
+            <Link className="text-primary underline" to="/forgot-password">
+              pedí una nueva con tu email
             </Link>
+          </p>
+          <div className="flex flex-wrap gap-3">
             <Link
               className="inline-flex min-h-11 items-center text-primary underline"
               to="/login"
             >
-              Ingresá
+              ¿Ya tenés usuario? Ingresá
             </Link>
           </div>
         </div>

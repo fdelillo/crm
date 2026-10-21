@@ -10,6 +10,8 @@ describe('application routes', () => {
   beforeAll(async () => {
     await Promise.all([
       import('@/features/auth/pages'),
+      import('@/features/users/pages'),
+      import('@/features/dashboard/DashboardPage'),
       import('@/app/AppShell'),
     ])
   })

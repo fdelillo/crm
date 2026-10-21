@@ -7,6 +7,14 @@ export type UserAction =
   | 'reactivate'
   | 'resendInvitation'
 
+export const userActionLabels: Record<UserAction, string> = {
+  makeAdmin: 'Hacer Administrador',
+  makeOperator: 'Cambiar a Operador',
+  deactivate: 'Desactivar',
+  reactivate: 'Reactivar',
+  resendInvitation: 'Reenviar invitación',
+}
+
 export interface UserActionAvailability {
   action: UserAction
   enabled: boolean
@@ -53,17 +61,28 @@ export function availableUserActions(
     const actions: UserActionAvailability[] = []
     if (user.role === 'admin') {
       actions.push({
+        action: 'resendInvitation',
+        enabled: confirmed,
+        ...(!confirmed
+          ? { disabledReason: 'email_not_verified' as const }
+          : {}),
+        requiresConfirmation: false,
+      })
+      actions.push({
         action: 'makeOperator',
         enabled: true,
         requiresConfirmation: true,
       })
+    } else {
+      actions.push({
+        action: 'resendInvitation',
+        enabled: confirmed,
+        ...(!confirmed
+          ? { disabledReason: 'email_not_verified' as const }
+          : {}),
+        requiresConfirmation: false,
+      })
     }
-    actions.push({
-      action: 'resendInvitation',
-      enabled: confirmed,
-      ...(!confirmed ? { disabledReason: 'email_not_verified' as const } : {}),
-      requiresConfirmation: false,
-    })
     if (user.role === 'operator') {
       actions.push({
         action: 'makeAdmin',

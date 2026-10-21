@@ -1,6 +1,6 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   buildIndustryTemplates,
   buildSessionInfo,
@@ -12,6 +12,21 @@ import { server } from '@/test/msw/server'
 import { renderApp } from '@/test/renderApp'
 
 const base = 'https://localhost:5173/api/v1'
+const visibilityStateDescriptor = Object.getOwnPropertyDescriptor(
+  document,
+  'visibilityState',
+)
+afterEach(() => {
+  if (visibilityStateDescriptor)
+    Object.defineProperty(
+      document,
+      'visibilityState',
+      visibilityStateDescriptor,
+    )
+  else
+    delete (document as { visibilityState?: DocumentVisibilityState })
+      .visibilityState
+})
 const templates = buildIndustryTemplates([
   { code: 'aluminum_carpentry', name: 'Carpintería de aluminio' },
   { code: 'generic', name: 'Genérico' },

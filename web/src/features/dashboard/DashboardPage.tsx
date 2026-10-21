@@ -7,12 +7,11 @@ import { VerifyToInviteNotice } from '@/components/VerifyToInviteNotice'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { messageForError } from '@/api/errorMessages'
 import {
   useCan,
   useInviteBlockedReason,
-  useResendEmailVerification,
-  useSession,
+  useCurrentSession,
+  useVerifyToInviteNotice,
 } from '@/features/auth/session'
 
 const currencyNames = {
@@ -21,25 +20,13 @@ const currencyNames = {
 } as const
 
 export function DashboardPage() {
-  const sessionQuery = useSession()
+  const session = useCurrentSession()
   const tenant = useTenant()
   const industryTemplates = useIndustryTemplates()
   const canManageSettings = useCan('settings.manage')
   const blockedReason = useInviteBlockedReason()
-  const resendVerification = useResendEmailVerification()
-  const resendStatus = resendVerification.isPending
-    ? 'pending'
-    : resendVerification.isError
-      ? 'error'
-      : resendVerification.data === 'already_verified'
-        ? 'idle'
-        : (resendVerification.data ?? 'idle')
-  const resendError = resendVerification.error
-    ? messageForError(resendVerification.error, 'resendVerification')
-    : undefined
-  const session = sessionQuery.data
-  if (!session) return null
-
+  const verificationNotice = useVerifyToInviteNotice()
+  const resendVerification = verificationNotice.resend
   return (
     <>
       <PageHeader title={`Hola, ${session.user.name}`} />
@@ -118,10 +105,11 @@ export function DashboardPage() {
         <VerifyToInviteNotice
           id="verify-to-invite-notice"
           email={session.user.email}
-          resendStatus={resendStatus}
-          errorMessage={resendError}
+          resendStatus={verificationNotice.status}
+          errorMessage={verificationNotice.errorMessage}
           onResend={() => {
-            if (!resendVerification.isPending) resendVerification.mutate()
+            if (!resendVerification.isPending)
+              void verificationNotice.sendAgain()
           }}
         />
       )}

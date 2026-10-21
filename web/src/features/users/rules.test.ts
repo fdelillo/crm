@@ -114,12 +114,12 @@ describe('user action rules', () => {
         actorEmailVerified: true,
       }),
     ).toEqual([
-      { action: 'makeOperator', enabled: true, requiresConfirmation: true },
       {
         action: 'resendInvitation',
         enabled: true,
         requiresConfirmation: false,
       },
+      { action: 'makeOperator', enabled: true, requiresConfirmation: true },
       { action: 'deactivate', enabled: true, requiresConfirmation: true },
     ])
   })

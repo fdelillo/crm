@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Controller, useForm } from 'react-hook-form'
@@ -12,7 +12,7 @@ import {
 } from '@/api/errorMessages'
 import { queryKeys } from '@/api/queryKeys'
 import { formatDateTime } from '@/lib/format'
-import type { SessionInfo, User } from '@/api/types'
+import type { User } from '@/api/types'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { EmptyState } from '@/components/EmptyState'
 import { ErrorState } from '@/components/ErrorState'
@@ -32,8 +32,8 @@ import { SubmitButton } from '@/components/SubmitButton'
 import { VerifyToInviteNotice } from '@/components/VerifyToInviteNotice'
 import {
   useInviteBlockedReason,
-  useResendEmailVerification,
-  useSession,
+  useCurrentSession,
+  useVerifyToInviteNotice,
 } from '@/features/auth/session'
 import {
   useChangeUserRole,
@@ -45,24 +45,26 @@ import {
 import {
   availableUserActions,
   countActiveAdmins,
+  userActionLabels,
   type UserAction,
+  type UserActionAvailability,
 } from './rules'
 import { UserListItem } from './components/UserListItem'
 import { invitationSchema, type InvitationFormValues } from './schemas'
-
-const names: Record<UserAction, string> = {
-  makeAdmin: 'Hacer Administrador',
-  makeOperator: 'Cambiar a Operador',
-  deactivate: 'Desactivar',
-  reactivate: 'Reactivar',
-  resendInvitation: 'Reenviar invitación',
-}
 
 function userName(user: User) {
   return user.name ?? user.email
 }
 
-function confirmation(user: User, action: UserAction, self: boolean) {
+function actionKey(userId: string, action: UserAction) {
+  return `${userId}:${action}`
+}
+
+function confirmation(
+  user: User,
+  action: UserAction,
+  selfWarning?: UserActionAvailability['selfWarning'],
+) {
   const name = userName(user)
   if (action === 'makeAdmin')
     return {
@@ -75,18 +77,20 @@ function confirmation(user: User, action: UserAction, self: boolean) {
   if (action === 'makeOperator')
     return {
       title: `¿Cambiar a ${name} a Operador?`,
-      description: self
-        ? 'Vas a perder el acceso a Ajustes.'
-        : 'Deja de ver finanzas, reportes y ajustes.',
+      description:
+        selfWarning === 'lose_settings_access'
+          ? 'Vas a perder el acceso a Ajustes.'
+          : 'Deja de ver finanzas, reportes y ajustes.',
     }
   if (action === 'deactivate')
     return {
       title: `¿Desactivar a ${name}?`,
-      description: self
-        ? 'Se va a cerrar tu sesión.'
-        : user.status === 'invited'
-          ? 'Su invitación deja de funcionar.'
-          : 'No va a poder ingresar y se cierran sus sesiones abiertas. Podés reactivarlo después.',
+      description:
+        selfWarning === 'end_own_session'
+          ? 'Se va a cerrar tu sesión.'
+          : user.status === 'invited'
+            ? 'Su invitación deja de funcionar.'
+            : 'No va a poder ingresar y se cierran sus sesiones abiertas. Podés reactivarlo después.',
     }
   return {
     title: `¿Reactivar a ${name}?`,
@@ -96,11 +100,12 @@ function confirmation(user: User, action: UserAction, self: boolean) {
 }
 
 export function UsersPage() {
-  const sessionQuery = useSession()
+  const currentSession = useCurrentSession()
   const users = useUsers()
   const queryClient = useQueryClient()
   const blockedReason = useInviteBlockedReason()
-  const resend = useResendEmailVerification()
+  const verificationNotice = useVerifyToInviteNotice()
+  const resend = verificationNotice.resend
   const invite = useInviteUser()
   const changeRole = useChangeUserRole()
   const deactivate = useDeactivateUser()
@@ -110,8 +115,14 @@ export function UsersPage() {
     action: UserAction
     trigger: HTMLButtonElement
   } | null>(null)
-  const [pendingAction, setPendingAction] = useState<UserAction | null>(null)
-  const submitLock = useRef(false)
+  const targetRef = useRef(target)
+  useLayoutEffect(() => {
+    targetRef.current = target
+  }, [target])
+  const [pendingActions, setPendingActions] = useState<Set<string>>(
+    () => new Set(),
+  )
+  const submitLocks = useRef(new Set<string>())
   const restoreTrigger = useRef<HTMLButtonElement | null>(null)
 
   useEffect(() => {
@@ -121,35 +132,29 @@ export function UsersPage() {
     }
   }, [target])
 
-  const session = sessionQuery.data
-  if (!session) return null
-  const currentSession: SessionInfo = session
-
-  const resendStatus = resend.isPending
-    ? 'pending'
-    : resend.isError
-      ? 'error'
-      : resend.data === 'already_verified'
-        ? 'idle'
-        : (resend.data ?? 'idle')
-  const resendError = resend.error
-    ? messageForError(resend.error, 'resendVerification')
-    : undefined
   const sendVerification = () => {
-    if (!resend.isPending) resend.mutate()
+    if (!resend.isPending) void verificationNotice.sendAgain()
   }
   const list = users.data ?? []
   const activeAdminCount = countActiveAdmins(list)
 
   async function runAction(user: User, action: UserAction) {
-    if (submitLock.current) return
-    submitLock.current = true
-    setPendingAction(action)
+    const key = actionKey(user.id, action)
+    if (submitLocks.current.has(key)) return
+    submitLocks.current.add(key)
+    setPendingActions((current) => new Set(current).add(key))
+    const targetAtStart = target
+    const closeTarget = () => {
+      if (targetAtStart && targetRef.current === targetAtStart) {
+        restoreTrigger.current = targetAtStart.trigger
+        setTarget(null)
+      }
+    }
     const displayName = userName(user)
     try {
       if (action === 'makeAdmin' || action === 'makeOperator') {
         const changed = await changeRole.mutateAsync({
-          id: user.id,
+          userId: user.id,
           role: action === 'makeAdmin' ? 'admin' : 'operator',
         })
         toast(
@@ -161,10 +166,10 @@ export function UsersPage() {
             exact: true,
           })
       } else if (action === 'deactivate') {
-        await deactivate.mutateAsync(user.id)
+        await deactivate.mutateAsync({ userId: user.id })
         toast(`Desactivaste a ${displayName}`)
       } else if (action === 'reactivate') {
-        const updated = await reactivate.mutateAsync(user.id)
+        const updated = await reactivate.mutateAsync({ userId: user.id })
         toast(
           updated.status === 'invited'
             ? `Le enviamos una invitación nueva a ${user.email}`
@@ -174,8 +179,7 @@ export function UsersPage() {
         await invite.mutateAsync({ email: user.email, role: user.role })
         toast(`Reenviamos la invitación a ${user.email}`)
       }
-      if (target) restoreTrigger.current = target.trigger
-      setTarget(null)
+      closeTarget()
     } catch (error) {
       if (isApiError(error) && error.code === 'email_not_verified') {
         toast(messageForError(error, 'invite').title)
@@ -183,7 +187,10 @@ export function UsersPage() {
           queryKey: queryKeys.session,
           exact: true,
         })
-      } else {
+      } else if (
+        !isApiError(error) ||
+        (error.code !== 'unauthenticated' && error.code !== 'forbidden')
+      ) {
         const message = messageForError(error, 'userAction')
         toast(
           message.description
@@ -198,12 +205,17 @@ export function UsersPage() {
         ) {
           await users.refetch()
         }
+      } else {
+        // 401 and forbidden 403 are already handled by the global session layer.
       }
-      if (target) restoreTrigger.current = target.trigger
-      setTarget(null)
+      closeTarget()
     } finally {
-      submitLock.current = false
-      setPendingAction(null)
+      submitLocks.current.delete(key)
+      setPendingActions((current) => {
+        const next = new Set(current)
+        next.delete(key)
+        return next
+      })
     }
   }
 
@@ -220,7 +232,11 @@ export function UsersPage() {
     ? confirmation(
         target.user,
         target.action,
-        target.user.id === currentSession.user.id,
+        availableUserActions(target.user, {
+          currentUserId: currentSession.user.id,
+          activeAdminCount,
+          actorEmailVerified: currentSession.user.email_verified,
+        }).find((action) => action.action === target.action)?.selfWarning,
       )
     : null
   return (
@@ -248,8 +264,8 @@ export function UsersPage() {
         <VerifyToInviteNotice
           id="verify-to-invite-notice"
           email={currentSession.user.email}
-          resendStatus={resendStatus}
-          errorMessage={resendError}
+          resendStatus={verificationNotice.status}
+          errorMessage={verificationNotice.errorMessage}
           onResend={sendVerification}
         />
       )}
@@ -286,7 +302,9 @@ export function UsersPage() {
                   actorEmailVerified: currentSession.user.email_verified,
                 })}
                 timeZone={currentSession.tenant.timezone}
-                pendingAction={pendingAction}
+                pendingActions={Array.from(pendingActions)
+                  .filter((key) => key.startsWith(`${user.id}:`))
+                  .map((key) => key.slice(user.id.length + 1) as UserAction)}
                 onAction={(action, trigger) => onAction(user, action, trigger)}
               />
             ))}
@@ -294,18 +312,18 @@ export function UsersPage() {
           {list.length === 1 &&
             list[0]?.id === currentSession.user.id &&
             (blockedReason ? (
-              <section className="mt-4 space-y-3 rounded-lg border bg-card p-6">
-                <h2 className="text-lg font-semibold">
-                  Todavía sos el único usuario.
-                </h2>
-                <p className="text-muted-foreground">
-                  Invitá a alguien de tu equipo para que cargue clientes y
-                  proyectos.
-                </p>
-                <Button disabled aria-describedby="verify-to-invite-notice">
-                  Invitar
-                </Button>
-              </section>
+              <div className="mt-4">
+                <EmptyState
+                  title="Todavía sos el único usuario."
+                  description="Invitá a alguien de tu equipo para que cargue clientes y proyectos."
+                  action={{
+                    label: 'Invitar',
+                    to: '/settings/users/invite',
+                    disabled: true,
+                    ariaDescribedBy: 'verify-to-invite-notice',
+                  }}
+                />
+              </div>
             ) : (
               <div className="mt-4">
                 <EmptyState
@@ -321,17 +339,20 @@ export function UsersPage() {
         <ConfirmDialog
           open
           onOpenChange={(open) => {
-            if (!open && !pendingAction) {
+            if (
+              !open &&
+              !pendingActions.has(actionKey(target.user.id, target.action))
+            ) {
               restoreTrigger.current = target.trigger
               setTarget(null)
             }
           }}
           title={selectedConfirmation.title}
           description={selectedConfirmation.description}
-          confirmLabel={names[target.action]}
-          pendingLabel={`${names[target.action]}…`}
+          confirmLabel={userActionLabels[target.action]}
+          pendingLabel={`${userActionLabels[target.action]}…`}
           destructive={target.action === 'deactivate'}
-          pending={pendingAction === target.action}
+          pending={pendingActions.has(actionKey(target.user.id, target.action))}
           onConfirm={() => void runAction(target.user, target.action)}
         />
       )}
@@ -342,11 +363,11 @@ export function UsersPage() {
 export function InviteUserPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const sessionQuery = useSession()
+  const currentSession = useCurrentSession()
   const blockedReason = useInviteBlockedReason()
-  const resend = useResendEmailVerification()
+  const verificationNotice = useVerifyToInviteNotice()
+  const resend = verificationNotice.resend
   const invitation = useInviteUser()
-  const [forcedBlocked, setForcedBlocked] = useState(false)
   const [submitError, setSubmitError] = useState<unknown>(null)
   const submitLock = useRef(false)
   const form = useForm<InvitationFormValues>({
@@ -364,23 +385,10 @@ export function InviteUserPage() {
     clearErrors,
     formState: { errors },
   } = form
-  const session = sessionQuery.data
-  if (!session) return null
-  const currentSession: SessionInfo = session
   const cachedUsers = queryClient.getQueryData<User[]>(queryKeys.users)
-  const resendStatus = resend.isPending
-    ? 'pending'
-    : resend.isError
-      ? 'error'
-      : resend.data === 'already_verified'
-        ? 'idle'
-        : (resend.data ?? 'idle')
-  const resendError = resend.error
-    ? messageForError(resend.error, 'resendVerification')
-    : undefined
   const emailErrorId = errors.email ? 'invite-email-error' : undefined
   const roleErrorId = errors.role ? 'invite-role-error' : undefined
-  const blocked = Boolean(blockedReason || forcedBlocked)
+  const blocked = Boolean(blockedReason)
 
   async function onSubmit(values: InvitationFormValues) {
     if (submitLock.current || blocked) return
@@ -388,15 +396,13 @@ export function InviteUserPage() {
     setSubmitError(null)
     clearErrors()
     try {
-      const email = values.email.trim().toLowerCase()
+      const email = values.email
       const previousInvite = cachedUsers?.find(
         (user) =>
           user.email.toLowerCase() === email && user.status === 'invited',
       )
-      const { user: created, httpStatus } = await invitation.mutateAsync(
-        invitationSchema.parse({ ...values, email }),
-      )
-      if (httpStatus === 200) {
+      const { user: created, reissued } = await invitation.mutateAsync(values)
+      if (reissued) {
         const roleText =
           previousInvite && previousInvite.role !== created.role
             ? ` como ${created.role === 'admin' ? 'Administrador' : 'Operador'}`
@@ -404,14 +410,14 @@ export function InviteUserPage() {
         toast(
           `${email} ya estaba invitado: le reenviamos la invitación${roleText}.`,
         )
-      } else if (httpStatus === 201) {
+      } else {
         const expiry = created.invitation_expires_at
-          ? formatDateTime(
+          ? ` Vence el ${formatDateTime(
               created.invitation_expires_at,
               currentSession.tenant.timezone,
-            )
+            )}.`
           : ''
-        toast(`Invitación enviada a ${email}. Vence el ${expiry}.`)
+        toast(`Invitación enviada a ${email}.${expiry}`)
       }
       await navigate('/settings/users', { replace: true })
     } catch (error) {
@@ -430,7 +436,6 @@ export function InviteUserPage() {
         return
       }
       if (isApiError(error) && error.code === 'email_not_verified') {
-        setForcedBlocked(true)
         setSubmitError(error)
         await queryClient.invalidateQueries({
           queryKey: queryKeys.session,
@@ -471,11 +476,11 @@ export function InviteUserPage() {
           <VerifyToInviteNotice
             id="verify-to-invite-notice"
             email={currentSession.user.email}
-            description={forcedBlocked ? message?.description : undefined}
-            resendStatus={resendStatus}
-            errorMessage={resendError}
+            description={message?.description}
+            resendStatus={verificationNotice.status}
+            errorMessage={verificationNotice.errorMessage}
             onResend={() => {
-              if (!resend.isPending) resend.mutate()
+              if (!resend.isPending) void verificationNotice.sendAgain()
             }}
           />
           <Link
