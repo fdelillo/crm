@@ -4115,8 +4115,9 @@ y fila “Operador · Activo”). La aceptación, el cambio de rol, la desactiva
 generaron emails. No se verificaron DD-F28 con visibilidad/foco observables ni el cierre de una
 sesión de Operador simultánea: el IAB no expone `document.visibilityState` ni permite contextos
 privados. Playwright tampoco inició Chrome: macOS terminó Chrome con SIGABRT y
-`bootstrap_check_in ... MachPortRendezvousServer: Permission denied (1100)`. PR: pendiente;
-revisión: pendiente (Claude Code).
+`bootstrap_check_in ... MachPortRendezvousServer: Permission denied (1100)`. PR #41:
+https://github.com/fdelillo/crm/pull/41, abierto; `make check`, `make build`, `make web-check`,
+`make vuln` y `make web-vuln` en verde. Revisión: pendiente (Claude Code).
 
 ---
 
