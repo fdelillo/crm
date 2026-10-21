@@ -3957,7 +3957,7 @@ falló al no encontrar `role="status"` en la carga vacía. (2) C-01 pasa
 `crm.verifyBanner.dismissed:persona@example.test`; la sonda de ocultar falló con `null` en
 `sessionStorage.getItem('crm.verifyBanner.dismissed')` en vez de `"true"`. Restauradas las tres
 mutaciones, el enfoque pasó 45/45. `npm run check` con Node 24 pasó: lint/Prettier, typecheck,
-419 tests y 2 expected-fail de 421, build. Los cinco checks del PR quedan pendientes de push.
+419 tests y 2 expected-fail de 421, build. Los cinco checks del PR #39 pasaron en CI: `make build` (1m32s), `make check` (10m02s), `make vuln` (35s), `make web-check` (1m12s) y `make web-vuln` (11s). El check `make vuln` detectó GO-2026-6809; se actualizó el toolchain de Go a 1.27.3 en `go.mod` y `tools.mod` (commit `2e704fd`). El push de ese parche dejó los cinco checks verdes.
 `revisión: pendiente (Claude Code)`.
 
 ### Fase F5 — Historia 3: Usuarios e invitaciones (P2)
