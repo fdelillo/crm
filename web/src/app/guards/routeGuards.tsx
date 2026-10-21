@@ -1,10 +1,11 @@
 import { LoaderCircle } from 'lucide-react'
-import { Navigate, Outlet, useLocation } from 'react-router'
+import { Navigate, Outlet, useLocation, useNavigation } from 'react-router'
 import { useCan, useSession } from '@/features/auth/session'
 import { messageForError } from '@/api/errorMessages'
 import { safeNextPath } from '@/lib/safeNextPath'
 import { Button } from '@/components/ui/button'
 import { ForbiddenState } from '@/components/ForbiddenState'
+import { isSessionExpiredRedirect } from '@/lib/sessionExpiredRedirect'
 export function PublicOnly() {
   const { data } = useSession()
   const location = useLocation()
@@ -20,6 +21,7 @@ export function PublicOnly() {
 export function RequireSession() {
   const session = useSession()
   const location = useLocation()
+  const navigation = useNavigation()
   if (session.isPending)
     return (
       <main role="status" aria-label="Cargando la aplicación" aria-busy="true">
@@ -48,6 +50,27 @@ export function RequireSession() {
       </main>
     )
   }
+  // Keep intentional login destinations while their lazy chunk loads. The
+  // session query is cleared during these navigations, so a plain Navigate
+  // here would race them and drop their reason.
+  if (
+    !session.data &&
+    navigation.location &&
+    navigation.location.pathname === '/login' &&
+    (isSessionExpiredRedirect(navigation.location) ||
+      new URLSearchParams(navigation.location.search).get('reason') ===
+        'logged_out')
+  )
+    return (
+      <main role="status" aria-label="Cargando la aplicación" aria-busy="true">
+        <span>CRM</span>
+        <LoaderCircle
+          aria-hidden="true"
+          className="size-6 animate-spin motion-reduce:animate-none"
+        />
+        <span>Cargando…</span>
+      </main>
+    )
   if (!session.data)
     return (
       <Navigate

@@ -2,6 +2,7 @@ import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { focusManager, useMutation, useQuery } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
+import { Outlet } from 'react-router'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { api } from '@/api/client'
 import { unwrap } from '@/api/errors'
@@ -14,6 +15,7 @@ import {
 } from '@/test/fixtures'
 import { server } from '@/test/msw/server'
 import { renderApp } from '@/test/renderApp'
+import { RequireSession } from '@/app/guards/routeGuards'
 
 const base = 'https://localhost:5173/api/v1'
 function denied(code: Parameters<typeof problem>[0], status: number) {
@@ -56,6 +58,8 @@ describe('session guards and global failures', () => {
   beforeAll(async () => {
     await Promise.all([
       import('@/features/auth/pages'),
+      import('@/features/users/pages'),
+      import('@/features/dashboard/DashboardPage'),
       import('@/app/AppShell'),
     ])
   })
@@ -374,6 +378,51 @@ describe('session guards and global failures', () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.session }),
     )
     await screen.findByText('Tu sesión se cerró. Ingresá de nuevo para seguir.')
+    expect(router.state.location.search).toContain('reason=session_expired')
+  })
+  it('keeps the expiration reason when a session refresh races a pending login chunk', async () => {
+    let releaseLogin!: () => void
+    const loginChunk = new Promise<void>((resolve) => {
+      releaseLogin = resolve
+    })
+    const session = buildSessionInfo()
+    const me = vi
+      .fn()
+      .mockImplementationOnce(() => HttpResponse.json(session))
+      .mockImplementation(() => HttpResponse.json(null))
+    server.use(http.get(`${base}/me`, me))
+    const { router, queryClient } = renderApp(['/settings/users'], {
+      routes: [
+        {
+          Component: Outlet,
+          children: [
+            {
+              Component: RequireSession,
+              children: [
+                { path: 'settings/users', element: <h1>Usuarios</h1> },
+              ],
+            },
+            {
+              path: 'login',
+              lazy: async () => {
+                await loginChunk
+                return { Component: () => <h1>Ingresá a tu cuenta</h1> }
+              },
+            },
+          ],
+        },
+      ],
+    })
+    await screen.findByRole('heading', { name: 'Usuarios' })
+    await act(() =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.session }),
+    )
+    await waitFor(() => expect(me.mock.calls.length).toBeGreaterThanOrEqual(2))
+    await waitFor(() =>
+      expect(router.state.navigation.location?.pathname).toBe('/login'),
+    )
+    releaseLogin()
+    await screen.findByRole('heading', { name: 'Ingresá a tu cuenta' })
     expect(router.state.location.search).toContain('reason=session_expired')
   })
 })

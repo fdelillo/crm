@@ -1,6 +1,6 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   buildIndustryTemplates,
   buildSessionInfo,
@@ -12,6 +12,21 @@ import { server } from '@/test/msw/server'
 import { renderApp } from '@/test/renderApp'
 
 const base = 'https://localhost:5173/api/v1'
+const visibilityStateDescriptor = Object.getOwnPropertyDescriptor(
+  document,
+  'visibilityState',
+)
+afterEach(() => {
+  if (visibilityStateDescriptor)
+    Object.defineProperty(
+      document,
+      'visibilityState',
+      visibilityStateDescriptor,
+    )
+  else
+    delete (document as { visibilityState?: DocumentVisibilityState })
+      .visibilityState
+})
 const templates = buildIndustryTemplates([
   { code: 'aluminum_carpentry', name: 'Carpintería de aluminio' },
   { code: 'generic', name: 'Genérico' },
@@ -172,5 +187,63 @@ describe('DashboardPage', () => {
     await waitFor(() =>
       expect(screen.getByText('Rubro: custom_industry')).toBeVisible(),
     )
+  })
+
+  it('disables the team invite until an unverified admin returns from email confirmation', async () => {
+    let verified = false
+    const me = vi.fn(() =>
+      HttpResponse.json(
+        buildSessionInfo({
+          user: {
+            ...buildSessionInfo().user,
+            name: 'Ana Pérez',
+            email_verified: verified,
+          },
+        }),
+      ),
+    )
+    server.use(
+      http.get(`${base}/me`, me),
+      http.get(`${base}/tenant`, () => tenantResponse()),
+      http.get(`${base}/industry-templates`, () =>
+        HttpResponse.json(templates),
+      ),
+    )
+    renderApp(['/'])
+
+    expect(
+      await screen.findByRole('button', { name: 'Invitá a tu equipo' }),
+    ).toBeDisabled()
+    expect(
+      screen.getByText('Confirmá tu email para invitar a tu equipo.'),
+    ).toBeVisible()
+    expect(
+      screen.getByRole('button', { name: 'Reenviar email de confirmación' }),
+    ).toBeVisible()
+    expect(
+      screen.getByRole('link', { name: 'Completá los datos de tu empresa' }),
+    ).toHaveAttribute('href', '/settings/company')
+    expect(
+      screen.queryByRole('link', { name: 'Invitá a tu equipo' }),
+    ).not.toBeInTheDocument()
+
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'hidden',
+    })
+    await act(async () => window.dispatchEvent(new Event('visibilitychange')))
+    verified = true
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'visible',
+    })
+    await act(async () => window.dispatchEvent(new Event('visibilitychange')))
+    expect(
+      await screen.findByRole('link', { name: 'Invitá a tu equipo' }),
+    ).toHaveAttribute('href', '/settings/users/invite')
+    expect(
+      screen.queryByText('Confirmá tu email para invitar a tu equipo.'),
+    ).not.toBeInTheDocument()
+    expect(me.mock.calls.length).toBeGreaterThanOrEqual(2)
   })
 })

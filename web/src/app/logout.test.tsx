@@ -51,14 +51,16 @@ describe('logout navigation', () => {
     await waitFor(() =>
       expect(queryClient.getQueryData(['tenant'])).toBeDefined(),
     )
-    let cacheWasEmptyAtLoggedOutLocation = false
+    let sessionWasClearedAtLoggedOutLocation = false
     const unsubscribe = router.subscribe((state) => {
       if (
         state.location.pathname === '/login' &&
         state.location.search === '?reason=logged_out'
       ) {
-        cacheWasEmptyAtLoggedOutLocation =
-          queryClient.getQueryCache().getAll().length === 0
+        const sessionData = queryClient.getQueryData(['session'])
+        sessionWasClearedAtLoggedOutLocation =
+          (sessionData === undefined || sessionData === null) &&
+          queryClient.getQueryData(['tenant']) === undefined
       }
     })
     await userEvent.click(screen.getByRole('button', { name: 'Cerrar sesión' }))
@@ -68,7 +70,7 @@ describe('logout navigation', () => {
     expect(router.state.historyAction).toBe('REPLACE')
     expect(queryClient.getQueryData(['tenant'])).toBeUndefined()
     expect(sessionStorage.getItem('crm.verifyBanner.dismissed')).toBeNull()
-    expect(cacheWasEmptyAtLoggedOutLocation).toBe(true)
+    expect(sessionWasClearedAtLoggedOutLocation).toBe(true)
 
     const readsBeforeBack = sessionReads
     await router.navigate(-1)

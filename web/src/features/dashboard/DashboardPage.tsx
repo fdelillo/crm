@@ -3,9 +3,16 @@ import { useIndustryTemplates } from '@/api/industryTemplates'
 import { useTenant } from '@/api/tenant'
 import { ErrorState } from '@/components/ErrorState'
 import { PageHeader } from '@/components/PageHeader'
+import { VerifyToInviteNotice } from '@/components/VerifyToInviteNotice'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useCan, useCurrentSession } from '@/features/auth/session'
+import {
+  useCan,
+  useInviteBlockedReason,
+  useCurrentSession,
+  useVerifyToInviteNotice,
+} from '@/features/auth/session'
 
 const currencyNames = {
   ARS: 'Pesos (ARS)',
@@ -17,7 +24,9 @@ export function DashboardPage() {
   const tenant = useTenant()
   const industryTemplates = useIndustryTemplates()
   const canManageSettings = useCan('settings.manage')
-
+  const blockedReason = useInviteBlockedReason()
+  const verificationNotice = useVerifyToInviteNotice()
+  const resendVerification = verificationNotice.resend
   return (
     <>
       <PageHeader title={`Hola, ${session.user.name}`} />
@@ -71,14 +80,38 @@ export function DashboardPage() {
             >
               Completá los datos de tu empresa
             </Link>
-            <Link
-              className="flex min-h-14 items-center rounded-lg border bg-card px-4 py-3 font-medium text-primary underline underline-offset-4"
-              to="/settings/users/invite"
-            >
-              Invitá a tu equipo
-            </Link>
+            {blockedReason ? (
+              <Button
+                type="button"
+                variant="outline"
+                disabled
+                aria-describedby="verify-to-invite-notice"
+                className="flex min-h-14 h-auto items-center justify-start rounded-lg px-4 py-3 text-left"
+              >
+                Invitá a tu equipo
+              </Button>
+            ) : (
+              <Link
+                className="flex min-h-14 items-center rounded-lg border bg-card px-4 py-3 font-medium text-primary underline underline-offset-4"
+                to="/settings/users/invite"
+              >
+                Invitá a tu equipo
+              </Link>
+            )}
           </div>
         </section>
+      )}
+      {canManageSettings && blockedReason && (
+        <VerifyToInviteNotice
+          id="verify-to-invite-notice"
+          email={session.user.email}
+          resendStatus={verificationNotice.status}
+          errorMessage={verificationNotice.errorMessage}
+          onResend={() => {
+            if (!resendVerification.isPending)
+              void verificationNotice.sendAgain()
+          }}
+        />
       )}
     </>
   )

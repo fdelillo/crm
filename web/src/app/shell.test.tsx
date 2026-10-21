@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   buildSessionInfo,
   buildCurrentUser,
@@ -14,6 +14,12 @@ import { FormAlert } from '@/components/FormAlert'
 import { ErrorState } from '@/components/ErrorState'
 import { EmptyState } from '@/components/EmptyState'
 const base = 'https://localhost:5173/api/v1'
+beforeAll(async () => {
+  await Promise.all([
+    import('@/features/users/pages'),
+    import('@/features/dashboard/DashboardPage'),
+  ])
+})
 beforeEach(() =>
   server.use(
     http.get(`${base}/me`, () => HttpResponse.json(buildSessionInfo())),

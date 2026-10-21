@@ -18,6 +18,8 @@ export function renderApp(
     configureQueryClient?: (client: QueryClient) => void
     strictMode?: boolean
     routes?: RouteObject[]
+    onUnauthenticated?: () => void
+    onForbidden?: () => void
   } = {},
 ) {
   const routes =
@@ -37,8 +39,12 @@ export function renderApp(
   }
   const router = createMemoryRouter(routes, { initialEntries })
   const queryClient = createTestQueryClient({
-    onUnauthenticated: () => handlers.onUnauthenticated(),
-    onForbidden: () => handlers.onForbidden(),
+    onUnauthenticated: () =>
+      options.onUnauthenticated
+        ? options.onUnauthenticated()
+        : handlers.onUnauthenticated(),
+    onForbidden: () =>
+      options.onForbidden ? options.onForbidden() : handlers.onForbidden(),
   })
   const handlers = createSessionErrorHandlers(queryClient, router)
   options.configureQueryClient?.(queryClient)

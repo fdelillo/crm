@@ -7,11 +7,14 @@ import { queryKeys } from '@/api/queryKeys'
 import { messageForError } from '@/api/errorMessages'
 export { useIndustryTemplates } from '@/api/industryTemplates'
 import type {
+  InvitationAcceptRequest,
+  InvitationPreview,
   LoginRequest,
   PasswordResetConfirmRequest,
   PasswordResetRequest,
   SignupRequest,
   TokenRequest,
+  SessionInfo,
 } from '@/api/types'
 import { safeNextPath } from '@/lib/safeNextPath'
 import { clearVerifyBannerDismissed } from '@/lib/verifyBannerDismissal'
@@ -97,6 +100,34 @@ export function useConfirmPasswordReset() {
       client.clear()
       clearVerifyBannerDismissed()
       void navigate('/login?reason=password_changed', { replace: true })
+    },
+  })
+}
+
+export function useInvitationPreview(token: string | null) {
+  return useMutation<InvitationPreview, ApiError, void>({
+    mutationFn: async () => {
+      if (!token) throw new Error('Invitation preview requires a link token')
+      return unwrap(
+        await api.POST('/auth/invitations/preview', { body: { token } }),
+      )
+    },
+  })
+}
+
+export function useAcceptInvitation() {
+  const client = useQueryClient()
+  const navigate = useNavigate()
+  return useMutation<SessionInfo, ApiError, InvitationAcceptRequest>({
+    mutationFn: async (body) =>
+      unwrap(await api.POST('/auth/invitations/accept', { body })),
+    onSuccess: async (session) => {
+      await client.cancelQueries()
+      client.clear()
+      clearVerifyBannerDismissed()
+      client.setQueryData(queryKeys.session, session)
+      toast.success(`¡Bienvenido/a a ${session.tenant.name}!`)
+      void navigate('/', { replace: true })
     },
   })
 }
