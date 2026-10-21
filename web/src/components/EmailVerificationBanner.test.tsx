@@ -8,7 +8,8 @@ import {
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { toast } from 'sonner'
+import { afterEach, describe, expect, it } from 'vitest'
 import { buildSessionInfo, buildTenant, problem } from '@/test/fixtures'
 import { server } from '@/test/msw/server'
 import { renderApp } from '@/test/renderApp'
@@ -30,6 +31,8 @@ function loggedIn(emailVerified = false) {
 }
 
 describe('EmailVerificationBanner', () => {
+  afterEach(() => toast.dismiss())
+
   it('renders both parts of an error message passed as one value', () => {
     render(
       <EmailVerificationBanner

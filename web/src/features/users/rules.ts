@@ -58,29 +58,21 @@ export function availableUserActions(
   }
 
   if (user.status === 'invited') {
-    const actions: UserActionAvailability[] = []
-    if (user.role === 'admin') {
-      actions.push({
+    const actions: UserActionAvailability[] = [
+      {
         action: 'resendInvitation',
         enabled: confirmed,
         ...(!confirmed
           ? { disabledReason: 'email_not_verified' as const }
           : {}),
         requiresConfirmation: false,
-      })
+      },
+    ]
+    if (user.role === 'admin') {
       actions.push({
         action: 'makeOperator',
         enabled: true,
         requiresConfirmation: true,
-      })
-    } else {
-      actions.push({
-        action: 'resendInvitation',
-        enabled: confirmed,
-        ...(!confirmed
-          ? { disabledReason: 'email_not_verified' as const }
-          : {}),
-        requiresConfirmation: false,
       })
     }
     if (user.role === 'operator') {

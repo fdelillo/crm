@@ -73,7 +73,7 @@ export function useVerifyToInviteNotice() {
     : resend.isError
       ? 'error'
       : resend.data === 'already_verified'
-        ? 'sent'
+        ? 'idle'
         : (resend.data ?? 'idle')
   const errorMessage = resend.error
     ? messageForError(resend.error, 'resendVerification')

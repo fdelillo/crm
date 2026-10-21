@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { focusManager, useMutation, useQuery } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { Outlet } from 'react-router'
+import { toast } from 'sonner'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { api } from '@/api/client'
 import { unwrap } from '@/api/errors'
@@ -11,11 +12,16 @@ import {
   buildSessionInfo,
   buildCurrentUser,
   buildTenant,
+  buildUser,
   problem,
 } from '@/test/fixtures'
 import { server } from '@/test/msw/server'
 import { renderApp } from '@/test/renderApp'
 import { RequireSession } from '@/app/guards/routeGuards'
+import { EmailVerificationBanner } from '@/components/EmailVerificationBanner'
+import { LoginPage } from '@/features/auth/LoginPage'
+import { useVerifyToInviteNotice } from '@/features/auth/session'
+import { useDeactivateUser } from '@/features/users/api'
 
 const base = 'https://localhost:5173/api/v1'
 function denied(code: Parameters<typeof problem>[0], status: number) {
@@ -53,6 +59,17 @@ function Probe({ mutate = false }: { mutate?: boolean }) {
     </>
   )
 }
+function DeactivateActionHarness() {
+  const deactivate = useDeactivateUser()
+  return (
+    <>
+      <h1>Usuarios</h1>
+      <button onClick={() => deactivate.mutate({ userId: 'me' })}>
+        Desactivar
+      </button>
+    </>
+  )
+}
 // T-F104 (INV-F01/02/03/06/16): real router/cache and HTTP interception at the boundary.
 describe('session guards and global failures', () => {
   beforeAll(async () => {
@@ -63,7 +80,60 @@ describe('session guards and global failures', () => {
       import('@/app/AppShell'),
     ])
   })
-  afterEach(() => focusManager.setFocused(undefined))
+  afterEach(() => {
+    focusManager.setFocused(undefined)
+    toast.dismiss()
+  })
+  it('does not announce resend success when the session was already verified', async () => {
+    server.use(
+      http.get(`${base}/me`, () =>
+        HttpResponse.json(
+          buildSessionInfo({
+            user: { ...buildSessionInfo().user, email_verified: true },
+          }),
+        ),
+      ),
+      http.get(`${base}/tenant`, () => HttpResponse.json(buildTenant())),
+      http.post(
+        `${base}/auth/email-verification/resend`,
+        () => new HttpResponse(null, { status: 202 }),
+      ),
+    )
+    function HookBoundBanner() {
+      const notice = useVerifyToInviteNotice()
+      return (
+        <EmailVerificationBanner
+          email="persona@example.test"
+          resendStatus={notice.status}
+          errorMessage={notice.errorMessage}
+          onResend={notice.sendAgain}
+          onDismiss={() => undefined}
+        />
+      )
+    }
+    renderApp(['/settings/users'], {
+      protectedPage: <HookBoundBanner />,
+      configureQueryClient: (client) =>
+        client.setQueryData(
+          queryKeys.session,
+          buildSessionInfo({
+            user: { ...buildSessionInfo().user, email_verified: false },
+          }),
+        ),
+    })
+
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Reenviar' }))
+
+    expect(
+      await screen.findByText(
+        'Tu email ya está confirmado. No hace falta otro enlace.',
+      ),
+    ).toBeVisible()
+    expect(
+      screen.queryByText(/Listo, te lo reenviamos/),
+    ).not.toBeInTheDocument()
+  })
   it('waits for the session without flashing login', async () => {
     server.use(http.get(`${base}/me`, async () => new Promise(() => {})))
     renderApp(['/settings/users'])
@@ -86,6 +156,46 @@ describe('session guards and global failures', () => {
     expect(
       screen.queryByText('Tu sesión se cerró. Ingresá de nuevo para seguir.'),
     ).not.toBeInTheDocument()
+  })
+  // T-F503 (DD-44): exercise the real global unauthenticated handler for a user action.
+  it('clears the authenticated cache and opens login after a deactivate action returns 401', async () => {
+    server.use(
+      http.post(`${base}/users/me/deactivate`, () =>
+        HttpResponse.json(problem('unauthenticated', 401), {
+          status: 401,
+          headers: { 'Content-Type': 'application/problem+json' },
+        }),
+      ),
+    )
+    const { queryClient, router } = renderApp(['/settings/users'], {
+      routes: [
+        { path: '/login', Component: LoginPage },
+        { path: '/settings/users', Component: DeactivateActionHarness },
+      ],
+      configureQueryClient: (client) => {
+        client.setQueryData(queryKeys.session, buildSessionInfo())
+        client.setQueryData(queryKeys.users, [buildUser()])
+      },
+    })
+
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: 'Desactivar' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Ingresá a tu cuenta' }),
+    ).toBeVisible()
+    expect(
+      screen.getByText('Tu sesión se cerró. Ingresá de nuevo para seguir.'),
+    ).toBeVisible()
+    expect(router.state.location.pathname + router.state.location.search).toBe(
+      '/login?next=%2Fsettings%2Fusers&reason=session_expired',
+    )
+    expect(queryClient.getQueryData(queryKeys.session)).toBeUndefined()
+    expect(queryClient.getQueryData(queryKeys.users)).toBeUndefined()
+    expect(
+      screen.getByRole('region', { name: /Notifications/ }),
+    ).toBeEmptyDOMElement()
   })
   it.each([
     ['/login', '/'],
