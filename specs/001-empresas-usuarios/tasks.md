@@ -4167,6 +4167,21 @@ fue consultada con `frontend-architect`, que indicó derivar el estado de `/me` 
 verdad. No se repitió navegador (sin cambios a `RequireSession`, `expireSession` ni
 `queryClient.ts`). Revisión: pendiente (Claude Code); PR #41 sigue abierto y sin merge.
 
+**Revisión 3 de PR #41 (Claude Code, 2026-10-21, cabeza `6f9ea78`)**: merge OK con nits. Los
+hallazgos importante y menores de la revisión 2 quedaron corregidos. Mutaciones repetidas acá, cada
+una detectada por su test: M12, (d) lock global, (d') "Procesando…" global, (e') toast de pantalla
+en `401`, S-10 sin descartar el aviso obsoleto con `/me` confirmado y S-10 sin el aviso de
+advertencia. `npm run check` con Node 24: 33 archivos, 483 passed, 2 expected-fail, typecheck y
+build. Prueba de navegador (revisión 2, `471785d`, Playwright en Chrome 146): flujo F5 completo con
+"Tu sesión se cerró" y 9/9 de la reproducción corta de la carrera, en dev y en build de producción;
+`46a9b67` no toca la lógica de sesión. Corrección al registro de la revisión 2: los 5 nits **no** se
+aplicaron. `EmptyStateProps` sigue con campos opcionales en lugar de la unión discriminada;
+`useVerifyToInviteNotice` mapea `already_verified` a `'sent'`; el `push` de `resendInvitation` sigue
+duplicado en `rules.ts`; `useForm` sigue tipado solo con `z.input`; el loader de `RequireSession`
+sigue duplicado. Quedan como seguimiento, junto con un nit nuevo: los tests de `401` de T-F503
+simulan `onUnauthenticated` en vez de verificar el login con el aviso (cubierto por
+`session.test.tsx` y por la prueba de navegador). Revisión: merge OK (Claude Code, 2026-10-21).
+
 ---
 
 ### Fase F6 — Historia 4: Datos de la empresa y logo (P2)
