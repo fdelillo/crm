@@ -1,4 +1,11 @@
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import {
+  act,
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
@@ -75,6 +82,11 @@ describe('EmailVerificationBanner', () => {
         'Confirmá tu email: te mandamos un enlace a persona@example.test.',
       ),
     ).toBeVisible()
+    const liveRegion = within(
+      screen.getByRole('region', { name: 'Confirmación de email' }),
+    ).getByRole('status')
+    expect(liveRegion).toBeEmptyDOMElement()
+    expect(liveRegion).toHaveAttribute('aria-atomic', 'true')
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: 'Reenviar' }))
     expect(screen.getByRole('button', { name: 'Enviando…' })).toBeDisabled()
@@ -84,10 +96,13 @@ describe('EmailVerificationBanner', () => {
       ),
     ).toBeVisible()
     expect(
-      screen.getByText(
-        'Listo, te lo reenviamos. Revisá también el correo no deseado.',
-      ),
-    ).toHaveAttribute('aria-live', 'polite')
+      within(
+        screen.getByRole('region', { name: 'Confirmación de email' }),
+      ).getByRole('status'),
+    ).toBe(liveRegion)
+    expect(liveRegion).toHaveTextContent(
+      'Listo, te lo reenviamos. Revisá también el correo no deseado.',
+    )
     expect(screen.getByRole('button', { name: 'Reenviar' })).toBeEnabled()
     expect(screen.queryByText(/20 minutos/)).not.toBeInTheDocument()
     expect(events).toEqual(['me', 'resend', 'me'])
@@ -227,6 +242,10 @@ describe('EmailVerificationBanner', () => {
       )
       renderApp(['/settings/users'], { protectedPage: <h1>Usuarios</h1> })
       await screen.findByText(/Confirmá tu email:/)
+      const liveRegion = within(
+        screen.getByRole('region', { name: 'Confirmación de email' }),
+      ).getByRole('status')
+      expect(liveRegion).toBeEmptyDOMElement()
       const user = userEvent.setup()
       await user.click(screen.getByRole('button', { name: 'Reenviar' }))
       expect(
@@ -235,6 +254,13 @@ describe('EmailVerificationBanner', () => {
       expect(
         await screen.findByText(`Esperá ${wait} y probá de nuevo.`),
       ).toBeVisible()
+      expect(liveRegion).toHaveTextContent('Ya te lo mandamos hace poco.')
+      expect(liveRegion).toHaveTextContent(`Esperá ${wait} y probá de nuevo.`)
+      expect(
+        within(
+          screen.getByRole('region', { name: 'Confirmación de email' }),
+        ).getByRole('status'),
+      ).toBe(liveRegion)
       expect(screen.getByRole('button', { name: 'Reenviar' })).toBeEnabled()
     },
   )
@@ -246,17 +272,28 @@ describe('EmailVerificationBanner', () => {
       http.post(`${base}/auth/email-verification/resend`, () => {
         requests += 1
         const seconds = requests === 1 ? '180' : '1200'
-        return HttpResponse.json(problem('rate_limited', 429), {
-          status: 429,
-          headers: {
-            'Content-Type': 'application/problem+json',
-            'Retry-After': seconds,
-          },
+        return new Promise((resolve) => {
+          setTimeout(
+            () =>
+              resolve(
+                HttpResponse.json(problem('rate_limited', 429), {
+                  status: 429,
+                  headers: {
+                    'Content-Type': 'application/problem+json',
+                    'Retry-After': seconds,
+                  },
+                }),
+              ),
+            50,
+          )
         })
       }),
     )
     renderApp(['/settings/users'], { protectedPage: <h1>Usuarios</h1> })
     await screen.findByText(/Confirmá tu email:/)
+    const liveRegion = within(
+      screen.getByRole('region', { name: 'Confirmación de email' }),
+    ).getByRole('status')
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: 'Reenviar' }))
     expect(
@@ -265,14 +302,24 @@ describe('EmailVerificationBanner', () => {
     expect(
       await screen.findByText('Esperá 3 minutos y probá de nuevo.'),
     ).toBeVisible()
+    expect(liveRegion).toHaveTextContent('Ya te lo mandamos hace poco.')
+    expect(liveRegion).toHaveTextContent('Esperá 3 minutos y probá de nuevo.')
 
     await user.click(screen.getByRole('button', { name: 'Reenviar' }))
+    await waitFor(() => expect(liveRegion).toBeEmptyDOMElement())
     expect(
       await screen.findByText('Ya te lo mandamos hace poco.'),
     ).toBeVisible()
     expect(
       await screen.findByText('Esperá 20 minutos y probá de nuevo.'),
     ).toBeVisible()
+    expect(liveRegion).toHaveTextContent('Ya te lo mandamos hace poco.')
+    expect(liveRegion).toHaveTextContent('Esperá 20 minutos y probá de nuevo.')
+    expect(
+      within(
+        screen.getByRole('region', { name: 'Confirmación de email' }),
+      ).getByRole('status'),
+    ).toBe(liveRegion)
     expect(requests).toBe(2)
   })
 
@@ -291,6 +338,9 @@ describe('EmailVerificationBanner', () => {
     )
     renderApp(['/settings/users'], { protectedPage: <h1>Usuarios</h1> })
     await screen.findByText(/Confirmá tu email:/)
+    const liveRegion = within(
+      screen.getByRole('region', { name: 'Confirmación de email' }),
+    ).getByRole('status')
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: 'Reenviar' }))
     expect(
@@ -299,6 +349,10 @@ describe('EmailVerificationBanner', () => {
       ),
     ).toBeVisible()
     expect(await screen.findByText('Probá de nuevo en 1 minuto.')).toBeVisible()
+    expect(liveRegion).toHaveTextContent(
+      'El servicio no está disponible en este momento.',
+    )
+    expect(liveRegion).toHaveTextContent('Probá de nuevo en 1 minuto.')
   })
 
   it('exposes named keyboard controls in resend then dismiss order', async () => {

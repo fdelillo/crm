@@ -4,6 +4,7 @@ export interface FormAlertProps {
   title: string
   description?: string
   requestId?: string | null
+  announce?: boolean
   action?: { label: string; onClick: () => void }
   secondaryAction?: { label: string; onClick: () => void }
 }
@@ -18,12 +19,13 @@ export function FormAlert({
   title,
   description,
   requestId,
+  announce = true,
   action,
   secondaryAction,
 }: FormAlertProps) {
   return (
     <div
-      role={variant === 'error' ? 'alert' : 'status'}
+      role={announce ? (variant === 'error' ? 'alert' : 'status') : undefined}
       className={`space-y-2 rounded-lg border p-4 ${tones[variant]}`}
     >
       <p className="font-semibold">{title}</p>

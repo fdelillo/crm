@@ -253,7 +253,7 @@ describe('LoginPage', () => {
       ])
       await screen.findByRole('heading', { name: 'Ingresá a tu cuenta' })
       if (copy) expect(await screen.findByText(copy)).toBeVisible()
-      else expect(screen.queryByRole('status')).not.toBeInTheDocument()
+      else expect(screen.getByRole('status')).toBeEmptyDOMElement()
       if (lostLineVisible) {
         expect(
           screen.getByText('Los cambios que no habías guardado se perdieron.'),

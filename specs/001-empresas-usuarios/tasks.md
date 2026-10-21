@@ -3943,6 +3943,23 @@ a cada `queryClient.clear()` por cambio de sesión (INV-F03).
 
 ---
 
+**P-F20 implementada en F4 (2026-10-20; T-F106, T-F404, T-F405 y T-F406)**: marca fija de
+`sessionStorage` y limpieza al cambiar de sesión; `EmailVerificationBanner` recibe los props
+`resendStatus` y `errorMessage` intactos; `FormAlert announce`; regiones `LiveRegion` siempre
+montadas para C-01, S-05 y C-02. En estado vacío usan `sr-only` para permanecer accesibles sin
+reservar espacio visual. `npm test -- --run src/components/LiveRegion.test.tsx
+src/app/shell.test.tsx src/components/EmailVerificationBanner.test.tsx
+src/features/auth/VerifyEmailPage.test.tsx` con Node 24 pasó: 4 archivos, 45 tests.
+Mutaciones ejecutadas y restauradas: (1) `LiveRegion` retorna `null` sin hijos; `LiveRegion.test.tsx`
+falló al no encontrar `role="status"` en la carga vacía. (2) C-01 pasa
+`description ?? title` como título y quita la descripción; los tests de `Retry-After` 300/1200 y
+503 fallaron porque no encontraron el título. (3) la clave cambia a
+`crm.verifyBanner.dismissed:persona@example.test`; la sonda de ocultar falló con `null` en
+`sessionStorage.getItem('crm.verifyBanner.dismissed')` en vez de `"true"`. Restauradas las tres
+mutaciones, el enfoque pasó 45/45. `npm run check` con Node 24 pasó: lint/Prettier, typecheck,
+419 tests y 2 expected-fail de 421, build. Los cinco checks del PR quedan pendientes de push.
+`revisión: pendiente (Claude Code)`.
+
 ### Fase F5 — Historia 3: Usuarios e invitaciones (P2)
 
 **Objetivo**: el Administrador invita, reenvía, cambia roles (también de invitados), desactiva y

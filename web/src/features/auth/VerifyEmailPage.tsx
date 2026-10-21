@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { AppBrand } from '@/components/AppBrand'
 import { FormAlert } from '@/components/FormAlert'
+import { LiveRegion } from '@/components/LiveRegion'
 import { PageHeader } from '@/components/PageHeader'
 import { SubmitButton } from '@/components/SubmitButton'
 import { messageForError } from '@/api/errorMessages'
@@ -94,12 +95,17 @@ export function VerifyEmailPage() {
       </div>
       <section className="space-y-6 rounded-xl border bg-card p-5 shadow-sm sm:p-8">
         <PageHeader title="Confirmá tu email" titleRef={heading} />
-        {confirmed ? (
-          <>
+        <LiveRegion>
+          {confirmed && (
             <FormAlert
               variant="success"
               title="¡Listo! Tu email quedó confirmado."
+              announce={false}
             />
+          )}
+        </LiveRegion>
+        {confirmed ? (
+          <>
             <Link
               className="inline-flex min-h-11 items-center text-primary underline"
               to={session ? '/' : '/login'}
@@ -212,18 +218,22 @@ export function VerifyEmailPage() {
             </form>
           </>
         )}
-        {resendResult === 'sent' && (
-          <FormAlert
-            variant="success"
-            title="Listo, te lo reenviamos. Revisá también el correo no deseado."
-          />
-        )}
-        {resendResult === 'unknown' && (
-          <FormAlert
-            variant="info"
-            title="Si todavía no lo confirmaste, te mandamos un enlace nuevo. Revisá también el correo no deseado."
-          />
-        )}
+        <LiveRegion>
+          {resendResult === 'sent' && (
+            <FormAlert
+              variant="success"
+              title="Listo, te lo reenviamos. Revisá también el correo no deseado."
+              announce={false}
+            />
+          )}
+          {resendResult === 'unknown' && (
+            <FormAlert
+              variant="info"
+              title="Si todavía no lo confirmaste, te mandamos un enlace nuevo. Revisá también el correo no deseado."
+              announce={false}
+            />
+          )}
+        </LiveRegion>
         {resendMessage && (
           <FormAlert
             variant="error"

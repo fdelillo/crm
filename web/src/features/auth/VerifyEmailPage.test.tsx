@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
@@ -30,6 +30,13 @@ describe('VerifyEmailPage', () => {
     renderApp(['/verify-email#token=verify-_123'], {
       routes: [{ path: '/verify-email', Component: VerifyEmailPage }],
     })
+    const main = await screen.findByRole('main')
+    const liveRegions = within(main).getAllByRole('status')
+    expect(liveRegions).toHaveLength(2)
+    expect(liveRegions[0]).toBeEmptyDOMElement()
+    expect(liveRegions[1]).toBeEmptyDOMElement()
+    expect(liveRegions[0]).toHaveAttribute('aria-atomic', 'true')
+    expect(liveRegions[1]).toHaveAttribute('aria-atomic', 'true')
     expect(
       await screen.findByText(/Si no creaste una cuenta con este email/),
     ).toBeVisible()
@@ -39,6 +46,11 @@ describe('VerifyEmailPage', () => {
     expect(
       await screen.findByText('¡Listo! Tu email quedó confirmado.'),
     ).toBeVisible()
+    expect(within(main).getAllByRole('status')[0]).toBe(liveRegions[0])
+    expect(liveRegions[0]).toHaveTextContent(
+      '¡Listo! Tu email quedó confirmado.',
+    )
+    expect(liveRegions[1]).toBeEmptyDOMElement()
     expect(screen.getByRole('link', { name: 'Ingresar' })).toBeVisible()
     expect(confirm).toHaveBeenCalledOnce()
   })
@@ -67,6 +79,10 @@ describe('VerifyEmailPage', () => {
     expect(
       await screen.findByText('Este enlace de confirmación ya no sirve.'),
     ).toBeVisible()
+    const liveRegions = within(screen.getByRole('main')).getAllByRole('status')
+    expect(liveRegions).toHaveLength(2)
+    expect(liveRegions[0]).toBeEmptyDOMElement()
+    expect(liveRegions[1]).toBeEmptyDOMElement()
     await waitFor(() =>
       expect(
         screen.getByRole('heading', { name: 'Confirmá tu email' }),
@@ -217,6 +233,11 @@ describe('VerifyEmailPage', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Confirmar mi email' }),
     )
+    const main = screen.getByRole('main')
+    const liveRegions = within(main).getAllByRole('status')
+    expect(liveRegions).toHaveLength(2)
+    const resendLiveRegion = liveRegions[1]
+    expect(resendLiveRegion).toBeEmptyDOMElement()
     await user.click(
       await screen.findByRole('button', {
         name: 'Reenviar email de confirmación',
@@ -227,6 +248,10 @@ describe('VerifyEmailPage', () => {
         'Listo, te lo reenviamos. Revisá también el correo no deseado.',
       ),
     ).toBeVisible()
+    expect(within(main).getAllByRole('status')[1]).toBe(resendLiveRegion)
+    expect(resendLiveRegion).toHaveTextContent(
+      'Listo, te lo reenviamos. Revisá también el correo no deseado.',
+    )
     expect(screen.getAllByRole('alert')).toHaveLength(1)
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Este enlace de confirmación ya no sirve.',

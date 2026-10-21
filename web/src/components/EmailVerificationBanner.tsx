@@ -1,4 +1,6 @@
 import { Button } from '@/components/ui/button'
+import { FormAlert } from './FormAlert'
+import { LiveRegion } from './LiveRegion'
 
 export type EmailVerificationNoticeStatus =
   'idle' | 'pending' | 'sent' | 'unknown' | 'error'
@@ -51,17 +53,19 @@ export function EmailVerificationBanner({
       >
         Ocultar
       </Button>
-      {message && (
-        <p className="w-full" aria-live="polite">
-          {message}
-        </p>
-      )}
-      {resendStatus === 'error' && errorMessage && (
-        <div className="w-full" aria-live="polite">
-          <p>{errorMessage.title}</p>
-          {errorMessage.description && <p>{errorMessage.description}</p>}
-        </div>
-      )}
+      <LiveRegion className="w-full">
+        {message && (
+          <FormAlert variant="success" title={message} announce={false} />
+        )}
+        {resendStatus === 'error' && errorMessage && (
+          <FormAlert
+            variant="error"
+            title={errorMessage.title}
+            description={errorMessage.description}
+            announce={false}
+          />
+        )}
+      </LiveRegion>
     </section>
   )
 }
