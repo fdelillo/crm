@@ -1,16 +1,18 @@
-import { useQuery } from '@tanstack/react-query'
+import { queryOptions, useQuery } from '@tanstack/react-query'
 import { api } from './client'
 import { unwrap } from './errors'
 import { queryKeys } from './queryKeys'
 import type { Tenant } from './types'
 
+// Shared with the logo mutations, which re-read the tenant to settle an uncertain failure (DD-F26).
+export const tenantQuery = queryOptions({
+  queryKey: queryKeys.tenant,
+  queryFn: async ({ signal }) => unwrap(await api.GET('/tenant', { signal })),
+  staleTime: 300_000,
+})
+
 export function useTenant({ enabled = true }: { enabled?: boolean } = {}) {
-  return useQuery({
-    queryKey: queryKeys.tenant,
-    queryFn: async ({ signal }) => unwrap(await api.GET('/tenant', { signal })),
-    staleTime: 300_000,
-    enabled,
-  })
+  return useQuery({ ...tenantQuery, enabled })
 }
 
 export function logoUrl(

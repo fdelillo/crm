@@ -1,17 +1,12 @@
 import { useState } from 'react'
+import { companyInitials } from '@/lib/companyInitials'
 export interface AppBrandProps {
   name: string
   logoSrc: string | null
 }
 export function AppBrand({ name, logoSrc }: AppBrandProps) {
   const [failedSrc, setFailedSrc] = useState<string | null>(null)
-  const initials = name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((word) => word[0])
-    .join('')
-    .toLocaleUpperCase('es-AR')
+  const initials = companyInitials(name)
   return (
     <div className="flex min-w-0 items-center gap-3">
       {logoSrc && logoSrc !== failedSrc ? (
