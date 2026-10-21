@@ -21,3 +21,33 @@ export function formatRetryAt(
     minutes: Math.max(1, Math.round((shown - nowMinute) / MINUTE_MS)),
   }
 }
+
+// T-F501 (ADR-023, DD-25): show invitation timestamps in the tenant's time zone.
+export function formatDateTime(
+  iso: string,
+  timeZone: string,
+  now = new Date(),
+): string {
+  const date = new Date(iso)
+  const year = new Intl.DateTimeFormat('en', {
+    year: 'numeric',
+    timeZone,
+  }).format(date)
+  const currentYear = new Intl.DateTimeFormat('en', {
+    year: 'numeric',
+    timeZone,
+  }).format(now)
+  const dateText = new Intl.DateTimeFormat('es-AR', {
+    day: 'numeric',
+    month: 'numeric',
+    ...(year !== currentYear ? { year: 'numeric' as const } : {}),
+    timeZone,
+  }).format(date)
+  const timeText = new Intl.DateTimeFormat('es-AR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+    timeZone,
+  }).format(date)
+  return `${dateText}, ${timeText}`
+}
