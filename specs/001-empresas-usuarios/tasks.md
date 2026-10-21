@@ -4182,6 +4182,13 @@ sigue duplicado. Quedan como seguimiento, junto con un nit nuevo: los tests de `
 simulan `onUnauthenticated` en vez de verificar el login con el aviso (cubierto por
 `session.test.tsx` y por la prueba de navegador). Revisión: merge OK (Claude Code, 2026-10-21).
 
+**Seguimientos de revisión 3 de F5 (2026-10-21)**: los cinco nits pendientes de la revisión 3 y el
+test nuevo de `401` se corrigieron en `c4a78fa`, `b3fbf4a`, `18b7c62`, `616f344`, `8c712c1` y
+`3f1c5ff` (seis commits funcionales). `npm run check` con Node 24: 34 archivos, 486 passed,
+2 expected-fail, typecheck y build; suite focal: 8 archivos, 88 passed. El test real del handler
+global primero falló al mutar temporalmente su callback (no abría login) y pasó al restaurarlo; el
+caso de aviso `already_verified` también se probó en rojo y verde. Revisión: pendiente (Claude Code).
+
 ---
 
 ### Fase F6 — Historia 4: Datos de la empresa y logo (P2)
