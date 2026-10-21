@@ -18,21 +18,25 @@ export function PublicOnly() {
     <Outlet />
   )
 }
+
+function SessionLoader() {
+  return (
+    <main role="status" aria-label="Cargando la aplicación" aria-busy="true">
+      <span>CRM</span>
+      <LoaderCircle
+        aria-hidden="true"
+        className="size-6 animate-spin motion-reduce:animate-none"
+      />
+      <span>Cargando…</span>
+    </main>
+  )
+}
+
 export function RequireSession() {
   const session = useSession()
   const location = useLocation()
   const navigation = useNavigation()
-  if (session.isPending)
-    return (
-      <main role="status" aria-label="Cargando la aplicación" aria-busy="true">
-        <span>CRM</span>
-        <LoaderCircle
-          aria-hidden="true"
-          className="size-6 animate-spin motion-reduce:animate-none"
-        />
-        <span>Cargando…</span>
-      </main>
-    )
+  if (session.isPending) return <SessionLoader />
   if (session.isLoadingError) {
     const message = messageForError(session.error, 'generic')
     return (
@@ -61,16 +65,7 @@ export function RequireSession() {
       new URLSearchParams(navigation.location.search).get('reason') ===
         'logged_out')
   )
-    return (
-      <main role="status" aria-label="Cargando la aplicación" aria-busy="true">
-        <span>CRM</span>
-        <LoaderCircle
-          aria-hidden="true"
-          className="size-6 animate-spin motion-reduce:animate-none"
-        />
-        <span>Cargando…</span>
-      </main>
-    )
+    return <SessionLoader />
   if (!session.data)
     return (
       <Navigate
