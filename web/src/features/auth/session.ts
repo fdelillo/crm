@@ -29,6 +29,13 @@ export function useCan(permission: Permission): boolean {
   return useSession().data?.permissions.includes(permission) ?? false
 }
 
+// T-F504 (BR-F14, DD-F28): this is a UX gate; the API remains authoritative.
+export function useInviteBlockedReason(): 'email_not_verified' | null {
+  return useSession().data?.user.email_verified === false
+    ? 'email_not_verified'
+    : null
+}
+
 export type ResendVerificationOutcome = 'sent' | 'already_verified' | 'unknown'
 
 /** DD-F31: the post-send session read bypasses the cached staleTime result. */
