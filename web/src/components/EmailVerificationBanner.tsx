@@ -5,25 +5,23 @@ export type EmailVerificationNoticeStatus =
 
 export interface EmailVerificationBannerProps {
   email: string
-  status: EmailVerificationNoticeStatus
-  errorTitle?: string
-  errorDescription?: string
+  resendStatus: EmailVerificationNoticeStatus
+  errorMessage?: { title: string; description?: string }
   onResend: () => void
   onDismiss: () => void
 }
 
 export function EmailVerificationBanner({
   email,
-  status,
-  errorTitle,
-  errorDescription,
+  resendStatus,
+  errorMessage,
   onResend,
   onDismiss,
 }: EmailVerificationBannerProps) {
   const message =
-    status === 'sent'
+    resendStatus === 'sent'
       ? 'Listo, te lo reenviamos. Revisá también el correo no deseado.'
-      : status === 'unknown'
+      : resendStatus === 'unknown'
         ? 'Si todavía no lo confirmaste, te mandamos un enlace nuevo. Revisá también el correo no deseado.'
         : undefined
 
@@ -39,10 +37,10 @@ export function EmailVerificationBanner({
         type="button"
         variant="outline"
         className="min-h-11"
-        disabled={status === 'pending'}
+        disabled={resendStatus === 'pending'}
         onClick={onResend}
       >
-        {status === 'pending' ? 'Enviando…' : 'Reenviar'}
+        {resendStatus === 'pending' ? 'Enviando…' : 'Reenviar'}
       </Button>
       <Button
         type="button"
@@ -58,10 +56,10 @@ export function EmailVerificationBanner({
           {message}
         </p>
       )}
-      {status === 'error' && (errorTitle || errorDescription) && (
+      {resendStatus === 'error' && errorMessage && (
         <div className="w-full" aria-live="polite">
-          {errorTitle && <p>{errorTitle}</p>}
-          {errorDescription && <p>{errorDescription}</p>}
+          <p>{errorMessage.title}</p>
+          {errorMessage.description && <p>{errorMessage.description}</p>}
         </div>
       )}
     </section>

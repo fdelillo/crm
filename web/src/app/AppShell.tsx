@@ -148,9 +148,8 @@ function SessionVerificationBanner({ email }: { email: string }) {
   return (
     <EmailVerificationBanner
       email={email}
-      status={status}
-      errorTitle={errorMessage?.title}
-      errorDescription={errorMessage?.description}
+      resendStatus={status}
+      errorMessage={errorMessage}
       onResend={() => void sendAgain()}
       onDismiss={dismiss}
     />

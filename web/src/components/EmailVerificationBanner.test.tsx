@@ -1,10 +1,11 @@
-import { act, cleanup, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { buildSessionInfo, buildTenant, problem } from '@/test/fixtures'
 import { server } from '@/test/msw/server'
 import { renderApp } from '@/test/renderApp'
+import { EmailVerificationBanner } from './EmailVerificationBanner'
 
 const base = 'https://localhost:5173/api/v1'
 const dismissalKey = 'crm.verifyBanner.dismissed'
@@ -22,6 +23,24 @@ function loggedIn(emailVerified = false) {
 }
 
 describe('EmailVerificationBanner', () => {
+  it('renders both parts of an error message passed as one value', () => {
+    render(
+      <EmailVerificationBanner
+        email="persona@example.test"
+        resendStatus="error"
+        errorMessage={{
+          title: 'Título del error',
+          description: 'Detalle del error',
+        }}
+        onResend={() => undefined}
+        onDismiss={() => undefined}
+      />,
+    )
+
+    expect(screen.getByText('Título del error')).toBeVisible()
+    expect(screen.getByText('Detalle del error')).toBeVisible()
+  })
+
   it('does not show the notice for an already verified session', async () => {
     loggedIn(true)
     renderApp(['/settings/users'], { protectedPage: <h1>Usuarios</h1> })
