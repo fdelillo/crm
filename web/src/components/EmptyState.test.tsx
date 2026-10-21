@@ -33,6 +33,8 @@ describe('EmptyState', () => {
       'aria-describedby',
       'verification-notice',
     )
-    expect(screen.queryByRole('link', { name: 'Invitar' })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('link', { name: 'Invitar' }),
+    ).not.toBeInTheDocument()
   })
 })
