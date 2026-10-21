@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Controller, useForm } from 'react-hook-form'
+import { z } from 'zod'
 import { Link, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { isApiError } from '@/api/errors'
@@ -12,7 +13,7 @@ import {
 } from '@/api/errorMessages'
 import { queryKeys } from '@/api/queryKeys'
 import { formatDateTime } from '@/lib/format'
-import type { User } from '@/api/types'
+import type { InvitationRequest, User } from '@/api/types'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { EmptyState } from '@/components/EmptyState'
 import { ErrorState } from '@/components/ErrorState'
@@ -50,7 +51,7 @@ import {
   type UserActionAvailability,
 } from './rules'
 import { UserListItem } from './components/UserListItem'
-import { invitationSchema, type InvitationFormValues } from './schemas'
+import { invitationSchema } from './schemas'
 
 function userName(user: User) {
   return user.name ?? user.email
@@ -370,7 +371,11 @@ export function InviteUserPage() {
   const invitation = useInviteUser()
   const [submitError, setSubmitError] = useState<unknown>(null)
   const submitLock = useRef(false)
-  const form = useForm<InvitationFormValues>({
+  const form = useForm<
+    z.input<typeof invitationSchema>,
+    unknown,
+    z.output<typeof invitationSchema>
+  >({
     resolver: zodResolver(invitationSchema),
     mode: 'onSubmit',
     reValidateMode: 'onChange',
@@ -390,7 +395,7 @@ export function InviteUserPage() {
   const roleErrorId = errors.role ? 'invite-role-error' : undefined
   const blocked = Boolean(blockedReason)
 
-  async function onSubmit(values: InvitationFormValues) {
+  async function onSubmit(values: InvitationRequest) {
     if (submitLock.current || blocked) return
     submitLock.current = true
     setSubmitError(null)
