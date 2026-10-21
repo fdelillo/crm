@@ -1,0 +1,79 @@
+// Hand-made headers for the logo tests: just enough bytes for the sniffing and the size
+// readers, never a real image. `size` pads the rest with zeros to reach an exact byte count.
+type Bytes = Uint8Array<ArrayBuffer>
+function pad(bytes: number[], size?: number): Bytes {
+  if (size !== undefined && size < bytes.length)
+    throw new Error(`size ${size} is smaller than the header`)
+  const result = new Uint8Array(size ?? bytes.length)
+  result.set(bytes)
+  return result
+}
+const u16 = (value: number) => [(value >> 8) & 0xff, value & 0xff]
+const u32 = (value: number) => [
+  (value >>> 24) & 0xff,
+  (value >> 16) & 0xff,
+  (value >> 8) & 0xff,
+  value & 0xff,
+]
+const ascii = (text: string) => [...text].map((char) => char.charCodeAt(0))
+
+export const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
+
+export function pngBytes(width: number, height: number, size?: number) {
+  return pad(
+    [
+      ...PNG_SIGNATURE,
+      ...u32(13),
+      ...ascii('IHDR'),
+      ...u32(width),
+      ...u32(height),
+      8,
+      6,
+      0,
+      0,
+      0,
+      ...u32(0),
+    ],
+    size,
+  )
+}
+
+export function jpegBytes(options: {
+  width: number
+  height: number
+  // Second byte of the start-of-frame marker: 0xC0 baseline, 0xC2 progressive.
+  sof?: number
+  // An APP1 (EXIF) segment of this many payload bytes before the frame header.
+  exifBytes?: number
+  // A DHT (0xFFC4) segment before the frame header.
+  dht?: boolean
+  // First marker after SOI: 0xE0 (JFIF) or 0xE1 (EXIF).
+  first?: number
+  size?: number
+}) {
+  const { width, height, sof = 0xc0, exifBytes, dht, first, size } = options
+  const bytes = [0xff, 0xd8]
+  if (first !== undefined) bytes.push(0xff, first, ...u16(2))
+  if (exifBytes !== undefined) {
+    bytes.push(0xff, 0xe1, ...u16(exifBytes + 2))
+    for (let i = 0; i < exifBytes; i++) bytes.push(0)
+  }
+  if (dht) {
+    // A Huffman table whose bytes would look like dimensions if mistaken for a frame header.
+    bytes.push(0xff, 0xc4, ...u16(19), 0x00, ...u16(0x0bb8), ...u16(0x07d0))
+    for (let i = 0; i < 12; i++) bytes.push(0x01)
+  }
+  bytes.push(0xff, sof, ...u16(17), 8, ...u16(height), ...u16(width), 3)
+  bytes.push(1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1)
+  bytes.push(0xff, 0xda)
+  return pad(bytes, size)
+}
+
+export const gifBytes = () => pad([...ascii('GIF89a'), 1, 0, 1, 0])
+export const webpBytes = () =>
+  pad([...ascii('RIFF'), 0, 0, 0, 0, ...ascii('WEBPVP8 ')])
+export const heicBytes = () =>
+  pad([0, 0, 0, 24, ...ascii('ftypheic'), 0, 0, 0, 0])
+export const textBytes = (text: string) => new TextEncoder().encode(text)
+export const withBom = (bytes: Bytes): Bytes =>
+  Uint8Array.from([0xef, 0xbb, 0xbf, ...bytes])
