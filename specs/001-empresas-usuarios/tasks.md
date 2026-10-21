@@ -4119,6 +4119,31 @@ privados. Playwright tampoco inició Chrome: macOS terminó Chrome con SIGABRT y
 https://github.com/fdelillo/crm/pull/41, abierto; `make check`, `make build`, `make web-check`,
 `make vuln` y `make web-vuln` en verde. Revisión: pendiente (Claude Code).
 
+**Revisión 1 de PR #41 (2026-10-21)**: no mergear; 4 importantes, 7 menores y 4 nits;
+corregidos en `f4e7aa4`. Red→Green: pruebas focales fallaron con las regresiones originales o
+con mutaciones dirigidas y pasaron restauradas; `npm run check` con Node 24 pasó (33 archivos,
+474 passed, 2 expected-fail, typecheck y build). Mutation testing solicitado: M3b detectada,
+M4b detectada, M5 (lock y `disabled` quitados conjuntamente) detectada, M7 detectada, M9
+detectada, M10 detectada, M12 detectada, M15 detectada, M16 detectada y M17 detectada. Se agregó
+una prueba integrada de aceptación que verifica C-01 con la sesión sin confirmar; falla si la
+respuesta de aceptación siembra una sesión confirmada. El test de carrera de sesión revocada
+reproduce la ruta sin `reason=session_expired` y pasa con el guard preservando la navegación
+pendiente; `logged_out` también se preserva para no pisar el destino de logout. La prueba
+independiente `f5-e2e-claude/f5-independent.spec.ts` se lanzó con el `expect` de “Tu sesión se
+cerró” restituido, Vite y backend 8444 apuntando a este checkout; Chrome abortó con SIGABRT antes
+de abrir la página, por lo que no hay evidencia nueva del flujo de navegador. El coordinador ya
+verificó manualmente los demás pasos en IAB; los límites del IAB y la falta de segundo contexto
+quedan registrados arriba. No se editó `ui.md`.
+
+Firmas para `frontend-architect` (sin editar el diseño): `useInvitationPreview` conserva `useMutation`
+para que el token no entre en `queryKey`; `UserListItem.onAction(action, trigger)` pasa el botón
+disparador para devolver el foco al cerrar el diálogo; `VerifyToInviteNoticeProps.description` lleva
+el detalle de `email_not_verified` sin duplicar el aviso. `useInviteUser` ahora devuelve
+`{ user, reissued }`; los hooks de cambio de rol, desactivación y reactivación reciben `{ userId }`,
+en línea con §15.4.
+
+Revisión: pendiente (Claude Code); PR #41 sigue abierto y sin merge.
+
 ---
 
 ### Fase F6 — Historia 4: Datos de la empresa y logo (P2)
