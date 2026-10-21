@@ -4099,6 +4099,25 @@ cual y un `LiveRegion` para el resultado; P-F20), `useInviteBlockedReason` (en
 
 **Checkpoint Fase F5**: `npm run check` en verde + prueba independiente.
 
+**Fase F5 completa (2026-10-21)**: T-F501–T-F506 implementadas en
+`feat/001-frontend-users-invitations`; commits `0996df3`, `28d53d8`, `66f215a`, `0411e22`,
+`c632e51` y `a36d3f4`. `GOFLAGS=-count=1 make check-all` pasó: Go, integración con race,
+`web-check` (33 archivos; 457 passed y 2 expected-fail), lint, typecheck y build. Mutación de
+`VerifyToInviteNotice` (`description ?? title`) ejecutada: fallaron sus 2 casos 429/503 y pasaron
+restaurada. Prueba independiente parcial en navegador integrado por el coordinador, contra
+`https://localhost:5173` con backend real en 8444 y Mailpit: alta ficticia y confirmación de email
+(1 email); invitación como Operador (1), reenvío/cambio del invitado a Administrador (2 emails
+acumulados para el mismo destinatario), aceptación desde `/accept-invitation` (token no visible en
+la URL), toast “¡Bienvenido/a a Empresa Prueba F5!” y panel “Primeros pasos”. El Admin cambió a
+ese usuario a Operador; al abrir `/settings/users`, la sesión mostró “No tenés acceso a esta
+sección”. Admin desactivó al Operador (toast y fila “Operador · Desactivado”) y lo reactivó (toast
+y fila “Operador · Activo”). La aceptación, el cambio de rol, la desactivación y la reactivación no
+generaron emails. No se verificaron DD-F28 con visibilidad/foco observables ni el cierre de una
+sesión de Operador simultánea: el IAB no expone `document.visibilityState` ni permite contextos
+privados. Playwright tampoco inició Chrome: macOS terminó Chrome con SIGABRT y
+`bootstrap_check_in ... MachPortRendezvousServer: Permission denied (1100)`. PR: pendiente;
+revisión: pendiente (Claude Code).
+
 ---
 
 ### Fase F6 — Historia 4: Datos de la empresa y logo (P2)
