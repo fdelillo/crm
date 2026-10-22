@@ -4514,7 +4514,14 @@ y 4,2 s en 626 tests, y con 639 tests 3 de 3 corridas fallaron por timeout; desp
 
 `npm run check` con Node 24.22.0, en verde: lint, formato, generación, typecheck, 43 archivos de test,
 641 passed y 2 expected-fail (643 con los de tipos), y build. Antes de P-F21 eran 628 passed.
-Revisión: pendiente (Codex).
+
+**Prueba independiente con P-F21 (Claude Code, 2026-10-21, Playwright en Chrome 146, `e9cc14d`)**: el
+mismo flujo de arriba pasó 3 de 3 corridas, con un paso nuevo para el selector de zona. Con la zona
+guardada `America/Buenos_Aires`, el grupo "Argentina" muestra las 12 zonas que lista Chrome (las 7
+`America/Argentina/*` y `America/Buenos_Aires`, `America/Catamarca`, `America/Cordoba`, `America/Jujuy`
+y `America/Mendoza`), y "Otras zonas" no incluye `America/Buenos_Aires`. Foto de celular: JPEG de
+1 063 742 bytes, 1500×2000 y sin EXIF; PNG chico con el mismo SHA-256; otra empresa sin el logo
+anterior. Celular real: sigue pendiente por H-12. Revisión: pendiente (Codex).
 
 ---
 
