@@ -709,6 +709,58 @@ describe('company logo', () => {
     )
   })
 
+  // T-F603 (DD-F26, BR-F10, P-F21): the PUT is already on its way and nobody cancels it.
+  it('asks before leaving while the logo is being uploaded, and the upload finishes after "Salir"', async () => {
+    const state = serveCompany(companyTenant())
+    const uploading = gate()
+    let uploads = 0
+    server.use(
+      http.put(`${base}/tenant/logo`, async () => {
+        uploads += 1
+        await uploading.opened
+        state.tenant = {
+          ...state.tenant,
+          has_logo: true,
+          updated_at: uploadedAt,
+        }
+        return HttpResponse.json(state.tenant)
+      }),
+    )
+    const { router } = await renderCompany()
+    const user = userEvent.setup()
+    await user.upload(picker(), smallPng())
+    await waitFor(() =>
+      expect(within(section()).getByRole('status')).toHaveTextContent(
+        'Subiendo logo…',
+      ),
+    )
+    await user.click(screen.getByRole('link', { name: '← Ajustes' }))
+    const dialog = await screen.findByRole('alertdialog', {
+      name: 'Tenés cambios sin guardar. ¿Salir igual?',
+    })
+    await user.click(within(dialog).getByRole('button', { name: 'Quedarme' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(router.state.location.pathname).toBe('/settings/company')
+    expect(within(section()).getByRole('status')).toHaveTextContent(
+      'Subiendo logo…',
+    )
+
+    await user.click(screen.getByRole('link', { name: '← Ajustes' }))
+    await user.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: 'Salir',
+      }),
+    )
+    expect(
+      await screen.findByRole('heading', { name: 'Ajustes' }),
+    ).toBeVisible()
+    expect(router.state.location.pathname).toBe('/settings')
+    expect(screen.queryByText('Logo actualizado.')).toBeNull()
+    uploading.open()
+    expect(await screen.findByText('Logo actualizado.')).toBeVisible()
+    expect(uploads).toBe(1)
+  })
+
   it('falls back to the initials, without any message, when the image does not load', async () => {
     serveCompany(withLogo())
     await renderCompany()
