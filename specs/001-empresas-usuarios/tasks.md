@@ -4634,7 +4634,12 @@ registro, sesión, verificación, invitaciones, permisos, recuperación y bloque
 filtra por destinatario. `npm run check`, `npx tsc --noEmit -p tsconfig.e2e.json` y `git diff --check`
 pasan. La corrida E2E local no pudo evaluar los pasos: Chromium se detuvo al arrancar con
 `MachPortRendezvousServer … Permission denied (1100)` del sandbox macOS; el workflow Chromium de CI
-queda pendiente. WebKit aborta en este host (`Abort trap: 6`).
+queda pendiente. WebKit aborta en este host (`Abort trap: 6`). El dispatch autorizado de
+`ci.yml` (`browser=chromium`) respondió HTTP 422: GitHub no pudo parsear `.github/workflows/ci.yml`
+porque `matrix.browser` no se reconoce en el `if` del job `e2e` (línea 100). No se evaluaron las
+interacciones E2E en Chromium ni WebKit. Corregí el selector de navegador en el workflow para
+construir una matriz dinámica desde el input manual (Chromium o WebKit), con Chromium solamente
+para PR/push; la aceptación y corrida del dispatch corregido quedan pendientes.
 
 **Objetivo**: los flujos críticos funcionan de punta a punta sobre el binario real servido por
 HTTPS local; la PWA, la CSP, la cookie de sesión real, la preparación del logo y la accesibilidad

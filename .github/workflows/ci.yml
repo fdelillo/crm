@@ -101,7 +101,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        browser: [chromium, webkit]
+        browser: ${{ github.event_name == 'workflow_dispatch' && fromJSON(format('["{0}"]', inputs.browser)) || fromJSON('["chromium"]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
