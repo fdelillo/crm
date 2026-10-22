@@ -65,7 +65,7 @@ export async function expectNoAccessibilityViolations(
           `${violation.id} (${violation.impact ?? 'sin impacto'}): ${violation.help}\n${violation.nodes
             .map(
               (node) =>
-                `  ${node.target.join(' ')} — ${node.failureSummary ?? node.any.map((check) => check.message).join('; ')}`,
+                `  ${node.target.join(' ')} (${node.html}) — ${node.failureSummary ?? node.any.map((check) => check.message).join('; ')}`,
             )
             .join('\n')}`,
       )
