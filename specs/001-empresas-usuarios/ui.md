@@ -1,7 +1,7 @@
 # UI (frontend): Empresas, usuarios y roles
 
 **Spec**: [`spec.md`](spec.md) · **Rama**: `001-empresas-usuarios` · **Fecha**: 2026-09-29
-**Autor**: `frontend-architect` · **Estado**: Revisión 3 aprobada por el usuario el 2026-10-12; Revisión 4 aprobada por el usuario el 2026-10-13 (P-F10: sí; P-F11: no); enmienda H-16 a la Revisión 4 aprobada por el usuario el 2026-10-13; enmienda DD-F31 *Accepted*, aprobada por el usuario el 2026-10-14; enmienda de versiones del 2026-10-15: React Router 8 por decisión del usuario, regla de versiones y excepción de TypeScript confirmadas por el usuario el 2026-10-15 (P-F12); enmienda de F0 del 2026-10-15: P-F13, P-F14 y P-F15 aprobadas por el usuario el 2026-10-16; enmienda de F1 del 2026-10-16: P-F16, P-F17 y P-F18 aprobadas por el usuario el 2026-10-16; enmienda de F3 del 2026-10-17: P-F19 aprobada por el usuario el 2026-10-17; enmienda de F4 del 2026-10-20: P-F20 aprobada por el usuario el 2026-10-20
+**Autor**: `frontend-architect` · **Estado**: Revisión 3 aprobada por el usuario el 2026-10-12; Revisión 4 aprobada por el usuario el 2026-10-13 (P-F10: sí; P-F11: no); enmienda H-16 a la Revisión 4 aprobada por el usuario el 2026-10-13; enmienda DD-F31 *Accepted*, aprobada por el usuario el 2026-10-14; enmienda de versiones del 2026-10-15: React Router 8 por decisión del usuario, regla de versiones y excepción de TypeScript confirmadas por el usuario el 2026-10-15 (P-F12); enmienda de F0 del 2026-10-15: P-F13, P-F14 y P-F15 aprobadas por el usuario el 2026-10-16; enmienda de F1 del 2026-10-16: P-F16, P-F17 y P-F18 aprobadas por el usuario el 2026-10-16; enmienda de F3 del 2026-10-17: P-F19 aprobada por el usuario el 2026-10-17; enmienda de F4 del 2026-10-20: P-F20 aprobada por el usuario el 2026-10-20; enmienda de F6 del 2026-10-21: P-F21 aprobada por el usuario el 2026-10-21
 **Contrato consumido**: [`contracts/openapi.yaml`](contracts/openapi.yaml) **v0.5.0** (**canónico**; el diseño original se hizo contra v0.3.1; la Revisión 3, contra v0.4.3)
 **Revisión 1 (2026-09-29)**: respuestas del usuario a P-F1 a P-F5 (§26) y resolución de los
 hallazgos H-1 a H-9 por el backend (`plan.md` §18, DD-22 a DD-30, §10.7, contrato v0.3.0). Cambios:
@@ -147,6 +147,25 @@ anuncia igual las regiones que nacen con texto y no detecta el defecto. Cambian 
 §13.5, §13.9, §13.11, §13.13, §15.1, §15.4, §17, §18, §22, §26 y §29. Tareas: cambian T-F106,
 T-F404, T-F405, T-F406, T-F502, T-F505, T-F506, T-F603, T-F703 y T-F705. Sistema visual sin
 cambios.
+
+**Enmienda de F6, P-F21 (2026-10-21; aprobada por el usuario el 2026-10-21)**: huecos y desviaciones
+de la implementación de F6 (PR #43) y los hallazgos 1 y 2 de su revisión 1. (1) **Textos**: diálogo
+de "Quitar" ("¿Quitar el logo?") y aviso de salida ("Si salís ahora, se pierden los cambios que
+todavía no se guardaron."; "Quedarme" / "Salir", destructivo), con su foco; región "Cargando los
+datos de tu empresa"; secciones "Logo" y "Datos"; grupos "Argentina" y "Otras zonas". (2)
+**DD-F27 revisada**: "Argentina" suma los seis nombres anteriores de las zonas del país
+(`America/Buenos_Aires` y otros), porque algunos navegadores los listan en lugar de
+`America/Argentina/*`; la zona guardada que `Intl` no lista va primera en su grupo. (3) **DD-F26
+revisada**: una subida incierta solo es éxito si el logo vigente tiene los bytes enviados, porque
+`updated_at` también cambia con un `PATCH` de otra sesión. (4) **Preparación del logo**: se lee el
+archivo entero (≤ 20 MiB = 20 971 520 bytes) después de mirar su tamaño, como el servidor; la
+escalera omite pasos repetidos y un paso que falla cuenta como que no entró; `resized` (y "Lo
+achicamos") si el original rompía los límites o el primer paso no entró. (5) **Firmas**:
+`LogoUploaderProps.error` es un `UserMessage` con `onRetry?`; `ConfirmDialogProps.cancelLabel?`;
+`tenantQuery`; `lib/companyInitials.ts`; `features/tenant/timezones.ts`. `unknown` sigue siendo
+`unsupported_format` (T-F604 sobre T-F603). Cambian §7, §9.1, §11.1, §13.11, §13.11.1, §14.4, §15.1,
+§15.2, §15.4, §22, §24, §25, §26 y §29. Tareas: cambian T-F602, T-F603, T-F604 y T-F605. Sistema
+visual sin cambios.
 
 | Archivo | Contenido |
 |---|---|
@@ -411,7 +430,7 @@ después de 24 h), se trata igual que el `401` global (§12.4): caché vacía y 
 | BR-F10 | Todo botón de envío queda deshabilitado y con texto de progreso mientras la operación está en curso (sin doble envío). Salir de Datos de la empresa con cambios sin guardar, o mientras se prepara o sube el logo, pide confirmación. | Casos borde |
 | BR-F11 | Si el email de una invitación rechazada con `409 email_taken` coincide con un usuario **desactivado** de la lista, se sugiere "Es de {nombre}, que está desactivado. Podés reactivarlo desde la lista". | DD-21 |
 | BR-F12 | Al aceptar una invitación con otra sesión abierta en el navegador se avisa: "Tenés una sesión abierta como {email}. Si aceptás, se va a cerrar." | Casos borde |
-| BR-F13 | Un logo que supera los límites del servidor (tamaño o dimensiones) se achica en el navegador antes de subirlo; un JPEG siempre se vuelve a codificar para aplicar la orientación y quitar los metadatos de la foto (ubicación GPS, modelo del celular). El usuario ve "Preparando la imagen…" y, si se achicó, "Lo achicamos para que pese menos". El servidor sigue siendo quien acepta o rechaza. | P-F2, P-F6, DD-11, DD-31, DD-F20, DD-F21 |
+| BR-F13 | Un logo que supera los límites del servidor (tamaño o dimensiones) se achica en el navegador antes de subirlo; un JPEG siempre se vuelve a codificar para aplicar la orientación y quitar los metadatos de la foto (ubicación GPS, modelo del celular). El usuario ve "Preparando la imagen…" y, si se achicó (el original superaba los límites o hubo que bajar calidad o resolución para que entrara), "Lo achicamos para que pese menos"; un JPEG que solo se volvió a codificar muestra "Logo actualizado." (P-F21). El servidor sigue siendo quien acepta o rechaza. | P-F2, P-F6, DD-11, DD-31, DD-F20, DD-F21 |
 | BR-F14 | *(Revisión 4, P-F8)* Con `user.email_verified = false`, todo lo que emite una invitación aparece **deshabilitado con el motivo visible** ("Confirmá tu email para invitar a tu equipo.") y el botón "Reenviar email de confirmación" al lado (aviso W, `VerifyToInviteNotice`): "+ Invitar" y el "Invitar" del estado vacío (S-09), "Invitá a tu equipo" (S-07), "Reenviar invitación" de un invitado y "Reactivar" de un desactivado que nunca aceptó (S-09); S-10 muestra el aviso en lugar del formulario. Mismo patrón que BR-F02. Es UX: el servidor decide (`403 email_not_verified`, §12.2) y la UI maneja su rechazo (INV-F06). | DD-46, INV-37 (plan), DD-F28 |
 
 ---
@@ -494,8 +513,8 @@ Reglas de dependencia (se verifican con `no-restricted-imports` de ESLint, T-F00
   `api/industryTemplates.ts` (`useIndustryTemplates`). El `api.ts` de la feature dueña las reexporta
   (`features/tenant/api.ts`, `features/auth/api.ts`), así sus pantallas siguen importando de su
   feature; el shell (`app/AppShell`) y las demás features (el panel) las importan de `api/`.
-- Solo `api/` llama a `fetch`/openapi-fetch (excepción: la subida del logo en
-  `features/tenant/api.ts`). Los componentes usan hooks de su feature o las queries compartidas de
+- Solo `api/` llama a `fetch`/openapi-fetch (excepción: la subida del logo y su comprobación de
+  DD-F26 en `features/tenant/api.ts`; P-F21). Los componentes usan hooks de su feature o las queries compartidas de
   `api/`.
 - Solo `features/tenant/logo/canvas.ts` usa `createImageBitmap` y `<canvas>` (el adaptador que se
   sustituye en jsdom, §13.11.1).
@@ -633,7 +652,7 @@ documento quedó desactualizado. Convención de los ejemplos: el valor es el tip
 | GET | `/me` | Guards, shell, todas las pantallas con sesión | `useSession` | `SessionInfo` |
 | GET | `/tenant` | Shell (nombre y logo), S-07, S-11 | `useTenant` | `Tenant` |
 | PATCH | `/tenant` | S-11 | `useUpdateTenant` | `Tenant` |
-| GET | `/tenant/logo?v={id}-{updated_at}` | Shell, S-11 (como `<img src>`) | — (lo pide el navegador; `logoUrl()` arma la URL) | `image/png` o `image/jpeg` (`200`) o `304` |
+| GET | `/tenant/logo?v={id}-{updated_at}` | Shell, S-11 (como `<img src>`) | — (lo pide el navegador; `logoUrl()` arma la URL). *(P-F21)* `useUploadLogo` también lo pide, sin caché HTTP, solo para comprobar una subida incierta (DD-F26) | `image/png` o `image/jpeg` (`200`) o `304` |
 | PUT | `/tenant/logo` | S-11 | `useUploadLogo` | `Tenant` |
 | DELETE | `/tenant/logo` | S-11 | `useDeleteLogo` | — (204) |
 | GET | `/users` | S-09, S-10 (para BR-F11) | `useUsers` | `{ items: User[] }` |
@@ -708,7 +727,9 @@ los bytes sin modificarlos y **no** quita EXIF (INV-24 del plan): eso lo hace la
 duda (se cortó la conexión esperando el `COMMIT`), el servidor relee la empresa y responde `200` si
 el logo quedó guardado; si no puede saberlo, devuelve el error original (`5xx`) aunque el logo
 pueda haber quedado guardado. Por eso, ante un `5xx` o un error de red en `PUT` o
-`DELETE /tenant/logo`, la UI vuelve a pedir `GET /tenant` y decide por lo que lee (DD-F26).
+`DELETE /tenant/logo`, la UI vuelve a pedir `GET /tenant` y decide por lo que lee; en la subida,
+además compara los bytes del logo vigente con los enviados, porque `updated_at` también cambia con
+un `PATCH /tenant` de otra sesión (DD-F26, P-F21).
 `DELETE` sin logo responde `204` sin escribir nada (idempotente).
 
 **Edición de la empresa** (contrato v0.4.3, plan DD-43, revisión 3): solo se modifican los campos
@@ -1484,22 +1505,41 @@ Para un invitado, {nombre} es su email (`name` es `null` hasta que acepta).
   casos que T-B701) y se envía como se escribió, sin espacios en los extremos (el backend
   normaliza). Las formas válidas son las del servidor: 11 dígitos o `NN-NNNNNNNN-N`; guiones en
   otra posición → error de formato.
-- Zona horaria: `Select` con las zonas `America/Argentina/*` (y sus alias, si el navegador los
-  devuelve) primero y luego el resto de `Intl.supportedValuesOf('timeZone')`; la zona guardada de
-  la empresa está **siempre** en la lista, aunque `Intl` no la devuelva (DD-F27, S-F11). Una zona
-  desconocida para el backend da `422 invalid_timezone` en el campo.
+- Zona horaria: `Select` con dos grupos, "Argentina" primero y "Otras zonas" después, cada uno con
+  las zonas de `Intl.supportedValuesOf('timeZone')` en el orden en que llegan. "Argentina" reúne las
+  `America/Argentina/*` y los seis nombres anteriores de esas zonas que IANA conserva como enlaces
+  (`America/Buenos_Aires`, `America/Catamarca`, `America/Cordoba`, `America/Jujuy`,
+  `America/Mendoza`, `America/Rosario`), porque algunos navegadores listan la zona con el nombre
+  anterior (S-F11). La zona guardada de la empresa está **siempre** en la lista, aunque `Intl` no la
+  devuelva: va primera en su grupo (DD-F27, revisada en P-F21). Una zona desconocida para el backend
+  da `422 invalid_timezone` en el campo.
+- *(Enmienda de F6, P-F21)* Las zonas L y F del esquema llevan su `<h2>`: "Logo" (una `<section>`
+  nombrada con `aria-labelledby`) y "Datos" (el título del `<form>`, que se nombra con él).
+- *(Enmienda de F6, P-F21)* "Quitar" pide confirmación (`ConfirmDialog`, como en §13.9): título
+  "¿Quitar el logo?"; descripción "Vamos a mostrar las iniciales de tu empresa en su lugar. Podés
+  subir otro logo cuando quieras."; botones "Cancelar" y "Quitar" (destructivo), que mientras
+  espera dice "Quitando logo…" y deja los dos deshabilitados. Al abrir, el foco está en "Cancelar".
+  Al cerrar, el foco va a "Cambiar logo" si se quitó ("Quitar" queda deshabilitado) y vuelve a
+  "Quitar" si se canceló o falló (INV-F10).
+- *(Enmienda de F6, P-F21)* Aviso de salida (`ConfirmDialog`): título "Tenés cambios sin guardar.
+  ¿Salir igual?"; descripción "Si salís ahora, se pierden los cambios que todavía no se guardaron.";
+  botones "Quedarme" (con el foco al abrir) y "Salir" (destructivo; sigue la navegación frenada).
+  Vale para el formulario con cambios y para el logo en curso. Si sale mientras se **prepara** el
+  logo, la preparación termina pero no se envía el `PUT`. Si sale mientras se **sube**, el `PUT`
+  sigue: si responde bien, el toast "Logo actualizado." aparece en la pantalla siguiente; si falla,
+  no se muestra nada y al volver se ve el logo anterior.
 
 | Estado | Qué ve el usuario |
 |---|---|
-| Carga | *Skeleton* de logo y campos |
+| Carga | *Skeleton* de logo y campos, dentro de una `<section>` con nombre accesible "Cargando los datos de tu empresa" y `aria-busy="true"` (como "Cargando usuarios" de S-09; P-F21) |
 | Vacío | Campos opcionales vacíos con su ayuda; logo con iniciales y "Todavía no subiste un logo" |
 | Error de carga | `ErrorState` "No pudimos cargar los datos de tu empresa." + "Reintentar" |
 | Error al guardar | `422` por campo (`invalid_tax_id`, `invalid_format`, `required` e `invalid_value` en el nombre, `invalid_value` en los opcionales largos, `invalid_timezone`; §12.3); `400` (bug del cliente, con `requestId`; INV-F15 lo evita); `503`/`500`/red con "Reintentar" y lo cargado intacto (reintentar es seguro, DD-43) |
 | Preparando el logo | "Preparando la imagen…" en la `LiveRegion` de `LogoUploader`, montada vacía con el control (INV-F19, P-F20); "Cambiar logo" y "Quitar" deshabilitados |
-| Error de logo | Del cliente (§13.11.1, sin request) · Del servidor (en el control del logo, §12.2–12.3): `413`, `415`, `422` con `field: file` (`invalid_value`: "No pudimos leer la imagen o mide más de 2000 × 2000 px…"; `required`), `400` (con `requestId`), `503`/`500`/red: primero se vuelve a pedir `GET /tenant`; si muestra que el logo se guardó (o se quitó), es éxito; si no, mensaje con "Reintentar" (DD-42, DD-F26) |
+| Error de logo | Del cliente (§13.11.1, sin request) · Del servidor (en el control del logo, §12.2–12.3): `413`, `415`, `422` con `field: file` (`invalid_value`: "No pudimos leer la imagen o mide más de 2000 × 2000 px…"; `required`), `400` (con `requestId`), `503`/`500`/red: primero se vuelve a pedir `GET /tenant`. Al quitar, es éxito si trae `has_logo: false`. Al subir, es éxito solo si trae `has_logo: true`, otro `updated_at` **y** el logo vigente (`GET /tenant/logo`, sin caché HTTP) tiene exactamente los bytes enviados: un `updated_at` nuevo no alcanza, porque también lo cambia un `PATCH` de otra sesión (P-F21). Si no, o si la comprobación falla, mensaje con "Reintentar" (DD-42, DD-F26) |
 | Enviando | "Guardando…" / "Subiendo logo…" / "Quitando logo…" |
 | Éxito | Toast "Guardamos los datos de la empresa." / "Logo actualizado." (si se achicó: "Logo actualizado. Lo achicamos para que pese menos.") / "Quitamos el logo."; el encabezado se actualiza sin recargar (nueva URL con `v`) |
-| Cambios sin guardar | Al salir: "Tenés cambios sin guardar. ¿Salir igual?" (`useUnsavedChangesGuard`, DD-F32); también mientras se prepara o sube el logo. Un `401` no pide confirmación: va al login, que avisa que los cambios se perdieron (§12.4) |
+| Cambios sin guardar | Al salir: "Tenés cambios sin guardar. ¿Salir igual?", con la descripción y los botones de arriba (`useUnsavedChangesGuard`, DD-F32; P-F21); también mientras se prepara o sube el logo. Un `401` no pide confirmación: va al login, que avisa que los cambios se perdieron (§12.4) |
 | Sin permiso / Sesión vencida | Guard / §12.4 (DD-F5) |
 
 #### 13.11.1 Preparación del logo en el navegador (P-F2, P-F6, DD-11, DD-31, DD-F11, DD-F20, DD-F21, DD-F22)
@@ -1516,18 +1556,20 @@ exactamente a ellos (DD-F22).
 |---|---|---|
 | `LOGO_MAX_SIDE` | 2000 px | Límite del servidor (DD-11), por lado |
 | `LOGO_TARGET_MAX_BYTES` | **2 097 152 bytes** (el límite exacto del archivo, igual a `LogoMaxBytes` del backend) | El servidor mide el contenido de la parte `file` (DD-31), que es exactamente el `size` del archivo que prepara el cliente; los encabezados multipart tienen su propio margen de 64 KiB en el límite del cuerpo. Un margen extra no protege de nada y solo baja la calidad o re-codifica un PNG que el servidor aceptaría. Se compara con `≤` (el servidor acepta exactamente 2 097 152, T-B703/T-B705). DD-F22 |
-| `LOGO_INPUT_MAX_BYTES` | 20 MB | Por encima no se intenta procesar (memoria del celular) |
+| `LOGO_INPUT_MAX_BYTES` | 20 MiB (**20 971 520 bytes**; se compara con `>`) | Por encima no se lee ni se procesa (memoria del celular). En MiB, como el límite del servidor; el número no aparece en ningún texto (P-F21) |
 | `LOGO_INPUT_MAX_PIXELS` | 25 000 000 (25 MP) | Decodificar más consume > 100 MB de memoria; una foto normal de celular tiene 12 MP |
 | Escalera JPEG (`maxSide`, calidad) | (2000, 0,90) → (2000, 0,80) → (1600, 0,80) → (1200, 0,80) → (1000, 0,75) | Primero se baja calidad sin perder resolución; después resolución. A 1000 px y 0,75 un JPEG pesa bastante menos de 1 MB |
 | Escalera PNG (`maxSide`) | 2000 → 1600 → 1200 → 1000 → 700 | PNG no tiene calidad. A 700×700 los píxeles sin comprimir (RGBA) ocupan 1 960 000 bytes, menos que el límite, así que el último paso prácticamente siempre entra |
 
-Nunca se agranda una imagen: `maxSide` efectivo = `min(paso, lado mayor original)`.
+Nunca se agranda una imagen: `maxSide` efectivo = `min(paso, lado mayor original)`. Los pasos que así
+quedan iguales al anterior (mismo `maxSide` y calidad) se omiten: un PNG de 1500 px prueba 1500,
+1200, 1000 y 700 (P-F21).
 
 **Flujo**:
 
 ```mermaid
 flowchart TD
-    A["Archivo elegido"] --> B{"¿Pesa más de 20 MB?"}
+    A["Archivo elegido"] --> B{"¿Pesa más de 20 MiB?"}
     B -->|"sí"| X1["Rechazo: demasiado grande para procesar"]
     B -->|"no"| C["Leer bytes y detectar el formato por su firma"]
     C --> D{"Formato"}
@@ -1553,7 +1595,9 @@ Reglas:
   BOM y espacios) empieza con `<?xml` o `<svg`, o `file.type` es `image/svg+xml`.
 - **Dimensiones desde el encabezado**, sin decodificar: PNG del chunk `IHDR`; JPEG del primer
   marcador `SOF0`–`SOF15` (salvo `C4`, `C8`, `CC`). Son las dimensiones crudas: con orientación
-  EXIF de 90° ancho y alto se invierten, pero el límite es igual para ambos lados.
+  EXIF de 90° ancho y alto se invierten, pero el límite es igual para ambos lados. Se buscan en el
+  archivo entero, que se lee recién después de saber que pesa ≤ 20 MiB, como hace el servidor con
+  `image.DecodeConfig`: un JPEG puede traer más de 1 MiB de EXIF, XMP o ICC antes del `SOF` (P-F21).
 - **PNG dentro de los límites** (≤ 2000 px por lado y ≤ 2 097 152 bytes): se sube el archivo
   original, byte a byte (sin pérdida, transparencia intacta).
 - **JPEG: siempre se vuelve a codificar** (DD-F21, confirmada por el usuario en P-F6), aunque ya
@@ -1571,10 +1615,13 @@ Reglas:
   ese bitmap en un `<canvas>` del tamaño destino con `imageSmoothingQuality = 'high'` y codifica con
   `canvas.toBlob(tipo, calidad)`. Al terminar se libera (`bitmap.close()`).
 - **Un paso "entra"** si el `Blob` resultante pesa ≤ 2 097 152 bytes (y, por construcción, su lado
-  mayor es ≤ 2000).
+  mayor es ≤ 2000). Si un paso falla al codificar (`toBlob` devuelve `null` o lanza), cuenta como
+  que no entró y se prueba el siguiente; si no entra ninguno, `cannot_shrink` (P-F21).
 - **Resultado**: un `File` (`logo.png` o `logo.jpg`, el nombre no importa: el servidor genera la
   clave) que va a `putTenantLogo` como única parte `file`. El servidor vuelve a validar tipo,
-  tamaño y dimensiones.
+  tamaño y dimensiones. `resized` es verdadero si hubo que achicar: el original superaba los
+  límites o el primer paso de la escalera no entró. Un JPEG que entra al primer paso (solo se volvió
+  a codificar, DD-F21) da `resized: false` y el toast "Logo actualizado." (BR-F13; P-F21).
 - **Sin dependencias**: todo con APIs del navegador (DD-F20). Sin *Web Worker*: `toBlob` ya es
   asíncrono y la UI muestra "Preparando la imagen…".
 
@@ -1788,7 +1835,11 @@ sequenceDiagram
         else 5xx o sin red
             P->>API: GET /tenant
             API-->>P: Tenant vigente
-            P-->>A: Logo actualizado si updated_at cambio, si no mensaje con Reintentar
+            opt has_logo true y updated_at distinto del de antes
+                P->>API: GET /tenant/logo sin cache HTTP
+                API-->>P: bytes del logo vigente
+            end
+            P-->>A: Logo actualizado si son los bytes enviados, si no mensaje con Reintentar
         end
     else ninguno entra o no se puede leer
         L-->>P: ok false con el motivo
@@ -1874,6 +1925,7 @@ export interface ConfirmDialogProps {
   description: string;
   confirmLabel: string;
   pendingLabel: string;
+  cancelLabel?: string;                    // por defecto "Cancelar"; "Quedarme" en el aviso de salida de S-11 (P-F21)
   destructive?: boolean;
   pending: boolean;                        // deshabilita confirmar y cancelar
   onConfirm: () => void;
@@ -1980,9 +2032,10 @@ export interface LogoUploaderProps {
   companyName: string;
   logoSrc: string | null;                        // logoUrl(tenant); null si has_logo = false
   pending: 'processing' | 'upload' | 'remove' | null; // "Preparando la imagen…" / "Subiendo logo…" / "Quitando logo…"
-  error: string | null;                          // del cliente (§13.11.1) o del servidor (§12.2–12.3)
+  error: UserMessage | null;                     // del cliente (logoRejectMessage, §13.11.1) o del servidor (messageForError(error, 'logo') o fieldErrorMessage('file', …), §12.2–12.3), como objeto: título y, si los hay, descripción, requestId y retryable. features/ puede importar api/ (§9.1) (P-F21)
   onSelectFile: (file: File) => void;            // el contenedor prepara (prepareLogo) y sube
   onRemove: () => void;                          // el contenedor pide confirmación
+  onRetry?: () => void;                          // "Reintentar" solo si error.retryable y está definido: repite la última subida o baja (P-F21)
 }
 ```
 
@@ -2030,7 +2083,7 @@ export function useAcceptInvitation(): UseMutationResult<SessionInfo, ApiError, 
 // features/tenant/api.ts
 // useTenant y logoUrl: viven en api/tenant.ts y este módulo los reexporta (enmienda de F3, P-F19)
 export function useUpdateTenant(): UseMutationResult<Tenant, ApiError, TenantUpdate>;
-export function useUploadLogo(): UseMutationResult<Tenant, ApiError, File>;   // recibe el File ya preparado
+export function useUploadLogo(): UseMutationResult<Tenant, ApiError, File>;   // recibe el File ya preparado. Ante 5xx o red relee la empresa y, si has_logo y updated_at cambiaron, compara los bytes del logo vigente con el File (DD-F26, P-F21)
 export function useDeleteLogo(): UseMutationResult<void, ApiError, void>;
 
 // features/tenant/logo/sniff.ts — puras
@@ -2057,14 +2110,24 @@ export function encodeBitmap(
   options: { maxSide: number; format: 'image/png' | 'image/jpeg'; quality?: number },
 ): Promise<Blob>;
 
-// features/tenant/logo/prepareLogo.ts — orquesta: firma → plan → decodificar una vez → escalera
+// features/tenant/logo/prepareLogo.ts — orquesta: tamaño → leer el archivo entero → firma → plan → decodificar una vez → escalera
+// Un archivo de más de LOGO_INPUT_MAX_BYTES se rechaza sin leerlo; el resto se lee entero, como image.DecodeConfig del servidor (P-F21)
 export type PrepareLogoResult =
-  | { ok: true; file: File; resized: boolean; reencoded: boolean }
+  | { ok: true; file: File; resized: boolean; reencoded: boolean }   // reencoded: no es el original. resized: hubo que achicar (el original superaba los límites o el primer paso de la escalera no entró); decide el texto de BR-F13 (P-F21)
   | { ok: false; reason: LogoRejectReason };
 export function prepareLogo(
   file: File,
   deps?: { decodeImage: typeof decodeImage; encodeBitmap: typeof encodeBitmap },  // inyectables para tests
 ): Promise<PrepareLogoResult>;
+
+// features/tenant/timezones.ts — DD-F27 (revisada en la enmienda de F6, P-F21)
+/** Nombres anteriores de las zonas argentinas que IANA conserva como enlaces (archivo backward):
+ *  America/Buenos_Aires, America/Catamarca, America/Cordoba, America/Jujuy, America/Mendoza, America/Rosario. */
+export const ARGENTINA_LEGACY_ZONES: ReadonlySet<string>;
+export interface TimeZoneGroups { argentina: string[]; others: string[] }
+/** "Argentina" = America/Argentina/* + ARGENTINA_LEGACY_ZONES; el resto en "Otras zonas"; cada grupo en el orden de Intl.
+ *  La zona guardada que Intl no lista va primera en su grupo. */
+export function timeZoneGroups(saved: string, supported?: readonly string[]): TimeZoneGroups; // supported: Intl.supportedValuesOf('timeZone') por defecto
 
 // features/users/api.ts
 export function useUsers(): UseQueryResult<User[], ApiError>;
@@ -2081,6 +2144,9 @@ export interface AppQueryClientOptions {
 export function createAppQueryClient(options: AppQueryClientOptions): QueryClient;
 
 // api/tenant.ts — query compartida (enmienda de F3, P-F19): la usan el shell, S-07 y S-11 (§9.1)
+/** Opciones de useTenant (clave, queryFn y staleTime de 300 s). Las mutaciones del logo releen la empresa
+ *  con fetchQuery({ ...tenantQuery, staleTime: 0 }) (DD-F26; P-F21). */
+export const tenantQuery: ReturnType<typeof queryOptions<Tenant>>;
 export function useTenant(): UseQueryResult<Tenant, ApiError>;
 /** `/api/v1/tenant/logo?v=<encodeURIComponent(id-updated_at)>` o null si no hay logo (INV-F14). */
 export function logoUrl(tenant: Pick<Tenant, 'id' | 'updated_at' | 'has_logo'>): string | null;
@@ -2131,6 +2197,7 @@ export function useLinkToken(): string | null;                            // §6
 export function useOnlineStatus(): boolean;
 export function useDocumentTitle(title: string): void;
 export function isValidCuit(raw: string): boolean;                        // 11 dígitos + módulo 11
+export function companyInitials(name: string): string;                    // lib/companyInitials.ts: primera letra de las dos primeras palabras, en mayúsculas; logo ausente en AppBrand y LogoUploader (P-F21)
 export function formatDateTime(iso: string, timeZone: string, now?: Date): string; // "6/10, 14:30" (año si difiere)
 export function formatRetryAt(retryAfterSeconds: number, now: Date): { time: string; minutes: number }; // reglas de §13.2 (minutes: de reloj, mínimo 1; P-F17); T-F102 (F1, P-F16): lo usa messageForError (login_locked) con now = new Date(error.receivedAt), nunca new Date() (P-F18)
 ```
@@ -2489,7 +2556,7 @@ web/                            # también es el paquete Go `web` (embed.go)
     │       └── logo/           # limits.ts, sniff.ts, plan.ts, canvas.ts (adaptador), prepareLogo.ts
     ├── components/             # presentación compartida (§15.1)
     │   └── ui/                 # generados por shadcn
-    ├── lib/                    # utils (cn), format, cuit, safeNextPath, linkToken, onlineStatus, verifyBannerDismissal (P-F20)
+    ├── lib/                    # utils (cn), format, cuit, safeNextPath, linkToken, onlineStatus, verifyBannerDismissal (P-F20), companyInitials (P-F21)
     └── test/                   # setup.ts, msw/ (server, handlers), fixtures.ts, renderApp.tsx
 ```
 
@@ -2550,8 +2617,8 @@ P-F19).
 | **DD-F23** | *(Nueva, revisión 2)* Desarrollo con Vite sobre HTTPS con el mismo certificado de mkcert que `crm serve`; *proxy* a `https://localhost:8443` sin `changeOrigin` y **con** verificación de certificado (Node confía por `NODE_EXTRA_CA_CERTS`); `strictPort` | Es la receta del plan (§10.5.1) llevada a la configuración de Vite; verificar el certificado hace visible una configuración rota en vez de esconderla | Un paso más por equipo (exportar la variable) |
 | **DD-F24** | *(Nueva, revisión 3)* Variantes de `invalid_value` y `too_long` por campo en `fieldErrorMessage` (§12.3); texto por defecto de `invalid_value`: "Revisá este dato." | El servidor usa `invalid_value` para vacíos y largos en campos de texto (H-13); "Elegí una opción de la lista" era incorrecto ahí. Descartado: pedir al backend que cambie a `required`/`too_long` (cambia comportamiento probado; queda como alternativa de H-13) | Más filas en el mapa; en nombre y empresa el texto cubre vacío y largo a la vez |
 | **DD-F25** | *(Nueva, revisión 3)* Esperas cortas en segundos: `Retry-After` < 60 → "unos segundos"; 60 → "1 minuto"; más → `ceil(s/60)` minutos; sin cabecera → "unos minutos". El `503` del registro con `Retry-After` no se reintenta solo | El login por IP (1 cada 3 s) y el `503` del registro (`Retry-After: 2`, DD-33) daban "Esperá 1 minutos". Sin reintento automático, como el resto de las mutaciones (§10.2). Descartado: reintentar solo tras `Retry-After` (seguro según el contrato, pero otro camino que solo aparece con registros simultáneos) | Un toque más en un caso raro |
-| **DD-F26** | *(Nueva, revisión 3)* Ante `5xx` o error de red en `PUT`/`DELETE /tenant/logo`, se vuelve a pedir `GET /tenant`; si `has_logo` y `updated_at` muestran la operación hecha, es éxito; si no, error con "Reintentar" | DD-42: el servidor puede devolver el error original aunque el `COMMIT` haya confirmado. Descartado: solo invalidar (mensaje de error con el logo nuevo en pantalla) | Un `GET /tenant` más en el camino de error |
-| **DD-F27** | *(Nueva, revisión 3)* El selector de zona horaria incluye siempre la zona guardada de la empresa y agrupa en "Argentina" también los alias que devuelva `Intl` | S-F11: algún navegador puede devolver `America/Buenos_Aires` en lugar del nombre IANA. Descartado: una tabla propia de alias (otra lista que mantener) | La lista puede mostrar dos nombres para la misma zona |
+| **DD-F26** | *(Nueva, revisión 3; revisada en la enmienda de F6, P-F21)* Ante `5xx` o error de red en `PUT`/`DELETE /tenant/logo`, se vuelve a pedir `GET /tenant` (sin `staleTime`). **Quitar**: es éxito si trae `has_logo: false`. **Subir**: es éxito solo si trae `has_logo: true`, un `updated_at` distinto del de antes **y** el logo vigente (`GET /tenant/logo`, sin caché HTTP) tiene exactamente los bytes del archivo enviado (mismo tamaño y contenido: el servidor los guarda sin tocarlos, INV-24 del plan). Si falta cualquiera de las tres cosas, o la comprobación falla, es el error original con "Reintentar" | DD-42: el servidor puede devolver el error original aunque el `COMMIT` haya confirmado. `updated_at` cambia con cualquier modificación de la empresa (un `PATCH /tenant` de otra sesión, contrato `Tenant`), así que solo no prueba que el logo nuevo se guardó (revisión 1 del PR #43). Descartado: solo invalidar (mensaje de error con el logo nuevo en pantalla); `has_logo` y `updated_at` solos (la versión anterior: da por guardado el logo viejo si otra sesión editó un dato); reconciliar solo si ningún otro campo cambió (no ve otra subida concurrente); comparar el `ETag` de antes y de después (un `GET` más en cada subida, y otra subida también lo cambia); un campo propio del logo en `Tenant` (cambio de contrato y de backend para un camino de error) | Un `GET /tenant` y, si hace falta, un `GET /tenant/logo` de hasta 2 MiB, solo en el camino de error. Si otra sesión subió el mismo archivo, cuenta como éxito, y está bien. "Reintentar" con el logo ya guardado es seguro: vuelve a dejar el mismo logo |
+| **DD-F27** | *(Nueva, revisión 3; revisada en la enmienda de F6, P-F21)* El selector de zona horaria incluye siempre la zona guardada de la empresa (primera en su grupo si `Intl` no la lista) y agrupa en "Argentina" las `America/Argentina/*` y los seis nombres anteriores de esas zonas (`ARGENTINA_LEGACY_ZONES` en `features/tenant/timezones.ts`: `America/Buenos_Aires`, `America/Catamarca`, `America/Cordoba`, `America/Jujuy`, `America/Mendoza`, `America/Rosario`) | S-F11: Node 24 (V8) lista `America/Buenos_Aires`; con el prefijo solo, la zona principal del país quedaba en "Otras zonas". Los seis son enlaces de compatibilidad del archivo `backward` de IANA, que no se quitan ni se renombran: es una lista de pertenencia, no una tabla que traduce alias. Descartado: solo el prefijo (la versión anterior); una tabla alias → canónico para mostrar un solo nombre (otra lista para todas las zonas, y la zona guardada se muestra con su nombre igual); agrupar por desfase horario (`Intl` no dice el país y otros países tienen −03:00) | La lista puede mostrar dos nombres para la misma zona, los dos en "Argentina". Si IANA agrega una zona argentina fuera de `America/Argentina/`, hay que sumarla (§29) |
 | **DD-F28** | *(Nueva, revisión 4; aplica P-F8)* Invitar con el email sin confirmar. La UI lo sabe por `session.user.email_verified` (`/me`, contrato v0.5.0), con `useInviteBlockedReason()`. Deshabilita con el motivo visible todo lo que emite una invitación (BR-F14) y pone al lado el aviso W con "Reenviar email de confirmación"; S-10 muestra el aviso en lugar del formulario. `['session']` usa `refetchOnWindowFocus: 'always'` mientras el email no está confirmado, así una confirmación hecha en otra pestaña habilita todo al volver, sin recargar. El `403 email_not_verified` lo maneja la pantalla (INV-F16) y refresca la sesión. "Reactivar" a un desactivado que nunca aceptó también se deshabilita (P-F8) aunque el servidor no lo exija en esa ruta, porque reactivarlo envía una invitación | Con DD-46, invitar depende de un dato que `/me` ya trae. Anticiparlo evita un formulario que siempre falla y le dice al usuario cómo salir. Sin el refetch al enfocar, si vuelve de confirmar antes de que pasen los 60 s de `staleTime`, el botón sigue deshabilitado. Descartado: (a) dejar todo habilitado y mostrar solo el `403` (el usuario completa un formulario para enterarse); (b) ocultar "Invitar" (no sabe que existe ni cómo habilitarlo); (c) una pantalla aparte "confirmá primero" (más navegación para un aviso); (d) `'always'` para todos los usuarios (un `/me` por cada vuelta a la pestaña, sin necesidad) | Un `/me` por cada vuelta a la pestaña mientras el email no esté confirmado (solo el fundador, hasta que hace un clic); dos botones de reenvío en S-07, S-09 y S-10 mientras C-01 esté visible (P-F11); una confirmación hecha en otro dispositivo se ve recién al enfocar o recargar |
 | **DD-F29** | *(Nueva, revisión 4; ampliada por la enmienda H-16)* Textos de `rate_limited` por contexto, ciertos para cualquier cupo que se haya agotado: registro "Hubo muchos intentos de registro seguidos." (+ "No se creó nada…"); invitar, reenviar invitación y reactivar "Por ahora no podemos enviar más invitaciones." (+ el motivo: cuidar el envío de emails); reenvío de la confirmación "Ya te lo mandamos hace poco.". La UI no distingue el cupo por IP del global (registro), el de la empresa del de la IP (invitaciones) ni el cupo por IP del cupo por usuario (reenvío de la confirmación, enmienda H-16) | El contrato no los distingue y la acción del usuario es la misma: esperar y reintentar. `Retry-After` ya trae la diferencia que le importa (cuánto esperar, DD-F25). "Hiciste muchos intentos" es falso con el cupo global (el visitante puede haber hecho uno solo) y con el de la empresa (lo puede haber gastado otro Administrador). Descartado: pedir al backend un código o un dato que diga qué cupo se agotó (un valor más en `ErrorCode` para el mismo comportamiento) | El texto no explica por qué (otro Administrador, un ataque en curso). Durante un ataque al registro (R-21 del plan), el visitante legítimo solo ve "esperá". Con dos cupos agotados, la primera espera puede quedarse corta: al reintentar llega otro `429` con la del otro cupo (en el reenvío de la confirmación, primero ≤ 180 s del de IP y después hasta 1200 s del de usuario). Los textos dicen "probá de nuevo" y no prometen que funcione |
 | **DD-F30** | ***Reemplazada por la enmienda H-16** (2026-10-13, §27.2): sin cupo por usuario el servidor responde `429` con `Retry-After`, así que la línea se retiró de C-01, S-05 y el aviso W, y la espera sale exacta en "Ya te lo mandamos hace poco." (§13.13). Versión reemplazada:* *(Nueva, revisión 4; mismo criterio que P-F7, aprobada)* El resultado "Listo, te lo reenviamos" del reenvío de la confirmación (C-01, S-05, aviso W) suma "Si lo pediste varias veces, esperá unos 20 minutos." | Con DD-46 (3), después de 3 reenvíos el servidor responde `202` sin enviar hasta pasados 20 min. Sin la línea, el usuario reintenta y cree que el sistema anda mal. Descartado: contar los reenvíos en el cliente (no ve los de otras pestañas ni dispositivos) | Una línea más en el aviso, aunque sea el primer reenvío. Si el backend adopta H-16 (`429` con `Retry-After`), la línea se va y la espera sale exacta |
@@ -2575,7 +2642,7 @@ P-F19).
 | S-F9 | `canvas.toBlob('image/png')` conserva la transparencia y `toBlob('image/jpeg', q)` respeta la calidad pedida en los navegadores de NFR-F02 | Abierto | T-F706 | Ajustar la escalera |
 | S-12 (plan) | Tras `mkcert -install`, Chrome, Firefox y Safari en desarrollo, y Chromium y WebKit de Playwright en CI, confían en el certificado de `localhost` | Abierto | Primera corrida de T-F701 (y spike de T-F006 en desarrollo) | Respaldo en CI: `ignoreHTTPSErrors` solo si el service worker se registra igual (T-F703); si no, volver al arquitecto |
 | S-F10 | En Android, el reenvío de puertos de Chrome (`chrome://inspect`) a `localhost:8443` más la CA de mkcert instalada en el teléfono permiten probar el binario local con sesión (respaldo de H-12) | Abierto (no verificado) | Checkpoint F6, si no hay otro origen | Probar en el celular solo contra un entorno con dominio y HTTPS real |
-| S-F11 | *(Revisión 3)* `Intl.supportedValuesOf('timeZone')` y `resolvedOptions().timeZone` devuelven nombres IANA canónicos (`America/Argentina/Buenos_Aires`) en los navegadores de NFR-F02. Un reporte de WebKit (bug 218542) muestra que Safari devolvía el alias `America/Buenos_Aires` | Abierto (no verificado) | T-F602 (selector de DD-F27) y a mano en Chrome, Firefox y Safari (T-F705) | DD-F27 ya cubre la zona guardada; el registro funciona igual (el backend conoce los alias por `time/tzdata`) |
+| S-F11 | *(Revisión 3)* `Intl.supportedValuesOf('timeZone')` y `resolvedOptions().timeZone` devuelven nombres IANA canónicos (`America/Argentina/Buenos_Aires`) en los navegadores de NFR-F02. Un reporte de WebKit (bug 218542) muestra que Safari devolvía el alias `America/Buenos_Aires` | **Refutado en parte** (2026-10-21, P-F21): Node 24 lista `America/Buenos_Aires` en `supportedValuesOf` (418 zonas, reportado en la Fase F6). Chrome usa el mismo motor (supuesto); Firefox y Safari sin verificar | T-F602 (selector de DD-F27, con nombres anteriores en la lista simulada) y a mano en Chrome, Firefox y Safari (T-F705) | Cubierto: DD-F27 (revisada) agrupa los nombres anteriores en "Argentina" y muestra la zona guardada; el registro funciona igual (el backend conoce los alias por `time/tzdata`) |
 | S-F12 | *(Revisión 4)* Un usuario `disabled` con `name = null` nunca aceptó su invitación. El contrato solo dice "`null` mientras el usuario está invitado"; según `data-model.md` §2.2, `name` se completa al aceptar y desactivar no lo toca | Abierto | T-F501 y lectura de `Deactivate` en el código | "Reactivar" queda habilitado para ese usuario con el email sin confirmar. El servidor lo acepta igual (no exige la confirmación en `reactivate`): el efecto es solo una invitación que P-F8 quería evitar. Caso inalcanzable salvo con datos anteriores a la Fase 10 |
 | S-F13 | *(Enmienda de F0)* Con el aviso de cambios sin guardar abierto (una navegación frenada), una navegación nueva que el bloqueador deja pasar se completa, el aviso desaparece y el bloqueador vuelve a `unblocked` (React Router 8.4.0; la documentación de `useBlocker` no cubre el caso) | Abierto | T-F602 | Volver al arquitecto. Opciones: `blocker.reset()` antes de navegar, o recarga completa al login (pierde el `state`) |
 | S-F14 | *(Enmienda de F0)* `npm audit`, del npm del Node de `web/.nvmrc`, funciona solo con `package-lock.json`, sin `node_modules`, y termina con un código distinto de 0 si no puede consultar el registro. La documentación dice que necesita el lockfile, no que alcance solo con él | **Validado** (controles de T-F010, registrados en el PR #33): sin `node_modules`, `make web-vuln` sobre `main` dio 0, el mismo resultado que con `node_modules`; con el registro inalcanzable terminó con un código distinto de 0. No hizo falta el respaldo: el job no lleva `npm ci --ignore-scripts` y ADR-027 no necesita nota | Controles de T-F010 | — |
@@ -2639,6 +2706,12 @@ Preguntas de la enmienda de F4 (2026-10-20):
 | ID | Pregunta | Estado | Default propuesto |
 |---|---|---|---|
 | P-F20 | Tres puntos de la revisión 1 del PR #39 (F4). (1) ¿Qué clave usa la marca del aviso C-01, si el código guarda `email-verification-dismissed:{email}` y §10.1 dice `crm.verifyBanner.dismissed`, y la borra el logout? (2) ¿Qué forma tienen las props de error de C-01 y del aviso W, si `b2967dd` cambió §15.1 a dos textos sueltos y W todavía recibe uno solo? (3) ¿Se fija ya una regla para las regiones `aria-live` que nacen con su texto, o queda para T-F705? | **Cerrada: sí** (el usuario, 2026-10-20) | **Sí** a los tres. (1) Clave fija `crm.verifyBanner.dismissed` = `'true'` en `lib/verifyBannerDismissal.ts`, borrada junto con `queryClient.clear()` en los puntos de INV-F03: sin datos de la sesión en el navegador (NFR-F09, T-F703) y otra cuenta en la misma pestaña ve su aviso, que era lo que resolvía el email. Alternativas: clave fija sin borrado (una línea, pero si A ocultó el aviso, B no lo ve), el `user.id` como valor (identifica a la persona y sobrevive al logout) o estado en memoria (vuelve con cada recarga; cambia §10.1). Costo: si otra pestaña cambia de cuenta sin pasar por `null`, la marca queda. (2) `resendStatus` + `errorMessage` = el objeto de `messageForError(error, 'resendVerification')` tal cual, por estructura (`{ title; description? }` en C-01; con `retryable` en W), como `ErrorState`: el título es obligatorio por tipo y el llamador no puede elegir un solo campo. Alternativas: dos textos opcionales (el tipo no evita el bug y W necesita un tercer prop) o pasar el error crudo (`components/` no importa `api/`, §9.1). (3) INV-F19 ya, con `LiveRegion` compartido: lo cortés se escribe en una región montada y vacía antes del texto; los `role="alert"` pueden nacer con su texto. Se corrigen C-01, S-05 (F4) y C-02 (F1) en la rama del PR #39, y T-F705 suma NVDA. Alternativas: solo verificar en T-F705 (VoiceOver anuncia igual y no lo detecta; sin Windows no hay NVDA; F5 y F6 nacerían con el patrón actual), la regla sin componente (cada pantalla la reimplementa) o escribir el texto en el *tick* siguiente (depende del tiempo e inestable en tests) |
+
+Preguntas de la enmienda de F6 (2026-10-21):
+
+| ID | Pregunta | Estado | Default propuesto |
+|---|---|---|---|
+| P-F21 | Huecos y desviaciones de la implementación de F6 (PR #43) y hallazgos 1 y 2 de su revisión 1. (1) Textos del diálogo de "Quitar", de la descripción y los botones del aviso de salida, de la región de carga, de las secciones y de los grupos del selector. (2) ¿Cómo agrupa DD-F27 los alias sin una tabla, y dónde va la zona guardada que `Intl` no lista? (3) ¿`unknown` es `unsupported_format` (T-F604) o "No pudimos leer…" (T-F603)? (4) ¿Un JPEG chico solo re-codificado dice "Lo achicamos"? (5) ¿`prepareLogo` necesita un `AbortSignal`? (6) Siete firmas de §15 que el código cambió. (7) ¿Cómo distingue DD-F26 la subida del logo de un `PATCH` concurrente? (8) ¿Se lee solo el primer MiB del archivo? | **Cerrada: sí** (el usuario, 2026-10-21) | **Sí** a todo. (1) Los del implementador, salvo dos: la descripción del aviso pasa a "Si salís ahora, se pierden los cambios que todavía no se guardaron." (la anterior era falsa con una subida en curso, que sigue) con "Salir" destructivo, y la región pasa a "…de tu empresa", como su error. (2) `America/Argentina/*` + los seis nombres anteriores que IANA conserva como enlaces; la zona guardada no listada, primera en su grupo. Alternativas: solo el prefijo (la zona principal en "Otras zonas"), una tabla alias → canónico (otra lista para todas las zonas) o el desfase (`Intl` no dice el país). (3) `unsupported_format`: con un archivo que no es imagen, lo accionable es "tiene que ser PNG o JPG"; se corrige T-F603. (4) No, salvo que el primer paso de la escalera no entre: ahí sí se bajó la calidad o la resolución. (5) No: la guarda de "montado" ya impide el `PUT`, y la preparación está acotada y no se puede abortar por dentro. (6) Se aceptan `UserMessage` + `onRetry?`, `cancelLabel?`, la escalera sin repetidos, el paso que lanza, 20 MiB, `tenantQuery` y `lib/companyInitials.ts`; se ajusta `resized`. (7) Comparar los bytes del logo vigente con los enviados, solo en el camino de error. Alternativas: un campo del logo en `Tenant` (contrato y backend), reconciliar si ningún otro campo cambió (no ve otra subida) o el `ETag` (un `GET` más en cada subida). (8) No: se mira `file.size` y se lee el archivo entero, como `image.DecodeConfig` del servidor; leer en tramos es más código por el mismo resultado |
 
 **Revisión 16 del backend: cerrada para la UI** (la lista "Dependiente de la revisión 16" de la
 Revisión 3 queda resuelta en la Revisión 4):
@@ -2781,6 +2854,8 @@ La actualización va **en el mismo cambio** que el código.
 | Un formulario que pide confirmación al salir, o la URL de sesión vencida | `useUnsavedChangesGuard` (nunca `useBlocker` directo) + `lib/sessionExpiredRedirect.ts` + INV-F18 + DD-F32 + el test de la pantalla (las filas de T-F602 como modelo) |
 | Un mensaje que aparece sin mover el foco (resultado de una acción, aviso, progreso) | `LiveRegion` montada con su contenedor (INV-F19) + la fila "la región existe vacía antes y es el mismo nodo después" en el test de la pantalla + checklist de T-F705 |
 | Una marca de `sessionStorage` | §10.1 + NFR-F09 (clave fija, valor booleano, sin datos de la sesión) + INV-F03 si depende de la sesión + T-F703 |
+| Las zonas argentinas de IANA (una zona nueva fuera de `America/Argentina/`) | `ARGENTINA_LEGACY_ZONES` en `features/tenant/timezones.ts` + DD-F27 + T-F602 |
+| Lo que usa la reconciliación del logo (los campos de `Tenant`, el `ETag` de `/tenant/logo`, que el servidor guarde los bytes tal cual) | DD-F26 + §11.1 + §13.11 + §14.4 + `useUploadLogo` + T-F603 |
 
 ## 30. Fuentes consultadas
 

@@ -3160,6 +3160,16 @@ anuncio cortés se escriben en una `LiveRegion` montada antes que su texto. Camb
 C-02), T-F404, T-F405 y T-F406, que se corrigen en la rama del PR #39; T-F502, T-F505 y T-F506
 (F5); T-F603 (F6); T-F703 y T-F705 (F7), y la trazabilidad. Sin tareas nuevas ni cambios de orden.
 
+**Enmienda de F6, P-F21 (2026-10-21; `ui.md` P-F21 aprobada por el usuario el 2026-10-21)**
+(`ui.md`, enmienda de F6, P-F21): huecos y desviaciones de la implementación de F6 y hallazgos 1 y 2
+de la revisión 1 del PR #43. (1) Textos y foco del diálogo de "Quitar" y del aviso de salida; región
+"Cargando los datos de tu empresa". (2) DD-F27 revisada: "Argentina" suma los seis nombres
+anteriores de las zonas del país. (3) DD-F26 revisada: una subida incierta solo es éxito si el
+logo vigente tiene los bytes enviados. (4) `prepareLogo` lee el archivo entero después de mirar su
+tamaño (≤ 20 971 520 bytes); `resized` también si el primer paso de la escalera no entró. (5)
+`unknown` es `unsupported_format` (gana T-F604). Cambian T-F602, T-F603, T-F604, T-F605 y la
+trazabilidad; se corrigen en la rama del PR #43. Sin tareas nuevas ni cambios de orden.
+
 ### Convenciones de esta sección
 
 - `[T]` = tarea de test. Va **antes** de la tarea de código que la hace pasar, y el test debe
@@ -4224,12 +4234,12 @@ S-F10). Valida S-F8 y NFR-F13; si no hay forma de hacerla, se reporta como pendi
   del módulo 11 con resto 10 u 11 según la regla oficial.
 - **Green**: `lib/cuit.ts` (`isValidCuit`) pasa la tabla.
 
-**T-F602 [T] — Datos de la empresa** · US-4, DD-15, DD-27, BR-F09, BR-F10, INV-F04, DD-F32, INV-F18, `ui.md` §12.4, §13.11
+**T-F602 [T] — Datos de la empresa** · US-4, DD-15, DD-27, BR-F09, BR-F10, INV-F04, DD-F27, DD-F32, INV-F18, `ui.md` §12.4, §13.11, P-F21
 - **Red**:
 
   | Interacción | Resultado observable |
   |---|---|
-  | `GET /tenant` pendiente / `503` | *skeleton* / "No pudimos cargar los datos de tu empresa." + "Reintentar" |
+  | `GET /tenant` pendiente / `503` | *skeleton* en la región "Cargando los datos de tu empresa" con `aria-busy="true"` (*(P-F21)*) / "No pudimos cargar los datos de tu empresa." + "Reintentar" |
   | Datos cargados | campos con sus valores; "Moneda base: Pesos (ARS)" + "No se puede cambiar" (no editable) |
   | Sin cambios | "Guardar cambios" deshabilitado |
   | Cambiar solo el teléfono → Guardar | `PATCH /tenant` con `{ phone }` solamente |
@@ -4237,7 +4247,7 @@ S-F10). Valida S-F8 y NFR-F13; si no hay forma de hacerla, se reporta como pendi
   | CUIT con dígito verificador inválido | error en el campo; sin request |
   | `422 invalid_tax_id` / `422 invalid_timezone` del servidor | error en "CUIT" / en "Zona horaria" |
   | `200` | toast "Guardamos los datos de la empresa."; el encabezado muestra el nombre nuevo |
-  | Salir con cambios sin guardar | "Tenés cambios sin guardar. ¿Salir igual?"; "Salir" navega, "Quedarme" no |
+  | Salir con cambios sin guardar | "Tenés cambios sin guardar. ¿Salir igual?" con "Si salís ahora, se pierden los cambios que todavía no se guardaron." y el foco en "Quedarme" al abrir (*(P-F21)*); "Salir" (destructivo) navega, "Quedarme" no |
   | *(DD-F32)* Cambios sin guardar → "Guardar cambios" → `PATCH /tenant` `401 unauthenticated` | **sin** el aviso "Tenés cambios sin guardar"; `/login?next=%2Fsettings%2Fcompany&reason=session_expired` con "Tu sesión se cerró. Ingresá de nuevo para seguir." y "Los cambios que no habías guardado se perdieron." |
   | Cambios sin guardar y `['session']` pasa a `null` al enfocar la ventana | lo mismo |
   | Preparando el logo (adaptador de canvas pendiente) y `['session']` pasa a `null` | lo mismo; cuando el adaptador resuelve, no se envía `PUT /tenant/logo` |
@@ -4245,8 +4255,8 @@ S-F10). Valida S-F8 y NFR-F13; si no hay forma de hacerla, se reporta como pendi
   | Desde ese login, ingresar | vuelve a `/settings/company` con los datos del servidor; "Guardar cambios" deshabilitado |
   | `401` sin cambios sin guardar | login solo con "Tu sesión se cerró. Ingresá de nuevo para seguir." |
   | "Salir" en el aviso y después un `401` en otra pantalla | login sin la segunda línea (el guard ya no está activo) |
-  | Zona horaria | `America/Argentina/*` primero en el selector |
-  | La zona guardada de la empresa no está en `Intl.supportedValuesOf('timeZone')` (alias, S-F11) | aparece igual, seleccionada (DD-F27) |
+  | *(P-F21)* Zona horaria, con `Intl.supportedValuesOf('timeZone')` simulado como `America/Argentina/Cordoba`, `America/Buenos_Aires`, `America/Mendoza`, `America/Santiago`, `Europe/Madrid` | grupo "Argentina" primero, con `America/Argentina/Cordoba`, `America/Buenos_Aires` y `America/Mendoza` en ese orden; "Otras zonas" con `America/Santiago` y `Europe/Madrid` (DD-F27) |
+  | La zona guardada de la empresa no está en `Intl.supportedValuesOf('timeZone')` (S-F11): `America/Argentina/Buenos_Aires` con la lista anterior / `Europe/Berlin` | aparece igual, seleccionada y primera en "Argentina" / primera en "Otras zonas" (DD-F27; *(P-F21)*) |
   | `503` al guardar | mensaje con "Reintentar"; valores intactos |
   | `503` al guardar → "Reintentar" → `200` con el mismo `updated_at` | toast "Guardamos los datos de la empresa."; la URL del logo no cambia (DD-43 (4): reintentar es seguro) |
   | Vaciar el nombre → Guardar | "Completá este campo."; ningún request (nunca `name: null`, INV-F15) |
@@ -4255,7 +4265,7 @@ S-F10). Valida S-F8 y NFR-F13; si no hay forma de hacerla, se reporta como pendi
   | `400 malformed_request` con `instance` | error general "No pudimos procesar el pedido." con el código |
 - **Green**: pasa la tabla.
 
-**T-F603 [T] — Logo en la pantalla y en el encabezado** · US-4, DD-11, DD-23, DD-31, DD-F11, DD-F12, DD-F22, BR-F13, INV-F14, `ui.md` §11.1, §13.11, §14.4
+**T-F603 [T] — Logo en la pantalla y en el encabezado** · US-4, DD-11, DD-23, DD-31, DD-F11, DD-F12, DD-F22, DD-F26, BR-F13, INV-F10, INV-F14, `ui.md` §11.1, §13.11, §14.4, P-F21
 - **Red** (pantalla con MSW; el módulo `features/tenant/logo/canvas.ts` con `vi.mock`: `decodeImage`
   devuelve un bitmap falso con el tamaño pedido y `encodeBitmap` un `Blob` del tamaño que fija cada
   caso):
@@ -4268,22 +4278,30 @@ S-F10). Valida S-F8 y NFR-F13; si no hay forma de hacerla, se reporta como pendi
   | Elegir un PNG de 1000×1000 de **exactamente 2 097 152 bytes** (encabezado real + relleno) | se sube tal cual (mismos bytes); los falsos del canvas no se llamaron |
   | Elegir un JPEG de 5 MB y 4000×3000 (bytes de fixture con encabezado real) | "Preparando la imagen…" en la región `role="status"` de `LogoUploader`, presente y vacía antes de elegir el archivo (el mismo nodo; INV-F19, P-F20); "Cambiar logo" y "Quitar" deshabilitados; luego "Subiendo logo…"; `PUT` con un archivo `image/jpeg` ≤ 2 097 152 bytes; toast "Logo actualizado. Lo achicamos para que pese menos."; `src` con el `updated_at` nuevo en S-11 y en el encabezado |
   | Elegir un SVG / un GIF / un WebP | mensaje de §13.11.1 para cada uno; **ningún** request |
-  | Elegir un archivo con bytes que no son imagen | "No pudimos leer la imagen. Probá con otro archivo PNG o JPG."; ningún request |
-  | El adaptador falla al decodificar | mismo mensaje de "no pudimos leer"; ningún request |
+  | *(P-F21)* Elegir un archivo con bytes que no son de ninguna imagen conocida (p. ej. texto con el nombre `logo.png`) | "El logo tiene que ser una imagen PNG o JPG." (`unsupported_format`, como T-F604 y `ui.md` §13.11.1); ningún request |
+  | *(P-F21)* Elegir un PNG con la firma correcta y el encabezado cortado | "No pudimos leer la imagen. Probá con otro archivo PNG o JPG." (`unreadable`); ningún request |
+  | El adaptador falla al decodificar | "No pudimos leer la imagen. Probá con otro archivo PNG o JPG."; ningún request |
   | Ningún paso de la escalera entra (el adaptador falso devuelve siempre 3 MB) | "No pudimos achicar la imagen lo suficiente…"; ningún request |
   | `413` / `415` del servidor | mensajes de §12.2 en el control del logo |
   | `422` con `errors: [{field: 'file', code: 'invalid_value'}]` / `[{field: 'file', code: 'required'}]` | "No pudimos leer la imagen o mide más de 2000 × 2000 px. Probá con otra imagen del logo." / "Elegí una imagen para el logo." en el control del logo (no en un campo del formulario de datos) |
   | `400 malformed_request` con `instance` | "No pudimos subir el logo." + "Recargá la página y probá de nuevo." + código |
   | `503` / sin red al subir, y el `GET /tenant` posterior trae el `updated_at` de antes | mensaje con "Reintentar" en el control del logo |
-  | `503` / sin red al subir, y el `GET /tenant` posterior trae `has_logo: true` y otro `updated_at` (el `COMMIT` confirmó, DD-42) | toast "Logo actualizado."; sin mensaje de error; `src` con el `updated_at` nuevo (DD-F26) |
-  | `503` al quitar, y el `GET /tenant` posterior trae `has_logo: false` | iniciales; toast "Quitamos el logo." (DD-F26) |
-  | Salir mientras se prepara o sube | pide confirmación (BR-F10) |
-  | "Quitar" → confirmar → `204` | iniciales; toast "Quitamos el logo." |
+  | `503` / sin red al subir, el `GET /tenant` posterior trae `has_logo: true` y otro `updated_at`, y `GET /tenant/logo` devuelve los mismos bytes del archivo enviado (el `COMMIT` confirmó, DD-42) | toast "Logo actualizado."; sin mensaje de error; `src` con el `updated_at` nuevo (DD-F26; *(P-F21)*) |
+  | *(P-F21)* `PUT` fallido + `PATCH` concurrente → no es éxito: la empresa ya tenía logo; `PUT` → `503` sin confirmar y, mientras tanto, un `PATCH /tenant` de otra sesión; el `GET /tenant` trae `has_logo: true` y otro `updated_at`, y `GET /tenant/logo` devuelve los bytes del logo anterior | mensaje con "Reintentar" en el control del logo; **ningún** toast "Logo actualizado."; "Reintentar" envía otra vez el mismo archivo (DD-F26) |
+  | *(P-F21)* Lo mismo, pero `GET /tenant/logo` responde `503` / `404` / sin red | mensaje con "Reintentar"; ningún toast (sin comprobar no hay éxito) |
+  | `503` al quitar, y el `GET /tenant` posterior trae `has_logo: false` | iniciales; toast "Quitamos el logo." (DD-F26; *(P-F21)* sin ambigüedad: no hay logo, lo haya quitado esta sesión u otra) |
+  | *(P-F21)* `503` al quitar, y el `GET /tenant` posterior trae `has_logo: true` | el logo sigue; mensaje con "Reintentar"; el foco vuelve a "Quitar" |
+  | Salir mientras se prepara o sube | pide confirmación (BR-F10). *(P-F21)* "Salir" mientras se prepara: navega y, cuando el adaptador resuelve, no se envía `PUT`. "Salir" mientras se sube (`PUT` pendiente): navega; cuando el `PUT` responde `200`, el toast "Logo actualizado." aparece en la pantalla nueva |
+  | "Quitar" → confirmar → `204` | *(P-F21)* el diálogo dice "¿Quitar el logo?" / "Vamos a mostrar las iniciales de tu empresa en su lugar. Podés subir otro logo cuando quieras.", con el foco en "Cancelar" al abrir; mientras espera, "Quitando logo…" y los dos botones deshabilitados; después, iniciales, toast "Quitamos el logo." y el foco en "Cambiar logo" |
+  | *(P-F21)* "Quitar" → "Cancelar" | el logo sigue; el foco vuelve a "Quitar" (INV-F10) |
   | La imagen falla al cargar (`404` del objeto ausente o `503` del almacenamiento, DD-42) | iniciales; ningún mensaje de error |
   | Control de archivo | etiqueta accesible "Cambiar logo"; `accept="image/png,image/jpeg"`; operable con teclado |
+- **Mutación** (P-F21; se aplica, el caso falla y se restaura): dar por guardado el logo con
+  `has_logo` y otro `updated_at`, sin comparar los bytes → falla la fila de "`PUT` fallido + `PATCH`
+  concurrente".
 - **Green**: pasa la tabla.
 
-**T-F604 [T] — Preparación del logo: funciones puras y orquestación** · DD-11, DD-31, DD-F20, DD-F21, DD-F22, INV-F13, H-11, `ui.md` §13.11.1
+**T-F604 [T] — Preparación del logo: funciones puras y orquestación** · DD-11, DD-31, DD-F20, DD-F21, DD-F22, BR-F13, INV-F13, H-11, `ui.md` §13.11.1, P-F21
 - **Red** (unitario; bytes de prueba armados en el test, sin imágenes reales):
 
   | `sniffImageType` | Esperado |
@@ -4308,10 +4326,10 @@ S-F10). Valida S-F8 y NFR-F13; si no hay forma de hacerla, se reporta como pendi
   | PNG de 800×400 y 300 KB | `upload_original` |
   | PNG de 1000×1000 y **2 097 152** bytes | `upload_original` (el límite es inclusivo, igual que en el servidor) |
   | PNG de 1000×1000 y **2 097 153** bytes | `reencode` `image/png` con la escalera PNG |
-  | PNG de 3000×3000 (o de 1500×1500 y 2,5 MB) | `reencode` `image/png` con la escalera PNG; ningún `maxSide` mayor al lado original |
+  | PNG de 3000×3000 (o de 1500×1500 y 2,5 MB) | `reencode` `image/png` con la escalera PNG; ningún `maxSide` mayor al lado original; *(P-F21)* con 1500×1500, los pasos 1500, 1200, 1000 y 700 (sin repetir 1500) |
   | JPEG de 1200×800 y 200 KB | `reencode` `image/jpeg` (DD-F21) con primer paso (1200, 0,90) |
   | JPEG de 4000×3000 y 5 MB | `reencode` `image/jpeg` con la escalera JPEG completa |
-  | Cualquier imagen de más de 25 MP o archivo de más de 20 MB | `reject` `too_large_to_process` |
+  | Cualquier imagen de más de 25 MP o archivo de más de **20 971 520** bytes (*(P-F21)* 20 MiB; con exactamente 20 971 520 se procesa) | `reject` `too_large_to_process` |
   | `svg` / `gif` / `webp` / `heic` / `unknown` | `reject` `svg` / `unsupported_format` (los cuatro restantes) |
   | PNG o JPEG con `width: null` | `reject` `unreadable` |
 
@@ -4326,8 +4344,13 @@ S-F10). Valida S-F8 y NFR-F13; si no hay forma de hacerla, se reporta como pendi
   | JPEG grande; el falso devuelve **2 097 153** bytes y después **2 097 152** | `ok` con el segundo (el borde exacto entra) |
   | Ningún paso entra | `{ ok: false, reason: 'cannot_shrink' }` |
   | `decodeImage` rechaza | `{ ok: false, reason: 'unreadable' }` |
+  | *(P-F21)* JPEG de 1200×800 y 200 KB; el falso devuelve 150 KB | `ok`, `reencoded: true`, `resized: false` (solo se volvió a codificar; BR-F13) |
+  | *(P-F21)* JPEG de 1200×800 y 1,9 MB; el falso devuelve **2 097 153** bytes y después 1,5 MB | `ok`, `resized: true` (bajó la calidad para entrar; BR-F13) |
+  | *(P-F21)* El primer paso lanza al codificar y el siguiente entra | `ok` con el siguiente; `encodeBitmap` llamado dos veces |
+  | *(P-F21)* JPEG de 1,9 MB y 1200×800 con 1,2 MiB de segmentos `APPn` antes del `SOF` | `ok`: las dimensiones se leen del archivo entero, como el servidor |
+  | *(P-F21)* Archivo de 20 971 521 bytes | `{ ok: false, reason: 'too_large_to_process' }` sin leer su contenido (ni `arrayBuffer` ni `slice` del archivo se llamaron) |
   | En todos los caminos con decodificación | el bitmap se cierra (`close` del falso llamado) |
-  | Constante | `LOGO_TARGET_MAX_BYTES === 2_097_152` (igual a `LogoMaxBytes` del backend, DD-31) |
+  | Constante | `LOGO_TARGET_MAX_BYTES === 2_097_152` (igual a `LogoMaxBytes` del backend, DD-31); *(P-F21)* `LOGO_INPUT_MAX_BYTES === 20_971_520` |
 - **Green**: pasa la tabla.
 - **Refactor**: las constantes (`limits.ts`) en un solo lugar; `prepareLogo` sin ramas de formato
   que no estén en `planLogoProcessing`.
@@ -4339,7 +4362,9 @@ encabezado pasa a mostrar el logo. *(Enmienda de F0, DD-F32)* `lib/unsavedChange
 (`useUnsavedChangesGuard`, `hasUnsavedChanges`), usado una vez en `CompanyPage` con `when` =
 formulario con cambios o logo en curso. El manejador de §12.4 pasa `state: { unsavedChangesLost:
 true }` si `hasUnsavedChanges()` (leído antes de navegar). Regla `no-restricted-imports` que prohíbe
-`useBlocker` de `react-router` fuera de `src/lib/unsavedChanges.ts` (INV-F18).
+`useBlocker` de `react-router` fuera de `src/lib/unsavedChanges.ts` (INV-F18). *(Enmienda de F6,
+P-F21)* `features/tenant/timezones.ts` (`ARGENTINA_LEGACY_ZONES`, `timeZoneGroups`), la
+comprobación de bytes de `useUploadLogo` (DD-F26) y `lib/companyInitials.ts`.
 
 **Checkpoint Fase F6**: `npm run check` en verde + prueba independiente (la prueba en un celular
 real, con su resultado para S-F8, S-F10 y NFR-F13, o reportada como pendiente por H-12).
@@ -4432,6 +4457,9 @@ Cerrar sesión y registrar otra empresa en el mismo navegador: ningún `<img>` "
 panel ni en S-11, "Todavía no subiste un logo", `GET /tenant/logo` → `404`. Celular real
 (S-F8, S-F10, NFR-F13): **pendiente** por H-12 (no hay origen HTTPS accesible desde el teléfono
 en este entorno). Arnés: `~/Documents/Codex/crm-progreso/f6-e2e/`. Revisión: pendiente (Codex).
+*(P-F21)* Las desviaciones y los huecos de esta entrada, y los hallazgos 1 y 2 de la revisión 1 del
+PR #43, los resuelve `ui.md` P-F21: se aceptan las desviaciones 1, 2, 4 y 5 (la regla de `resized`,
+con un ajuste) y se rechaza el tope de 1 MiB de la 3.
 
 ---
 
@@ -4612,4 +4640,5 @@ usó) reportado.
 | P-F18 (refetch fallido de `/me` con la sesión en caché; `ApiError.receivedAt`; `AppShell` con `lazy`; título de la pantalla de error de render y "· CRM" sin sesión), `ui.md` §6.4, §11.3, §12.1, §13, §13.2, §23 | T-F005, T-F101, T-F102, T-F104, T-F105, T-F106, T-F107, T-F301, T-F302 |
 | P-F19 (queries compartidas en `api/`; catálogo `{ items }`; espera del `503` según `Retry-After`), `ui.md` §9.1, §12.2, §15.4, §22, DD-F25 | T-F101, T-F107, T-F203, T-F205 |
 | P-F20 (marca del aviso C-01 fija y sin email, borrada en los puntos de INV-F03; props de C-01 y del aviso W con el objeto de `messageForError`; INV-F19, regiones corteses montadas antes que su texto), `ui.md` §8, §9.2, §10.1, §13.5, §13.9, §13.11, §13.13, §15.1, §15.4, §17, §18, §22, DD-F29 | T-F106, T-F404, T-F405, T-F406, T-F502, T-F505, T-F506, T-F603, T-F703, T-F705 |
+| P-F21 (textos y foco del diálogo de "Quitar" y del aviso de salida; DD-F27 con los nombres anteriores de las zonas argentinas; DD-F26 con la comparación de bytes; lectura del archivo entero; `resized`; `unknown` como `unsupported_format`; firmas de `LogoUploader`, `ConfirmDialog`, `tenantQuery`, `companyInitials`), `ui.md` §7, §9.1, §11.1, §13.11, §13.11.1, §14.4, §15, §22, §24, §25 | T-F602, T-F603, T-F604, T-F605 |
 | NFR-F01..F13 | T-F002 (F02, F07, F08), T-F702 (F01, F06, F10, F12), T-F703 (F09, F11), T-F704 (F03..F05), T-F705 (F06..F08), T-F706 (F13) |
