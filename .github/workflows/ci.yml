@@ -211,7 +211,7 @@ jobs:
             if [[ "$route" == login ]]; then url=https://localhost:8443/login; else url=https://localhost:8443/; fi
             ./node_modules/.bin/lighthouse "$url" \
               --chrome-path="$chrome_path" \
-              --chrome-flags="--no-sandbox" \
+              --chrome-flags="--headless=new --no-sandbox" \
               --preset=perf \
               --form-factor=mobile \
               --throttling-method=simulate \
