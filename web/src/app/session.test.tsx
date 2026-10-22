@@ -18,9 +18,7 @@ import {
 import { server } from '@/test/msw/server'
 import { renderApp } from '@/test/renderApp'
 import { RequireSession } from '@/app/guards/routeGuards'
-import { EmailVerificationBanner } from '@/components/EmailVerificationBanner'
 import { LoginPage } from '@/features/auth/LoginPage'
-import { useVerifyToInviteNotice } from '@/features/auth/session'
 import { useDeactivateUser } from '@/features/users/api'
 
 const base = 'https://localhost:5173/api/v1'
@@ -86,34 +84,24 @@ describe('session guards and global failures', () => {
     toast.dismiss()
   })
   it('does not announce resend success when the session was already verified', async () => {
+    // The cached session is stale. Only the post-resend read learns that the
+    // account is already verified; an initial session refresh must not race the click.
+    let verified = false
     server.use(
-      http.get(`${base}/me`, () =>
-        HttpResponse.json(
+      http.get(`${base}/me`, () => {
+        return HttpResponse.json(
           buildSessionInfo({
-            user: { ...buildSessionInfo().user, email_verified: true },
+            user: { ...buildSessionInfo().user, email_verified: verified },
           }),
-        ),
-      ),
+        )
+      }),
       http.get(`${base}/tenant`, () => HttpResponse.json(buildTenant())),
-      http.post(
-        `${base}/auth/email-verification/resend`,
-        () => new HttpResponse(null, { status: 202 }),
-      ),
+      http.post(`${base}/auth/email-verification/resend`, () => {
+        verified = true
+        return new HttpResponse(null, { status: 202 })
+      }),
     )
-    function HookBoundBanner() {
-      const notice = useVerifyToInviteNotice()
-      return (
-        <EmailVerificationBanner
-          email="persona@example.test"
-          resendStatus={notice.status}
-          errorMessage={notice.errorMessage}
-          onResend={notice.sendAgain}
-          onDismiss={() => undefined}
-        />
-      )
-    }
     renderApp(['/settings/users'], {
-      protectedPage: <HookBoundBanner />,
       configureQueryClient: (client) =>
         client.setQueryData(
           queryKeys.session,
