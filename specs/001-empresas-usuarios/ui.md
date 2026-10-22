@@ -74,6 +74,10 @@ del conjunto, sin `--force` ni `--legacy-peer-deps`", con la excepción registra
 (Frontend, convenciones). Cambian §0, §22, §26 (P-F12, con default), §28 (RF-1), §29 y §30.
 Ninguna pantalla, estado, regla ni caso de test cambia; T-F001 y T-F006 suman verificaciones.
 Sistema visual sin cambios.
+**Enmienda de versiones de F7 (2026-10-22)**: Lighthouse 13.5.0 es la última estable compatible
+con Node 24 (requiere Node ≥ 22.19). Se fija como herramienta de desarrollo para medir NFR-F03 y
+NFR-F04 sobre el binario en el runner Linux; no llega al bundle de producción. Se registra en la
+tabla de versiones de `tasks.md`.
 **Enmienda de F0 (2026-10-15; P-F13, P-F14 y P-F15 aprobadas por el usuario el
 2026-10-16)**: tres pendientes de la implementación y
 la revisión de F0 (`main` en `de4d951`). (1) **Vulnerabilidades de npm** (ADR-027 nuevo; resuelve la
@@ -2905,7 +2909,7 @@ Otros puntos menores (los dos **resueltos** al 2026-10-12, revisión 3: el índi
 
 | ID | Riesgo | Prob. | Impacto | Mitigación |
 |---|---|:---:|:---:|---|
-| RF-1 | Versiones del ecosistema (Vite 8, React Router 8, Tailwind v4, shadcn con `Field`, Zod 4 + resolvers) con incompatibilidades puntuales de tipos o de *peer dependencies*. TypeScript queda en 5.9.3 mientras `openapi-typescript` y `typescript-eslint` no acepten ≥ 6; ESLint y `@eslint/js` quedan en 9.39.5 mientras `eslint-plugin-jsx-a11y` 6.10.2 no acepte ESLint ≥ 10 | Media | Bajo | Versiones fijadas en `package-lock.json`, sin `--force` ni `--legacy-peer-deps`; T-F001/T-F002 verifican la combinación (`npm ci` y `npm ls --all` sin conflictos); el test de humo de T-F006 verifica el router en jsdom; la tabla de excepciones de `tasks.md` se revisa en cada actualización de dependencias |
+| RF-1 | Versiones del ecosistema (Vite 8, React Router 8, Tailwind v4, shadcn con `Field`, Zod 4 + resolvers, Lighthouse 13.5.0) con incompatibilidades puntuales de tipos, motor o *peer dependencies*. TypeScript queda en 5.9.3 mientras `openapi-typescript` y `typescript-eslint` no acepten ≥ 6; ESLint y `@eslint/js` quedan en 9.39.5 mientras `eslint-plugin-jsx-a11y` 6.10.2 no acepte ESLint ≥ 10; Lighthouse requiere Node ≥ 22.19 | Media | Bajo | Versiones fijadas en `package-lock.json`, sin `--force` ni `--legacy-peer-deps`; T-F001/T-F002 verifican la combinación (`npm ci` y `npm ls --all` sin conflictos); el test de humo de T-F006 verifica el router en jsdom; la tabla de excepciones de `tasks.md` se revisa en cada actualización de dependencias |
 | RF-2 | Tras un deploy, pestañas abiertas piden chunks que ya no existen | Alta | Bajo | `vite:preloadError` → recarga única; `index.html` `no-cache` |
 | RF-3 | El usuario (nivel básico en React) se pierde entre librerías | Media | Medio | Pocas abstracciones propias, firmas en este documento, ADR con el porqué |
 | RF-4 | La CSP rompe algo que en desarrollo funcionaba (Vite dev no aplica CSP) | Media | Medio | E2E contra el binario falla ante cualquier violación de CSP (NFR-F10) |

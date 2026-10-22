@@ -190,6 +190,49 @@ jobs:
           cp "$(mkcert -CAROOT)/rootCA.pem" "$RUNNER_TEMP/mkcert-root-ca.pem"
           cd web
           npx playwright test --project="${{ matrix.browser }}"
+      - name: Measure mobile performance with Lighthouse
+        if: matrix.browser == 'webkit'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd web
+          npx playwright install --with-deps chromium
+          chrome_path="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')"
+          for route in login root; do
+            if [[ "$route" == login ]]; then url=https://localhost:8443/login; else url=https://localhost:8443/; fi
+            ./node_modules/.bin/lighthouse "$url" \
+              --chrome-path="$chrome_path" \
+              --chrome-flags="--no-sandbox" \
+              --preset=perf \
+              --form-factor=mobile \
+              --throttling-method=simulate \
+              --only-categories=performance \
+              --output=json \
+              --output-path="$RUNNER_TEMP/lighthouse-$route.json"
+          done
+          node -e '
+            const fs = require("node:fs");
+            for (const route of ["login", "root"]) {
+              const report = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/lighthouse-${route}.json`, "utf8"));
+              const audits = report.audits;
+              console.log(JSON.stringify({
+                route,
+                lighthouse: report.lighthouseVersion,
+                performanceScore: report.categories.performance.score,
+                lcpMs: audits["largest-contentful-paint"].numericValue,
+                cls: audits["cumulative-layout-shift"].numericValue,
+                inpMs: audits["interaction-to-next-paint"]?.numericValue ?? null,
+              }));
+            }
+          '
+      - name: Upload Lighthouse reports
+        if: always() && matrix.browser == 'webkit'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lighthouse-mobile-reports
+          path: ${{ runner.temp }}/lighthouse-*.json
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Stop development services
         if: always()
         run: docker compose down --volumes

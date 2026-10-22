@@ -3228,6 +3228,7 @@ Sin tareas nuevas ni cambios de orden.
   | `typescript` | 5.9.3 | 7.0.2 | (1) `openapi-typescript` 7.13.0 (la última) declara `peerDependencies.typescript: ^5.x`; (2) `typescript-eslint` 8.71.2 (la última) declara `>=4.8.4 <6.1.0`. 5.9.3 es la última versión que satisface las dos | `openapi-typescript` y `typescript-eslint` acepten TypeScript ≥ 6: se sube a la última que acepten las dos, en un PR propio con `npm run check` en verde |
   | `eslint` | 9.39.5 | 10.12.0 | `eslint-plugin-jsx-a11y` 6.10.2 (la última) declara `peerDependencies.eslint: ^3 \|\| ^4 \|\| ^5 \|\| ^6 \|\| ^7 \|\| ^8 \|\| ^9`; 9.39.5 es la última compatible | `eslint-plugin-jsx-a11y` acepte ESLint ≥ 10; se sube a la última compatible con `npm run check` en verde |
   | `@eslint/js` | 9.39.5 | 10.0.1 | `@eslint/js` 10.0.1 declara `peerDependencies.eslint: ^10.0.0`; se alinea con ESLint 9.39.5, limitado por `eslint-plugin-jsx-a11y` 6.10.2 | `eslint-plugin-jsx-a11y` acepte ESLint ≥ 10; se actualiza junto con ESLint y `npm run check` en verde |
+  | `lighthouse` | 13.5.0 | 13.5.0 (2026-10-22) | Última estable; requiere Node ≥ 22.19 y se usa solo en CI para la medición móvil T-F704 | Cada actualización del entorno Node o de Lighthouse |
 - **Clasificación de dependencias** *(enmienda de F0, ADR-027 §2)*: va en `dependencies` todo
   paquete cuyo JavaScript llega a `web/dist`. Va en `devDependencies` lo que solo corre en desarrollo
   o en CI (build, tests, lint, generadores, el CLI de shadcn) y los paquetes que solo aportan CSS
