@@ -54,6 +54,13 @@ export async function captureBrowserDiagnostics(
 export async function expectNoAccessibilityViolations(
   page: Page,
 ): Promise<void> {
+  const activeToasts = page.locator(
+    '[data-sonner-toast][data-mounted="true"][data-visible="true"]',
+  )
+  for (let index = 0; index < (await activeToasts.count()); index += 1) {
+    await expect(activeToasts.nth(index)).toHaveCSS('opacity', '1')
+  }
+
   const result = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
     .analyze()
