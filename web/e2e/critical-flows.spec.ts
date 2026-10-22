@@ -112,6 +112,9 @@ test('critical registration, session, recovery, invitation, and access flows', a
   expect(verificationURL.origin).toBe(origin)
   const verificationPage = await page.context().newPage()
   await verificationPage.bringToFront()
+  await expect
+    .poll(() => page.evaluate(() => document.visibilityState))
+    .toBe('hidden')
   await verificationPage.setViewportSize({ width: 320, height: 720 })
   await track(verificationPage)
   await verificationPage.goto(verificationURL.toString())
@@ -126,7 +129,16 @@ test('critical registration, session, recovery, invitation, and access flows', a
     verificationPage.getByText('¡Listo! Tu email quedó confirmado.'),
   ).toBeVisible()
   await inspectScreen(verificationPage)
+  const refreshedSession = page.waitForResponse((response) => {
+    return (
+      response.request().method() === 'GET' &&
+      new URL(response.url()).pathname === '/api/v1/me'
+    )
+  })
   await page.bringToFront()
+  const refreshedSessionResponse = await refreshedSession
+  expect(refreshedSessionResponse.ok()).toBe(true)
+  expect((await refreshedSessionResponse.json()).user.email_verified).toBe(true)
   await expect(page.getByRole('link', { name: '+ Invitar' })).toBeEnabled()
   await inspectScreen(page)
 
