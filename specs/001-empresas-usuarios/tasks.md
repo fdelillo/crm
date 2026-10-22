@@ -4719,6 +4719,10 @@ métricas de Lighthouse y el resultado del supuesto S-12.
   Lighthouse *mobile* sobre el binario en `https://localhost:8443` en `/login` y `/` (LCP, CLS; INP
   en un Android de gama media a mano, con el origen de H-12). **Si un objetivo no se cumple, frenar
   y volver al arquitecto** con los números.
+- **Estado 2026-10-22**: `vite build --manifest` pasó. El cierre de imports de `/login` mide
+  202,75 KB gzip frente al objetivo ≤ 200 KB (NFR-F05); se detuvo el bloque y se elevó a
+  `frontend-architect`. Lighthouse 13.5.0 no pudo iniciar Chrome 146 en macOS (`Permission denied
+  (1100)` de Crashpad), así que LCP/CLS no tienen medición. INP en Android sigue pendiente.
 
 **T-F705 — Verificación manual de accesibilidad** · NFR-F06, NFR-F07, NFR-F08, INV-F19, `ui.md` §18, P-F20
 - Checklist: todos los flujos solo con teclado; TalkBack (Chrome Android) y VoiceOver (Safari
