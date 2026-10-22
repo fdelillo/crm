@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { writeFile } from 'node:fs/promises'
 import { expect, test, type Page } from '@playwright/test'
 import {
   captureBrowserDiagnostics,
@@ -16,7 +17,7 @@ const resetPassword = 'Another example password 456!'
 test('critical registration, session, recovery, invitation, and access flows', async ({
   page,
   browser,
-}) => {
+}, testInfo) => {
   test.setTimeout(240_000)
   const diagnostics: BrowserDiagnostics[] = []
   const trackedPages: Page[] = []
@@ -298,10 +299,85 @@ test('critical registration, session, recovery, invitation, and access flows', a
     .click()
   await expect(page.getByText(`Desactivaste a ${operatorName}`)).toBeVisible()
   await inspectScreen(page)
+
+  const sessionApiObservations: Promise<string>[] = []
+  operatorPage.on('response', (response) => {
+    const responseURL = new URL(response.url())
+    if (
+      responseURL.origin !== origin ||
+      !['/api/v1/me', '/api/v1/users'].includes(responseURL.pathname) ||
+      response.request().method() !== 'GET'
+    ) {
+      return
+    }
+    sessionApiObservations.push(
+      (async () => {
+        let code = 'none'
+        if (response.status() >= 400) {
+          try {
+            const payload: unknown = await response.json()
+            if (typeof payload === 'object' && payload !== null) {
+              const rawCode = (payload as { code?: unknown }).code
+              const allowedCodes = new Set([
+                'unauthenticated',
+                'account_disabled',
+                'forbidden',
+                'internal_error',
+              ])
+              code =
+                typeof rawCode === 'string' && allowedCodes.has(rawCode)
+                  ? rawCode
+                  : 'other'
+            } else {
+              code = 'other'
+            }
+          } catch {
+            code = 'unavailable'
+          }
+        }
+        return `GET ${responseURL.pathname} -> ${response.status()} (${code})`
+      })(),
+    )
+  })
   await operatorPage.goto('/settings/users')
-  await expect(
-    operatorPage.getByText('Tu sesión se cerró. Ingresá de nuevo para seguir.'),
-  ).toBeVisible()
+  try {
+    await expect(
+      operatorPage.getByText(
+        'Tu sesión se cerró. Ingresá de nuevo para seguir.',
+      ),
+    ).toBeVisible()
+  } catch (error) {
+    const visibleMessages = await operatorPage
+      .locator('h1, h2, [role="alert"], [role="status"]')
+      .allInnerTexts()
+    const sanitizedMessages = visibleMessages
+      .map((message) =>
+        message
+          .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]')
+          .replace(/https?:\/\/\S+/gi, '[url]')
+          .replace(/[?&#][^\s]*/g, '[redacted]')
+          .slice(0, 300),
+      )
+      .filter(Boolean)
+    const apiObservations = await Promise.allSettled(sessionApiObservations)
+    const apiMessages = apiObservations.map((result) =>
+      result.status === 'fulfilled'
+        ? result.value
+        : 'GET session API -> unavailable',
+    )
+    const diagnostic = [
+      `URL path: ${new URL(operatorPage.url()).pathname}`,
+      `Visible headings/alerts/statuses: ${JSON.stringify(sanitizedMessages)}`,
+      `API observations: ${JSON.stringify(apiMessages)}`,
+    ].join('\n')
+    const diagnosticPath = testInfo.outputPath('session-expiry-diagnostic.txt')
+    await writeFile(diagnosticPath, diagnostic)
+    await testInfo.attach('session-expiry-diagnostic', {
+      path: diagnosticPath,
+      contentType: 'text/plain',
+    })
+    throw error
+  }
   await inspectScreen(operatorPage)
 
   await page.goto('/settings')
