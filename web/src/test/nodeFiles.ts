@@ -22,3 +22,7 @@ export function nodeFile(
 }
 export const nodeBlob = (size: number) =>
   new NodeBlob([new Uint8Array(size)]) as unknown as Blob
+
+// toEqual on a 2 MiB typed array compares element by element and takes seconds.
+export const sameBytes = (a: Uint8Array, b: Uint8Array) =>
+  Buffer.from(a).equals(Buffer.from(b))
