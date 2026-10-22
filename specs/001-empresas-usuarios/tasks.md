@@ -4893,7 +4893,7 @@ para evidencia CI.
   | `renderApp(..., { strictMode: true })` y navegar | un solo `GET /me` para la entrada |
   | Sin conexión (`onlineManager.setOnline(false)`) al navegar | el indicador y ningún `GET /me`; al volver la conexión sale uno y decide |
   | Administrador (permiso concedido) en el panel, dentro del `staleTime`, navega a `/settings/users` | la pantalla, sin ningún `GET /me` |
-- **Tests existentes**: no se tocan y tienen que seguir en verde.
+- **Tests existentes**: no se tocan y tienen que seguir en verde, salvo esta excepción aprobada por el usuario el 2026-10-22: únicamente en `web/src/app/shell.test.tsx`, el escenario `moves focus to the heading when navigating between routes that reuse the same heading node` cambia la navegación de `/settings/users` → `/settings/company` a `/missing-page-a` → `/missing-page-b`; conserva todas sus aserciones. La excepción se limita a ese test y a ese escenario; el resto de los tests existentes no se toca.
   - `session.test.tsx`: en "does not mount an unauthorized page or request its data", "Sin permiso"
     llega ahora después de una relectura. En "refreshes permissions after forbidden" llega sin
     relectura, porque el permiso se pierde sin una entrada nueva. Los dos esperan con `findBy`.

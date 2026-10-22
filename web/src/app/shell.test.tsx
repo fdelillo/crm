@@ -255,6 +255,8 @@ describe('application shell', () => {
     )
   })
   // T-F106 (INV-F10, review): two routes that render the same screen reuse the <h1> node.
+  // T-F707 (DD-F34): denied routes unmount the heading for the access indicator;
+  // use NotFoundPage to preserve the reused-heading focus regression.
   it('moves focus to the heading when navigating between routes that reuse the same heading node', async () => {
     server.use(
       http.get(`${base}/me`, () =>
@@ -266,11 +268,11 @@ describe('application shell', () => {
         ),
       ),
     )
-    const { router } = renderApp(['/settings/users'])
+    const { router } = renderApp(['/missing-page-a'])
     const heading = await screen.findByRole('heading', { level: 1 })
-    const link = screen.getByRole('link', { name: 'Inicio' })
+    const link = screen.getByRole('link', { name: 'Ir al inicio' })
     link.focus()
-    await act(() => router.navigate('/settings/company'))
+    await act(() => router.navigate('/missing-page-b'))
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1 })).toHaveFocus(),
     )
