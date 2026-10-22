@@ -4606,6 +4606,18 @@ que estén en el documento.
 652 passed y 2 expected-fail (654 con los de tipos), y build. Antes de P-F22 eran 641 passed; la
 suite entera tarda ~47 s y no se subió ningún timeout. Revisión: pendiente (Codex).
 
+**Prueba independiente con P-F22 (Claude Code, 2026-10-22, Playwright en Chrome 146, `a4bad98`)**: el
+flujo de arriba pasó 3 de 3 corridas, con dos pasos nuevos.
+- **Cola:** se elige el PNG y se guarda un teléfono nuevo mientras sube. CDP retiene 1,5 s la
+  respuesta del `PUT`, que el servidor ya confirmó: el caso de la revisión 2. Orden observado:
+  `PUT` enviado, respuesta del `PUT`, `PATCH` enviado, respuesta del `PATCH`. Al salir a Ajustes y
+  volver, dentro del `staleTime`, el teléfono es el nuevo y el logo tiene los bytes del PNG.
+  - Mutación: sin el `scope` en `useUpdateTenant`, el `PATCH` sale antes de la respuesta del `PUT` y
+    el paso falla.
+- **Zona guardada que Chrome no lista:** se guarda `America/Argentina/Buenos_Aires` con un `PATCH`
+  hecho desde la página. "Argentina" la muestra primera, no muestra `America/Buenos_Aires` y tiene 12
+  opciones, como antes. Con la zona sin tocar, "Guardar cambios" sigue deshabilitado.
+
 ---
 
 ### Fase F7 — End-to-end, PWA, accesibilidad y performance (verificación)
