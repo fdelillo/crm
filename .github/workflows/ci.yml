@@ -84,6 +84,10 @@ jobs:
             tools.sum
       - name: make build
         run: make build
+      - name: Record matching Vite manifest and embedded asset hashes
+        run: |
+          cd web
+          node scripts/record-build-assets.mjs "$RUNNER_TEMP/lighthouse-build"
       # A tar archive preserves the executable bit when a later E2E job downloads the artifact.
       - name: Package binary
         run: tar -C bin -czf bin/crm-linux-amd64.tar.gz crm
@@ -91,6 +95,12 @@ jobs:
         with:
           name: crm-linux-amd64
           path: bin/crm-linux-amd64.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: crm-frontend-build-evidence
+          path: ${{ runner.temp }}/lighthouse-build
           if-no-files-found: error
           retention-days: 7
 
@@ -102,7 +112,7 @@ jobs:
       matrix:
         browser: ${{ github.event_name == 'workflow_dispatch' && fromJSON(format('["{0}"]', inputs.browser)) || fromJSON('["chromium"]') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -199,48 +209,45 @@ jobs:
           path: web/test-results/**/session-expiry-diagnostic.txt
           if-no-files-found: warn
           retention-days: 7
-      - name: Measure mobile performance with Lighthouse
+      - name: Download matching frontend build evidence
+        if: always() && matrix.browser == 'webkit'
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v6.0.0
+        with:
+          name: crm-frontend-build-evidence
+          path: ${{ runner.temp }}/lighthouse-evidence/build
+      - name: Collect repeated mobile Lighthouse evidence
+        if: always() && matrix.browser == 'webkit'
+        env:
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/mkcert-root-ca.pem
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp "$(mkcert -CAROOT)/rootCA.pem" "$RUNNER_TEMP/mkcert-root-ca.pem"
+          cd web
+          npx playwright install --with-deps chromium
+          node scripts/collect-performance-evidence.mjs "$RUNNER_TEMP/lighthouse-evidence"
+      - name: Open saved traces in Chrome DevTools Performance
+        if: always() && matrix.browser == 'webkit'
+        run: |
+          cd web
+          node scripts/capture-performance-panel.mjs "$RUNNER_TEMP/lighthouse-evidence"
+      - name: Check anonymous evidence before upload
+        id: performance-upload
         if: always() && matrix.browser == 'webkit'
         shell: bash
         run: |
           set -euo pipefail
           cd web
-          npx playwright install --with-deps chromium
-          chrome_path="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')"
-          for route in login root; do
-            if [[ "$route" == login ]]; then url=https://localhost:8443/login; else url=https://localhost:8443/; fi
-            ./node_modules/.bin/lighthouse "$url" \
-              --chrome-path="$chrome_path" \
-              --chrome-flags="--headless=new --no-sandbox" \
-              --preset=perf \
-              --form-factor=mobile \
-              --throttling-method=simulate \
-              --only-categories=performance \
-              --output=json \
-              --output-path="$RUNNER_TEMP/lighthouse-$route.json"
-          done
-          node -e '
-            const fs = require("node:fs");
-            for (const route of ["login", "root"]) {
-              const report = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/lighthouse-${route}.json`, "utf8"));
-              const audits = report.audits;
-              console.log(JSON.stringify({
-                route,
-                lighthouse: report.lighthouseVersion,
-                performanceScore: report.categories.performance.score,
-                lcpMs: audits["largest-contentful-paint"].numericValue,
-                cls: audits["cumulative-layout-shift"].numericValue,
-                inpMs: audits["interaction-to-next-paint"]?.numericValue ?? null,
-              }));
-            }
-          '
+          node scripts/validate-performance-evidence.mjs "$RUNNER_TEMP/lighthouse-evidence"
+          echo 'safe=true' >> "$GITHUB_OUTPUT"
       - name: Upload Lighthouse reports
-        if: always() && matrix.browser == 'webkit'
+        if: always() && matrix.browser == 'webkit' && steps.performance-upload.outputs.safe == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: lighthouse-mobile-reports
-          path: ${{ runner.temp }}/lighthouse-*.json
-          if-no-files-found: ignore
+          path: ${{ runner.temp }}/lighthouse-evidence
+          if-no-files-found: error
           retention-days: 7
       - name: Stop development services
         if: always()
