@@ -334,16 +334,19 @@ describe('CompanyPage time zone', () => {
   beforeEach(() => {
     vi.spyOn(Intl, 'supportedValuesOf').mockReturnValue([
       'Africa/Abidjan',
-      'America/Argentina/Buenos_Aires',
       'America/Argentina/Cordoba',
+      'America/Buenos_Aires',
+      'America/Mendoza',
+      'America/Santiago',
       'Europe/Madrid',
     ])
   })
 
-  it('lists America/Argentina/* first', async () => {
+  // T-F602 (DD-F27, P-F21): the previous names of the Argentine zones belong to "Argentina".
+  it('groups the Argentine zones first, including the previous names', async () => {
     serveCompany(companyTenant({ timezone: 'Europe/Madrid' }))
     await renderCompany()
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     await user.click(
       await screen.findByRole('combobox', { name: 'Zona horaria' }),
     )
@@ -351,26 +354,39 @@ describe('CompanyPage time zone', () => {
       (option) => option.textContent,
     )
     expect(options).toEqual([
-      'America/Argentina/Buenos_Aires',
       'America/Argentina/Cordoba',
+      'America/Buenos_Aires',
+      'America/Mendoza',
       'Africa/Abidjan',
+      'America/Santiago',
       'Europe/Madrid',
     ])
+    expect(screen.getByText('Argentina')).toBeVisible()
+    expect(screen.getByText('Otras zonas')).toBeVisible()
   })
 
-  it('shows the saved zone selected even when Intl does not list it (DD-F27)', async () => {
-    serveCompany(companyTenant({ timezone: 'America/Buenos_Aires' }))
-    await renderCompany()
-    const user = userEvent.setup()
-    const trigger = await screen.findByRole('combobox', {
-      name: 'Zona horaria',
-    })
-    expect(trigger).toHaveTextContent('America/Buenos_Aires')
-    await user.click(trigger)
-    expect(
-      await screen.findByRole('option', { name: 'America/Buenos_Aires' }),
-    ).toHaveAttribute('aria-selected', 'true')
-  })
+  it.each([
+    ['America/Argentina/Buenos_Aires', 0],
+    ['Europe/Berlin', 3],
+  ])(
+    'shows the saved zone %s selected and first in its group even when Intl does not list it (DD-F27)',
+    async (timezone, position) => {
+      serveCompany(companyTenant({ timezone }))
+      await renderCompany()
+      const user = userEvent.setup({ delay: null })
+      const trigger = await screen.findByRole('combobox', {
+        name: 'Zona horaria',
+      })
+      expect(trigger).toHaveTextContent(timezone)
+      await user.click(trigger)
+      const options = await screen.findAllByRole('option')
+      expect(options[position]).toHaveTextContent(timezone)
+      expect(screen.getByRole('option', { name: timezone })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      )
+    },
+  )
 
   it('sends only the new zone when it is the only change', async () => {
     const state = serveCompany()
