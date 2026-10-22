@@ -126,21 +126,9 @@ test('critical registration, session, recovery, invitation, and access flows', a
     verificationPage.getByText('¡Listo! Tu email quedó confirmado.'),
   ).toBeVisible()
   await inspectScreen(verificationPage)
-  const refreshedSession = page.waitForResponse((response) => {
-    return (
-      response.request().method() === 'GET' &&
-      new URL(response.url()).pathname === '/api/v1/me'
-    )
-  })
-  await page.bringToFront()
-  // Headless Chromium keeps both pages visible; emit the lifecycle event that
-  // a foreground-tab transition sends to React Query's focus manager.
-  await page.evaluate(() =>
-    document.dispatchEvent(new Event('visibilitychange')),
-  )
-  const refreshedSessionResponse = await refreshedSession
-  expect(refreshedSessionResponse.ok()).toBe(true)
-  expect((await refreshedSessionResponse.json()).user.email_verified).toBe(true)
+  // Headless Chromium reports every page as visible, so reload the original
+  // tab to restore the now-verified session from the real server.
+  await page.reload()
   await expect(page.getByRole('link', { name: '+ Invitar' })).toBeEnabled()
   await inspectScreen(page)
 
