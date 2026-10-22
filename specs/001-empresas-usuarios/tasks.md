@@ -3179,6 +3179,16 @@ de `Intl`, la opción que es la misma zona con otro nombre no se muestra; `ARGEN
 pasa a mapa. Cambian T-F602, T-F603, T-F605 y la trazabilidad; se corrigen en la rama del PR #43.
 Sin tareas nuevas ni cambios de orden.
 
+**Enmienda de F7, P-F23 (2026-10-22; `ui.md` P-F23: opción A elegida por el usuario el 2026-10-22,
+detalles (1) a (4) aprobados por el usuario el 2026-10-22)** (`ui.md`, enmienda de F7, P-F23): T-F702 encontró que un
+Operador desactivado con la sesión abierta veía "Sin permiso" en lugar del aviso de sesión cerrada.
+DD-F34 nueva e INV-F21: `RequirePermission` relee `/me` una vez por entrada cuando el permiso en
+caché está denegado (§6.4.1, §14.5). La fila de la desactivación de T-F702 queda más precisa, sin
+relajarse. T-F707 suma la corrección con sus tests (`web/src/app/guards/routeGuards.test.tsx`).
+T-F704 suma la evidencia que hay que capturar sobre el LCP de `/login`, sin cambiar NFR-F03.
+Cambian T-F702, T-F704, T-F707 y la trazabilidad; se corrigen en la rama del PR #45. Sin tareas
+nuevas ni cambios de orden.
+
 ### Convenciones de esta sección
 
 - `[T]` = tarea de test. Va **antes** de la tarea de código que la hace pasar, y el test debe
@@ -4700,7 +4710,7 @@ métricas de Lighthouse y el resultado del supuesto S-12.
   | Admin invita → enlace de Mailpit → invitado acepta → panel de Operador → `/settings/users` | "Sin permiso" |
   | Admin reinvita a un invitado con otro rol → el invitado acepta | entra con el rol nuevo |
   | Olvidé mi contraseña → enlace → contraseña nueva → ingresar; reabrir el enlace | éxito; "Este enlace ya no sirve." |
-  | Admin desactiva al operador (otro contexto de navegador) → el operador navega | login con "Tu sesión se cerró." |
+  | Admin desactiva al operador (otro contexto de navegador) → el operador, en el panel y sin recargar, navega a `/settings/users` (navegación del cliente; DD-F34) | login con "Tu sesión se cerró. Ingresá de nuevo para seguir." y URL `/login?next=%2Fsettings%2Fusers&reason=session_expired`; después de la desactivación sale un `GET /me` y responde `401` |
   | 5 contraseñas incorrectas → 6.º intento | estado Bloqueado con la hora |
   | En cada pantalla visitada | axe sin violaciones *serious*/*critical*; a 320 px de ancho, `scrollWidth ≤ innerWidth`; 0 violaciones de CSP; 0 errores de consola |
   | Cabeceras de `/` en el binario local | CSP de §10.7 presente; `Strict-Transport-Security` **ausente** (modo local, DD-24) |
@@ -4737,6 +4747,47 @@ métricas de Lighthouse y el resultado del supuesto S-12.
   migrar Zod, React Hook Form ni zodResolver. Lighthouse no se repitió: la ejecución anterior no
   pudo iniciar Chrome 146 en macOS (`Permission denied (1100)` de Crashpad), por lo que LCP/CLS no
   están medidos; INP Android sigue pendiente.
+- **Estado 2026-10-22 (LCP de `/login` fuera del objetivo; diagnóstico pendiente)**: Lighthouse
+  13.5.0 *mobile* simulado en CI da en `/login` 2621, 2654 y 2674 ms (objetivo ≤ 2500), con CLS 0;
+  en `/`, 2076 ms. El nodo LCP es el `<h1>` "Ingresá a tu cuenta"; FCP ~2130 ms, TTFB ~42 ms y
+  *render delay* 431–544 ms. **NFR-F03 no cambia** y todavía no se elige ninguna optimización: la
+  tarea se frena acá y vuelve al arquitecto con la evidencia de abajo. Hipótesis a confirmar o
+  descartar: una cascada documento → bundle principal → chunk lazy de `/login` y sus dependencias.
+- **Evidencia a capturar**: misma revisión del binario, mismo runner y el mismo método de medición
+  (`--preset=perf --form-factor=mobile --throttling-method=simulate`).
+  1. Cinco corridas por ruta (`/login` y `/`), con `--output=json --output=html --save-assets`
+     (confirmar el nombre del flag con `lighthouse --help` de 13.5.0). Cada corrida deja el LHR (JSON
+     y HTML), el trace y el devtools log, y todo sube como artefacto (hoy el job sube solo el JSON).
+  2. Datos del LHR de cada corrida:
+     - `largest-contentful-paint` y `first-contentful-paint`.
+     - `metrics`, con los valores observados además de los simulados.
+     - `lcp-phases-insight`, `network-dependency-tree-insight` y `render-blocking-insight`.
+     - `network-requests` (inicio, fin, bytes transferidos y descomprimidos, prioridad y tipo).
+     - `bootup-time` y `mainthread-work-breakdown`.
+     - `screenshot-thumbnails` y `final-screenshot` (filmstrip).
+     - `environment.benchmarkIndex`.
+  3. El `manifest.json` de `vite build --manifest` de la misma revisión, para saber qué chunk es cada
+     request y qué cuelga del de `LoginPage`.
+  4. El trace abierto en el panel Performance de Chrome DevTools: captura de las pistas de red y del
+     hilo principal entre el FCP y el LCP, con el nombre de las tareas largas.
+  5. Una corrida de diagnóstico por ruta con `--throttling-method=devtools`, solo para comparar con
+     la simulación. No reemplaza la medición de NFR-F03.
+- **Preguntas que la evidencia tiene que responder**:
+  1. ¿Qué requests están antes del LCP de `/login`, en qué orden y en qué profundidad de cadena?
+     ¿El chunk de `LoginPage` y sus dependencias se descubren recién cuando terminó de ejecutarse el
+     bundle principal? ¿Cuántos KB gzip viajan antes del LCP?
+  2. ¿Qué se pinta en el FCP si el `<h1>` llega ~500 ms después? ¿Qué muestra cada cuadro del
+     filmstrip entre los dos?
+  3. ¿Qué ocupa el hilo principal durante el *render delay*: qué script se evalúa, el render de
+     React, tareas largas de qué archivo?
+  4. ¿El pintado del `<h1>` espera algo que no sea JS: `GET /me` (`PublicOnly` no debería esperarlo,
+     `ui.md` §6.4), el service worker, el manifest, los íconos o el CSS?
+  5. ¿Por qué `/` (2076 ms) es más rápido que `/login`, si termina en el mismo `<h1>` y descarga más
+     JS? ¿Cuál es su nodo LCP y cuándo se pinta?
+  6. ¿Cuánto se separan el LCP simulado y el observado? ¿Cuánto varía el `benchmarkIndex` entre
+     corridas?
+  7. Con las cinco corridas por ruta, ¿cuál es la mediana y cuál el p75, que es la métrica de
+     NFR-F03?
 
 **T-F705 — Verificación manual de accesibilidad** · NFR-F06, NFR-F07, NFR-F08, INV-F19, `ui.md` §18, P-F20
 - Checklist: todos los flujos solo con teclado; TalkBack (Chrome Android) y VoiceOver (Safari
@@ -4818,6 +4869,54 @@ corrida dirigida pasó; cinco corridas dirigidas simultáneas pasaron (5/5); `np
 (44 archivos Vitest, 652 pasaron, 2 expected-fail, typecheck y build). Esperar el check del PR #45
 para evidencia CI.
 
+**T-F707 — Relectura de `/me` al entrar sin permiso** · DD-F34, INV-F21, P-F23, DD-41, DD-44, `ui.md` §6.4.1, §12.4, §14.5. Corrige el hallazgo de T-F702: un Operador desactivado con la sesión abierta veía "Sin permiso" en lugar del aviso de sesión cerrada.
+- **Red**: `web/src/app/guards/routeGuards.test.tsx`, archivo nuevo junto al guard. Es una prueba de
+  integración con `renderApp`, las rutas reales de `appRoutes` y MSW en el borde HTTP. **No** se
+  sustituyen `useSession`, `useCan` ni el guard. `GET /me` usa un `vi.fn` para contar requests y
+  `gate()` para retener la respuesta. Como `session.test.tsx`, precarga los chunks lazy en
+  `beforeAll` (auth, users, tenant, dashboard, AppShell), para que la carga de un chunk no se cruce
+  con la respuesta retenida. Salvo que la fila diga otra cosa, se arranca en `/` con una sesión de
+  Operador en caché y se entra con `router.navigate(...)`: es la navegación del cliente que hace el
+  E2E.
+
+  | Caso | Resultado observable |
+  |---|---|
+  | `/me` responde `401 unauthenticated`; navegar a `/settings/users` | login con "Tu sesión se cerró. Ingresá de nuevo para seguir."; URL `/login?next=%2Fsettings%2Fusers&reason=session_expired`; ningún `GET /users`; "No tenés acceso a esta sección" no aparece |
+  | Lo mismo, con `/me` retenido | `status` "Comprobando tu acceso" con `aria-busy="true"`; no están "No tenés acceso a esta sección" ni el `<h1>` "Usuarios"; al soltar `/me`, lo de la fila anterior |
+  | `/me` responde `200` sin `settings.manage` | "No tenés acceso a esta sección" con el foco en su `<h1>`; `document.title` "No tenés acceso a esta sección · Empresa de prueba"; exactamente **un** `GET /me` desde la navegación |
+  | `/me` responde `200` con `settings.manage` (rol ascendido) | el `<h1>` "Usuarios"; "No tenés acceso a esta sección" nunca estuvo en el DOM |
+  | `/me` responde `503`, o falla la red (el cliente de test usa `retry: false`) | `<h1>` "No pudimos comprobar tu acceso"; "El servicio no está disponible en este momento." o "No hay conexión.", según `messageForError(error, 'generic')`; "Reintentar"; enlace "Volver al inicio" con `href="/"`; no aparece "No tenés acceso…" |
+  | Desde ese error, "Reintentar" (clic, y en otra corrida Tab + Enter) con `/me` → `200` sin el permiso | primero el indicador, después "No tenés acceso a esta sección" con el foco en su `<h1>`; un `GET /me` más |
+  | Con "Sin permiso" a la vista, un re-render por otra causa (`setQueryData(['tenant'])` con otro nombre) | ningún `GET /me` más |
+  | Desde "Sin permiso" en `/settings/users`, navegar a `/settings/company` y volver | un `GET /me` por cada entrada (2 más); "Sin permiso" en las dos |
+  | Un `GET /me` en curso al navegar (lanzado con `invalidateQueries(['session'])` y retenido) | un solo `GET /me` en total; al soltarlo, ese resultado decide |
+  | `renderApp(..., { strictMode: true })` y navegar | un solo `GET /me` para la entrada |
+  | Sin conexión (`onlineManager.setOnline(false)`) al navegar | el indicador y ningún `GET /me`; al volver la conexión sale uno y decide |
+  | Administrador (permiso concedido) en el panel, dentro del `staleTime`, navega a `/settings/users` | la pantalla, sin ningún `GET /me` |
+- **Tests existentes**: no se tocan y tienen que seguir en verde.
+  - `session.test.tsx`: en "does not mount an unauthorized page or request its data", "Sin permiso"
+    llega ahora después de una relectura. En "refreshes permissions after forbidden" llega sin
+    relectura, porque el permiso se pierde sin una entrada nueva. Los dos esperan con `findBy`.
+  - `UsersPage.test.tsx`: el caso de cambiarse a uno mismo a Operador mantiene
+    `expect(me).toHaveBeenCalledOnce()`, que pasa a ser la guarda de "sin entrada nueva no hay
+    relectura" (INV-F21).
+  - El test inestable conocido de `session.test.tsx` (el reenvío con la sesión ya confirmada) siembra
+    un Administrador: entra con el permiso concedido y no suma ningún `GET /me`. Los casos nuevos van
+    en un archivo propio para no agregarle tiempo ni requests a `session.test.tsx`.
+- **Mutaciones**: se aplica cada una, algún caso tiene que fallar, y se restaura.
+  1. El guard decide solo con `useCan`: falla la primera fila y la del rol ascendido.
+  2. `refetch()` sin `cancelRefetch: false`: falla la del `GET /me` en curso.
+  3. Relectura en cada render: falla la del re-render.
+  4. Relectura también cuando el permiso se pierde sin entrada nueva: falla `UsersPage.test.tsx`.
+  5. El error muestra "Sin permiso": falla la del `503`.
+- **Green**: pasan la tabla, los tests existentes sin cambios y la fila de la desactivación de
+  T-F702 en Chromium (WebKit, reportado).
+- **Refactor**: revisar que:
+  - el indicador comparta con `SessionLoader` solo el spinner, no el `<main>`;
+  - `usePermissionCheck` guarde solo la entrada comprobada y el error de su relectura, nunca la sesión
+    ni el permiso (INV-F01);
+  - los nombres vayan por funcionalidad, con la trazabilidad en comentarios.
+
 **Checkpoint Fase F7**: `npm run check` y `npm run e2e` en verde (Chromium en CI; WebKit
 reportado); reportes de T-F704, T-F705 y T-F706 adjuntos; resultado de S-12 (y del respaldo, si se
 usó) reportado.
@@ -4882,4 +4981,5 @@ usó) reportado.
 | P-F20 (marca del aviso C-01 fija y sin email, borrada en los puntos de INV-F03; props de C-01 y del aviso W con el objeto de `messageForError`; INV-F19, regiones corteses montadas antes que su texto), `ui.md` §8, §9.2, §10.1, §13.5, §13.9, §13.11, §13.13, §15.1, §15.4, §17, §18, §22, DD-F29 | T-F106, T-F404, T-F405, T-F406, T-F502, T-F505, T-F506, T-F603, T-F703, T-F705 |
 | P-F21 (textos y foco del diálogo de "Quitar" y del aviso de salida; DD-F27 con los nombres anteriores de las zonas argentinas; DD-F26 con la comparación de bytes; lectura del archivo entero; `resized`; `unknown` como `unsupported_format`; firmas de `LogoUploader`, `ConfirmDialog`, `tenantQuery`, `companyInitials`), `ui.md` §7, §9.1, §11.1, §13.11, §13.11.1, §14.4, §15, §22, §24, §25 | T-F602, T-F603, T-F604, T-F605 |
 | P-F22 (cola de los cambios de la empresa y cancelación de las lecturas en vuelo: DD-F33, INV-F20, S-F15; DD-F27 sin dos nombres para la misma zona), `ui.md` §9.2, §10.3, §13.11, §14.4, §15.4, §24, §25, §26, §29 | T-F602, T-F603, T-F605 |
+| DD-F34 / INV-F21 (relectura de `/me` al entrar con el permiso en caché denegado), P-F23, `ui.md` §6.4.1, §14.5 | T-F707, T-F702 |
 | NFR-F01..F13 | T-F002 (F02, F07, F08), T-F702 (F01, F06, F10, F12), T-F703 (F09, F11), T-F704 (F03..F05), T-F705 (F06..F08), T-F706 (F13) |

@@ -1,7 +1,7 @@
 # UI (frontend): Empresas, usuarios y roles
 
 **Spec**: [`spec.md`](spec.md) · **Rama**: `001-empresas-usuarios` · **Fecha**: 2026-09-29
-**Autor**: `frontend-architect` · **Estado**: Revisión 3 aprobada por el usuario el 2026-10-12; Revisión 4 aprobada por el usuario el 2026-10-13 (P-F10: sí; P-F11: no); enmienda H-16 a la Revisión 4 aprobada por el usuario el 2026-10-13; enmienda DD-F31 *Accepted*, aprobada por el usuario el 2026-10-14; enmienda de versiones del 2026-10-15: React Router 8 por decisión del usuario, regla de versiones y excepción de TypeScript confirmadas por el usuario el 2026-10-15 (P-F12); enmienda de F0 del 2026-10-15: P-F13, P-F14 y P-F15 aprobadas por el usuario el 2026-10-16; enmienda de F1 del 2026-10-16: P-F16, P-F17 y P-F18 aprobadas por el usuario el 2026-10-16; enmienda de F3 del 2026-10-17: P-F19 aprobada por el usuario el 2026-10-17; enmienda de F4 del 2026-10-20: P-F20 aprobada por el usuario el 2026-10-20; enmienda de F6 del 2026-10-21: P-F21 aprobada por el usuario el 2026-10-21; enmienda de F6 del 2026-10-22: P-F22 aprobada por el usuario el 2026-10-22; mantenimiento de la documentación del 2026-10-22, sin cambios de diseño (PR de documentación aprobado por el usuario)
+**Autor**: `frontend-architect` · **Estado**: Revisión 3 aprobada por el usuario el 2026-10-12; Revisión 4 aprobada por el usuario el 2026-10-13 (P-F10: sí; P-F11: no); enmienda H-16 a la Revisión 4 aprobada por el usuario el 2026-10-13; enmienda DD-F31 *Accepted*, aprobada por el usuario el 2026-10-14; enmienda de versiones del 2026-10-15: React Router 8 por decisión del usuario, regla de versiones y excepción de TypeScript confirmadas por el usuario el 2026-10-15 (P-F12); enmienda de F0 del 2026-10-15: P-F13, P-F14 y P-F15 aprobadas por el usuario el 2026-10-16; enmienda de F1 del 2026-10-16: P-F16, P-F17 y P-F18 aprobadas por el usuario el 2026-10-16; enmienda de F3 del 2026-10-17: P-F19 aprobada por el usuario el 2026-10-17; enmienda de F4 del 2026-10-20: P-F20 aprobada por el usuario el 2026-10-20; enmienda de F6 del 2026-10-21: P-F21 aprobada por el usuario el 2026-10-21; enmienda de F6 del 2026-10-22: P-F22 aprobada por el usuario el 2026-10-22; mantenimiento de la documentación del 2026-10-22, sin cambios de diseño (PR de documentación aprobado por el usuario); enmienda de F7 del 2026-10-22: P-F23 aprobada por el usuario el 2026-10-22 (opción A y detalles (1) a (4))
 **Contrato consumido**: [`contracts/openapi.yaml`](contracts/openapi.yaml) **v0.5.0** (**canónico**; el diseño original se hizo contra v0.3.1; la Revisión 3, contra v0.4.3)
 **Revisión 1 (2026-09-29)**: respuestas del usuario a P-F1 a P-F5 (§26) y resolución de los
 hallazgos H-1 a H-9 por el backend (`plan.md` §18, DD-22 a DD-30, §10.7, contrato v0.3.0). Cambios:
@@ -196,6 +196,23 @@ el shell apaga al cerrar sesión) y `logoVersion`. (3) §22 suma los archivos de
 `features/tenant/` y de `src/test/` que no figuraban, y aclara que en `src/` el árbol no lista los
 tests que viven junto al código. Cambian §9.2, §15.4, §22, §24, §25, §26 y §29. Tareas: cambia la
 entrada "P-F22 implementada" de `tasks.md`. Sistema visual sin cambios.
+
+**Enmienda de F7, P-F23 (2026-10-22; opción A y detalles (1) a (4) aprobados por el usuario el
+2026-10-22)**: T-F702 encontró que un Operador al que otro Administrador desactiva
+con la sesión abierta, al navegar sin recargar a `/settings/users`, veía "No tenés acceso a esta
+sección" en lugar de "Tu sesión se cerró. Ingresá de nuevo para seguir.": `RequirePermission`
+decidía solo con el permiso en caché y no pedía `/me`, aunque el backend ya había revocado la sesión
+(DD-41). (1) **DD-F34 nueva e INV-F21**: si al entrar a una ruta con permiso (montaje del guard o
+cambio de pathname) el permiso en caché está denegado, el guard relee `/me` una vez y se une a una
+lectura que ya esté en curso. Hasta tener la respuesta muestra "Comprobando tu acceso…". Con `401`
+va al login con `reason=session_expired` (§12.4), con el permiso muestra la pantalla, sin el permiso
+"Sin permiso", y con un error de red o `5xx` una pantalla de error con "Reintentar". (2) §6.4.1 y
+§14.5 nuevas con el contrato y la secuencia. (3) Se cierra el bloque Mermaid de §14.4, al que le
+faltaba la línea de cierre y se tragaba el comienzo de §15. Cambian §6.4, §9.2, §10.1, §12.4, §13.9,
+§14.4, §14.5, §15.3, §15.4, §17, §24, §26 y §29. Tareas: cambian T-F702 (la fila de la desactivación
+queda más precisa, sin relajarse), T-F704 (evidencia del LCP de `/login`, sin cambiar NFR-F03) y
+T-F707 (la corrección con sus tests), y la trazabilidad. Sistema visual sin cambios: el indicador
+reutiliza el spinner de la pantalla de arranque.
 
 | Archivo | Contenido |
 |---|---|
@@ -436,11 +453,78 @@ flowchart TD
 |---|---|---|---|---|
 | `RequireSession` | `['session']` | Pantalla de arranque (marca + spinner con `aria-busy`), sin parpadeo del login | `<Navigate to="/login?next=<ruta actual>" replace>` | Sin sesión en caché (primera carga, `isLoadingError`): estado de error a pantalla completa con "Reintentar". Con la sesión en caché (falla un refetch, `isRefetchError`; en TanStack Query v5 `isError` es `true` en los dos casos): el shell y la pantalla siguen montados, sin aviso, y el próximo refetch (foco, montaje) vuelve a intentar (§12.5, P-F18) |
 | `PublicOnly` | `['session']` | Renderiza el formulario (el `GET /me` anónimo es rápido; no se bloquea la pantalla) | Con sesión → `<Navigate to={safeNextPath(next)} replace>` | Renderiza el formulario (el error de sesión no impide ingresar) |
-| `RequirePermission` | `session.permissions` | — (ya hay sesión) | Estado **Sin permiso** en la misma URL: "No tenés acceso a esta sección" + "Pedile a un administrador si lo necesitás" + botón "Volver al inicio" | — |
+| `RequirePermission` | `session.permissions` | *(Enmienda de F7, DD-F34)* Si al entrar (montaje o cambio de pathname) el permiso en caché está denegado: "Comprobando tu acceso…" (spinner, `role="status"`, `aria-busy`) mientras relee `/me` una vez (§6.4.1). Con el permiso concedido no hay espera: ya hay sesión | Después de la relectura: `401` → §12.4 (login con `reason=session_expired`); sin el permiso → estado **Sin permiso** en la misma URL: "No tenés acceso a esta sección" + "Pedile a un administrador si lo necesitás" + botón "Volver al inicio"; con el permiso (rol ascendido) → la pantalla | Si falla la relectura (red o `5xx`, después de los reintentos de §10.2): "No pudimos comprobar tu acceso" + el mensaje de `messageForError(error, 'generic')` + "Reintentar" (relee otra vez) + "Volver al inicio". Sin conexión, la relectura queda en pausa con el indicador y C-02 (§12.1) |
 
 Si `['session']` pasa de un usuario a `null` (por ejemplo, un refetch al volver a la pestaña
 después de 24 h), se trata igual que el `401` global (§12.4): caché vacía y login con
 `reason=session_expired`.
+
+#### 6.4.1 Relectura de `/me` al entrar sin permiso (DD-F34, INV-F21; enmienda de F7)
+
+"Sin permiso" es el único estado de una ruta protegida que no hace ningún request. Si el permiso
+está concedido, la pantalla pide sus datos y un `401` la saca (§12.4). Si está denegado, la caché
+puede estar mostrando el permiso de una sesión que el servidor ya cerró (por ejemplo, otro
+Administrador desactivó al usuario, DD-41), y nada se lo avisa al cliente. Por eso el guard relee
+`/me` una vez antes de mostrar "Sin permiso".
+
+**Disparo.** Una relectura por **entrada**. Una entrada es el montaje de `RequirePermission` o un
+cambio de `location.pathname` mientras sigue montado: pasar de `/settings/company` a
+`/settings/users` es otra entrada y relee otra vez. La relectura se hace solo si al entrar el permiso
+en caché está **denegado**. Si estaba concedido, esa entrada no relee nunca, aunque el permiso se
+pierda después: esa pérdida ya viene de una lectura del servidor (el refetch al enfocar, o
+`invalidateQueries` tras un `403 forbidden`, §12.4), y la pantalla pasa directo a "Sin permiso".
+Un re-render por otra causa (la caché de la empresa, un toast, el foco) no es una entrada.
+
+**Una sola request.** La relectura es un `refetch` de la query `['session']` con
+`cancelRefetch: false`. Si ya hay un `GET /me` en curso (el refetch al enfocar, una invalidación, el
+doble efecto de `StrictMode` en desarrollo), se une a él en lugar de cancelarlo o de mandar otro
+(TanStack Query 5.104.3, `Query.fetch`). Usa la `queryFn` de `useSession`, que mapea el `401` a
+`null` (DD-F4). No tiene reintentos propios: valen los de §10.2 (hasta 2, solo con red o `503`). No
+hay *polling*.
+
+**Mientras relee.** En el lugar de la pantalla, dentro del shell, se ve el indicador "Comprobando tu
+acceso…": `role="status"`, `aria-busy="true"`, nombre accesible "Comprobando tu acceso", spinner
+`aria-hidden` con `motion-reduce:animate-none` y sin `<h1>`. Nunca se ven "Sin permiso" ni la
+pantalla. No es `SessionLoader`, porque `AppShell` ya pone el `<main>`. Sin conexión, la query queda
+en pausa: el indicador sigue, C-02 avisa y la relectura sale sola cuando vuelve la red (§12.1).
+
+**Resultado.**
+
+| Respuesta de `GET /me` | Qué ve el usuario |
+|---|---|
+| `401 unauthenticated` (sesión revocada o vencida) | `['session']` pasa a `null` y la transición de arriba hace el resto: `clear()` y login con `next=<ruta>` y `reason=session_expired`, con "Tu sesión se cerró. Ingresá de nuevo para seguir." (§12.4). El guard muestra el indicador hasta desmontarse y nunca muestra "Sin permiso" |
+| `200` con el permiso (rol ascendido) | La pantalla de la ruta |
+| `200` sin el permiso | "Sin permiso" (`ForbiddenState`) |
+| Red o `5xx`, después de los reintentos de §10.2 | `<h1>` "No pudimos comprobar tu acceso" (`PageHeader`), `ErrorState` con `messageForError(error, 'generic')` (título, descripción y, en `500`, `requestId`, como `RequireSession`), "Reintentar" y el enlace "Volver al inicio". "Reintentar" vuelve al indicador y relee con las mismas reglas. No se muestra "Sin permiso", que sin la lectura podría ser falso |
+
+**Foco y título.** El indicador no tiene `<h1>`, así que el foco y `document.title` cambian recién
+con el resultado (`RootLayout`, INV-F10): van al `<h1>` de "Sin permiso", de la pantalla o del
+error. Después de "Reintentar" el botón desaparece y el foco va al `<h1>` nuevo, con el mismo
+mecanismo que la recuperación de `RequireSession`.
+
+**Por qué `reason=session_expired`.** Ese valor lo pone la transición a `null`, no el guard.
+`/me` responde `401 unauthenticated` igual cuando el usuario fue desactivado que cuando la sesión
+venció (DD-44), así que el cliente no puede distinguirlos, y "Tu sesión se cerró" es cierto en los
+dos casos. Si el usuario está desactivado y prueba ingresar, el login responde `403
+account_disabled` con su propio texto (§12.2). `logged_out` y `password_changed` serían falsos, y
+cualquier otro valor no muestra aviso (§6.3).
+
+**Lo que no cambia.**
+
+- La carrera de `RequireSession` con las navegaciones intencionales al login: el guard está debajo
+  de `RequireSession`, que muestra `SessionLoader` mientras carga el chunk del login con `reason`.
+- El manejo del `403 forbidden` (§12.4) y "Sin permiso" en la misma URL.
+- La autorización, que sigue en el servidor (ADR-013).
+- El Administrador no hace ningún request de más: tiene el permiso concedido al entrar.
+
+**Límites aceptados.**
+
+- Una ruta sin `RequirePermission` y sin requests propios, como Ajustes, no se entera de la
+  revocación hasta el próximo request o el refetch al enfocar (§17).
+- Una entrada directa a una ruta denegada (recarga, URL escrita a mano o login con `next`) hace dos
+  `GET /me` seguidos: el de `RequireSession` y la relectura.
+
+Secuencia en §14.5.
 
 ---
 
@@ -576,6 +660,7 @@ Propiedades que se rompen **sin que falle la compilación**. Cada una tiene un t
 | INV-F18 | *(Enmienda de F0, DD-F32)* Ninguna navegación de sesión vencida (§12.4, §6.4) queda frenada por un aviso de cambios sin guardar. La URL sale siempre de `sessionExpiredLoginPath`, y todo bloqueo de salida usa `useUnsavedChangesGuard`: `useBlocker` no se importa en ningún otro archivo (`no-restricted-imports`). Se rompe sin que falle la compilación si un formulario usa `useBlocker` directo o si el manejador arma la URL a mano. | T-F103, T-F602, lint (T-F605) |
 | INV-F19 | *(Enmienda de F4, P-F20)* Todo mensaje con anuncio cortés (`role="status"` o `aria-live="polite"`) que aparece sin mover el foco se escribe en una región que ya estaba en el DOM, vacía, desde que se montó su contenedor: cambia el contenido, nunca el nodo. La región es `LiveRegion` (§15.1), una por lugar donde aparece el mensaje, y no contiene otra región viva; mientras la acción está pendiente se vacía, así un resultado igual al anterior se vuelve a anunciar. Excepciones: un error con `role="alert"` (`FormAlert` de error, `FieldError`, `LockedNotice`) puede montarse con su texto; un mensaje presente al entrar a la pantalla no se anuncia (se lee después del `<h1>`, INV-F10); los toasts los anuncia `sonner`, cuyo contenedor está siempre montado. Se rompe sin que falle la compilación si un componente monta `{texto && <p aria-live="polite">…}` o un `FormAlert` de éxito junto con su texto. | T-F106, T-F404, T-F405, T-F502, T-F603 (la región existe vacía antes del mensaje y es el mismo nodo después) + T-F705 (lector de pantalla, con NVDA) |
 | INV-F20 | *(Enmienda de F6, P-F22)* La caché `['tenant']` no retrocede: una respuesta leída o confirmada antes que otra que ya se escribió nunca la reemplaza. Los cambios de la empresa (`PATCH /tenant`, `PUT` y `DELETE /tenant/logo`) comparten la cola `TENANT_CHANGES_SCOPE`: cada uno sale después de la respuesta del anterior, y así el orden de las respuestas es el de los `COMMIT`. La mutación que escribe su respuesta cancela antes las lecturas de `['tenant']` en vuelo (DD-F33). Se rompe sin que falle la compilación si una de esas mutaciones pierde el `scope`, si una mutación nueva escribe `['tenant']` sin él, o si la respuesta se escribe sin cancelar. Cancelar **después** de escribir no la rompe con TanStack Query 5.104.3 (el `revert` restaura la respuesta recién escrita, S-F15), pero eso depende de un detalle interno de la librería: el orden es el de DD-F33, cancelar y después escribir. | T-F602, T-F603. El orden de la cancelación no lo fija ninguna prueba de comportamiento (para lo que queda en la caché, el inverso es un mutante equivalente en 5.104.3, S-F15) y no se agrega un test que espíe el orden de las llamadas (DD-F33): lo cuidan DD-F33, la revisión de código y §29 |
+| INV-F21 | *(Enmienda de F7, DD-F34)* Si una entrada a una ruta con permiso (montaje de `RequirePermission` o cambio de pathname) empieza con el permiso en caché denegado, el guard no muestra "Sin permiso" hasta que termine un `GET /me` de esa entrada, iniciado al entrar o ya en curso; mientras tanto se ve "Comprobando tu acceso…". Cada entrada así hace como mucho un `GET /me`, más los reintentos de §10.2, y una entrada con el permiso concedido no hace ninguno. Se rompe sin que falle la compilación si el guard vuelve a decidir solo con `useCan`, si relee en cada render, si usa `invalidateQueries` o `refetch()` con `cancelRefetch: true` (cancela la lectura en curso y manda otra) o si relee cuando el permiso se pierde sin una entrada nueva | `routeGuards.test.tsx` (T-F707); `UsersPage.test.tsx` (un solo `/me` al bajarse el rol a uno mismo); fila de la desactivación de T-F702 |
 
 ---
 
@@ -591,6 +676,7 @@ Propiedades que se rompen **sin que falle la compilación**. Cada una tiene un t
 | Plantillas de rubro | Server state | Query `['industry-templates']` | Pública; cambia muy poco |
 | Vista previa de invitación | Server state | Query `['invitation-preview', token]` | `POST` de solo lectura (el token viaja en el body); `gcTime` corto |
 | Permiso "¿puede X?" | Derivado | `useCan(p)` lee `['session']` | No se guarda |
+| Entrada ya comprobada por el guard de permiso y error de su relectura (DD-F34) | Client local | Estado de `usePermissionCheck`, dentro de `RequirePermission` | Se reinicia en cada entrada (pathname). No copia la sesión: el permiso se sigue leyendo de `['session']` (INV-F01) |
 | ¿Es el único admin activo? | Derivado | `countActiveAdmins(users)` | No se guarda |
 | ¿Puede invitar? (revisión 4, BR-F14) | Derivado | `useInviteBlockedReason()` lee `session.user.email_verified` | No se guarda |
 | `next`, `reason` | URL state | Query string de `/login` | |
@@ -1011,6 +1097,9 @@ Detalles:
 - Si varias queries fallan a la vez, la navegación ocurre una sola vez (la segunda llamada ve que
   ya está en `/login`).
 - `next` = ruta + query de la pantalla actual (sin fragmento).
+- *(Enmienda de F7, DD-F34)* El `401` también puede llegar por la relectura de `/me` que hace
+  `RequirePermission` cuando se entra con el permiso en caché denegado (§6.4.1, §14.5). Es la
+  transición a `null` de §6.4 y termina igual: login con `reason=session_expired`.
 - **Lo que se pierde** (DD-F5): si el `401` llega al **enviar** un formulario, lo cargado se
   pierde en 001 (formularios de ≤ 7 campos); `next` devuelve a la misma pantalla. Las specs con
   formularios largos (005 presupuestos, 007 operaciones) definen en su `ui.md` un borrador en
@@ -1452,7 +1541,7 @@ Para un invitado, {nombre} es su email (`name` es `null` hasta que acepta).
 | Acción en curso | El ítem del menú y el botón del diálogo muestran progreso; el resto de la lista sigue usable |
 | Éxito de acción | Diálogo cerrado, foco de vuelta al `⋮` de esa fila, toast: "{nombre} ahora es Administrador" / "…ahora es Operador" / "Desactivaste a {nombre}" / "Reactivaste a {nombre}" o "Le enviamos una invitación nueva a {email}" (si volvió a `invited`) / "Reenviamos la invitación a {email}" |
 | Error de acción | `last_admin`, `invalid_state`, `not_found` según §12.2 (con refresco de la lista); `403 forbidden` → Sin permiso. *(Revisión 4)* "Reenviar invitación" o "Reactivar" → `429` (cupo compartido por empresa y por IP, DD-48): toast "Por ahora no podemos enviar más invitaciones." con la espera (DD-F29); el diálogo se cierra y la lista no se vuelve a pedir. "Reenviar invitación" → `403 email_not_verified`: toast con el texto de §12.2 y `/me` pedido de nuevo (nunca "Sin permiso", INV-F16) |
-| Sin permiso | Guard: "No tenés acceso a esta sección" (Operador por URL, o Administrador al que le bajaron el rol mientras miraba) |
+| Sin permiso | Guard: "No tenés acceso a esta sección" (Operador por URL, o Administrador al que le bajaron el rol mientras miraba). *(Enmienda de F7, DD-F34)* Si al entrar el permiso en caché ya estaba denegado, antes se ve "Comprobando tu acceso…" mientras se relee `/me` (§6.4.1): con un `401`, va al login en lugar de "Sin permiso" |
 | Sesión vencida | §12.4. Si el Administrador se desactivó a sí mismo, el siguiente request da `401` y cae acá. También si otro Administrador lo desactivó mientras hacía una acción: el servidor relee al actor bajo el lock de la empresa y responde `401` (DD-44, revisión 4) |
 
 ### 13.10 S-10 Invitar usuario (`/settings/users/invite`) · US-3.1, DD-5, DD-21, DD-26
@@ -1917,6 +2006,46 @@ sequenceDiagram
         Q-->>P: clear de la caché, que vacía también la cola
         P-->>A: login con Los cambios que no habías guardado se perdieron, el PATCH no sale
     end
+```
+
+### 14.5 Entrar a una sección de Administrador con el permiso denegado en caché (DD-F34, T-F702)
+
+El Operador tiene la app abierta en el panel, y otro Administrador lo desactiva desde otro
+navegador. El backend revoca su sesión (DD-41), pero la caché del Operador todavía tiene su
+`SessionInfo`. Contrato completo en §6.4.1.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor O as Operador
+    participant R as Router
+    participant G as RequirePermission
+    participant Q as TanStack Query
+    participant H as Manejador global
+    participant API as /api/v1
+
+    O->>R: navega a /settings/users sin recargar
+    R->>G: monta el guard con el permiso en caché denegado
+    G-->>O: Comprobando tu acceso
+    G->>Q: refetch de session sin cancelar una lectura en curso
+    Q->>API: GET /me
+    alt sesión revocada o vencida
+        API-->>Q: 401 unauthenticated
+        Q->>H: session pasa a null
+        H->>Q: queryClient.clear()
+        H->>R: navigate a /login con next y reason session_expired, replace
+        R-->>O: Ingresar con el aviso Tu sesión se cerró
+    else 200 con settings.manage
+        API-->>Q: SessionInfo con el permiso
+        G-->>O: la pantalla de la ruta
+    else 200 sin settings.manage
+        API-->>Q: SessionInfo sin el permiso
+        G-->>O: No tenés acceso a esta sección
+    else red o 5xx después de los reintentos de la query
+        API-->>Q: error
+        G-->>O: No pudimos comprobar tu acceso, con Reintentar y Volver al inicio
+    end
+```
 
 ---
 
@@ -2115,7 +2244,7 @@ export interface LogoUploaderProps {
 | Componente | Responsabilidad | Hooks que usa |
 |---|---|---|
 | `RootLayout` | `<Outlet/>`, `<Toaster/>`, `<OfflineBanner/>`, `<ScrollRestoration/>`, foco al `<h1>` al cambiar de ruta | `useLocation` |
-| `RequireSession`, `PublicOnly`, `RequirePermission` | Guards (§6.4) | `useSession`, `useCan` |
+| `RequireSession`, `PublicOnly`, `RequirePermission` | Guards (§6.4). `RequirePermission` además relee `/me` cuando se entra con el permiso en caché denegado (§6.4.1, DD-F34) | `useSession`, `useCan`, `usePermissionCheck` |
 | `AppShell` | Encabezado, avisos, navegación inferior/lateral, `<main id="main">` | `useSession`, `useTenant`, `useCan`, `useResendEmailVerification` |
 | `SignupPage`, `LoginPage`, `ForgotPasswordPage`, `ResetPasswordPage`, `VerifyEmailPage`, `AcceptInvitationPage` | Pantallas S-01..S-06 | los de §15.4 |
 | `DashboardPage`, `SettingsPage`, `UsersPage`, `InviteUserPage`, `CompanyPage`, `NotFoundPage` | Pantallas S-07..S-12 | los de §15.4; `CompanyPage` además `prepareLogo` |
@@ -2127,6 +2256,24 @@ export interface LogoUploaderProps {
 export function useSession(): UseQueryResult<SessionInfo | null, ApiError>;  // 401 → null
 export function useCurrentSession(): SessionInfo;   // solo dentro de RequireSession; lanza si no hay
 export function useCan(permission: Permission): boolean;
+/** Enmienda de F7, DD-F34 (§6.4.1, INV-F21): estado de acceso de una entrada a una ruta con permiso.
+ *  entryKey = location.pathname; un entryKey nuevo (o el montaje) es una entrada nueva.
+ *  - 'granted' siempre que el permiso en caché esté concedido.
+ *  - Si al entrar está denegado, relee /me una vez: refetch de ['session'] con cancelRefetch: false,
+ *    que se une a una lectura en curso. Hasta que termina: 'checking' (también con la query en pausa
+ *    sin conexión). Un re-render no relee.
+ *  - Si al entrar estaba concedido, esa entrada no relee nunca: si el permiso se pierde, pasa directo
+ *    a 'denied'.
+ *  - Sin sesión en caché (null, o la caché recién vaciada): 'checking'. Decide RequireSession; el 401
+ *    lo maneja la transición a null (§6.4).
+ *  - retry: vuelve a 'checking' y relee con las mismas reglas.
+ *  Guarda solo la entrada comprobada y el error de su relectura, nunca la sesión (INV-F01). */
+export type PermissionCheck =
+  | { status: 'granted' }
+  | { status: 'checking' }
+  | { status: 'denied' }
+  | { status: 'failed'; error: ApiError; retry: () => void };
+export function usePermissionCheck(permission: Permission, entryKey: string): PermissionCheck;
 /** Revisión 4 (BR-F14, DD-46): 'email_not_verified' si session.user.email_verified = false; null si no.
  *  Es UX: el servidor decide (403 email_not_verified). */
 export function useInviteBlockedReason(): 'email_not_verified' | null;
@@ -2334,7 +2481,8 @@ export function formatRetryAt(retryAfterSeconds: number, now: Date): { time: str
 - **Autorización**: la hace el servidor en cada request. Los permisos de `/me` solo ocultan
   opciones (ADR-013, INV-F06).
 - **Vencimiento**: 24 h sin uso o 7 días (DD-10). El cliente no lleva un reloj propio: se entera
-  por el `401` del siguiente request o del refetch de `/me` al volver a la pestaña (§12.4). No hay
+  por el `401` del siguiente request, por el refetch de `/me` al volver a la pestaña (§12.4) o por la
+  relectura de `/me` al entrar a una ruta con el permiso en caché denegado (§6.4.1, DD-F34). No hay
   refresco silencioso: la política del backend no lo contempla (la sesión se extiende sola con el
   uso, hasta los 7 días).
 - **CSRF**: lo resuelve el backend (`Sec-Fetch-Site`/`Origin`, `SameSite=Lax`, JSON obligatorio;
@@ -2722,6 +2870,7 @@ porque, salvo el primero, no llevan el nombre de un archivo de código.
 | **DD-F31** | *(Nueva, enmienda del 2026-10-14; Accepted, aprobada por el usuario)* Tras el `202` del reenvío de la confirmación (C-01, aviso W, S-05), `useResendEmailVerification` vuelve a pedir `/me` ignorando el `staleTime` y el texto sale de esa lectura: `email_verified = false` → "Listo, te lo reenviamos…"; `true` → toast "Tu email ya está confirmado. No hace falta otro enlace." y el aviso desaparece con la caché; `/me` falla → "Si todavía no lo confirmaste, te mandamos un enlace nuevo. Revisá también el correo no deseado.". Si el control con foco desaparece, el foco va al `<h1>` (destino de INV-F10). S-05 no ofrece "Reenviar" si la sesión ya tiene el email confirmado | El servidor responde `202` sin enviar si el email ya está confirmado (`resendEmailVerification`, v0.5.0). DD-F28 no cubre todos los casos: TanStack Query v5 relee con `visibilitychange`, no al pasar a otra ventana que sigue visible ni cuando se confirma desde otro dispositivo. Como la confirmación no se deshace, si `/me` después del `202` sigue en `false`, el servidor también vio `false` y pidió el envío: el texto es exacto sin tocar el contrato. Descartado: (a) releer `/me` antes de reenviar (queda la ventana entre el `GET` y el `POST`, y demora el envío); (b) un texto neutro siempre (deja el aviso viejo y "Invitar" deshabilitado hasta volver a la pestaña, y le quita certeza al caso normal); (c) que el servidor distinga el caso con otro estado o un cuerpo (cambia el contrato y lo decide el backend; `/me` da el mismo dato) | Un `GET /me` más por cada `202` (como mucho 3 cada 20 min por usuario, DD-46 (3)); "Enviando…" dura un viaje más; un resultado más en el hook y dos textos nuevos. Si `/me` falla después del `202`, el texto es neutro |
 | **DD-F32** | *(Nueva, enmienda de F0, 2026-10-15; Accepted: aprobada por el usuario el 2026-10-16, P-F14)* La navegación de sesión vencida (§12.4 y la transición a `null` de §6.4) no se bloquea por cambios sin guardar. (1) La URL la arma siempre `sessionExpiredLoginPath(location)` y la reconoce `isSessionExpiredRedirect(location)`, las dos en `lib/sessionExpiredRedirect.ts`. (2) Ningún formulario usa `useBlocker` directo: usa `useUnsavedChangesGuard(when)` (`lib/unsavedChanges.ts`), que bloquea solo si `when` es verdadero y el destino no es una redirección de sesión vencida. S-11 pasa `when` = formulario con cambios **o** logo preparándose o subiendo (un solo guard por pantalla). (3) Mientras un guard está activo, `hasUnsavedChanges()` es verdadero. El manejador lo lee **antes** de navegar y, si es verdadero, pasa `state: { unsavedChangesLost: true }`. (4) Con `reason=session_expired` y ese `state`, la zona C del login suma "Los cambios que no habías guardado se perdieron.". (5) `next` es la pantalla donde estaba (`/settings/company`), no el destino que el aviso había frenado. Al volver, el formulario se arma con los datos del servidor (INV-F01) | Sin la excepción, "¿Salir igual?" aparece sobre una sesión muerta. "Quedarme" deja una pantalla con la caché vacía (rompe INV-F03), y cada query que se vuelve a pedir trae otro `401` y otro aviso. Con la regla en un solo hook, los formularios de 005 y 007 la heredan. El aviso del login responde "¿se guardó?" cuando el `401` llegó al tocar "Guardar". Descartado: (a) la excepción solo dentro de S-11 (cada formulario futuro tendría que acordarse, y la pérdida es muda); (b) seguir bloqueando y dejar elegir (pantalla sin sesión, bucle de `401`); (c) un borrador en `sessionStorage` (DD-F5 lo deja para 005 y 007; datos de la empresa en el almacenamiento del navegador); (d) un toast desde el bloqueador (efecto dentro de la función del bloqueador; el anuncio compite con el foco que va al `<h1>` del login); (e) la línea siempre que `reason=session_expired` (alarma en el caso común, donde no se perdió nada) | Un contador a nivel de módulo, fuera de React (estado del cliente, no del servidor: INV-F01 no aplica). Una regla de `no-restricted-imports` para `useBlocker`. Lo cargado se sigue perdiendo (DD-F5). `useBlocker` no cubre recargar ni cerrar la pestaña (eso no cambia) |
 | **DD-F33** | *(Nueva, enmienda de F6, P-F22)* Los cambios de la empresa se envían de a uno: `useUpdateTenant`, `useUploadLogo` y `useDeleteLogo` comparten `scope: TENANT_CHANGES_SCOPE` (`features/tenant/api.ts`), y TanStack Query arranca cada uno cuando terminó el anterior, incluidos su relectura de DD-F26 y su `onSuccess`. Mientras espera, la mutación ya está pendiente (`isPending`): "Guardando…" o "Subiendo logo…" aparecen desde el toque y nada se bloquea. Antes de escribir su respuesta en `['tenant']`, la mutación cancela las lecturas de esa clave en vuelo: `await cancelQueries` y después `setQueryData`, en ese orden *(precisado en el mantenimiento del 2026-10-22)*. Un `401` vacía la caché (INV-F03) y lo que esperaba en la cola no se envía (S-F15) | Revisión 2 del PR #43: con el logo subiéndose, el formulario permitía guardar. `SetLogo` confirma y, antes de responder, borra el objeto anterior del almacenamiento, así que un `PATCH` que confirmaba después podía responder antes, y la respuesta tardía del `PUT` dejaba en la caché la empresa anterior durante los 5 min de `staleTime` (rompe INV-F04). Cada respuesta es la fila entera después de su `COMMIT`: en orden, la última siempre es la correcta. La cola es una opción de la librería instalada: sin estado, textos ni estados de pantalla nuevos. La cancelación cubre el mismo defecto con una lectura (el *refetch* al volver a la pestaña) que salió antes del `COMMIT` y llega después. Se cancela antes de escribir porque así el resultado no depende de qué restaura el `revert`: la caché vuelve al estado de antes de la lectura y la respuesta se escribe encima. En 5.104.3 el orden inverso da lo mismo, porque `setQueryData` pasa a ser el estado que restaura el `revert` (S-F15); pero es un detalle interno que el comentario público de `cancelQueries` no dice ("vuelve al estado de antes de la lectura"), y si una versión se ajusta a ese comentario, cancelar después devolvería la caché a la empresa de antes de la lectura. Descartado: (a) deshabilitar "Guardar cambios" mientras el logo está en curso, y "Cambiar logo" y "Quitar" mientras se guarda, a mano o con `useIsMutating` (dos estados deshabilitados que necesitan su motivo visible, como DD-F28; el usuario tiene que volver a tocar; no cubre la lectura en vuelo); (b) no dejar que una respuesta con `updated_at` más viejo reemplace a la de la caché (el RFC3339 de Go recorta los ceros finales y no se compara como texto; `Date.parse` con más de tres decimales queda fuera del formato que garantiza ECMAScript; habría que escribir un parser, y el orden depende de que coincidan los relojes de las instancias del servidor); (c) invalidar cuando termina la última mutación (`isMutating`) (la caché queda vieja hasta que responde el `GET`, y si falla, sigue vieja); (d) `invalidateQueries` en vez de `setQueryData` (un `GET` más por cambio, y hasta que responde el encabezado sigue con el dato anterior); (e) cancelar después de `setQueryData` (equivalente en 5.104.3, pero solo por el detalle interno de arriba) | Un guardado pedido durante una subida espera a que termine (en 3G, lo que tarde un logo de hasta 2 MiB), con "Guardando…" en el botón y "Subiendo logo…" a la vista. Una lectura cancelada que traía un cambio de otra sesión se pierde hasta la lectura siguiente. Si la relectura de una subida incierta se une a una lectura que salió antes del `COMMIT`, da "Reintentar" aunque se haya guardado: el lado seguro de DD-F26. Tras un `401`, la promesa de la mutación que esperaba no se resuelve (la pantalla ya se desmontó). Entre pestañas no hay cola. En 5.104.3 ninguna prueba de comportamiento fija el orden de la cancelación *(precisado en el mantenimiento del 2026-10-22)*: con "cancelar después de `setQueryData`" la caché y la pantalla terminan igual, así que para esas pruebas es un mutante equivalente (`tasks.md`, "P-F22 implementada"). Un test que espiara `cancelQueries` y `setQueryData` sí fijaría el orden, y no se agrega: afirmaría una secuencia interna del `QueryClient` que en esta versión no cambia nada de lo que se ve, contra las convenciones de los tests del frontend (se prueba lo que el usuario percibe; ADR-022). Tampoco hace falta para el caso en que el orden sí importe: si una versión restaura el estado de antes de la lectura también después de un `setQueryData` y el código tuviera el orden inverso, la caché volvería a la empresa de antes de la lectura, y eso lo ven "does not let a read in flight overwrite the PATCH response" y su par del `PUT`, que afirman que el logo queda con el `updated_at` de la respuesta. Lo cuidan esta decisión, la revisión de código y la fila de §29 sobre la versión de TanStack Query |
+| **DD-F34** | *(Nueva, enmienda de F7, P-F23; *Accepted*: opción A y detalles (1) a (4) aprobados por el usuario el 2026-10-22)* `RequirePermission` relee `/me` una vez por entrada cuando el permiso en caché está denegado (§6.4.1, INV-F21). (1) **Entrada**: el montaje del guard o un cambio de `location.pathname` dentro de él. Si al entrar el permiso está concedido, esa entrada no relee nunca, aunque después lo pierda. (2) **Relectura**: `refetch` de `['session']` con `cancelRefetch: false`, que se une a un `GET /me` en curso, con la `queryFn` de `useSession`; un `401` llega como `null` y sigue la transición de §6.4. (3) **Mientras tanto**: "Comprobando tu acceso…", nunca "Sin permiso"; sin conexión, en pausa con C-02. (4) **Resultado**: `401` → §12.4 con `reason=session_expired`; con el permiso → la pantalla; sin el permiso → "Sin permiso"; red o `5xx` → "No pudimos comprobar tu acceso" + `ErrorState` con `messageForError(error, 'generic')` + "Reintentar" + "Volver al inicio" | Con el permiso concedido, la pantalla pide sus datos y un `401` la saca (§12.4). Denegado, no hay ningún request, y la UI le decía "No tenés acceso a esta sección" a alguien a quien el servidor ya había desconectado (T-F702, DD-41). Se relee al entrar porque es el único momento en que la UI va a afirmar algo con un dato que puede estar viejo. Una pérdida del permiso sin una entrada nueva ya viene de una lectura del servidor. `reason=session_expired` porque el `401 unauthenticated` de `/me` es igual por desactivación que por vencimiento (DD-44): "Tu sesión se cerró" es cierto en los dos casos, y si el usuario está desactivado, el login se lo dice (`403 account_disabled`). Un error de la relectura no cae en "Sin permiso", porque sin la lectura ese texto puede ser falso (por ejemplo, con un rol ascendido). Descartado: (a) relajar la aceptación de T-F702 (opción B, que el usuario descartó); (b) leer `/me` cada N segundos (un request periódico por pestaña para un caso raro; el usuario descartó el *polling*); (c) releer en cada navegación o con `refetchOnMount: 'always'` en el guard (un `/me` también para el Administrador, cuya pantalla ya se entera por sus propios requests); (d) mostrar "Sin permiso" y releer en segundo plano (muestra un estado falso y después lo cambia); (e) `invalidateQueries` o `refetch()` con `cancelRefetch: true` (cancela una lectura en curso y manda otra); (f) no releer si la sesión se leyó hace menos de N segundos, para ahorrar el segundo `/me` de una entrada directa (un número mágico, y la desactivación puede caer dentro de esa ventana); (g) un aviso del servidor en tiempo real, con SSE o WebSocket (infraestructura nueva para un caso del MVP); (h) un `reason` nuevo `account_disabled` (el cliente no lo sabe sin cambiar el contrato) | Una entrada directa a una ruta denegada (recarga, URL escrita a mano o login con `next`) hace dos `GET /me` seguidos, y "Sin permiso" aparece un viaje de red más tarde. Es un caso raro: el Operador no tiene enlaces a esas rutas (BR-F04). Una ruta sin `RequirePermission` y sin requests propios, como Ajustes, no se entera de la revocación hasta el próximo request o el refetch al enfocar (§17), igual que antes. El guard suma un estado local (la entrada comprobada y el error), que no copia la sesión (INV-F01). Sin conexión, el indicador queda hasta que vuelve la red, como cualquier query (§12.1) |
 
 ---
 
@@ -2816,6 +2965,12 @@ Preguntas de la enmienda de F6 (2026-10-21):
 *(2026-10-22, mantenimiento de la documentación)* Sin pregunta nueva: las correcciones de la
 revisión del PR #43 (qué restaura `cancelQueries` en cada orden, la firma de `useTenant` y los
 archivos que faltaban en §22) no cambian ninguna decisión. Las registra el encabezado.
+
+Preguntas de la enmienda de F7 (2026-10-22):
+
+| ID | Pregunta | Estado | Default propuesto |
+|---|---|---|---|
+| P-F23 | T-F702: un Operador al que otro Administrador desactiva con la sesión abierta navega sin recargar a `/settings/users` y ve "No tenés acceso a esta sección" en lugar del aviso de sesión cerrada, porque el guard decide con el permiso en caché y no pide `/me`. ¿Cómo se entera la UI, y con qué detalle? | **Aprobada** por el usuario el 2026-10-22: opción A, releer `/me` una vez al entrar a una ruta con el permiso en caché denegado, sin *polling* (descartó la B, relajar la aceptación); detalles (1) a (4) aprobados tal como se proponen | DD-F34 y §6.4.1. (1) **Entrada = montaje o cambio de pathname**: pasar entre dos rutas denegadas relee en cada una. Alternativa: una vez por montaje del guard (no relee al pasar de Datos de la empresa a Usuarios). (2) **Una entrada directa hace dos `/me`**, sin heurística de tiempo. Alternativa: no releer si la sesión se leyó hace menos de N segundos (un número mágico que la desactivación puede cruzar). (3) **Un error de la relectura muestra una pantalla de error con "Reintentar"**, no "Sin permiso". Alternativa: "Sin permiso" con el dato viejo, que puede ser falso. (4) **`reason=session_expired`**: el cliente no distingue la desactivación del vencimiento (DD-44) y el login dice "desactivado" si corresponde. Alternativa: un `reason` nuevo, que exige cambiar el contrato |
 
 **Revisión 16 del backend: cerrada para la UI** (la lista "Dependiente de la revisión 16" de la
 Revisión 3 queda resuelta en la Revisión 4):
@@ -2961,8 +3116,9 @@ La actualización va **en el mismo cambio** que el código.
 | Las zonas argentinas de IANA (una zona nueva fuera de `America/Argentina/`, o un enlace argentino nuevo en `backward`) | `ARGENTINA_LEGACY_ZONES` (nombre anterior → zona actual) en `features/tenant/timezones.ts` + DD-F27 + T-F602 |
 | Lo que usa la reconciliación del logo (los campos de `Tenant`, el `ETag` de `/tenant/logo`, que el servidor guarde los bytes tal cual) | DD-F26 + §11.1 + §13.11 + §14.4 + `useUploadLogo` + T-F603 |
 | Una mutación nueva que escribe `['tenant']`, o cómo escriben la caché las tres actuales | `TENANT_CHANGES_SCOPE` + `cancelQueries` antes de `setQueryData` (DD-F33) + INV-F20 + §10.3 + §15.4 + T-F602/T-F603 |
-| La versión de TanStack Query | S-F15 (la cola por `scope`, `clear()` y qué restaura el `revert` de `cancelQueries` antes y después de un `setQueryData`: se relee `query.ts`, porque ninguna prueba de comportamiento distingue el orden de DD-F33) + DD-F33 e INV-F20 si cambia lo que restaura + las filas de la cola de T-F602 y T-F603 |
+| La versión de TanStack Query | DD-F34 (que `refetch` con `cancelRefetch: false` se una a un `GET /me` en curso; lo fija la fila "un `GET /me` en curso al navegar" de `routeGuards.test.tsx`) + S-F15 (la cola por `scope`, `clear()` y qué restaura el `revert` de `cancelQueries` antes y después de un `setQueryData`: se relee `query.ts`, porque ninguna prueba de comportamiento distingue el orden de DD-F33) + DD-F33 e INV-F20 si cambia lo que restaura + las filas de la cola de T-F602 y T-F603 |
 | Cómo se cierra sesión (`useLogout`, la navegación al login o lo que el shell lee mientras tanto) | §13.8 (estados de "Cerrar sesión") + el `enabled` de `useTenant` en §15.4 + `logout.test.tsx` y `logoutMenuRace.test.tsx` |
+| El guard de permiso o cómo relee la sesión (qué es una entrada, `cancelRefetch`, el indicador, la pantalla de error) | §6.4 y §6.4.1 + DD-F34 + INV-F21 + §14.5 + `usePermissionCheck` en §15.4 + `routeGuards.test.tsx` + el `toHaveBeenCalledOnce` de `/me` en `UsersPage.test.tsx` (pérdida del permiso sin entrada nueva) + la fila de la desactivación de T-F702 |
 
 ## 30. Fuentes consultadas
 
