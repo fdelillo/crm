@@ -70,7 +70,10 @@ test('critical registration, session, recovery, invitation, and access flows', a
     page.getByText('Moneda base: Pesos (ARS)', { exact: true }),
   ).toBeVisible()
   await expect(
-    page.getByText('Confirmá tu email', { exact: false }),
+    page.getByText(
+      `Confirmá tu email: te mandamos un enlace a ${adminEmail}.`,
+      { exact: true },
+    ),
   ).toBeVisible()
 
   const sessionCookie = (await page.context().cookies()).find(
