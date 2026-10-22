@@ -307,6 +307,46 @@ for (const file of [
   )
 }
 
+// T-F605 (INV-F18, DD-F32): useBlocker lives only in lib/unsavedChanges.ts, so a form cannot
+// block the navigation to the login when the session expires.
+const blocker =
+  "import { useBlocker } from 'react-router'; export const probe = useBlocker"
+for (const file of [
+  'src/features/tenant/probe.ts',
+  'src/features/users/probe.ts',
+  'src/app/probe.ts',
+  'src/lib/probe.ts',
+  'src/components/probe.tsx',
+  'src/api/probe.ts',
+]) {
+  rejected.push([
+    `${file}: useBlocker from react-router`,
+    file,
+    blocker,
+    IMPORTS,
+  ])
+}
+rejected.push([
+  'src/features/tenant/probe.ts: renamed useBlocker',
+  'src/features/tenant/probe.ts',
+  "import { useBlocker as block } from 'react-router'; export const probe = block",
+  IMPORTS,
+])
+allowed.push(
+  [
+    'src/lib/unsavedChanges.ts: useBlocker',
+    'src/lib/unsavedChanges.ts',
+    blocker,
+    IMPORTS,
+  ],
+  [
+    'src/features/tenant/probe.ts: other react-router hooks',
+    'src/features/tenant/probe.ts',
+    "import { useNavigate } from 'react-router'; export const probe = useNavigate",
+    IMPORTS,
+  ],
+)
+
 describe('import and network boundaries', () => {
   it('the helper fails for a file ESLint ignores instead of reporting "allowed"', async () => {
     await expect(
