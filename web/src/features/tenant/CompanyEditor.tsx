@@ -107,19 +107,14 @@ export function CompanyEditor({ tenant }: { tenant: Tenant }) {
     [tenant.timezone],
   )
 
-  const wasConfirming = useRef(false)
+  const { focusTarget, focusHandled, confirmingRemoval } = logo
   useEffect(() => {
-    // The dialog has no trigger element: put the focus back by hand (INV-F10).
-    if (wasConfirming.current && !logo.confirmingRemoval) {
-      const remove = document.getElementById(LOGO_REMOVE_ID)
-      const target =
-        remove instanceof HTMLButtonElement && !remove.disabled
-          ? remove
-          : document.getElementById(LOGO_INPUT_ID)
-      target?.focus()
-    }
-    wasConfirming.current = logo.confirmingRemoval
-  }, [logo.confirmingRemoval, logo.pending])
+    if (!focusTarget || confirmingRemoval) return
+    document
+      .getElementById(focusTarget === 'picker' ? LOGO_INPUT_ID : LOGO_REMOVE_ID)
+      ?.focus()
+    focusHandled()
+  }, [focusTarget, confirmingRemoval, focusHandled])
 
   async function onSubmit(values: CompanyFormValues) {
     if (submitLock.current) return

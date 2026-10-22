@@ -36,6 +36,10 @@ export function useLogoActions() {
   const [pending, setPending] = useState<LogoPending>(null)
   const [error, setError] = useState<UserMessage | null>(null)
   const [confirmingRemoval, setConfirmingRemoval] = useState(false)
+  // Where the focus goes once the confirmation closes (INV-F10): the dialog has no trigger element.
+  const [focusTarget, setFocusTarget] = useState<'picker' | 'remove' | null>(
+    null,
+  )
   const retryAction = useRef<(() => void) | null>(null)
   const busy = useRef(false)
   const mounted = useRef(false)
@@ -92,8 +96,10 @@ export function useLogoActions() {
     try {
       await remove.mutateAsync()
       toast('Quitamos el logo.')
+      setFocusTarget('picker')
     } catch (failure) {
       setError(describeFailure(failure))
+      setFocusTarget('remove')
     } finally {
       busy.current = false
       setPending(null)
@@ -108,7 +114,12 @@ export function useLogoActions() {
     retry: () => retryAction.current?.(),
     confirmingRemoval,
     askToRemove: () => setConfirmingRemoval(true),
-    cancelRemoval: () => setConfirmingRemoval(false),
+    cancelRemoval: () => {
+      setConfirmingRemoval(false)
+      setFocusTarget('remove')
+    },
+    focusTarget,
+    focusHandled: () => setFocusTarget(null),
     confirmRemoval: () => void confirmRemoval(),
   }
 }
