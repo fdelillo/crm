@@ -31,6 +31,7 @@ import {
   sameBytes,
   useNodeMultipart,
 } from '@/test/nodeFiles'
+import { gate } from '@/test/gate'
 import { server } from '@/test/msw/server'
 import { renderApp } from '@/test/renderApp'
 import { decodeImage, encodeBitmap } from './logo/canvas'
@@ -47,13 +48,6 @@ const srcFor = (tenant: Pick<Tenant, 'id'>, updatedAt: string) =>
   `/api/v1/tenant/logo?v=${encodeURIComponent(`${tenant.id}-${updatedAt}`)}`
 const bitmap = () =>
   ({ width: 4000, height: 3000, close: vi.fn() }) as unknown as ImageBitmap
-function gate() {
-  let open!: () => void
-  const opened = new Promise<void>((resolve) => {
-    open = resolve
-  })
-  return { opened, open }
-}
 
 interface Put {
   parts: string[]

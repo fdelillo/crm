@@ -14,13 +14,25 @@ export { logoUrl, useTenant } from '@/api/tenant'
 const refreshSession = (client: QueryClient) =>
   client.invalidateQueries({ queryKey: queryKeys.session, exact: true })
 
+// DD-F33, INV-F20 (P-F22): PATCH /tenant and PUT/DELETE /tenant/logo share one queue, so each
+// leaves after the previous one answered. Every response is the whole row after its COMMIT:
+// applied in the order of the commits, the last one is right. The scope is what guarantees it.
+const TENANT_CHANGES_SCOPE = { id: 'tenant' }
+
+// INV-F20: a read that left before this commit and answers after it would bring the old row back.
+const writeTenant = async (client: QueryClient, tenant: Tenant) => {
+  await client.cancelQueries({ queryKey: queryKeys.tenant, exact: true })
+  client.setQueryData(queryKeys.tenant, tenant)
+}
+
 export function useUpdateTenant() {
   const client = useQueryClient()
   return useMutation<Tenant, ApiError, TenantUpdate>({
+    scope: TENANT_CHANGES_SCOPE,
     mutationFn: async (body) => unwrap(await api.PATCH('/tenant', { body })),
     // INV-F04: the response replaces the cached tenant; the session carries the name (TenantSummary).
-    onSuccess: (tenant) => {
-      client.setQueryData(queryKeys.tenant, tenant)
+    onSuccess: async (tenant) => {
+      await writeTenant(client, tenant)
       void refreshSession(client)
     },
   })
@@ -87,6 +99,7 @@ async function currentLogoHasBytesOf(
 export function useUploadLogo() {
   const client = useQueryClient()
   return useMutation<Tenant, ApiError, File>({
+    scope: TENANT_CHANGES_SCOPE,
     mutationFn: async (file) => {
       const before = client.getQueryData<Tenant>(queryKeys.tenant)
       try {
@@ -105,8 +118,8 @@ export function useUploadLogo() {
         throw error
       }
     },
-    onSuccess: (tenant) => {
-      client.setQueryData(queryKeys.tenant, tenant)
+    onSuccess: async (tenant) => {
+      await writeTenant(client, tenant)
       void refreshSession(client)
     },
   })
@@ -115,6 +128,7 @@ export function useUploadLogo() {
 export function useDeleteLogo() {
   const client = useQueryClient()
   return useMutation<void, ApiError, void>({
+    scope: TENANT_CHANGES_SCOPE,
     mutationFn: async () => {
       try {
         unwrap<void>(await api.DELETE('/tenant/logo'))
