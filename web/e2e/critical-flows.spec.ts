@@ -112,9 +112,6 @@ test('critical registration, session, recovery, invitation, and access flows', a
   expect(verificationURL.origin).toBe(origin)
   const verificationPage = await page.context().newPage()
   await verificationPage.bringToFront()
-  await expect
-    .poll(() => page.evaluate(() => document.visibilityState))
-    .toBe('hidden')
   await verificationPage.setViewportSize({ width: 320, height: 720 })
   await track(verificationPage)
   await verificationPage.goto(verificationURL.toString())
@@ -136,6 +133,11 @@ test('critical registration, session, recovery, invitation, and access flows', a
     )
   })
   await page.bringToFront()
+  // Headless Chromium keeps both pages visible; emit the lifecycle event that
+  // a foreground-tab transition sends to React Query's focus manager.
+  await page.evaluate(() =>
+    document.dispatchEvent(new Event('visibilitychange')),
+  )
   const refreshedSessionResponse = await refreshedSession
   expect(refreshedSessionResponse.ok()).toBe(true)
   expect((await refreshedSessionResponse.json()).user.email_verified).toBe(true)
