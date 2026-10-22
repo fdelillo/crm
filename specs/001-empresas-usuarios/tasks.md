@@ -4416,7 +4416,22 @@ sustituyen `FormData` y `File` por los de Node (`src/test/nodeFiles.ts`); T-F706
 prueba el multipart real del navegador. Los casos "al enfocar la ventana" se ejercitan con
 `invalidateQueries(['session'])`, el mismo camino de `['session']` pasando a `null`.
 
-Prueba independiente: pendiente (Claude Code). Revisión: pendiente (Codex).
+**Prueba independiente (Claude Code, 2026-10-21, Playwright en Chrome 146, `5520bac`)**: Vite dev en
+`https://localhost:5173`, backend en 8444 con MinIO (`crm-dev`), un solo `crm serve`; pasó 2 de 2
+corridas (una tercera cortó en el registro por la cuota de signup, `429`). Imágenes sintéticas:
+una foto de 7 355 522 bytes, 4000×3000 con EXIF `Orientation=6`, y un PNG RGBA de 320×160 y
+3128 bytes. CUIT con dígito inválido: error en el campo y ningún `PATCH`; CUIT válido
+`20-12345678-6` guardado (el servidor lo devuelve normalizado, `20123456786`) y presente tras
+recargar. "Tenés cambios sin guardar. ¿Salir igual?": "Quedarme" se queda en `/settings/company`
+y "Salir" navega a `/settings`. Foto: la región de estado mostró "Preparando la imagen…" y
+"Subiendo logo…", toast "Logo actualizado. Lo achicamos para que pese menos." en ~1,2 s; el
+servidor guardó un JPEG de 1 063 742 bytes, 1500×2000 (vertical: la orientación EXIF se aplicó;
+verificado a ojo) y sin segmento EXIF; el logo apareció en S-11 y en el encabezado sin recargar
+(0 navegaciones). PNG chico: subido byte a byte (mismo SHA-256), toast "Logo actualizado.".
+Cerrar sesión y registrar otra empresa en el mismo navegador: ningún `<img>` "Logo de …" en el
+panel ni en S-11, "Todavía no subiste un logo", `GET /tenant/logo` → `404`. Celular real
+(S-F8, S-F10, NFR-F13): **pendiente** por H-12 (no hay origen HTTPS accesible desde el teléfono
+en este entorno). Arnés: `~/Documents/Codex/crm-progreso/f6-e2e/`. Revisión: pendiente (Codex).
 
 ---
 
