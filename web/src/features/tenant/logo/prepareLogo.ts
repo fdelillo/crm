@@ -1,5 +1,5 @@
 import { decodeImage, encodeBitmap } from './canvas'
-import { LOGO_TARGET_MAX_BYTES } from './limits'
+import { LOGO_INPUT_MAX_BYTES, LOGO_TARGET_MAX_BYTES } from './limits'
 import {
   exceedsServerLimits,
   planLogoProcessing,
@@ -11,13 +11,11 @@ export type PrepareLogoResult =
   | { ok: true; file: File; resized: boolean; reencoded: boolean }
   | { ok: false; reason: LogoRejectReason }
 
-// A JPEG can carry large EXIF and ICC segments before its frame header.
-const HEADER_BYTES = 1024 * 1024
-
 /**
- * T-F604 (DD-F20, ui.md §13.11.1): signature -> plan -> decode once -> ladder.
- * `resized` means the original broke the server limits and had to be shrunk;
- * a JPEG that was only re-encoded to drop its metadata is `reencoded` but not `resized`.
+ * T-F604 (DD-F20, ui.md §13.11.1, P-F21): size -> read the whole file -> signature -> plan ->
+ * decode once -> ladder. `resized` means something had to be shrunk: the original broke the
+ * server limits, or the first step of the ladder did not fit. A JPEG that was only re-encoded
+ * to drop its metadata is `reencoded` but not `resized`.
  */
 export async function prepareLogo(
   file: File,
@@ -26,10 +24,15 @@ export async function prepareLogo(
     encodeBitmap: typeof encodeBitmap
   } = { decodeImage, encodeBitmap },
 ): Promise<PrepareLogoResult> {
-  const head = new Uint8Array(await file.slice(0, HEADER_BYTES).arrayBuffer())
-  const type = sniffImageType(head, file.type)
+  // Looked at before reading anything: a huge file is never loaded. Past that, the whole file
+  // is read, like the server does with image.DecodeConfig (a JPEG may carry over 1 MiB of
+  // metadata before its frame header).
+  if (file.size > LOGO_INPUT_MAX_BYTES)
+    return { ok: false, reason: 'too_large_to_process' }
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  const type = sniffImageType(bytes, file.type)
   const size =
-    type === 'png' || type === 'jpeg' ? readImageSize(head, type) : null
+    type === 'png' || type === 'jpeg' ? readImageSize(bytes, type) : null
   const input = {
     type,
     byteSize: file.size,
@@ -48,7 +51,7 @@ export async function prepareLogo(
     return { ok: false, reason: 'unreadable' }
   }
   try {
-    for (const attempt of plan.attempts) {
+    for (const [index, attempt] of plan.attempts.entries()) {
       let blob: Blob
       try {
         blob = await deps.encodeBitmap(bitmap, {
@@ -67,7 +70,7 @@ export async function prepareLogo(
         return {
           ok: true,
           file: new File([blob], `logo.${extension}`, { type: plan.format }),
-          resized: exceedsServerLimits(input),
+          resized: exceedsServerLimits(input) || index > 0,
           reencoded: true,
         }
       }

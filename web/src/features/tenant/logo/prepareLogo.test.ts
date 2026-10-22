@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { jpegBytes, pngBytes, textBytes } from '@/test/imageBytes'
-import { LOGO_TARGET_MAX_BYTES } from './limits'
+import { LOGO_INPUT_MAX_BYTES, LOGO_TARGET_MAX_BYTES } from './limits'
 import type {
   decodeImage as DecodeImage,
   encodeBitmap as EncodeBitmap,
@@ -95,6 +95,62 @@ describe('prepareLogo', () => {
     deps.encodeBitmap.mockResolvedValueOnce(blobOf(1000))
     const result = await prepareLogo(bigJpeg(), deps)
     expect(result.ok).toBe(true)
+    // T-F604 (P-F21): a step that throws counts as one that did not fit.
+    expect(deps.encodeBitmap).toHaveBeenCalledTimes(2)
+  })
+
+  // T-F604 (BR-F13, P-F21): "Lo achicamos" only when something had to be shrunk.
+  it('says "resized" when a JPEG inside the limits needed a lower quality to fit', async () => {
+    const file = new File(
+      [jpegBytes({ width: 1200, height: 800, size: 1_900_000 })],
+      'a.jpg',
+    )
+    const deps = fakes([2_097_153, 1_500_000])
+    const result = await prepareLogo(file, deps)
+    expect(result).toMatchObject({ ok: true, resized: true, reencoded: true })
+    expect(deps.encodeBitmap).toHaveBeenCalledTimes(2)
+  })
+
+  it('reads the dimensions of a JPEG with more than 1 MiB of metadata before the frame header', async () => {
+    const bytes = jpegBytes({
+      width: 1200,
+      height: 800,
+      app1Segments: 20,
+      size: 1_900_000,
+    })
+    const result = await prepareLogo(
+      new File([bytes], 'a.jpg', { type: 'image/jpeg' }),
+      fakes([150_000]),
+    )
+    expect(result).toMatchObject({ ok: true, resized: false, reencoded: true })
+  })
+
+  it('refuses a file of 20 971 521 bytes without reading its content', async () => {
+    const file = new File([new Uint8Array(1)], 'big.jpg', {
+      type: 'image/jpeg',
+    })
+    Object.defineProperty(file, 'size', { value: LOGO_INPUT_MAX_BYTES + 1 })
+    const read = vi.spyOn(file, 'arrayBuffer')
+    const slice = vi.spyOn(file, 'slice')
+    const deps = fakes([])
+    expect(await prepareLogo(file, deps)).toEqual({
+      ok: false,
+      reason: 'too_large_to_process',
+    })
+    expect(read).not.toHaveBeenCalled()
+    expect(slice).not.toHaveBeenCalled()
+    expect(deps.decodeImage).not.toHaveBeenCalled()
+  })
+
+  it('tries 1500, 1200, 1000 and 700 for a 1500 px PNG, without repeating 1500', async () => {
+    const file = new File([pngBytes(1500, 1500, 2_500_000)], 'logo.png', {
+      type: 'image/png',
+    })
+    const deps = fakes([])
+    await prepareLogo(file, deps)
+    expect(
+      deps.encodeBitmap.mock.calls.map(([, options]) => options.maxSide),
+    ).toEqual([1500, 1200, 1000, 700])
   })
 
   it('closes the bitmap on every path that decoded', async () => {

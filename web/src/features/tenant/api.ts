@@ -6,7 +6,7 @@ import {
 import { api } from '@/api/client'
 import { isApiError, unwrap, type ApiError } from '@/api/errors'
 import { queryKeys } from '@/api/queryKeys'
-import { tenantQuery } from '@/api/tenant'
+import { logoVersion, tenantQuery } from '@/api/tenant'
 import type { Tenant, TenantUpdate } from '@/api/types'
 
 export { logoUrl, useTenant } from '@/api/tenant'
@@ -59,6 +59,31 @@ async function readTenantAgain(client: QueryClient): Promise<Tenant | null> {
   }
 }
 
+// DD-F26 (P-F21): updated_at also changes with a PATCH from another session, so it does not
+// prove the new logo was saved. The server stores the bytes untouched (INV-24), so the logo is
+// ours only if the current one has exactly the bytes we sent. Any failure here means "not proven".
+async function currentLogoHasBytesOf(
+  sent: File,
+  current: Tenant,
+): Promise<boolean> {
+  try {
+    const { data, error } = await api.GET('/tenant/logo', {
+      params: { query: { v: logoVersion(current) } },
+      parseAs: 'blob',
+      cache: 'no-store',
+    })
+    if (error !== undefined || !data) return false
+    const stored = data as unknown as Blob
+    if (stored.size !== sent.size) return false
+    const [a, b] = await Promise.all([stored.arrayBuffer(), sent.arrayBuffer()])
+    const left = new Uint8Array(a)
+    const right = new Uint8Array(b)
+    return left.every((byte, index) => byte === right[index])
+  } catch {
+    return false
+  }
+}
+
 export function useUploadLogo() {
   const client = useQueryClient()
   return useMutation<Tenant, ApiError, File>({
@@ -69,8 +94,13 @@ export function useUploadLogo() {
       } catch (error) {
         if (!isUncertain(error)) throw error
         const current = await readTenantAgain(client)
-        // A new logo means has_logo and an updated_at different from the one we started with.
-        if (current?.has_logo && current.updated_at !== before?.updated_at)
+        // A new logo means has_logo, an updated_at different from the one we started with,
+        // and the bytes we sent as the current logo.
+        if (
+          current?.has_logo &&
+          current.updated_at !== before?.updated_at &&
+          (await currentLogoHasBytesOf(file, current))
+        )
           return current
         throw error
       }

@@ -15,10 +15,15 @@ export function useTenant({ enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({ ...tenantQuery, enabled })
 }
 
+/** The `v` of the logo URL: changes whenever the tenant (and so maybe the logo) changes. */
+export function logoVersion(tenant: Pick<Tenant, 'id' | 'updated_at'>) {
+  return `${tenant.id}-${tenant.updated_at}`
+}
+
 export function logoUrl(
   tenant: Pick<Tenant, 'id' | 'updated_at' | 'has_logo'>,
 ): string | null {
   return tenant.has_logo
-    ? `/api/v1/tenant/logo?v=${encodeURIComponent(tenant.id + '-' + tenant.updated_at)}`
+    ? `/api/v1/tenant/logo?v=${encodeURIComponent(logoVersion(tenant))}`
     : null
 }

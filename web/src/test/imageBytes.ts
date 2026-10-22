@@ -45,18 +45,33 @@ export function jpegBytes(options: {
   sof?: number
   // An APP1 (EXIF) segment of this many payload bytes before the frame header.
   exifBytes?: number
+  // This many full APP1 segments (65 533 payload bytes each) before the frame header.
+  app1Segments?: number
   // A DHT (0xFFC4) segment before the frame header.
   dht?: boolean
   // First marker after SOI: 0xE0 (JFIF) or 0xE1 (EXIF).
   first?: number
   size?: number
 }) {
-  const { width, height, sof = 0xc0, exifBytes, dht, first, size } = options
+  const {
+    width,
+    height,
+    sof = 0xc0,
+    exifBytes,
+    app1Segments = 0,
+    dht,
+    first,
+    size,
+  } = options
   const bytes = [0xff, 0xd8]
   if (first !== undefined) bytes.push(0xff, first, ...u16(2))
   if (exifBytes !== undefined) {
     bytes.push(0xff, 0xe1, ...u16(exifBytes + 2))
     for (let i = 0; i < exifBytes; i++) bytes.push(0)
+  }
+  for (let segment = 0; segment < app1Segments; segment++) {
+    bytes.push(0xff, 0xe1, ...u16(0xffff))
+    for (let i = 0; i < 0xffff - 2; i++) bytes.push(0)
   }
   if (dht) {
     // A Huffman table whose bytes would look like dimensions if mistaken for a frame header.

@@ -72,6 +72,8 @@ describe('planLogoProcessing', () => {
     expect(png(5001, 5000, 1000)).toEqual(tooLarge)
     expect(jpeg(5001, 5000, 1000)).toEqual(tooLarge)
     expect(LOGO_INPUT_MAX_PIXELS).toBe(25_000_000)
+    // T-F604 (P-F21): 20 MiB, the same unit as the 2 MiB limit of the server.
+    expect(LOGO_INPUT_MAX_BYTES).toBe(20_971_520)
     expect(png(5000, 5000, 1000)).toMatchObject({ action: 'reencode' })
     expect(jpeg(1000, 1000, LOGO_INPUT_MAX_BYTES + 1)).toEqual(tooLarge)
     expect(jpeg(1000, 1000, LOGO_INPUT_MAX_BYTES)).toMatchObject({

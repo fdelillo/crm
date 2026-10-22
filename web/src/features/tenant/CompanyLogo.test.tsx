@@ -89,6 +89,24 @@ function serveLogo(state: ReturnType<typeof serveCompany>) {
   return puts
 }
 
+/** What `GET /tenant/logo` serves: the bytes of the current logo (DD-F26 compares them with the upload). */
+function serveCurrentLogo(current: () => Uint8Array | Response) {
+  server.use(
+    http.get(`${base}/tenant/logo`, () => {
+      const value = current()
+      return value instanceof Response
+        ? value
+        : new HttpResponse(value as Uint8Array<ArrayBuffer>, {
+            headers: { 'Content-Type': 'image/png' },
+          })
+    }),
+  )
+}
+const bytesOf = async (request: Request) =>
+  new Uint8Array(
+    await ((await request.formData()).get('file') as File).arrayBuffer(),
+  )
+
 async function renderCompany() {
   const view = renderApp(['/settings/company'])
   await screen.findByRole('heading', { name: 'Datos de la empresa' })
@@ -437,10 +455,13 @@ describe('company logo', () => {
     ).toBeVisible()
   })
 
-  it('treats a 503 as success when the tenant read afterwards shows the new logo (DD-F26)', async () => {
+  // T-F603 (DD-F26, P-F21): an uncertain upload only counts when the current logo has the bytes sent.
+  it('treats a 503 as success when the tenant read afterwards shows the new logo with the same bytes (DD-F26)', async () => {
     const state = serveCompany(withLogo())
+    let stored = new Uint8Array()
     server.use(
-      http.put(`${base}/tenant/logo`, () => {
+      http.put(`${base}/tenant/logo`, async ({ request }) => {
+        stored = await bytesOf(request)
         state.tenant = {
           ...state.tenant,
           has_logo: true,
@@ -449,6 +470,7 @@ describe('company logo', () => {
         return problemResponse('service_unavailable', 503)
       }),
     )
+    serveCurrentLogo(() => stored)
     await renderCompany()
     await userEvent.setup().upload(picker(), smallPng())
     expect(await screen.findByText('Logo actualizado.')).toBeVisible()
@@ -460,10 +482,12 @@ describe('company logo', () => {
     expect(logoImages()).toHaveLength(2)
   })
 
-  it('treats a lost response as success when the tenant read afterwards shows the new logo', async () => {
+  it('treats a lost response as success when the tenant read afterwards shows the new logo with the same bytes', async () => {
     const state = serveCompany(companyTenant())
+    let stored = new Uint8Array()
     server.use(
-      http.put(`${base}/tenant/logo`, () => {
+      http.put(`${base}/tenant/logo`, async ({ request }) => {
+        stored = await bytesOf(request)
         state.tenant = {
           ...state.tenant,
           has_logo: true,
@@ -472,11 +496,69 @@ describe('company logo', () => {
         return HttpResponse.error()
       }),
     )
+    serveCurrentLogo(() => stored)
     await renderCompany()
     await userEvent.setup().upload(picker(), smallPng())
     expect(await screen.findByText('Logo actualizado.')).toBeVisible()
     expect(within(section()).queryByRole('alert')).toBeNull()
   })
+
+  it('does not call a failed upload a success when another session changed the company meanwhile (DD-F26)', async () => {
+    const state = serveCompany(withLogo())
+    // Same size as the upload, other content: only a byte comparison tells them apart.
+    const oldLogo = pngBytes(800, 401, 300_000)
+    const puts: Uint8Array[] = []
+    server.use(
+      http.put(`${base}/tenant/logo`, async ({ request }) => {
+        puts.push(await bytesOf(request))
+        if (puts.length === 1) {
+          // Not committed; a PATCH from another session moves updated_at and nothing else.
+          state.tenant = { ...state.tenant, updated_at: uploadedAt }
+          return problemResponse('service_unavailable', 503)
+        }
+        state.tenant = { ...state.tenant, updated_at: '2026-10-16T11:00:00Z' }
+        return HttpResponse.json(state.tenant)
+      }),
+    )
+    serveCurrentLogo(() => oldLogo)
+    await renderCompany()
+    const user = userEvent.setup()
+    await user.upload(picker(), smallPng())
+    const alert = await within(section()).findByRole('alert')
+    expect(
+      within(alert).getByRole('button', { name: 'Reintentar' }),
+    ).toBeVisible()
+    expect(screen.queryByText('Logo actualizado.')).toBeNull()
+    await user.click(within(alert).getByRole('button', { name: 'Reintentar' }))
+    expect(await screen.findByText('Logo actualizado.')).toBeVisible()
+    expect(puts).toHaveLength(2)
+    expect(sameBytes(puts[1]!, puts[0]!)).toBe(true)
+  })
+
+  it.each([
+    ['503', () => problemResponse('service_unavailable', 503)],
+    ['404', () => problemResponse('not_found', 404)],
+    ['a network error', () => HttpResponse.error()],
+  ])(
+    'does not call an upload a success when the current logo cannot be checked (%s)',
+    async (_name, failure) => {
+      const state = serveCompany(withLogo())
+      server.use(
+        http.put(`${base}/tenant/logo`, () => {
+          state.tenant = { ...state.tenant, updated_at: uploadedAt }
+          return problemResponse('service_unavailable', 503)
+        }),
+      )
+      serveCurrentLogo(failure)
+      await renderCompany()
+      await userEvent.setup().upload(picker(), smallPng())
+      const alert = await within(section()).findByRole('alert')
+      expect(
+        within(alert).getByRole('button', { name: 'Reintentar' }),
+      ).toBeVisible()
+      expect(screen.queryByText('Logo actualizado.')).toBeNull()
+    },
+  )
 
   it('removes the logo after confirming and says so', async () => {
     const state = serveCompany(withLogo())
