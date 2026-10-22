@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Controller, useForm } from 'react-hook-form'
+import { Controller, useForm, type Control } from 'react-hook-form'
 import { toast } from 'sonner'
 import {
   applyServerFieldErrors,
@@ -43,7 +43,7 @@ import {
   tenantToFormValues,
   type CompanyFormValues,
 } from './schemas'
-import { timeZoneGroups } from './timezones'
+import { timeZoneGroups, type TimeZoneGroups } from './timezones'
 import { useLogoActions } from './useLogoActions'
 
 const currencyNames = { ARS: 'Pesos (ARS)', USD: 'Dólares (USD)' } as const
@@ -74,6 +74,72 @@ const textFields: {
     inputMode: 'email',
   },
 ]
+
+// Radix Select renders its ~400 items even while closed and re-renders them whenever it is
+// re-rendered, so the selector lives in a memoized component: typing in another field of the
+// form (a re-render of CompanyEditor per keystroke) does not touch it, and the whole suite
+// stops timing out on these forms.
+const TimeZoneSelect = memo(function TimeZoneSelect({
+  control,
+  zones,
+  disabled,
+  invalid,
+  onPick,
+}: {
+  control: Control<CompanyFormValues>
+  zones: TimeZoneGroups
+  disabled: boolean
+  invalid: boolean
+  onPick: () => void
+}) {
+  return (
+    <Controller
+      control={control}
+      name="timezone"
+      render={({ field }) => (
+        <Select
+          value={field.value}
+          disabled={disabled}
+          onValueChange={(value) => {
+            field.onChange(value)
+            onPick()
+          }}
+        >
+          <SelectTrigger
+            id="company-timezone"
+            ref={field.ref}
+            className="h-11 w-full"
+            onBlur={field.onBlur}
+            aria-invalid={invalid}
+            aria-describedby={invalid ? 'company-timezone-error' : undefined}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="max-h-72">
+            {zones.argentina.length > 0 && (
+              <SelectGroup>
+                <SelectLabel>Argentina</SelectLabel>
+                {zones.argentina.map((zone) => (
+                  <SelectItem key={zone} value={zone}>
+                    {zone}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            )}
+            <SelectGroup>
+              <SelectLabel>Otras zonas</SelectLabel>
+              {zones.others.map((zone) => (
+                <SelectItem key={zone} value={zone}>
+                  {zone}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      )}
+    />
+  )
+})
 
 // T-F602, T-F603 (US-4, BR-F09, BR-F10, INV-F15, INV-F18, DD-F32, ui.md §13.11).
 export function CompanyEditor({ tenant }: { tenant: Tenant }) {
@@ -115,6 +181,11 @@ export function CompanyEditor({ tenant }: { tenant: Tenant }) {
       ?.focus()
     focusHandled()
   }, [focusTarget, confirmingRemoval, focusHandled])
+
+  const onTimeZonePicked = useCallback(() => {
+    clearErrors('timezone')
+    setSubmitError(null)
+  }, [clearErrors])
 
   async function onSubmit(values: CompanyFormValues) {
     if (submitLock.current) return
@@ -219,53 +290,12 @@ export function CompanyEditor({ tenant }: { tenant: Tenant }) {
           )}
           <Field data-invalid={Boolean(errors.timezone)}>
             <FieldLabel htmlFor="company-timezone">Zona horaria</FieldLabel>
-            <Controller
+            <TimeZoneSelect
               control={control}
-              name="timezone"
-              render={({ field }) => (
-                <Select
-                  value={field.value}
-                  disabled={saving}
-                  onValueChange={(value) => {
-                    field.onChange(value)
-                    clearErrors('timezone')
-                    setSubmitError(null)
-                  }}
-                >
-                  <SelectTrigger
-                    id="company-timezone"
-                    ref={field.ref}
-                    className="h-11 w-full"
-                    onBlur={field.onBlur}
-                    aria-invalid={Boolean(errors.timezone)}
-                    aria-describedby={
-                      errors.timezone ? 'company-timezone-error' : undefined
-                    }
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-72">
-                    {zones.argentina.length > 0 && (
-                      <SelectGroup>
-                        <SelectLabel>Argentina</SelectLabel>
-                        {zones.argentina.map((zone) => (
-                          <SelectItem key={zone} value={zone}>
-                            {zone}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    )}
-                    <SelectGroup>
-                      <SelectLabel>Otras zonas</SelectLabel>
-                      {zones.others.map((zone) => (
-                        <SelectItem key={zone} value={zone}>
-                          {zone}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              )}
+              zones={zones}
+              disabled={saving}
+              invalid={Boolean(errors.timezone)}
+              onPick={onTimeZonePicked}
             />
             {errors.timezone && (
               <FieldError id="company-timezone-error">
