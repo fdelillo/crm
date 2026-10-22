@@ -4808,6 +4808,13 @@ NFR-F13; ejecutar ambos proyectos en el runner Linux/PR.
 
 **T-F707 — Correcciones** que surjan de T-F702..T-F706, cada una con su test de regresión.
 
+**Estado T-F707 2026-10-22 (precarga de módulos lazy; esperando CI del PR #45)**:
+`session.test.tsx` ahora precarga también `CompanyPage` en `beforeAll`, alineándose con el patrón
+de `router.test.tsx`. El test dirigido pasó dentro de `npm run check` (suite completa: 44 archivos,
+652 pasaron, 2 expected-fail), pero en repeticiones aisladas bajo carga local el resultado fue
+intermitente: hubo ejecuciones que pasaron y otras que no encontraron el toast. Esperar el check
+del PR #45 antes de declarar estable la corrección.
+
 **Checkpoint Fase F7**: `npm run check` y `npm run e2e` en verde (Chromium en CI; WebKit
 reportado); reportes de T-F704, T-F705 y T-F706 adjuntos; resultado de S-12 (y del respaldo, si se
 usó) reportado.
