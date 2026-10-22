@@ -134,6 +134,8 @@ jobs:
           mkcert -version
       - name: Install the runner-local CA and create localhost certificate
         run: |
+          mkdir -p "$HOME/.pki/nssdb"
+          certutil -N --empty-password -d "sql:$HOME/.pki/nssdb"
           mkcert -install
           make dev-certs
       - name: Start development services
