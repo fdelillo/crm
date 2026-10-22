@@ -478,7 +478,28 @@ test('critical registration, session, recovery, invitation, and access flows', a
   await page.getByLabel('Contraseña').fill(initialPassword)
   await page.getByLabel('Nombre de la empresa').fill(recoveryCompany)
   await page.getByRole('radio', { name: 'Genérico' }).check()
+  const duplicateSignupResponse = page.waitForResponse(
+    (response) =>
+      response.url() === `${origin}/api/v1/auth/signup` &&
+      response.request().method() === 'POST',
+  )
   await page.getByRole('button', { name: 'Crear cuenta' }).click()
+  const duplicateSignup = await duplicateSignupResponse
+  const duplicateSignupCode = await duplicateSignup
+    .json()
+    .then((payload: unknown) => {
+      if (typeof payload !== 'object' || payload === null) return 'other'
+      const code = (payload as { code?: unknown }).code
+      return code === 'email_already_registered' || code === 'rate_limited'
+        ? code
+        : 'other'
+    })
+    .catch(() => 'unavailable')
+  // T-F702: expose only the HTTP status and an allowlisted code on failure.
+  expect(
+    { status: duplicateSignup.status(), code: duplicateSignupCode },
+    'Duplicate signup response (HTTP status and allowed code only)',
+  ).toEqual({ status: 409, code: 'email_already_registered' })
   await expect(
     page.getByText('Ya existe un usuario con ese email.'),
   ).toBeVisible()
