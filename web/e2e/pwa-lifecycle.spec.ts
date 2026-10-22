@@ -126,12 +126,23 @@ test('PWA serves only the offline page without retaining session data', async ({
   expect(
     JSON.stringify(browserStorage.sessionStorage).toLowerCase(),
   ).not.toContain(email.toLowerCase())
+  const sessionMetadata = browserStorage.sessionStorage.filter(
+    ([key]) => key !== 'react-router-scroll-positions',
+  )
   expect(
-    browserStorage.sessionStorage.every(
-      ([key]) => key === 'crm.preloadReloaded',
-    ),
+    sessionMetadata.every(([key]) => key === 'crm.preloadReloaded'),
     JSON.stringify(browserStorage.sessionStorage),
   ).toBe(true)
+  const scrollPositions = browserStorage.sessionStorage.find(
+    ([key]) => key === 'react-router-scroll-positions',
+  )?.[1]
+  if (scrollPositions) {
+    expect(
+      Object.values(
+        JSON.parse(scrollPositions) as Record<string, unknown>,
+      ).every((position) => typeof position === 'number'),
+    ).toBe(true)
+  }
 
   await page.context().setOffline(true)
   await page.goto('/settings')
