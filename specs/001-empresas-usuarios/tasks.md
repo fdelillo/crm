@@ -4644,6 +4644,15 @@ GitHub valida `workflow_dispatch` desde el archivo de la rama por defecto, donde
 integrada. La corrida Chromium queda pendiente de que el flujo de la rama esté disponible para un
 evento que evalúe esa versión; no se abrió PR ni se hizo merge.
 
+**Actualización CI 2026-10-22**: GitHub rechazó los pushes con un error de archivo workflow antes
+de crear jobs porque `jobs.e2e.if` usaba el contexto `matrix.browser`, no disponible en esa
+condición. Eliminé el `if` inválido; la matriz dinámica conserva Chromium para push/PR y el
+navegador seleccionado para `workflow_dispatch`. YAML, selección local de la matriz y
+`git diff --check` pasan. Commit `3b349dafb835bd8381be89163e729c085c69a179`
+(`fix(ci): remove invalid matrix job condition`) enviado. No se generó un run de esa revisión:
+`ci.yml` limita `push` a `main`, y todavía no hay PR; el primer run de la corrección será al abrir
+el PR. El check E2E requerido se llama `Playwright (chromium)`; no se cambió el ruleset.
+
 **Objetivo**: los flujos críticos funcionan de punta a punta sobre el binario real servido por
 HTTPS local; la PWA, la CSP, la cookie de sesión real, la preparación del logo y la accesibilidad
 están verificadas; los objetivos de performance están medidos. Esta fase **verifica y cierra
