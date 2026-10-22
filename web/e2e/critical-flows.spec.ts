@@ -111,6 +111,7 @@ test('critical registration, session, recovery, invitation, and access flows', a
   const verificationURL = extractEmailLink(verification)
   expect(verificationURL.origin).toBe(origin)
   const verificationPage = await page.context().newPage()
+  await verificationPage.bringToFront()
   await verificationPage.setViewportSize({ width: 320, height: 720 })
   await track(verificationPage)
   await verificationPage.goto(verificationURL.toString())
