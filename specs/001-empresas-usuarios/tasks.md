@@ -4744,6 +4744,32 @@ métricas de Lighthouse y el resultado del supuesto S-12.
   también pasan a una `LiveRegion`. Sin Windows con NVDA, el reporte dice "INV-F19 no verificada en
   NVDA" y la garantía queda en los tests estructurales.
 
+**Estado T-F705 2026-10-22 (parcial; navegación de navegador y tecnología asistiva pendiente)**:
+`PATH=/private/tmp/node-v24.22.0-darwin-x64/bin:$PATH npm run check` pasó (lint, formato,
+generación, typecheck, 44 archivos Vitest: 652 pasaron, 2 expected-fail; build). La inspección
+estática confirmó `prefers-reduced-motion`, viewport sin `maximum-scale`, `scroll-padding-bottom`
+y reserva inferior de la app shell. La revisión con fórmula WCAG 2.x de luminancia relativa de
+los valores hex de `globals.css` pasó todos los pares de §19.1: foreground/background 17,06:1;
+card y popover foreground/fondo 17,85:1; primary y primary-foreground/primary 5,17:1;
+secondary-foreground/secondary 16,30:1; muted-foreground/background 7,24:1;
+accent-foreground/accent 8,01:1; destructive/blanco 4,83:1; input/blanco 4,76:1;
+ring/blanco 5,17:1 y ring/background 4,94:1; success/blanco 5,48:1; warning/warning-muted
+6,84:1. `border` es decorativo según §19.1. Se halló el botón de icono de acciones de usuario
+de 36×44 CSS px (`size-9` más el mínimo global de alto); se corrigió a 44×44 (`size-11`) y se
+añadió una aserción E2E de ancho/alto mínimo en el flujo de gestión de usuarios (regresión
+T-F707). No pudo ejecutarse el navegador: con `PLAYWRIGHT_BROWSERS_PATH=/private/tmp/crm-f7-browsers`
+y `NODE_EXTRA_CA_CERTS` de mkcert, Chromium abortó antes de navegar con
+`MachPortRendezvousServer… Permission denied (1100)`. CUA informó sin apps ni browsers y `iab`
+no estuvo disponible. Por eso teclado en flujos completos, zoom 200 %, reduced-motion visual,
+tamaño/espaciado real de todos los targets y foco frente a la barra inferior siguen sin
+evaluación visual; la evidencia CSS no los da por aprobados. TalkBack/Chrome Android, VoiceOver/
+Safari iOS, VoiceOver macOS, NVDA/Windows, INP Android y H-12 en teléfono real quedan pendientes.
+Para INV-F19: correr en NVDA/Firefox o Chrome y mantener el foco quieto mientras se prueban C-01,
+S-05, C-02, aviso W/“Preparando la imagen…” y un `401 invalid_credentials`; cada anuncio debe
+leerse completo una vez. En Android/iOS repetir registro, ingresar, usuarios y empresa/logo por
+HTTPS de H-12; comprobar zoom 200 %, reduced-motion, targets de 44×44 separados ≥8 px y que el
+foco no quede bajo la barra inferior. No se declara la checklist manual en verde.
+
 **T-F706 [T] — Preparación del logo en navegadores reales** · DD-F20, DD-F21, DD-F22, INV-F13, NFR-F13, S-F7, S-F9, `ui.md` §13.11.1
 - **Red** (Playwright, Chromium y WebKit; cada caso sube por la UI y después descarga
   `/api/v1/tenant/logo` desde la página para inspeccionar lo que guardó el servidor):

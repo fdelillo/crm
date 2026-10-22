@@ -270,9 +270,15 @@ test('critical registration, session, recovery, invitation, and access flows', a
   const operatorRow = page
     .getByRole('listitem')
     .filter({ hasText: operatorEmail })
-  await operatorRow
-    .getByRole('button', { name: `Acciones para ${operatorName}` })
-    .click()
+  const operatorActions = operatorRow.getByRole('button', {
+    name: `Acciones para ${operatorName}`,
+  })
+  // T-F707 (NFR-F07): icon-only controls keep the approved 44×44 CSS-pixel target.
+  const operatorActionsBounds = await operatorActions.boundingBox()
+  expect(operatorActionsBounds).not.toBeNull()
+  expect(operatorActionsBounds!.width).toBeGreaterThanOrEqual(44)
+  expect(operatorActionsBounds!.height).toBeGreaterThanOrEqual(44)
+  await operatorActions.click()
   await page.getByRole('menuitem', { name: 'Desactivar' }).click()
   await expect(
     page.getByRole('alertdialog', { name: `¿Desactivar a ${operatorName}?` }),
