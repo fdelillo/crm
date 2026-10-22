@@ -4559,6 +4559,53 @@ anterior. Celular real: sigue pendiente por H-12. Revisión: pendiente (Codex).
 retroceder la caché de la empresa, y dos nombres para la misma zona en el selector) los resuelve
 `ui.md` P-F22: DD-F33 e INV-F20 nuevas, DD-F27 revisada y S-F15.
 
+**P-F22 implementada (2026-10-22)**: los cambios de código de la enmienda sobre F6, en
+`feat/001-frontend-company-settings` (cabeza `bbcec96`, la que aplicó P-F22 a `ui.md` y a este archivo).
+Commits: `847d08f` (cola de los cambios de la empresa: `TENANT_CHANGES_SCOPE` como `scope` de
+`useUpdateTenant`, `useUploadLogo` y `useDeleteLogo`; `await cancelQueries` antes de `setQueryData` en los
+dos `onSuccess` que escriben la caché; `CompanyChangeOrder.test.tsx` con 7 casos y el helper `gate()` movido
+a `src/test/gate.ts`) y `71b2776` (`ARGENTINA_LEGACY_ZONES` pasa a mapa con los siete enlaces de `backward`;
+`timeZoneGroups` oculta la zona de `Intl` que es la misma que la guardada). Sin dependencias nuevas; no se
+tocó Go, el contrato ni `ui.md`. Los tests se escribieron primero y se vieron en rojo por la razón
+correcta (el `PATCH` o el `PUT` salía con el otro retenido; la relectura vieja pisaba el `src`; aparecía
+`America/Buenos_Aires` junto a la guardada). Los casos de la cola usan MSW en el borde HTTP: cada handler
+confirma al **recibir** y responde con una foto de la fila, y un `gate()` retiene la respuesta. "No sale el
+segundo request" se prueba dejando correr 60 ms con el primero retenido y mirando la lista de eventos del
+servidor; ninguna aserción depende de la caché vacía (`gcTime: 0`): se lee el `src` con la pantalla montada.
+
+Mutaciones de la cola (aplicadas, test en rojo, restauradas):
+
+| Mutación | Casos que fallan |
+|---|---|
+| Quitar `scope` de `useUpdateTenant` | "holds the PATCH until the PUT answered", "still sends the PATCH when the PUT answers 413", "sends no PATCH when the PUT answers 401", "holds the PUT until the PATCH answered" y "holds the DELETE until the PATCH answered" (5 de 7) |
+| Quitar `scope` de `useUploadLogo` | los mismos cuatro primeros (4 de 7); "holds the DELETE…" sigue en verde porque el `PATCH` y el `DELETE` aún comparten cola |
+| Quitar `scope` de `useDeleteLogo` | "holds the DELETE until the PATCH answered" (1 de 7) |
+| Dos `scope` distintos (`tenant-data` y `tenant-logo`) | 5 de 7: los de `PUT`/`PATCH` y el del `DELETE` |
+| Quitar `cancelQueries` de `useUpdateTenant` | "does not let a read in flight overwrite the PATCH response" |
+| Quitar `cancelQueries` de `useUploadLogo` | "does not let a read in flight overwrite the PUT response" |
+| `cancelQueries` **después** de `setQueryData` | **Sobrevive, y es un mutante equivalente**: en `@tanstack/query-core` 5.104.3 `setQueryData` guarda el estado nuevo como `#revertState` (`query.ts:973`), así que el `revert: true` de una cancelación posterior restaura **esa** respuesta y no la anterior. El orden `cancelQueries` y después `setQueryData` se deja como pide DD-F33 (no depende de ese detalle), pero S-F15 y la fila de la propuesta ("cancelar después vuelve al estado anterior") no son exactos para esta versión |
+
+Mutaciones de las zonas (aplicadas, test en rojo, restauradas):
+
+| Mutación | Casos que fallan |
+|---|---|
+| Anteponer la guardada sin filtrar la lista (lo de antes) | "puts the default of the backend first…", "puts a saved previous name first and hides…", "hides the previous name when the browser lists the current names" y el `it.each` de `CompanyPage` con `America/Argentina/Buenos_Aires` |
+| Filtrar por nombre (`zone !== saved`) | los mismos cuatro |
+| Traducir solo el lado de `saved` | "puts the default of the backend first…" y el `it.each` de `CompanyPage` |
+| Traducir solo el lado de la lista | "puts a saved previous name first and hides…" (Rosario) y "hides the previous name when the browser lists the current names" |
+| Quitar `America/Rosario` del mapa | "knows exactly the seven links…" y "puts a saved previous name first and hides…" |
+| Quitar `America/Argentina/ComodRivadavia` del mapa | "knows exactly the seven links…" |
+| Filtrar la equivalencia también cuando la guardada sí está en la lista | "hides nothing when the saved zone is listed" y los tres casos que ya cubrían la lista sin repetir (`groups the previous names…`, `does not repeat a zone…`, `groups the Argentine zones first…` de `CompanyPage`) |
+
+El caso "zona guardada que `Intl` no lista → cambiar solo el teléfono → el `PATCH` es exactamente `{ phone }`"
+ya pasaba antes del cambio (el valor del formulario siempre fue la zona guardada): queda como guarda de
+INV-F15. Con dos toasts a la vez, sonner apila el primero y `toBeVisible()` falla; ese caso comprueba solo
+que estén en el documento.
+
+`npm run check` con Node 24.22.0, en verde: lint, formato, generación, typecheck, 44 archivos de test,
+652 passed y 2 expected-fail (654 con los de tipos), y build. Antes de P-F22 eran 641 passed; la
+suite entera tarda ~47 s y no se subió ningún timeout. Revisión: pendiente (Codex).
+
 ---
 
 ### Fase F7 — End-to-end, PWA, accesibilidad y performance (verificación)
