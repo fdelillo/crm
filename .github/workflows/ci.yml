@@ -113,6 +113,24 @@ jobs:
         browser: ${{ github.event_name == 'workflow_dispatch' && fromJSON(format('["{0}"]', inputs.browser)) || fromJSON('["chromium"]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Both managed server generations inherit the same synthetic development configuration.
+    env:
+      DATABASE_URL: postgres://crm_app:crm_app_dev@localhost:5432/crm?sslmode=disable
+      DATABASE_MIGRATION_URL: postgres://crm_owner:crm_owner_dev@localhost:5432/crm?sslmode=disable
+      AUTH_HMAC_KEY: dGVzdC1vbmx5LW5vdC1hLXJlYWwtc2VjcmV0LWF0LWxlYXN0LTMyLWJ5dGVz
+      APP_BASE_URL: https://localhost:8443
+      HTTP_ADDR: :8443
+      TLS_CERT_FILE: .certs/localhost.pem
+      TLS_KEY_FILE: .certs/localhost-key.pem
+      SMTP_HOST: localhost
+      SMTP_PORT: "1025"
+      SMTP_FROM: no-reply@crm.local
+      S3_ENDPOINT: localhost:9000
+      S3_BUCKET: crm-dev
+      S3_ACCESS_KEY: minio_dev
+      S3_SECRET_KEY: minio_dev_secret
+      S3_USE_SSL: "false"
+      NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/mkcert-root-ca.pem
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -157,39 +175,19 @@ jobs:
           path: bin
       - name: Migrate and start CRM over HTTPS
         shell: bash
-        env:
-          DATABASE_URL: postgres://crm_app:crm_app_dev@localhost:5432/crm?sslmode=disable
-          DATABASE_MIGRATION_URL: postgres://crm_owner:crm_owner_dev@localhost:5432/crm?sslmode=disable
-          AUTH_HMAC_KEY: dGVzdC1vbmx5LW5vdC1hLXJlYWwtc2VjcmV0LWF0LWxlYXN0LTMyLWJ5dGVz
-          APP_BASE_URL: https://localhost:8443
-          HTTP_ADDR: :8443
-          TLS_CERT_FILE: .certs/localhost.pem
-          TLS_KEY_FILE: .certs/localhost-key.pem
-          SMTP_HOST: localhost
-          SMTP_PORT: "1025"
-          SMTP_FROM: no-reply@crm.local
-          S3_ENDPOINT: localhost:9000
-          S3_BUCKET: crm-dev
-          S3_ACCESS_KEY: minio_dev
-          S3_SECRET_KEY: minio_dev_secret
-          S3_USE_SSL: "false"
         run: |
           set -euo pipefail
           tar -C bin -xzf bin/crm-linux-amd64.tar.gz
           ./bin/crm migrate up
-          nohup ./bin/crm serve > "$RUNNER_TEMP/crm-e2e.log" 2>&1 &
-          for attempt in {1..60}; do
-            if curl --fail --silent https://localhost:8443/healthz >/dev/null; then
-              exit 0
-            fi
-            sleep 1
-          done
-          cat "$RUNNER_TEMP/crm-e2e.log"
-          exit 1
-      - name: Install frontend dependencies and browser
+          cp "$(mkcert -CAROOT)/rootCA.pem" "$RUNNER_TEMP/mkcert-root-ca.pem"
+          node web/scripts/manage-e2e-server.mjs start
+      - name: Install frontend dependencies
         run: |
           cd web
           npm ci
+      - name: Install Playwright browser and system dependencies
+        run: |
+          cd web
           npx playwright install --with-deps "${{ matrix.browser }}"
       - name: Run Playwright
         id: playwright
@@ -200,7 +198,20 @@ jobs:
           set -euo pipefail
           cp "$(mkcert -CAROOT)/rootCA.pem" "$RUNNER_TEMP/mkcert-root-ca.pem"
           cd web
-          npx playwright test --project="${{ matrix.browser }}"
+          # T-F702: each group stays within the existing registration burst, with identical tests.
+          # Keep both results: a failed first group still fails the step after the second runs.
+          auxiliary_status=0
+          npx playwright test --project="${{ matrix.browser }}" \
+            --output=test-results/auxiliary \
+            e2e/application.spec.ts e2e/shell-layout.spec.ts \
+            e2e/pwa-lifecycle.spec.ts e2e/logo-preparation.spec.ts || auxiliary_status=$?
+          node scripts/manage-e2e-server.mjs restart
+          critical_status=0
+          npx playwright test --project="${{ matrix.browser }}" \
+            --output=test-results/critical \
+            e2e/critical-flows.spec.ts || critical_status=$?
+          echo "Playwright exit codes: auxiliary=$auxiliary_status critical=$critical_status"
+          if [[ "$auxiliary_status" -ne 0 || "$critical_status" -ne 0 ]]; then exit 1; fi
       - name: Upload sanitized Playwright failure diagnostics
         if: always() && steps.playwright.outcome == 'failure'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -249,6 +260,9 @@ jobs:
           path: ${{ runner.temp }}/lighthouse-evidence
           if-no-files-found: error
           retention-days: 7
+      - name: Stop CI-owned CRM process
+        if: always()
+        run: node web/scripts/manage-e2e-server.mjs stop
       - name: Stop development services
         if: always()
         run: docker compose down --volumes
