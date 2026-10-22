@@ -4629,6 +4629,13 @@ corrida E2E local pasó el global setup (compose y HTTPS con CA) pero Chromium n
 por `MachPortRendezvousServer … Permission denied (1100)` del sandbox macOS; S-12 queda pendiente,
 sin fallback `ignoreHTTPSErrors`. La validación del job de CI queda para su ejecución en GitHub.
 
+**Estado T-F702 (2026-10-22)**: agregado `web/e2e/critical-flows.spec.ts` con los flujos de
+registro, sesión, verificación, invitaciones, permisos, recuperación y bloqueo; el helper de correo
+filtra por destinatario. `npm run check`, `npx tsc --noEmit -p tsconfig.e2e.json` y `git diff --check`
+pasan. La corrida E2E local no pudo evaluar los pasos: Chromium se detuvo al arrancar con
+`MachPortRendezvousServer … Permission denied (1100)` del sandbox macOS; el workflow Chromium de CI
+queda pendiente. WebKit aborta en este host (`Abort trap: 6`).
+
 **Objetivo**: los flujos críticos funcionan de punta a punta sobre el binario real servido por
 HTTPS local; la PWA, la CSP, la cookie de sesión real, la preparación del logo y la accesibilidad
 están verificadas; los objetivos de performance están medidos. Esta fase **verifica y cierra

@@ -1,4 +1,5 @@
 import AxeBuilder from '@axe-core/playwright'
+import { expect } from '@playwright/test'
 import type { Page } from '@playwright/test'
 
 const mailpitURL = process.env.MAILPIT_URL ?? 'http://localhost:8025'
@@ -6,6 +7,7 @@ const mailpitURL = process.env.MAILPIT_URL ?? 'http://localhost:8025'
 type MailpitSummary = {
   ID: string
   Subject: string
+  To?: { Address: string }[]
 }
 
 type MailpitMessage = MailpitSummary & {
@@ -71,6 +73,8 @@ export async function expectNoAccessibilityViolations(
 
 export async function readLatestEmail(
   subject?: string,
+  recipient?: string,
+  excludedID?: string,
 ): Promise<MailpitMessage> {
   const response = await fetch(`${mailpitURL}/api/v1/messages?limit=50`)
   if (!response.ok)
@@ -78,11 +82,17 @@ export async function readLatestEmail(
 
   const result = (await response.json()) as { messages?: MailpitSummary[] }
   const message = result.messages?.find(
-    (candidate) => !subject || candidate.Subject === subject,
+    (candidate) =>
+      candidate.ID !== excludedID &&
+      (!subject || candidate.Subject === subject) &&
+      (!recipient ||
+        candidate.To?.some(
+          ({ Address }) => Address.toLowerCase() === recipient.toLowerCase(),
+        )),
   )
   if (!message)
     throw new Error(
-      `No se encontró un email${subject ? ` con asunto "${subject}"` : ''}`,
+      `No se encontró un email${subject ? ` con asunto "${subject}"` : ''}${recipient ? ` para ${recipient}` : ''}`,
     )
 
   const detailResponse = await fetch(
@@ -93,6 +103,32 @@ export async function readLatestEmail(
       `Mailpit respondió ${detailResponse.status} al leer el mensaje`,
     )
   return (await detailResponse.json()) as MailpitMessage
+}
+
+export async function waitForEmail(
+  subject: string,
+  recipient: string,
+  excludedID?: string,
+): Promise<MailpitMessage> {
+  let latest: MailpitMessage | null = null
+  await expect
+    .poll(
+      async () => {
+        try {
+          latest = await readLatestEmail(subject, recipient, excludedID)
+          return latest.ID
+        } catch {
+          return null
+        }
+      },
+      {
+        timeout: 20_000,
+        message: `esperando el email ${subject} para ${recipient}`,
+      },
+    )
+    .not.toBeNull()
+  if (!latest) throw new Error(`No llegó el email ${subject} para ${recipient}`)
+  return latest
 }
 
 export function extractEmailLink(message: MailpitMessage): URL {
