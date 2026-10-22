@@ -4719,10 +4719,14 @@ métricas de Lighthouse y el resultado del supuesto S-12.
   Lighthouse *mobile* sobre el binario en `https://localhost:8443` en `/login` y `/` (LCP, CLS; INP
   en un Android de gama media a mano, con el origen de H-12). **Si un objetivo no se cumple, frenar
   y volver al arquitecto** con los números.
-- **Estado 2026-10-22**: `vite build --manifest` pasó. El cierre de imports de `/login` mide
-  202,75 KB gzip frente al objetivo ≤ 200 KB (NFR-F05); se detuvo el bloque y se elevó a
-  `frontend-architect`. Lighthouse 13.5.0 no pudo iniciar Chrome 146 en macOS (`Permission denied
-  (1100)` de Crashpad), así que LCP/CLS no tienen medición. INP en Android sigue pendiente.
+- **Estado 2026-10-22 (bundle dentro del presupuesto; métricas Lighthouse pendientes)**: con la
+  alternativa aprobada de separar las páginas públicas de carga diferida y los esquemas por
+  formulario, `vite build --manifest` mide el cierre de `/login` en 188,43 KB gzip (≤ 200 KB), el
+  recorrido acumulado login → AppShell → Dashboard en 223,67 KB (≤ 250 KB), y el chunk compartido
+  `schemas` en 37,42 KB (≤ 40 KB). La primera implementación cumple los tres presupuestos sin
+  migrar Zod, React Hook Form ni zodResolver. Lighthouse no se repitió: la ejecución anterior no
+  pudo iniciar Chrome 146 en macOS (`Permission denied (1100)` de Crashpad), por lo que LCP/CLS no
+  están medidos; INP Android sigue pendiente.
 
 **T-F705 — Verificación manual de accesibilidad** · NFR-F06, NFR-F07, NFR-F08, INV-F19, `ui.md` §18, P-F20
 - Checklist: todos los flujos solo con teclado; TalkBack (Chrome Android) y VoiceOver (Safari

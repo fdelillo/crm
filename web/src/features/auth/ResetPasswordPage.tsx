@@ -15,7 +15,7 @@ import {
 } from '@/api/errorMessages'
 import { isApiError } from '@/api/errors'
 import { useConfirmPasswordReset } from './api'
-import { passwordResetConfirmSchema } from './schemas'
+import { passwordResetConfirmSchema } from './passwordResetConfirmSchema'
 import { useLinkToken } from './useLinkToken'
 
 interface ResetPasswordValues {

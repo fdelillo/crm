@@ -7,10 +7,40 @@ import {
   RequireSession,
 } from './guards/routeGuards'
 
-const authPage =
-  (page: keyof typeof import('@/features/auth/pages')) => async () => ({
-    Component: (await import('@/features/auth/pages'))[page],
-  })
+type AuthPage = keyof typeof import('@/features/auth/pages')
+
+const authPage = (page: AuthPage) => async () => {
+  switch (page) {
+    case 'LoginPage':
+      return {
+        Component: (await import('@/features/auth/LoginPage')).LoginPage,
+      }
+    case 'SignupPage':
+      return {
+        Component: (await import('@/features/auth/SignupPage')).SignupPage,
+      }
+    case 'ForgotPasswordPage':
+      return {
+        Component: (await import('@/features/auth/ForgotPasswordPage'))
+          .ForgotPasswordPage,
+      }
+    case 'ResetPasswordPage':
+      return {
+        Component: (await import('@/features/auth/ResetPasswordPage'))
+          .ResetPasswordPage,
+      }
+    case 'VerifyEmailPage':
+      return {
+        Component: (await import('@/features/auth/VerifyEmailPage'))
+          .VerifyEmailPage,
+      }
+    case 'AcceptInvitationPage':
+      return {
+        Component: (await import('@/features/auth/AcceptInvitationPage'))
+          .AcceptInvitationPage,
+      }
+  }
+}
 const usersPage =
   (page: keyof typeof import('@/features/users/pages')) => async () => ({
     Component: (await import('@/features/users/pages'))[page],

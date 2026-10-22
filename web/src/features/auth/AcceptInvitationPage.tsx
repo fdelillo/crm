@@ -27,7 +27,7 @@ import { useSession } from './session'
 import {
   invitationAcceptSchema,
   type InvitationAcceptFormValues,
-} from './schemas'
+} from './invitationAcceptSchema'
 
 export function AcceptInvitationPage() {
   const token = useLinkToken()
