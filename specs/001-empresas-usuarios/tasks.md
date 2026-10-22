@@ -3170,6 +3170,15 @@ tamaño (≤ 20 971 520 bytes); `resized` también si el primer paso de la escal
 `unknown` es `unsupported_format` (gana T-F604). Cambian T-F602, T-F603, T-F604, T-F605 y la
 trazabilidad; se corrigen en la rama del PR #43. Sin tareas nuevas ni cambios de orden.
 
+**Enmienda de F6, P-F22 (2026-10-22; `ui.md` P-F22 aprobada por el usuario el 2026-10-22)**
+(`ui.md`, enmienda de F6, P-F22): hallazgos 1 y 2 de la revisión 2 del PR #43. (1) DD-F33 nueva e
+INV-F20: los cambios de la empresa (`PATCH /tenant`, `PUT` y `DELETE /tenant/logo`) salen de a uno
+por una cola compartida (`scope` de TanStack Query), y cada respuesta que se escribe en `['tenant']`
+cancela antes las lecturas en vuelo. (2) DD-F27 revisada: si la zona guardada no está en la lista
+de `Intl`, la opción que es la misma zona con otro nombre no se muestra; `ARGENTINA_LEGACY_ZONES`
+pasa a mapa. Cambian T-F602, T-F603, T-F605 y la trazabilidad; se corrigen en la rama del PR #43.
+Sin tareas nuevas ni cambios de orden.
+
 ### Convenciones de esta sección
 
 - `[T]` = tarea de test. Va **antes** de la tarea de código que la hace pasar, y el test debe
@@ -4234,7 +4243,7 @@ S-F10). Valida S-F8 y NFR-F13; si no hay forma de hacerla, se reporta como pendi
   del módulo 11 con resto 10 u 11 según la regla oficial.
 - **Green**: `lib/cuit.ts` (`isValidCuit`) pasa la tabla.
 
-**T-F602 [T] — Datos de la empresa** · US-4, DD-15, DD-27, BR-F09, BR-F10, INV-F04, DD-F27, DD-F32, INV-F18, `ui.md` §12.4, §13.11, P-F21
+**T-F602 [T] — Datos de la empresa** · US-4, DD-15, DD-27, BR-F09, BR-F10, INV-F04, DD-F27, DD-F32, DD-F33, INV-F18, INV-F20, `ui.md` §12.4, §13.11, P-F21, P-F22
 - **Red**:
 
   | Interacción | Resultado observable |
@@ -4256,16 +4265,29 @@ S-F10). Valida S-F8 y NFR-F13; si no hay forma de hacerla, se reporta como pendi
   | `401` sin cambios sin guardar | login solo con "Tu sesión se cerró. Ingresá de nuevo para seguir." |
   | "Salir" en el aviso y después un `401` en otra pantalla | login sin la segunda línea (el guard ya no está activo) |
   | *(P-F21)* Zona horaria, con `Intl.supportedValuesOf('timeZone')` simulado como `America/Argentina/Cordoba`, `America/Buenos_Aires`, `America/Mendoza`, `America/Santiago`, `Europe/Madrid` | grupo "Argentina" primero, con `America/Argentina/Cordoba`, `America/Buenos_Aires` y `America/Mendoza` en ese orden; "Otras zonas" con `America/Santiago` y `Europe/Madrid` (DD-F27) |
-  | La zona guardada de la empresa no está en `Intl.supportedValuesOf('timeZone')` (S-F11): `America/Argentina/Buenos_Aires` con la lista anterior / `Europe/Berlin` | aparece igual, seleccionada y primera en "Argentina" / primera en "Otras zonas" (DD-F27; *(P-F21)*) |
+  | La zona guardada de la empresa no está en `Intl.supportedValuesOf('timeZone')` (S-F11): `America/Argentina/Buenos_Aires` con la lista anterior / `Europe/Berlin` | aparece igual, seleccionada y primera en "Argentina" / primera en "Otras zonas" (DD-F27; *(P-F21)*). *(P-F22)* Con `America/Argentina/Buenos_Aires`, "Argentina" es `America/Argentina/Buenos_Aires`, `America/Argentina/Cordoba` y `America/Mendoza`: **ninguna** opción `America/Buenos_Aires`. Con `Europe/Berlin` no se oculta nada |
+  | *(P-F22)* Zona guardada `America/Argentina/Buenos_Aires` que `Intl` no lista → cambiar solo el teléfono → Guardar | "Guardar cambios" deshabilitado al cargar; el `PATCH` lleva `{ phone }` solamente, sin `timezone` (el campo no quedó modificado; INV-F15) |
+  | *(P-F22, unitario de `timeZoneGroups`)* Zona guardada `America/Rosario` con la lista anterior / `America/Buenos_Aires` con la lista `America/Argentina/Buenos_Aires`, `America/Argentina/Cordoba`, `Europe/Madrid` (un navegador con los nombres actuales) / `Asia/Kolkata` con una lista que tiene `Asia/Calcutta` | "Argentina": `America/Rosario`, `America/Buenos_Aires`, `America/Mendoza` (no aparece `America/Argentina/Cordoba`, la misma zona) / "Argentina": `America/Buenos_Aires`, `America/Argentina/Cordoba` (no aparece `America/Argentina/Buenos_Aires`) / las dos en "Otras zonas", `Asia/Kolkata` primera (fuera de Argentina no se deduplica) |
+  | *(P-F22, unitario)* `ARGENTINA_LEGACY_ZONES` | exactamente los siete pares de DD-F27 |
   | `503` al guardar | mensaje con "Reintentar"; valores intactos |
+  | *(P-F22)* Empresa con logo; elegir un PNG chico y retener la respuesta del `PUT` (el servidor ya confirmó) → cambiar el teléfono → "Guardar cambios" | el botón dice "Guardando…" enseguida y los campos quedan de solo lectura; **ningún** `PATCH` sale mientras el `PUT` no respondió; al soltar el `PUT`, sale el `PATCH` con `{ phone }`; toasts "Logo actualizado." y "Guardamos los datos de la empresa."; al final, el `src` del logo (S-11 y encabezado) tiene el `updated_at` de la respuesta del `PATCH`, la más nueva (DD-F33, INV-F20) |
+  | *(P-F22)* Lo mismo, y el `PUT` responde `413` | mensaje del `413` en el control del logo; el `PATCH` sale igual y su toast aparece (uno que falla no frena al siguiente) |
+  | *(P-F22)* Lo mismo, y el `PUT` responde `401 unauthenticated` | login con "Tu sesión se cerró. Ingresá de nuevo para seguir." y "Los cambios que no habías guardado se perdieron."; **ningún** `PATCH` enviado (S-F15) |
+  | *(P-F22)* Empresa con logo; una relectura de `GET /tenant` en vuelo (disparada con `invalidateQueries(['tenant'])`, como "al enfocar la ventana"), retenida con la empresa anterior → cambiar el teléfono → Guardar → `200` → soltar la relectura | el `src` del logo sigue con el `updated_at` de la respuesta del `PATCH`; la relectura vieja no lo pisa (INV-F20) |
   | `503` al guardar → "Reintentar" → `200` con el mismo `updated_at` | toast "Guardamos los datos de la empresa."; la URL del logo no cambia (DD-43 (4): reintentar es seguro) |
   | Vaciar el nombre → Guardar | "Completá este campo."; ningún request (nunca `name: null`, INV-F15) |
   | Cualquier `PATCH` enviado en esta tabla | el body nunca incluye `base_currency` ni `null` en `name` o `timezone` (INV-F15) |
   | `422` con `{field: 'legal_name', code: 'invalid_value'}` / `{field: 'name', code: 'invalid_value'}` | "Es demasiado largo (máximo 200 caracteres)." en "Razón social" / "Tiene que tener entre 1 y 120 caracteres." en "Nombre de la empresa" (DD-F24) |
   | `400 malformed_request` con `instance` | error general "No pudimos procesar el pedido." con el código |
+- **Mutaciones** (P-F22; se aplica cada una, el caso falla y se restaura): (1) quitar el `scope` de
+  `useUpdateTenant` → falla la fila "retener la respuesta del `PUT`" (sale el `PATCH` con el `PUT`
+  pendiente); (2) escribir la respuesta del `PATCH` sin `cancelQueries` → falla la fila de la
+  relectura en vuelo; (3) agregar la zona guardada sin quitar su equivalente → falla la fila de
+  `America/Argentina/Buenos_Aires` (aparece `America/Buenos_Aires`); (4) comparar los nombres en vez
+  de la zona actual del mapa → fallan Rosario y el navegador con los nombres actuales.
 - **Green**: pasa la tabla.
 
-**T-F603 [T] — Logo en la pantalla y en el encabezado** · US-4, DD-11, DD-23, DD-31, DD-F11, DD-F12, DD-F22, DD-F26, BR-F13, INV-F10, INV-F14, `ui.md` §11.1, §13.11, §14.4, P-F21
+**T-F603 [T] — Logo en la pantalla y en el encabezado** · US-4, DD-11, DD-23, DD-31, DD-F11, DD-F12, DD-F22, DD-F26, DD-F33, BR-F13, INV-F10, INV-F14, INV-F20, `ui.md` §11.1, §13.11, §14.4, P-F21, P-F22
 - **Red** (pantalla con MSW; el módulo `features/tenant/logo/canvas.ts` con `vi.mock`: `decodeImage`
   devuelve un bitmap falso con el tamaño pedido y `encodeBitmap` un `Blob` del tamaño que fija cada
   caso):
@@ -4294,11 +4316,18 @@ S-F10). Valida S-F8 y NFR-F13; si no hay forma de hacerla, se reporta como pendi
   | Salir mientras se prepara o sube | pide confirmación (BR-F10). *(P-F21)* "Salir" mientras se prepara: navega y, cuando el adaptador resuelve, no se envía `PUT`. "Salir" mientras se sube (`PUT` pendiente): navega; cuando el `PUT` responde `200`, el toast "Logo actualizado." aparece en la pantalla nueva |
   | "Quitar" → confirmar → `204` | *(P-F21)* el diálogo dice "¿Quitar el logo?" / "Vamos a mostrar las iniciales de tu empresa en su lugar. Podés subir otro logo cuando quieras.", con el foco en "Cancelar" al abrir; mientras espera, "Quitando logo…" y los dos botones deshabilitados; después, iniciales, toast "Quitamos el logo." y el foco en "Cambiar logo" |
   | *(P-F21)* "Quitar" → "Cancelar" | el logo sigue; el foco vuelve a "Quitar" (INV-F10) |
+  | *(P-F22)* Cambiar el teléfono → "Guardar cambios" con el `PATCH` retenido → elegir un PNG chico | "Subiendo logo…"; **ningún** `PUT` mientras el `PATCH` no respondió; al soltarlo, sale el `PUT`, aparece "Logo actualizado." y el `src` tiene el `updated_at` de la respuesta del `PUT`, la más nueva (DD-F33) |
+  | *(P-F22)* `PATCH` retenido → "Quitar" → confirmar | "Quitando logo…"; ningún `DELETE` hasta que responde el `PATCH`; después, iniciales y "Quitamos el logo." |
+  | *(P-F22)* Una relectura de `GET /tenant` en vuelo, retenida con la empresa anterior → elegir un PNG chico → `200` → soltar la relectura | el `src` sigue con el `updated_at` de la respuesta del `PUT`; la relectura vieja no lo pisa (INV-F20) |
   | La imagen falla al cargar (`404` del objeto ausente o `503` del almacenamiento, DD-42) | iniciales; ningún mensaje de error |
   | Control de archivo | etiqueta accesible "Cambiar logo"; `accept="image/png,image/jpeg"`; operable con teclado |
 - **Mutación** (P-F21; se aplica, el caso falla y se restaura): dar por guardado el logo con
   `has_logo` y otro `updated_at`, sin comparar los bytes → falla la fila de "`PUT` fallido + `PATCH`
   concurrente".
+- **Mutaciones** (P-F22): quitar el `scope` de `useUploadLogo` → falla "Guardar cambios con el
+  `PATCH` retenido → elegir un PNG chico" (sale el `PUT` con el `PATCH` pendiente); quitar el
+  `scope` de `useDeleteLogo` → falla "`PATCH` retenido → Quitar"; escribir la respuesta del `PUT`
+  sin `cancelQueries` → falla la fila de la relectura en vuelo.
 - **Green**: pasa la tabla.
 
 **T-F604 [T] — Preparación del logo: funciones puras y orquestación** · DD-11, DD-31, DD-F20, DD-F21, DD-F22, BR-F13, INV-F13, H-11, `ui.md` §13.11.1, P-F21
@@ -4364,7 +4393,11 @@ formulario con cambios o logo en curso. El manejador de §12.4 pasa `state: { un
 true }` si `hasUnsavedChanges()` (leído antes de navegar). Regla `no-restricted-imports` que prohíbe
 `useBlocker` de `react-router` fuera de `src/lib/unsavedChanges.ts` (INV-F18). *(Enmienda de F6,
 P-F21)* `features/tenant/timezones.ts` (`ARGENTINA_LEGACY_ZONES`, `timeZoneGroups`), la
-comprobación de bytes de `useUploadLogo` (DD-F26) y `lib/companyInitials.ts`.
+comprobación de bytes de `useUploadLogo` (DD-F26) y `lib/companyInitials.ts`. *(Enmienda de F6,
+P-F22)* `TENANT_CHANGES_SCOPE` en `features/tenant/api.ts`, como `scope` de las tres mutaciones de
+la empresa, y `cancelQueries(tenant)` antes de escribir la respuesta (DD-F33, INV-F20);
+`ARGENTINA_LEGACY_ZONES` pasa a mapa y `timeZoneGroups` oculta el equivalente de la zona guardada
+(DD-F27).
 
 **Checkpoint Fase F6**: `npm run check` en verde + prueba independiente (la prueba en un celular
 real, con su resultado para S-F8, S-F10 y NFR-F13, o reportada como pendiente por H-12).
@@ -4522,6 +4555,9 @@ guardada `America/Buenos_Aires`, el grupo "Argentina" muestra las 12 zonas que l
 y `America/Mendoza`), y "Otras zonas" no incluye `America/Buenos_Aires`. Foto de celular: JPEG de
 1 063 742 bytes, 1500×2000 y sin EXIF; PNG chico con el mismo SHA-256; otra empresa sin el logo
 anterior. Celular real: sigue pendiente por H-12. Revisión: pendiente (Codex).
+*(P-F22)* Los dos hallazgos de la revisión 2 del PR #43 (respuestas concurrentes que hacían
+retroceder la caché de la empresa, y dos nombres para la misma zona en el selector) los resuelve
+`ui.md` P-F22: DD-F33 e INV-F20 nuevas, DD-F27 revisada y S-F15.
 
 ---
 
@@ -4703,4 +4739,5 @@ usó) reportado.
 | P-F19 (queries compartidas en `api/`; catálogo `{ items }`; espera del `503` según `Retry-After`), `ui.md` §9.1, §12.2, §15.4, §22, DD-F25 | T-F101, T-F107, T-F203, T-F205 |
 | P-F20 (marca del aviso C-01 fija y sin email, borrada en los puntos de INV-F03; props de C-01 y del aviso W con el objeto de `messageForError`; INV-F19, regiones corteses montadas antes que su texto), `ui.md` §8, §9.2, §10.1, §13.5, §13.9, §13.11, §13.13, §15.1, §15.4, §17, §18, §22, DD-F29 | T-F106, T-F404, T-F405, T-F406, T-F502, T-F505, T-F506, T-F603, T-F703, T-F705 |
 | P-F21 (textos y foco del diálogo de "Quitar" y del aviso de salida; DD-F27 con los nombres anteriores de las zonas argentinas; DD-F26 con la comparación de bytes; lectura del archivo entero; `resized`; `unknown` como `unsupported_format`; firmas de `LogoUploader`, `ConfirmDialog`, `tenantQuery`, `companyInitials`), `ui.md` §7, §9.1, §11.1, §13.11, §13.11.1, §14.4, §15, §22, §24, §25 | T-F602, T-F603, T-F604, T-F605 |
+| P-F22 (cola de los cambios de la empresa y cancelación de las lecturas en vuelo: DD-F33, INV-F20, S-F15; DD-F27 sin dos nombres para la misma zona), `ui.md` §9.2, §10.3, §13.11, §14.4, §15.4, §24, §25, §26, §29 | T-F602, T-F603, T-F605 |
 | NFR-F01..F13 | T-F002 (F02, F07, F08), T-F702 (F01, F06, F10, F12), T-F703 (F09, F11), T-F704 (F03..F05), T-F705 (F06..F08), T-F706 (F13) |
