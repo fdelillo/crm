@@ -4639,7 +4639,10 @@ queda pendiente. WebKit aborta en este host (`Abort trap: 6`). El dispatch autor
 porque `matrix.browser` no se reconoce en el `if` del job `e2e` (línea 100). No se evaluaron las
 interacciones E2E en Chromium ni WebKit. Corregí el selector de navegador en el workflow para
 construir una matriz dinámica desde el input manual (Chromium o WebKit), con Chromium solamente
-para PR/push; la aceptación y corrida del dispatch corregido quedan pendientes.
+para PR/push (`a5de9b8`). El segundo dispatch devolvió el mismo 422 con la expresión anterior:
+GitHub valida `workflow_dispatch` desde el archivo de la rama por defecto, donde T-F701 aún no está
+integrada. La corrida Chromium queda pendiente de que el flujo de la rama esté disponible para un
+evento que evalúe esa versión; no se abrió PR ni se hizo merge.
 
 **Objetivo**: los flujos críticos funcionan de punta a punta sobre el binario real servido por
 HTTPS local; la PWA, la CSP, la cookie de sesión real, la preparación del logo y la accesibilidad
