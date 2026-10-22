@@ -179,6 +179,47 @@ test('critical registration, session, recovery, invitation, and access flows', a
     viewport: { width: 320, height: 720 },
   })
   const operatorPage = await operatorContext.newPage()
+  const sessionApiObservations: Promise<string>[] = []
+  let apiObservationPhase = 'active-session'
+  const allowedErrorCodes = new Set([
+    'unauthenticated',
+    'account_disabled',
+    'forbidden',
+    'internal_error',
+  ])
+  operatorPage.on('response', (response) => {
+    const responseURL = new URL(response.url())
+    if (
+      responseURL.origin !== origin ||
+      !['/api/v1/me', '/api/v1/users'].includes(responseURL.pathname) ||
+      response.request().method() !== 'GET'
+    ) {
+      return
+    }
+    const phase = apiObservationPhase
+    sessionApiObservations.push(
+      (async () => {
+        let code = 'none'
+        if (response.status() >= 400) {
+          try {
+            const payload: unknown = await response.json()
+            if (typeof payload === 'object' && payload !== null) {
+              const rawCode = (payload as { code?: unknown }).code
+              code =
+                typeof rawCode === 'string' && allowedErrorCodes.has(rawCode)
+                  ? rawCode
+                  : 'other'
+            } else {
+              code = 'other'
+            }
+          } catch {
+            code = 'unavailable'
+          }
+        }
+        return `${phase} GET ${responseURL.pathname} -> ${response.status()} (${code})`
+      })(),
+    )
+  })
   await track(operatorPage)
   const operatorURL = extractEmailLink(operatorInvitation)
   expect(operatorURL.origin).toBe(origin)
@@ -205,6 +246,26 @@ test('critical registration, session, recovery, invitation, and access flows', a
     operatorPage.getByText('No tenés acceso a esta sección'),
   ).toBeVisible()
   await inspectScreen(operatorPage)
+  await operatorPage.getByRole('link', { name: 'Inicio', exact: true }).click()
+  await expect(operatorPage).toHaveURL(`${origin}/`)
+  await expect(
+    operatorPage.getByRole('heading', {
+      level: 1,
+      name: `Hola, ${operatorName}`,
+    }),
+  ).toBeVisible()
+  const operatorSessionLoadedBeforeDisable = await operatorPage
+    .getByRole('heading', {
+      level: 1,
+      name: `Hola, ${operatorName}`,
+    })
+    .isVisible()
+  await operatorPage.evaluate(() => {
+    const marker = document.createElement('meta')
+    marker.name = 'e2e-session-navigation-marker'
+    marker.content = 'active-session-document'
+    document.head.append(marker)
+  })
 
   const adminInviteeEmail = `f702-new-admin-${randomUUID()}@example.test`
   const adminInviteeName = 'Admin invitado'
@@ -300,46 +361,16 @@ test('critical registration, session, recovery, invitation, and access flows', a
   await expect(page.getByText(`Desactivaste a ${operatorName}`)).toBeVisible()
   await inspectScreen(page)
 
-  const sessionApiObservations: Promise<string>[] = []
-  operatorPage.on('response', (response) => {
-    const responseURL = new URL(response.url())
-    if (
-      responseURL.origin !== origin ||
-      !['/api/v1/me', '/api/v1/users'].includes(responseURL.pathname) ||
-      response.request().method() !== 'GET'
-    ) {
-      return
-    }
-    sessionApiObservations.push(
-      (async () => {
-        let code = 'none'
-        if (response.status() >= 400) {
-          try {
-            const payload: unknown = await response.json()
-            if (typeof payload === 'object' && payload !== null) {
-              const rawCode = (payload as { code?: unknown }).code
-              const allowedCodes = new Set([
-                'unauthenticated',
-                'account_disabled',
-                'forbidden',
-                'internal_error',
-              ])
-              code =
-                typeof rawCode === 'string' && allowedCodes.has(rawCode)
-                  ? rawCode
-                  : 'other'
-            } else {
-              code = 'other'
-            }
-          } catch {
-            code = 'unavailable'
-          }
-        }
-        return `GET ${responseURL.pathname} -> ${response.status()} (${code})`
-      })(),
-    )
+  apiObservationPhase = 'after-deactivation'
+  await operatorPage.evaluate(() => {
+    window.history.pushState({}, '', '/settings/users')
+    window.dispatchEvent(new PopStateEvent('popstate'))
   })
-  await operatorPage.goto('/settings/users')
+  await expect(operatorPage).toHaveURL(`${origin}/settings/users`)
+  const sameDocumentNavigation =
+    (await operatorPage
+      .locator('meta[name="e2e-session-navigation-marker"]')
+      .getAttribute('content')) === 'active-session-document'
   try {
     await expect(
       operatorPage.getByText(
@@ -348,8 +379,25 @@ test('critical registration, session, recovery, invitation, and access flows', a
     ).toBeVisible()
   } catch (error) {
     const visibleMessages = await operatorPage
-      .locator('h1, h2, [role="alert"], [role="status"]')
-      .allInnerTexts()
+      .locator('h1, h2, [role="alert"], [role="status"], main p')
+      .evaluateAll((elements) =>
+        elements
+          .filter((element) => {
+            const style = window.getComputedStyle(element)
+            const bounds = element.getBoundingClientRect()
+            return (
+              style.display !== 'none' &&
+              style.visibility !== 'hidden' &&
+              bounds.width > 0 &&
+              bounds.height > 0
+            )
+          })
+          .map((element) =>
+            element instanceof HTMLElement
+              ? element.innerText
+              : (element.textContent ?? ''),
+          ),
+      )
     const sanitizedMessages = visibleMessages
       .map((message) =>
         message
@@ -365,9 +413,24 @@ test('critical registration, session, recovery, invitation, and access flows', a
         ? result.value
         : 'GET session API -> unavailable',
     )
+    const rawReason = new URL(operatorPage.url()).searchParams.get('reason')
+    const allowedReasons = new Set([
+      'session_expired',
+      'logged_out',
+      'password_changed',
+    ])
+    const reason =
+      rawReason === null
+        ? 'none'
+        : allowedReasons.has(rawReason)
+          ? rawReason
+          : 'other'
     const diagnostic = [
       `URL path: ${new URL(operatorPage.url()).pathname}`,
-      `Visible headings/alerts/statuses: ${JSON.stringify(sanitizedMessages)}`,
+      `Reason: ${reason}`,
+      `Operator session loaded before deactivation: ${operatorSessionLoadedBeforeDisable}`,
+      `Navigation was same-document/client-side: ${sameDocumentNavigation}`,
+      `Visible headings/alerts/statuses/paragraphs: ${JSON.stringify(sanitizedMessages)}`,
       `API observations: ${JSON.stringify(apiMessages)}`,
     ].join('\n')
     const diagnosticPath = testInfo.outputPath('session-expiry-diagnostic.txt')
