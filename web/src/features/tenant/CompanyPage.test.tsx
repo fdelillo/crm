@@ -385,8 +385,29 @@ describe('CompanyPage time zone', () => {
         'aria-selected',
         'true',
       )
+      // T-F602 (DD-F27, P-F22): the same zone under another name is not offered twice.
+      if (timezone === 'America/Argentina/Buenos_Aires')
+        expect(
+          screen.queryByRole('option', { name: 'America/Buenos_Aires' }),
+        ).toBeNull()
     },
   )
+
+  // T-F602 (DD-F27, INV-F15, P-F22): the saved name is the value of the form, so it is not a change.
+  it('does not send the zone when a saved zone that Intl does not list was not touched', async () => {
+    const state = serveCompany(
+      companyTenant({ timezone: 'America/Argentina/Buenos_Aires' }),
+    )
+    await renderCompany()
+    const phone = await field('Teléfono')
+    expect(save()).toBeDisabled()
+    const user = userEvent.setup()
+    await user.type(phone, '1')
+    await user.click(save())
+    await waitFor(() =>
+      expect(state.patches).toEqual([{ phone: '11 5555-00001' }]),
+    )
+  })
 
   it('sends only the new zone when it is the only change', async () => {
     const state = serveCompany()
