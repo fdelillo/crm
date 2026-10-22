@@ -4,6 +4,14 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      browser:
+        description: Browser to run for the pre-release E2E check
+        required: true
+        type: choice
+        options: [chromium, webkit]
+        default: webkit
 
 permissions:
   contents: read
@@ -85,3 +93,102 @@ jobs:
           path: bin/crm-linux-amd64.tar.gz
           if-no-files-found: error
           retention-days: 7
+
+  e2e:
+    name: Playwright (${{ matrix.browser }})
+    needs: [build]
+    if: (github.event_name != 'workflow_dispatch' && matrix.browser == 'chromium') || (github.event_name == 'workflow_dispatch' && inputs.browser == matrix.browser)
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            tools.sum
+      - name: Install certutil
+        run: sudo apt-get update && sudo apt-get install --yes libnss3-tools
+      - name: Install pinned mkcert
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error \
+            https://github.com/FiloSottile/mkcert/releases/download/v1.4.4/mkcert-v1.4.4-linux-amd64 \
+            --output "$RUNNER_TEMP/mkcert"
+          echo '6d31c65b03972c6dc4a14ab429f2928300518b26503f58723e532d1b0a3bbb52  '"$RUNNER_TEMP/mkcert" | sha256sum --check
+          chmod +x "$RUNNER_TEMP/mkcert"
+          sudo install "$RUNNER_TEMP/mkcert" /usr/local/bin/mkcert
+          mkcert -version
+      - name: Install the runner-local CA and create localhost certificate
+        run: |
+          mkcert -install
+          make dev-certs
+      - name: Start development services
+        run: docker compose up --detach --wait
+      - name: Download CRM binary
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v6.0.0
+        with:
+          name: crm-linux-amd64
+          path: bin
+      - name: Migrate and start CRM over HTTPS
+        shell: bash
+        env:
+          DATABASE_URL: postgres://crm_app:crm_app_dev@localhost:5432/crm?sslmode=disable
+          DATABASE_MIGRATION_URL: postgres://crm_owner:crm_owner_dev@localhost:5432/crm?sslmode=disable
+          AUTH_HMAC_KEY: dGVzdC1vbmx5LW5vdC1hLXJlYWwtc2VjcmV0LWF0LWxlYXN0LTMyLWJ5dGVz
+          APP_BASE_URL: https://localhost:8443
+          HTTP_ADDR: :8443
+          TLS_CERT_FILE: .certs/localhost.pem
+          TLS_KEY_FILE: .certs/localhost-key.pem
+          SMTP_HOST: localhost
+          SMTP_PORT: "1025"
+          SMTP_FROM: no-reply@crm.local
+          S3_ENDPOINT: localhost:9000
+          S3_BUCKET: crm-dev
+          S3_ACCESS_KEY: minio_dev
+          S3_SECRET_KEY: minio_dev_secret
+          S3_USE_SSL: "false"
+        run: |
+          set -euo pipefail
+          tar -C bin -xzf bin/crm-linux-amd64.tar.gz
+          ./bin/crm migrate up
+          nohup ./bin/crm serve > "$RUNNER_TEMP/crm-e2e.log" 2>&1 &
+          for attempt in {1..60}; do
+            if curl --fail --silent https://localhost:8443/healthz >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/crm-e2e.log"
+          exit 1
+      - name: Install frontend dependencies and browser
+        run: |
+          cd web
+          npm ci
+          npx playwright install --with-deps "${{ matrix.browser }}"
+      - name: Run Playwright
+        env:
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/mkcert-root-ca.pem
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp "$(mkcert -CAROOT)/rootCA.pem" "$RUNNER_TEMP/mkcert-root-ca.pem"
+          cd web
+          npx playwright test --project="${{ matrix.browser }}"
+      - name: Stop development services
+        if: always()
+        run: docker compose down --volumes

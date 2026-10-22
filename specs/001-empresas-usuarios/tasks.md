@@ -4622,6 +4622,13 @@ flujo de arriba pasó 3 de 3 corridas, con dos pasos nuevos.
 
 ### Fase F7 — End-to-end, PWA, accesibilidad y performance (verificación)
 
+**Estado T-F701 (2026-10-22)**: configuración Playwright, global setup estricto de CA/TLS y
+servicios, helpers de accesibilidad/errores/email, fixtures sintéticos y job de CI implementados.
+`npm run check`, `npx tsc --noEmit -p tsconfig.e2e.json` y generación de fixtures pasan. La
+corrida E2E local pasó el global setup (compose y HTTPS con CA) pero Chromium no pudo iniciar
+por `MachPortRendezvousServer … Permission denied (1100)` del sandbox macOS; S-12 queda pendiente,
+sin fallback `ignoreHTTPSErrors`. La validación del job de CI queda para su ejecución en GitHub.
+
 **Objetivo**: los flujos críticos funcionan de punta a punta sobre el binario real servido por
 HTTPS local; la PWA, la CSP, la cookie de sesión real, la preparación del logo y la accesibilidad
 están verificadas; los objetivos de performance están medidos. Esta fase **verifica y cierra
