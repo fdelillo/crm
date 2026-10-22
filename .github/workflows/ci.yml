@@ -97,7 +97,6 @@ jobs:
   e2e:
     name: Playwright (${{ matrix.browser }})
     needs: [build]
-    if: (github.event_name != 'workflow_dispatch' && matrix.browser == 'chromium') || (github.event_name == 'workflow_dispatch' && inputs.browser == matrix.browser)
     strategy:
       fail-fast: false
       matrix:
