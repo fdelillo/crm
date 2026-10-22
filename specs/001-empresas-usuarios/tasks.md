@@ -4785,6 +4785,14 @@ foco no quede bajo la barra inferior. No se declara la checklist manual en verde
   y volver al arquitecto con el resultado (respaldo previsto: leer la orientación del EXIF y rotar
   en el canvas).
 
+**Estado T-F706 2026-10-22 (spec listo; ejecución conductual bloqueada por sandbox macOS)**:
+`web/e2e/logo-preparation.spec.ts` cubre los cinco grupos de casos de la tabla mediante
+filechooser real y la descarga del logo guardado desde la página; no retiene ni rehace el PUT.
+`npm run check` y `tsc --noEmit -p tsconfig.e2e.json` pasan. Playwright no llegó a abrir una
+página en Chromium (`MachPortRendezvousServer… Permission denied (1100)`) ni WebKit (`Abort trap:
+6`). No se obtuvo evidencia Red/Green, byte-identidad en runtime, resultado de S-F7 ni tiempo
+NFR-F13; ejecutar ambos proyectos en el runner Linux/PR.
+
 **T-F707 — Correcciones** que surjan de T-F702..T-F706, cada una con su test de regresión.
 
 **Checkpoint Fase F7**: `npm run check` y `npm run e2e` en verde (Chromium en CI; WebKit
