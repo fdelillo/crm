@@ -4344,6 +4344,80 @@ true }` si `hasUnsavedChanges()` (leído antes de navegar). Regla `no-restricted
 **Checkpoint Fase F6**: `npm run check` en verde + prueba independiente (la prueba en un celular
 real, con su resultado para S-F8, S-F10 y NFR-F13, o reportada como pendiente por H-12).
 
+**Fase F6 completa (2026-10-21)**: T-F601–T-F605 implementadas en
+`feat/001-frontend-company-settings` (sale de `main` en `910e2bc`). Commits: `539714b` (`isValidCuit`,
+T-F601), `e24701f` (`features/tenant/logo/*`, T-F604), `5a48ccb` (`CompanyPage`, `CompanyEditor`,
+`LogoUploader`, hooks de `api.ts`, `useLogoActions`, T-F602/T-F603/T-F605), `66aabfa` (foco al cerrar
+el diálogo de "Quitar"), `1280685` (test de la regla `useBlocker`, INV-F18) y `d10f2e1` (tests de
+pantalla del logo y de sesión vencida). `npm run check` con Node 24: lint, formato, generación,
+typecheck, 43 archivos de test, 628 passed y 2 expected-fail, y build. No se tocó Go ni el contrato,
+así que no corrió `make check`. Enmienda DD-F32 de T-F605: el manejador de §12.4
+(`hasUnsavedChanges()` leído antes de navegar), `lib/unsavedChanges.ts` y la regla `restrictedBlocker`
+ya estaban hechos en F0; solo faltaba el test de la regla (agregado en `importBoundaries.test.ts`: 9
+casos; rechaza `useBlocker` y su alias en `features/`, `app/`, `lib/`, `components/` y `api/`, y lo
+permite en `lib/unsavedChanges.ts`). El encabezado ya mostraba el logo desde F3 (`AppBrand`); F6 lo
+cubre con tests de `src` en S-11 y en el encabezado. S-F13 verificado en jsdom: con el aviso abierto,
+el `401` completa la navegación al login, el aviso desaparece y `next` es `/settings/company`.
+
+Mutaciones (aplicadas, test en rojo, restauradas): sin `setQueryData` en `useUpdateTenant`; `name`/
+`timezone` como `null` en `buildTenantUpdate`; la reconciliación del logo sin comparar `updated_at`
+(sobrevivió hasta que el caso "503 reemplazando un logo previo" se sumó a la tabla); sin la guarda de
+"montado" en `useLogoActions` (el `PUT` salía con la sesión muerta); el guard sin el logo en curso;
+`LiveRegion` montada solo con el mensaje; una segunda parte multipart; el toast sin la variante
+"achicamos"; `useUnsavedChangesGuard` sin la excepción de sesión vencida; `hasUnsavedChanges()` siempre
+falso; la regla `useBlocker` desactivada; sin `reset` tras guardar; sin reconciliación en `DELETE`;
+`accept="image/*"`; el foco sin devolverse tras el diálogo (la primera versión de esta mutación estaba
+mal armada y sobrevivió; la corregida fue detectada); CUIT sin dígito verificador; la zona guardada
+fuera de la lista. En T-F601/T-F604: formato de guiones relajado, módulo 11 relajado, `<=` → `<` en el
+borde de 2 097 152, `>=` en el límite de `planLogoProcessing`, sin `bitmap.close()`, `DHT` tomado como
+`SOF`, el PNG tratado como JPEG. Las 24 fueron detectadas. Ninguna aserción depende de una caché vacía.
+
+Desviaciones de las firmas de §15 (para el `frontend-architect`):
+1. `LogoUploaderProps.error` pasa de `string | null` a `UserMessage | null` (título, descripción,
+   `requestId`, `retryable`) y suma `onRetry?: () => void`. Con un `string` no se pueden mostrar el
+   código de un `400` ni "Reintentar" en el control del logo, que T-F603 pide.
+2. `ConfirmDialogProps` suma `cancelLabel?: string` (por defecto "Cancelar") para el "Quedarme" del
+   aviso de cambios sin guardar.
+3. `prepareLogo` lee solo el primer MiB del archivo para la firma y las dimensiones (no los 20 MB);
+   un JPEG con más de 1 MiB de metadatos antes del `SOF` da `unreadable`. `PrepareLogoResult.resized`
+   es verdadero solo si el original rompía los límites del servidor: un JPEG dentro de los límites que
+   se vuelve a codificar (DD-F21) da `reencoded: true, resized: false` y el toast "Logo actualizado."
+   sin "Lo achicamos". BR-F13 no distingue los dos casos; si se quiere otro texto, es una decisión de
+   diseño.
+4. `planLogoProcessing` omite los pasos de la escalera que repetirían el anterior al topar con el lado
+   original (un PNG de 1500 px prueba 1500, 1200, 1000, 700). Un paso que lanza al codificar cuenta
+   como "no entró". `LOGO_INPUT_MAX_BYTES` = 20 × 1024 × 1024.
+5. `api/tenant.ts` exporta `tenantQuery` (las opciones de `useTenant`), que las mutaciones del logo
+   usan para releer la empresa (DD-F26). `lib/companyInitials.ts` sale de `AppBrand`.
+
+Huecos de diseño (decididos con el texto mínimo; confirmar o cambiar):
+- Diálogo de "Quitar": no hay texto en §13.11. Usé "¿Quitar el logo?" / "Vamos a mostrar las
+  iniciales de tu empresa en su lugar. Podés subir otro logo cuando quieras." / "Quitar" /
+  "Quitando logo…".
+- Descripción del aviso de cambios sin guardar: §13.11 solo da el título. Usé "Si salís ahora, vas a
+  perder lo que cargaste.". Otros textos propios: región "Cargando los datos de la empresa", títulos
+  de sección "Logo" y "Datos", grupos "Argentina" y "Otras zonas" del selector.
+- DD-F27 pide agrupar en "Argentina" "los alias que devuelva `Intl`" y descarta una tabla de alias; sin
+  tabla solo se puede agrupar por el prefijo `America/Argentina/`. Node 24 sí devuelve `America/Buenos_Aires`
+  y otros alias en `supportedValuesOf` (418 zonas), así que quedan en "Otras zonas". La zona guardada
+  que `Intl` no lista se agrega al principio de su grupo (S-F11 sigue sin verificarse en navegadores).
+- T-F603 pide "No pudimos leer la imagen…" para "bytes que no son imagen", pero T-F604 manda `unknown`
+  a `unsupported_format` ("El logo tiene que ser una imagen PNG o JPG."). Implementé T-F604 (y §13.11.1);
+  "No pudimos leer…" sale con firma PNG/JPEG y encabezado ilegible, o si `decodeImage` falla.
+- El arranque de la preparación no se puede cancelar: si la página se desmonta (sesión vencida o el
+  usuario eligió "Salir"), `prepareLogo` termina pero el `PUT` no se envía. La firma de §15.4 no tiene
+  `AbortSignal`.
+
+Infraestructura de tests: `toast.dismiss()` global en `setup.ts` (los toasts de `sonner` viven en un
+store de módulo y pasaban de un test al siguiente); *polyfills* de `hasPointerCapture` y
+`scrollIntoView` para el `Select` de Radix. jsdom no puede pasar un `File`/`FormData` propios a
+`fetch` de Node (el cuerpo multipart sale roto y MSW no lo parsea), así que los tests del logo
+sustituyen `FormData` y `File` por los de Node (`src/test/nodeFiles.ts`); T-F706 sigue siendo quien
+prueba el multipart real del navegador. Los casos "al enfocar la ventana" se ejercitan con
+`invalidateQueries(['session'])`, el mismo camino de `['session']` pasando a `null`.
+
+Prueba independiente: pendiente (Claude Code). Revisión: pendiente (Codex).
+
 ---
 
 ### Fase F7 — End-to-end, PWA, accesibilidad y performance (verificación)
