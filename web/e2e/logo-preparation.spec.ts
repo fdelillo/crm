@@ -266,6 +266,9 @@ test('prepares company logos with real browser encoders', async ({
   )
   const preparedJPEG = await readSavedLogo(page)
   const jpegPixels = await inspectPixels(page, preparedJPEG.body, 'image/jpeg')
+  process.stdout.write(
+    `[NFR-F13] JPEG prepared in ${jpegDuration?.toFixed(0)} ms; ${preparedJPEG.body.length} bytes ${jpegPixels.width}x${jpegPixels.height}.\n`,
+  )
   expect(preparedJPEG.contentType).toContain('image/jpeg')
   expect(preparedJPEG.body.length).toBeLessThanOrEqual(2_097_152)
   expect(jpegPixels.width).toBeLessThanOrEqual(2000)
