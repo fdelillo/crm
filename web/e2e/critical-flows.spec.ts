@@ -268,9 +268,12 @@ test('critical registration, session, recovery, invitation, and access flows', a
   await expect(
     invitedAdminPage.getByRole('heading', { level: 1, name: 'Usuarios' }),
   ).toBeVisible()
-  await expect(
-    invitedAdminPage.getByText('Administrador', { exact: true }),
-  ).toBeVisible()
+  const acceptedAdminRow = invitedAdminPage
+    .getByRole('listitem')
+    .filter({ hasText: adminInviteeEmail })
+  await expect(acceptedAdminRow).toBeVisible()
+  await expect(acceptedAdminRow).toContainText('Administrador')
+  await expect(acceptedAdminRow).toContainText('Activo')
   await inspectScreen(invitedAdminPage)
 
   const operatorRow = page
