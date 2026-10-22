@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { api } from '@/api/client'
@@ -29,6 +30,52 @@ export function useCurrentSession() {
 }
 export function useCan(permission: Permission): boolean {
   return useSession().data?.permissions.includes(permission) ?? false
+}
+
+export type PermissionCheck =
+  | { status: 'granted' }
+  | { status: 'checking' }
+  | { status: 'denied' }
+  | { status: 'failed'; error: ApiError; retry: () => void }
+
+// DD-F34 / INV-F21: retain only the entry lifecycle; permissions stay in the query cache.
+export function usePermissionCheck(
+  permission: Permission,
+  entryKey: string,
+): PermissionCheck {
+  const { data, refetch } = useSession()
+  const granted = data?.permissions.includes(permission) ?? false
+  const [entry, setEntry] = useState(() => ({
+    key: entryKey,
+    checked: granted,
+    error: null as ApiError | null,
+  }))
+  if (entry.key !== entryKey) {
+    setEntry({ key: entryKey, checked: granted, error: null })
+  }
+  useEffect(() => {
+    if (entry.key !== entryKey || entry.checked) return
+    let active = true
+    // StrictMode and concurrent refreshes join the existing request.
+    void refetch({ cancelRefetch: false }).then((result) => {
+      if (active)
+        setEntry({ key: entryKey, checked: true, error: result.error })
+    })
+    return () => {
+      active = false
+    }
+  }, [entry.key, entry.checked, entryKey, refetch])
+
+  if (!data) return { status: 'checking' }
+  if (granted) return { status: 'granted' }
+  if (entry.key !== entryKey || !entry.checked) return { status: 'checking' }
+  if (entry.error)
+    return {
+      status: 'failed',
+      error: entry.error,
+      retry: () => setEntry({ key: entryKey, checked: false, error: null }),
+    }
+  return { status: 'denied' }
 }
 
 // T-F504 (BR-F14, DD-F28): this is a UX gate; the API remains authoritative.

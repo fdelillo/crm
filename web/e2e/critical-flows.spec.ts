@@ -362,21 +362,29 @@ test('critical registration, session, recovery, invitation, and access flows', a
   await inspectScreen(page)
 
   apiObservationPhase = 'after-deactivation'
+  const revokedSessionRequest = operatorPage.waitForRequest(
+    (request) =>
+      request.url() === `${origin}/api/v1/me` && request.method() === 'GET',
+  )
   await operatorPage.evaluate(() => {
     window.history.pushState({}, '', '/settings/users')
     window.dispatchEvent(new PopStateEvent('popstate'))
   })
-  await expect(operatorPage).toHaveURL(`${origin}/settings/users`)
   const sameDocumentNavigation =
     (await operatorPage
       .locator('meta[name="e2e-session-navigation-marker"]')
       .getAttribute('content')) === 'active-session-document'
   try {
+    const sessionRequest = await revokedSessionRequest
+    expect((await sessionRequest.response())?.status()).toBe(401)
     await expect(
       operatorPage.getByText(
         'Tu sesión se cerró. Ingresá de nuevo para seguir.',
       ),
     ).toBeVisible()
+    await expect(operatorPage).toHaveURL(
+      `${origin}/login?next=%2Fsettings%2Fusers&reason=session_expired`,
+    )
   } catch (error) {
     const visibleMessages = await operatorPage
       .locator('h1, h2, [role="alert"], [role="status"], main p')
