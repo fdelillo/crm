@@ -16,6 +16,7 @@ export interface ConfirmDialogProps {
   description: string
   confirmLabel: string
   pendingLabel: string
+  cancelLabel?: string
   destructive?: boolean
   pending: boolean
   onConfirm: () => void
@@ -28,6 +29,7 @@ export function ConfirmDialog({
   description,
   confirmLabel,
   pendingLabel,
+  cancelLabel = 'Cancelar',
   destructive = false,
   pending,
   onConfirm,
@@ -40,7 +42,9 @@ export function ConfirmDialog({
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={pending}>Cancelar</AlertDialogCancel>
+          <AlertDialogCancel disabled={pending}>
+            {cancelLabel}
+          </AlertDialogCancel>
           <Button
             type="button"
             variant={destructive ? 'destructive' : 'default'}

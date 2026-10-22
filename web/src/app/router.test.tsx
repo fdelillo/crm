@@ -12,6 +12,7 @@ describe('application routes', () => {
       import('@/features/auth/pages'),
       import('@/features/users/pages'),
       import('@/features/dashboard/DashboardPage'),
+      import('@/features/tenant/CompanyPage'),
       import('@/app/AppShell'),
     ])
   })
