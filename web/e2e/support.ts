@@ -62,7 +62,12 @@ export async function expectNoAccessibilityViolations(
     const details = result.violations
       .map(
         (violation) =>
-          `${violation.id} (${violation.impact ?? 'sin impacto'}): ${violation.help}`,
+          `${violation.id} (${violation.impact ?? 'sin impacto'}): ${violation.help}\n${violation.nodes
+            .map(
+              (node) =>
+                `  ${node.target.join(' ')} — ${node.failureSummary ?? node.any.map((check) => check.message).join('; ')}`,
+            )
+            .join('\n')}`,
       )
       .join('\n')
     throw new Error(

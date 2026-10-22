@@ -130,6 +130,7 @@ test('PWA serves only the offline page without retaining session data', async ({
     browserStorage.sessionStorage.every(
       ([key]) => key === 'crm.preloadReloaded',
     ),
+    JSON.stringify(browserStorage.sessionStorage),
   ).toBe(true)
 
   await page.context().setOffline(true)

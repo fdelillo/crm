@@ -98,7 +98,9 @@ async function uploadLogo(
 }
 
 async function readSavedLogo(page: Page): Promise<SavedLogo> {
-  const logo = page.getByRole('img', { name: /Logo de Empresa logo E2E/ })
+  const logo = page
+    .getByRole('region', { name: 'Logo' })
+    .getByRole('img', { name: /Logo de Empresa logo E2E/ })
   await expect(logo).toBeVisible()
   const src = await logo.getAttribute('src')
   expect(src).not.toBeNull()
