@@ -4461,6 +4461,61 @@ en este entorno). Arnés: `~/Documents/Codex/crm-progreso/f6-e2e/`. Revisión: p
 PR #43, los resuelve `ui.md` P-F21: se aceptan las desviaciones 1, 2, 4 y 5 (la regla de `resized`,
 con un ajuste) y se rechaza el tope de 1 MiB de la 3.
 
+**P-F21 implementada (2026-10-21)**: los cambios de código de la enmienda sobre F6, en
+`feat/001-frontend-company-settings` (cabeza `fa73425`, la que aplicó P-F21 a `ui.md` y a este archivo).
+Commits: `2ec2a7c` (textos y foco: región "Cargando los datos de tu empresa"; aviso de salida con la
+descripción nueva y "Salir" destructivo; tests de T-F602/T-F603), `0ca3de9` (`ARGENTINA_LEGACY_ZONES` y
+`timeZoneGroups`, DD-F27 revisada), `bdc3951` (`prepareLogo` lee el archivo entero tras mirar `file.size`;
+`resized` también si el primer paso no entró; `useUploadLogo` compara los bytes del logo vigente,
+DD-F26 revisada), `5fcd4a6` (test de "salir mientras se sube", hallazgo 3 de Codex) y `65ec917` (causa
+del timeout de `CompanyPage.test.tsx`, abajo). Sin dependencias nuevas; no se tocó Go, el contrato ni
+`ui.md`. Supuesto S-3 confirmado: `openapi-fetch` 0.17 deja pasar `parseAs: 'blob'` y `cache: 'no-store'`
+en `GET /tenant/logo`, así que no hizo falta el `Request` alternativo. `logoVersion(tenant)` sale de
+`logoUrl` en `api/tenant.ts` para que la comprobación pida la misma `v`.
+
+Evidencia S-1 (verificada por el usuario): `Intl.supportedValuesOf('timeZone')` devuelve 418 zonas tanto
+en Node 24.22.0 como en Chrome 146.0.7680.178. Las argentinas son `America/Argentina/La_Rioja`,
+`Rio_Gallegos`, `Salta`, `San_Juan`, `San_Luis`, `Tucuman` y `Ushuaia`, más `America/Buenos_Aires`,
+`America/Catamarca`, `America/Cordoba`, `America/Jujuy` y `America/Mendoza`. **No** aparecen
+`America/Argentina/Buenos_Aires`, `Cordoba`, `Mendoza`, `Jujuy` ni `Catamarca`, ni `America/Rosario`. La
+zona por defecto del navegador es `America/Buenos_Aires`. Con esto la sospecha de la propuesta se
+confirma: el default del backend (`America/Argentina/Buenos_Aires`) no está en la lista y aparece primero
+en "Argentina" como zona guardada. Firefox y Safari quedan para T-F705.
+
+Mutaciones (aplicadas, test en rojo, restauradas):
+- Quitar `ARGENTINA_LEGACY_ZONES` de `timeZoneGroups`: fallan 3 casos de `timezones.test.ts` y 2 de
+  `CompanyPage.test.tsx` (el orden de las opciones y la zona guardada `Europe/Berlin`).
+- Volver a la condición `has_logo && updated_at !==` sin comparar bytes: fallan los 4 casos nuevos
+  ("`PUT` fallido + `PATCH` concurrente" y la comprobación que falla con `503`, `404` y error de red).
+- Comparar solo el tamaño y no el contenido: falla el caso del `PATCH` concurrente (el logo anterior se
+  sirve con el mismo tamaño que el enviado).
+- Sacar el logo en curso de la condición del guard en `CompanyEditor.tsx` (`isDirty` solo): fallan "salir
+  mientras se prepara" y "salir mientras se sube". Dejar solo `logo.pending === 'processing'` (el logo
+  que se sube queda fuera): falla únicamente "salir mientras se sube".
+Los cambios de `prepareLogo` (`resized`, archivo entero, 20 971 521 bytes sin leer) y las filas de foco
+y textos se escribieron primero en rojo: los 3 casos nuevos de `prepareLogo.test.ts` y las aserciones de
+la región y de la descripción del aviso fallaron antes del cambio. Las aserciones de foco del diálogo de
+"Quitar" y del aviso ya pasaban (Radix pone el foco en "Cancelar"; el efecto de `66aabfa` devuelve el
+foco): quedan como documentación ejecutable, S-2 confirmado. Ninguna aserción depende de una caché vacía:
+la relectura usa `staleTime: 0` y el estado se lee del DOM.
+
+Timeout de `CompanyPage.test.tsx`: **causa**, el `Select` de Radix renderiza sus ~400 `SelectItem` aunque
+esté cerrado y `CompanyEditor` los volvía a renderizar en cada tecla (~60 ms por pulsación en jsdom; un
+`fireEvent.change` solo costaba 46 ms). Tipear un CUIT de 15 caracteres llevaba ~0,9 s aislado y más de
+5 s con los 40 archivos en paralelo. No eran las interacciones del `Select` abierto, ni `userEvent` sin
+`delay: null` (se probó y no cambió nada: 3 de 3 corridas completas siguieron con timeout de 5 s, en
+5117, 5213 y 5141 ms), ni las rutas lazy (`preloadCompanyModules` ya las precarga). **Arreglo**: el selector
+pasa a `TimeZoneSelect`, un componente `memo` con su `Controller` adentro y `onPick` estable; una tecla en
+otro campo ya no lo toca (~3 ms por pulsación, `fireEvent.change` 3 ms). Es una mejora real del producto,
+no solo de los tests, y no se subió ningún timeout. Tiempos de `npx vitest run` completo, 3 corridas
+seguidas, archivo `CompanyPage.test.tsx` (suma de sus 22 tests / test más lento): antes del arreglo, 34,6 s
+y 4,2 s en 626 tests, y con 639 tests 3 de 3 corridas fallaron por timeout; después, 22,7 s / 1,7 s,
+24,7 s / 2,3 s y 23,6 s / 1,9 s, las tres con 639/639 en verde (la suite entera pasó de ~39 s a ~36 s).
+
+`npm run check` con Node 24.22.0, en verde: lint, formato, generación, typecheck, 43 archivos de test,
+641 passed y 2 expected-fail (643 con los de tipos), y build. Antes de P-F21 eran 628 passed.
+Revisión: pendiente (Codex).
+
 ---
 
 ### Fase F7 — End-to-end, PWA, accesibilidad y performance (verificación)
