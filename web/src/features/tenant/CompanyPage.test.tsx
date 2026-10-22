@@ -31,7 +31,7 @@ describe('CompanyPage data form', () => {
     server.use(http.get(`${base}/tenant`, () => delay('infinite')))
     renderApp(['/settings/company'])
     const skeleton = await screen.findByRole('region', {
-      name: 'Cargando los datos de la empresa',
+      name: 'Cargando los datos de tu empresa',
     })
     expect(skeleton).toHaveAttribute('aria-busy', 'true')
     expect(

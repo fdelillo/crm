@@ -324,10 +324,11 @@ export function CompanyEditor({ tenant }: { tenant: Tenant }) {
           if (!open && blocker.state === 'blocked') blocker.reset()
         }}
         title="Tenés cambios sin guardar. ¿Salir igual?"
-        description="Si salís ahora, vas a perder lo que cargaste."
+        description="Si salís ahora, se pierden los cambios que todavía no se guardaron."
         confirmLabel="Salir"
         pendingLabel="Saliendo…"
         cancelLabel="Quedarme"
+        destructive
         pending={false}
         onConfirm={() => {
           if (blocker.state === 'blocked') blocker.proceed()

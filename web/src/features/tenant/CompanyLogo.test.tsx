@@ -481,18 +481,46 @@ describe('company logo', () => {
   it('removes the logo after confirming and says so', async () => {
     const state = serveCompany(withLogo())
     serveLogo(state)
+    const removing = gate()
+    server.use(
+      http.delete(`${base}/tenant/logo`, async () => {
+        await removing.opened
+        state.tenant = {
+          ...state.tenant,
+          has_logo: false,
+          updated_at: uploadedAt,
+        }
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
     await renderCompany()
     const user = userEvent.setup()
     await user.click(within(section()).getByRole('button', { name: 'Quitar' }))
     const dialog = await screen.findByRole('alertdialog', {
       name: '¿Quitar el logo?',
     })
+    // T-F603 (P-F21): texts and focus of the removal dialog.
+    expect(dialog).toHaveAccessibleDescription(
+      'Vamos a mostrar las iniciales de tu empresa en su lugar. Podés subir otro logo cuando quieras.',
+    )
+    expect(
+      within(dialog).getByRole('button', { name: 'Cancelar' }),
+    ).toHaveFocus()
     await user.click(within(dialog).getByRole('button', { name: 'Quitar' }))
+    const waiting = await within(dialog).findByRole('button', {
+      name: 'Quitando logo…',
+    })
+    expect(waiting).toBeDisabled()
+    expect(
+      within(dialog).getByRole('button', { name: 'Cancelar' }),
+    ).toBeDisabled()
+    removing.open()
     expect(await screen.findByText('Quitamos el logo.')).toBeVisible()
     await waitFor(() => expect(logoImages()).toHaveLength(0))
     expect(screen.getByText('Todavía no subiste un logo')).toBeVisible()
     expect(screen.getAllByText('ED')).toHaveLength(2)
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    // "Quitar" is disabled once there is no logo, so the focus goes to "Cambiar logo".
     expect(picker()).toHaveFocus()
   })
 
@@ -562,6 +590,10 @@ describe('company logo', () => {
       within(alert).getByRole('button', { name: 'Reintentar' }),
     ).toBeVisible()
     expect(logoImages()).toHaveLength(2)
+    // T-F603 (INV-F10, P-F21): the logo is still there, so the focus returns to "Quitar".
+    expect(
+      within(section()).getByRole('button', { name: 'Quitar' }),
+    ).toHaveFocus()
   })
 
   it('asks before leaving while the logo is being prepared (BR-F10)', async () => {

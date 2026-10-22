@@ -28,7 +28,7 @@ export function CompanyPage() {
         />
       ) : (
         <section
-          aria-label="Cargando los datos de la empresa"
+          aria-label="Cargando los datos de tu empresa"
           aria-busy="true"
           className="space-y-4"
         >

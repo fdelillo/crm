@@ -66,6 +66,13 @@ describe('CompanyPage unsaved changes and expired sessions', () => {
     const user = await editPhone()
     await user.click(screen.getByRole('link', { name: '← Ajustes' }))
     const dialog = await screen.findByRole('alertdialog', { name: promptTitle })
+    // T-F602 (P-F21): the text is true for a form, a logo being prepared and a logo being uploaded.
+    expect(dialog).toHaveAccessibleDescription(
+      'Si salís ahora, se pierden los cambios que todavía no se guardaron.',
+    )
+    expect(
+      within(dialog).getByRole('button', { name: 'Quedarme' }),
+    ).toHaveFocus()
     await user.click(within(dialog).getByRole('button', { name: 'Quedarme' }))
     expect(router.state.location.pathname).toBe('/settings/company')
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
