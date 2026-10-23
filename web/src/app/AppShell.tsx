@@ -1,12 +1,14 @@
 import type { SessionInfo } from '@/api/types'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTenant, logoUrl } from '@/api/tenant'
 import { Home, Settings, ChevronDown } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router'
 import { useResendEmailVerification, useSession } from '@/features/auth/session'
 import { AppBrand } from '@/components/AppBrand'
 import { Button } from '@/components/ui/button'
-import { useLogout } from '@/features/auth/api'
+import { useLogoutRequest } from '@/features/auth/api'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { hasUnsavedChanges } from '@/lib/unsavedChanges'
 import { messageForError } from '@/api/errorMessages'
 import {
   EmailVerificationBanner,
@@ -25,11 +27,17 @@ export function AppShell() {
   return session ? <AuthenticatedShell session={session} /> : null
 }
 function AuthenticatedShell({ session }: { session: SessionInfo }) {
-  const logout = useLogout()
+  const { logout, confirming, request, confirm, cancel } = useLogoutRequest()
   const [logoutStarted, setLogoutStarted] = useState(false)
-  const { data: tenant } = useTenant({
-    enabled: !logout.isPending && !logoutStarted,
-  })
+  // INV-F10: when the prompt closes, focus goes back to the user menu button that led to it.
+  const menuButton = useRef<HTMLButtonElement>(null)
+  const wasConfirming = useRef(false)
+  useEffect(() => {
+    if (wasConfirming.current && !confirming) menuButton.current?.focus()
+    wasConfirming.current = confirming
+  }, [confirming])
+  const loggingOut = logout.isPending || (logoutStarted && !logout.isError)
+  const { data: tenant } = useTenant({ enabled: !loggingOut })
   const role = session.user.role === 'admin' ? 'Administrador' : 'Operador'
   return (
     <div className="min-h-dvh lg:pl-60">
@@ -72,6 +80,7 @@ function AuthenticatedShell({ session }: { session: SessionInfo }) {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
+                ref={menuButton}
                 variant="ghost"
                 className="h-auto w-full justify-between whitespace-normal text-left"
               >
@@ -84,23 +93,39 @@ function AuthenticatedShell({ session }: { session: SessionInfo }) {
                 {session.user.name} · {role}
               </DropdownMenuLabel>
               <DropdownMenuItem
-                disabled={logout.isPending || logoutStarted}
+                disabled={loggingOut}
                 onSelect={(event) => {
-                  event.preventDefault()
-                  setLogoutStarted(true)
-                  logout.mutate(undefined, {
-                    onError: () => setLogoutStarted(false),
-                  })
+                  // With unsaved changes the menu closes and the prompt opens (§13.8).
+                  if (!hasUnsavedChanges()) {
+                    event.preventDefault()
+                    setLogoutStarted(true)
+                  }
+                  request()
                 }}
               >
-                {logout.isPending || logoutStarted
-                  ? 'Cerrando sesión…'
-                  : 'Cerrar sesión'}
+                {loggingOut ? 'Cerrando sesión…' : 'Cerrar sesión'}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </div>
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={(open) => {
+          if (!open && !logout.isPending) cancel()
+        }}
+        title="Tenés cambios sin guardar. ¿Salir igual?"
+        description="Si salís ahora, se pierden los cambios que todavía no se guardaron."
+        confirmLabel="Cerrar sesión"
+        pendingLabel="Cerrando sesión…"
+        cancelLabel="Quedarme"
+        destructive
+        pending={logout.isPending}
+        onConfirm={() => {
+          setLogoutStarted(true)
+          confirm()
+        }}
+      />
       {!session.user.email_verified && (
         <SessionVerificationBanner
           key={session.user.email}

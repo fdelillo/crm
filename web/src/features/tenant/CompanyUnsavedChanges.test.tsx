@@ -270,3 +270,154 @@ describe('CompanyPage unsaved changes and expired sessions', () => {
     expect(where(router)).toBe('/login?next=%2Fsettings&reason=session_expired')
   })
 })
+
+// T-F707 (P-F24 (2), DD-F35, INV-F18, INV-F22, ui.md §13.8): logging out with unsaved changes
+// asks before the POST, and no session exit goes through the S-11 prompt.
+describe('logging out with unsaved changes', () => {
+  beforeAll(preloadCompanyModules)
+  beforeEach(useNodeMultipart)
+  afterEach(() => vi.unstubAllGlobals())
+
+  const userMenu = () =>
+    screen.getByRole('button', { name: /Persona de prueba · Administrador/ })
+  async function chooseLogout(user: Awaited<ReturnType<typeof editPhone>>) {
+    await user.click(userMenu())
+    await user.click(
+      await screen.findByRole('menuitem', { name: 'Cerrar sesión' }),
+    )
+    return screen.findByRole('alertdialog', { name: promptTitle })
+  }
+  function serveLogout(outcome: 'ok' | 'network' = 'ok') {
+    let loggedOut = false
+    const logout = vi.fn(() => {
+      if (outcome === 'network') return HttpResponse.error()
+      loggedOut = true
+      return new HttpResponse(null, { status: 204 })
+    })
+    server.use(
+      http.post(`${base}/auth/logout`, logout),
+      http.get(`${base}/me`, () =>
+        loggedOut
+          ? problemResponse('unauthenticated', 401)
+          : HttpResponse.json(
+              buildSessionInfo({
+                user: buildCurrentUser({ email_verified: true }),
+              }),
+            ),
+      ),
+    )
+    return logout
+  }
+  function watch(router: Awaited<ReturnType<typeof renderCompany>>['router']) {
+    const toLogin: string[] = []
+    const original = router.navigate.bind(router) as (
+      to: unknown,
+      options?: unknown,
+    ) => Promise<void>
+    vi.spyOn(router, 'navigate').mockImplementation(((
+      to: unknown,
+      options?: unknown,
+    ) => {
+      if (typeof to === 'string' && to.startsWith('/login')) toLogin.push(to)
+      return original(to, options)
+    }) as typeof router.navigate)
+    const prompts = { shown: 0, loaders: 0 }
+    const observer = new MutationObserver((records) => {
+      for (const record of records)
+        for (const node of Array.from(record.addedNodes)) {
+          if (!(node instanceof Element)) continue
+          if (node.matches('[role="alertdialog"]')) prompts.shown++
+          if (node.matches('[aria-label="Cargando la aplicación"]'))
+            prompts.loaders++
+        }
+    })
+    observer.observe(document.body, { childList: true, subtree: true })
+    return { toLogin, prompts, stop: () => observer.disconnect() }
+  }
+
+  it('C1: asks first and sends nothing', async () => {
+    serveCompany()
+    const logout = serveLogout()
+    await renderCompany()
+    const user = await editPhone()
+    const dialog = await chooseLogout(user)
+    expect(dialog).toHaveAccessibleDescription(
+      'Si salís ahora, se pierden los cambios que todavía no se guardaron.',
+    )
+    expect(
+      within(dialog).getByRole('button', { name: 'Quedarme' }),
+    ).toHaveFocus()
+    expect(
+      within(dialog).getByRole('button', { name: 'Cerrar sesión' }),
+    ).toBeEnabled()
+    expect(logout).not.toHaveBeenCalled()
+  })
+
+  it('C2: "Quedarme" keeps the session and the text, and leaving later asks once and never shows the loader', async () => {
+    serveCompany()
+    const logout = serveLogout()
+    const { router } = await renderCompany()
+    const view = watch(router)
+    const user = await editPhone()
+    const dialog = await chooseLogout(user)
+    await user.click(within(dialog).getByRole('button', { name: 'Quedarme' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    await waitFor(() => expect(userMenu()).toHaveFocus())
+    expect(screen.getByRole('textbox', { name: 'Teléfono' })).toHaveValue(
+      '11 5555-00001',
+    )
+    expect(logout).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('link', { name: 'Inicio' }))
+    await user.click(
+      within(
+        await screen.findByRole('alertdialog', { name: promptTitle }),
+      ).getByRole('button', { name: 'Salir' }),
+    )
+    expect(
+      await screen.findByRole('heading', { name: 'Hola, Persona de prueba' }),
+    ).toBeVisible()
+    expect(view.prompts.loaders).toBe(0)
+    expect(view.toLogin).toEqual([])
+    view.stop()
+  })
+
+  it('C3: "Cerrar sesión" in the prompt logs out once, without asking again or reporting lost changes', async () => {
+    serveCompany()
+    const logout = serveLogout()
+    const { router } = await renderCompany()
+    const view = watch(router)
+    const user = await editPhone()
+    const dialog = await chooseLogout(user)
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Cerrar sesión' }),
+    )
+    expect(await screen.findByText('Cerraste sesión.')).toBeVisible()
+    expect(where(router)).toBe('/login?reason=logged_out')
+    expect(screen.queryByText(lostLine)).toBeNull()
+    expect(logout).toHaveBeenCalledOnce()
+    expect(view.prompts.shown).toBe(1)
+    expect(view.toLogin).toEqual(['/login?reason=logged_out'])
+    view.stop()
+  })
+
+  it('C4: stays on the page with the text and the session when the POST fails', async () => {
+    serveCompany()
+    serveLogout('network')
+    const { router, queryClient } = await renderCompany()
+    const user = await editPhone()
+    const dialog = await chooseLogout(user)
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Cerrar sesión' }),
+    )
+    expect(
+      await screen.findByText(
+        'No pudimos cerrar la sesión. Revisá tu conexión.',
+      ),
+    ).toBeVisible()
+    expect(router.state.location.pathname).toBe('/settings/company')
+    expect(screen.getByRole('textbox', { name: 'Teléfono' })).toHaveValue(
+      '11 5555-00001',
+    )
+    expect(queryClient.getQueryData(queryKeys.session)).toBeTruthy()
+  })
+})
