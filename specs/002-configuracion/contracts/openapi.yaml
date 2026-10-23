@@ -1,0 +1,1089 @@
+openapi: 3.1.0
+info:
+  title: CRM - API 002 Configuración por empresa
+  version: 0.1.0
+  summary: Etapas de proyecto, categorías de ingresos y egresos, catálogo, nombres personalizados y condiciones comerciales por defecto.
+  description: |
+    Contrato **canónico** de la spec 002 (`specs/002-configuracion/spec.md`). Estado: propuesto,
+    pendiente de aprobación junto con el plan (2026-10-23).
+
+    Los tipos del cliente se derivan de este archivo. Los handlers Go se escriben a mano y los
+    tests validan cada request y response contra este documento (ADR-014; el validador carga los
+    contratos de 001 y 002, plan DD-13).
+
+    Convenciones (las de 001 siguen vigentes y no se repiten en cada operación):
+    - Base: `/api/v1`. JSON en `snake_case`. Fechas ISO 8601 en UTC.
+    - Autenticación: cookie de sesión `__Host-crm_session` (ver contrato de 001).
+    - Todas las respuestas llevan `Cache-Control: no-store` (DD-28 de 001).
+    - Todo endpoint con body JSON exige `Content-Type: application/json` (si no, 415) y admite hasta
+      65 536 bytes (si no, 413).
+    - Un método que la ruta no admite responde `405` con `method_not_allowed` y la cabecera `Allow`;
+      un método no seguro de origen cruzado, `403` con `forbidden` (reglas globales de 001).
+    - Un recurso de otra empresa, o un id que no es UUID, responde `404` (INV-12 de 001).
+    - **Lecturas**: cualquier usuario autenticado de la empresa. **Escrituras**: permiso
+      `settings.manage` (Administrador); el permiso se decide antes de buscar el recurso.
+    - Textos: se guardan sin los espacios de los extremos; los largos máximos se miden sobre el valor
+      recibido; un texto vacío o solo con espacios en un campo obligatorio es `required`, y en uno
+      opcional equivale a `null`.
+    - Dinero: objeto `Money` (centavos enteros + moneda), nunca punto flotante (ADR-029).
+    - Una escritura sin cambios reales responde `200` con el recurso y no modifica `updated_at`.
+
+    **Dependencia con el contrato de 001**: este archivo referencia componentes compartidos de
+    `specs/001-empresas-usuarios/contracts/openapi.yaml` (DD-17 de 001). Requiere la **v0.6.0** de
+    ese contrato, que agrega `name_taken` a `ErrorCode` y el esquema `Money` (plan de 002 §8.2,
+    tarea T-002-B202). Hasta esa tarea, el `$ref` a `Money` apunta a un componente que todavía no
+    existe en 001.
+
+    Significado de `409 invalid_state` en este contrato (plan DD-12, §8.3):
+    - En etapas: el resultado dejaría el pipeline sin una primera etapa abierta o sin ninguna etapa
+      de cierre *ganado*.
+    - En `POST /categories/{categoryId}/archive`: es una categoría de sistema.
+
+    Historial:
+    - 0.1.0: versión inicial (propuesta).
+servers:
+  - url: /api/v1
+tags:
+  - name: stages
+    description: Etapas de proyecto (pipeline)
+  - name: categories
+    description: Categorías de ingresos y egresos
+  - name: catalog
+    description: Catálogo de productos y servicios
+  - name: settings
+    description: Nombres personalizados y condiciones comerciales por defecto
+
+paths:
+  /stages:
+    get:
+      tags: [stages]
+      operationId: listStages
+      summary: Etapas activas, en orden (Historia 1)
+      description: Disponible para cualquier rol. No incluye las etapas eliminadas.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Etapas activas ordenadas por `position`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StageList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+    post:
+      tags: [stages]
+      operationId: createStage
+      summary: Crear una etapa (Historia 1)
+      description: |
+        Requiere `settings.manage`. Sin `position`, la etapa queda al final. Con `position` (de 1 a
+        la cantidad de etapas activas más uno), las siguientes se corren un lugar. Responde
+        `409 invalid_state` si el resultado deja una etapa de cierre en la primera posición, y
+        `409 name_taken` si ya hay una etapa activa con ese nombre (sin distinguir mayúsculas).
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StageCreate'
+      responses:
+        '201':
+          description: Etapa creada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Stage'
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/StageConflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /stages/{stageId}:
+    parameters:
+      - $ref: '#/components/parameters/StageId'
+    patch:
+      tags: [stages]
+      operationId: updateStage
+      summary: Renombrar una etapa o cambiar su tipo o color (Historia 1)
+      description: |
+        Requiere `settings.manage`. Solo cambian los campos presentes; ninguno admite `null` (un
+        `null` o un objeto vacío responde `400`). Cambiar el tipo se permite si el pipeline sigue
+        válido (`409 invalid_state` si no). Los proyectos que estén en la etapa (spec 004) quedan
+        cerrados o abiertos según el tipo nuevo, sin modificarlos.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StageUpdate'
+      responses:
+        '200':
+          description: Etapa actualizada (o sin cambios)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Stage'
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/StageConflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+    delete:
+      tags: [stages]
+      operationId: deleteStage
+      summary: Eliminar una etapa (Historia 1)
+      description: |
+        Requiere `settings.manage`. La etapa deja de existir para el pipeline y no se puede
+        recuperar; se conserva internamente para el historial (borrado lógico). Las siguientes
+        suben un lugar. Responde `409 invalid_state` si es la única etapa de cierre *ganado* o si la
+        etapa que quedaría primera es de cierre. Una etapa ya eliminada responde `404`. Cuando
+        exista la spec 004, eliminar una etapa con proyectos exigirá indicar a qué etapa moverlos.
+      security:
+        - sessionCookie: []
+      responses:
+        '204':
+          description: Etapa eliminada
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/StageConflict'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /stages/{stageId}/move:
+    parameters:
+      - $ref: '#/components/parameters/StageId'
+    post:
+      tags: [stages]
+      operationId: moveStage
+      summary: Mover una etapa a otra posición (Historia 1)
+      description: |
+        Requiere `settings.manage`. `position` va de 1 a la cantidad de etapas activas (si no,
+        `422` con `field` = `position` y `invalid_value`). Las demás se corren para dejar las
+        posiciones de 1 a n sin huecos. Responde `409 invalid_state` si una etapa de cierre quedaría
+        primera. Mover a la posición actual no cambia nada.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StageMove'
+      responses:
+        '200':
+          description: Etapas activas en el orden nuevo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StageList'
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/StageConflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /categories:
+    get:
+      tags: [categories]
+      operationId: listCategories
+      summary: Categorías de ingreso y egreso (Historia 3)
+      description: |
+        Disponible para cualquier rol. Por defecto solo las no archivadas. Orden: por tipo
+        (`income` primero), las de sistema antes que las de la empresa, y por nombre.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CategoryTypeFilter'
+        - $ref: '#/components/parameters/IncludeArchived'
+      responses:
+        '200':
+          description: Categorías
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryList'
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+    post:
+      tags: [categories]
+      operationId: createCategory
+      summary: Crear una categoría (Historia 3)
+      description: |
+        Requiere `settings.manage`. El tipo no se puede cambiar después. `409 name_taken` si ya hay
+        una categoría no archivada del mismo tipo con ese nombre (sin distinguir mayúsculas).
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryCreate'
+      responses:
+        '201':
+          description: Categoría creada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/NameTaken'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /categories/{categoryId}:
+    parameters:
+      - $ref: '#/components/parameters/CategoryId'
+    patch:
+      tags: [categories]
+      operationId: renameCategory
+      summary: Renombrar una categoría, también una de sistema (Historia 3)
+      description: Requiere `settings.manage`. Se puede renombrar una categoría archivada.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryRename'
+      responses:
+        '200':
+          description: Categoría renombrada (o sin cambios)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/NameTaken'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /categories/{categoryId}/archive:
+    parameters:
+      - $ref: '#/components/parameters/CategoryId'
+    post:
+      tags: [categories]
+      operationId: archiveCategory
+      summary: Archivar una categoría (Historia 3)
+      description: |
+        Requiere `settings.manage`. Deja de ofrecerse y se conserva en el historial. Una categoría
+        de sistema responde `409 invalid_state`. Archivar una ya archivada responde `200` sin cambios.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Categoría archivada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidState'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /categories/{categoryId}/restore:
+    parameters:
+      - $ref: '#/components/parameters/CategoryId'
+    post:
+      tags: [categories]
+      operationId: restoreCategory
+      summary: Restaurar una categoría archivada (Historia 3)
+      description: |
+        Requiere `settings.manage`. `409 name_taken` si otra categoría no archivada del mismo tipo ya
+        usa ese nombre. Restaurar una que no está archivada responde `200` sin cambios.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Categoría restaurada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/NameTaken'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /catalog-items:
+    get:
+      tags: [catalog]
+      operationId: listCatalogItems
+      summary: Catálogo de productos y servicios (Historia 4)
+      description: Disponible para cualquier rol. Por defecto solo los no archivados, ordenados por nombre.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/IncludeArchived'
+      responses:
+        '200':
+          description: Ítems del catálogo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogItemList'
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+    post:
+      tags: [catalog]
+      operationId: createCatalogItem
+      summary: Crear un ítem de catálogo (Historia 4)
+      description: |
+        Requiere `settings.manage`. El precio de referencia es opcional; si se informa, lleva importe
+        y moneda. Con `unit` = `other`, `unit_label` es obligatorio; con otra unidad se ignora.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogItemCreate'
+      responses:
+        '201':
+          description: Ítem creado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogItem'
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /catalog-items/{catalogItemId}:
+    parameters:
+      - $ref: '#/components/parameters/CatalogItemId'
+    get:
+      tags: [catalog]
+      operationId: getCatalogItem
+      summary: Un ítem del catálogo (también archivado)
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Ítem
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogItem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+    patch:
+      tags: [catalog]
+      operationId: updateCatalogItem
+      summary: Editar un ítem de catálogo (Historia 4)
+      description: |
+        Requiere `settings.manage`. Solo cambian los campos presentes. `null` borra `description`,
+        `unit_label` o `reference_price`; `name` y `unit` no admiten `null` (`400`). Si la unidad
+        resultante no es `other`, `unit_label` se descarta; si es `other` y queda sin `unit_label`,
+        `422`. Cambiar el precio no modifica presupuestos ya creados (spec 005 copia los valores).
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogItemUpdate'
+      responses:
+        '200':
+          description: Ítem actualizado (o sin cambios)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogItem'
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /catalog-items/{catalogItemId}/archive:
+    parameters:
+      - $ref: '#/components/parameters/CatalogItemId'
+    post:
+      tags: [catalog]
+      operationId: archiveCatalogItem
+      summary: Archivar un ítem (deja de ofrecerse en presupuestos nuevos) (Historia 4)
+      description: Requiere `settings.manage`. Archivar uno ya archivado responde `200` sin cambios.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Ítem archivado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogItem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /catalog-items/{catalogItemId}/restore:
+    parameters:
+      - $ref: '#/components/parameters/CatalogItemId'
+    post:
+      tags: [catalog]
+      operationId: restoreCatalogItem
+      summary: Restaurar un ítem archivado (Historia 4)
+      description: Requiere `settings.manage`. Restaurar uno que no está archivado responde `200` sin cambios.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Ítem restaurado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogItem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /settings/labels:
+    get:
+      tags: [settings]
+      operationId: getLabels
+      summary: Nombres personalizados de Proyecto, Cliente y Presupuesto (Historia 2)
+      description: Disponible para cualquier rol (toda la interfaz los usa).
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Nombres vigentes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Labels'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+    put:
+      tags: [settings]
+      operationId: replaceLabels
+      summary: Reemplazar los nombres personalizados (Historia 2)
+      description: Requiere `settings.manage`. Se envían los tres nombres completos.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Labels'
+      responses:
+        '200':
+          description: Nombres guardados (o sin cambios)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Labels'
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+  /settings/quote-defaults:
+    get:
+      tags: [settings]
+      operationId: getQuoteDefaults
+      summary: Validez y condiciones comerciales por defecto de los presupuestos (Historia 6)
+      description: Disponible para cualquier rol.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Valores vigentes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteDefaults'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+    put:
+      tags: [settings]
+      operationId: replaceQuoteDefaults
+      summary: Reemplazar la validez y las condiciones por defecto (Historia 6)
+      description: |
+        Requiere `settings.manage`. `terms` vacío o solo con espacios se guarda como `null` (sin
+        condiciones). Cambiarlas no modifica presupuestos ya creados.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuoteDefaults'
+      responses:
+        '200':
+          description: Valores guardados (o sin cambios)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteDefaults'
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        5XX:
+          $ref: '#/components/responses/ServerError'
+
+components:
+  securitySchemes:
+    sessionCookie:
+      $ref: '../../001-empresas-usuarios/contracts/openapi.yaml#/components/securitySchemes/sessionCookie'
+
+  parameters:
+    StageId:
+      name: stageId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    CategoryId:
+      name: categoryId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    CatalogItemId:
+      name: catalogItemId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    IncludeArchived:
+      name: include_archived
+      in: query
+      required: false
+      description: Si es `true`, incluye los archivados (con `archived` = true). Default `false`.
+      schema:
+        type: boolean
+        default: false
+    CategoryTypeFilter:
+      name: type
+      in: query
+      required: false
+      description: Filtra por tipo. Sin el parámetro, ambos tipos.
+      schema:
+        $ref: '#/components/schemas/CategoryType'
+
+  responses:
+    # Respuestas compartidas de 001 (DD-17 de 001).
+    MalformedRequest:
+      $ref: '../../001-empresas-usuarios/contracts/openapi.yaml#/components/responses/MalformedRequest'
+    Unauthenticated:
+      $ref: '../../001-empresas-usuarios/contracts/openapi.yaml#/components/responses/Unauthenticated'
+    Forbidden:
+      $ref: '../../001-empresas-usuarios/contracts/openapi.yaml#/components/responses/Forbidden'
+    NotFound:
+      $ref: '../../001-empresas-usuarios/contracts/openapi.yaml#/components/responses/NotFound'
+    PayloadTooLarge:
+      $ref: '../../001-empresas-usuarios/contracts/openapi.yaml#/components/responses/PayloadTooLarge'
+    UnsupportedMediaType:
+      $ref: '../../001-empresas-usuarios/contracts/openapi.yaml#/components/responses/UnsupportedMediaType'
+    ValidationFailed:
+      $ref: '../../001-empresas-usuarios/contracts/openapi.yaml#/components/responses/ValidationFailed'
+    ServerError:
+      $ref: '../../001-empresas-usuarios/contracts/openapi.yaml#/components/responses/ServerError'
+    # Respuestas propias de 002.
+    NameTaken:
+      description: Ya existe una categoría no archivada del mismo tipo con ese nombre (`code` = `name_taken`)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    InvalidState:
+      description: Es una categoría de sistema; no se archiva (`code` = `invalid_state`)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    StageConflict:
+      description: |
+        `code` = `name_taken`: ya existe una etapa activa con ese nombre (sin distinguir
+        mayúsculas). `code` = `invalid_state`: el resultado dejaría el pipeline sin una primera
+        etapa abierta o sin ninguna etapa de cierre *ganado*.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+  schemas:
+    # Componentes compartidos de 001 (DD-17 de 001). Money existe desde la v0.6.0 de 001.
+    Problem:
+      $ref: '../../001-empresas-usuarios/contracts/openapi.yaml#/components/schemas/Problem'
+    Money:
+      $ref: '../../001-empresas-usuarios/contracts/openapi.yaml#/components/schemas/Money'
+
+    StageType:
+      type: string
+      description: |
+        `open` = abierta; `won` = cierre ganado; `lost` = cierre perdido. Un proyecto en una etapa
+        de cierre está cerrado (spec 004).
+      enum: [open, won, lost]
+
+    StageColor:
+      type: string
+      description: Token de una paleta cerrada; la interfaz decide el color real de cada token (plan DD-7).
+      enum: [gray, blue, teal, green, yellow, orange, red, purple]
+
+    StageName:
+      type: string
+      minLength: 1
+      maxLength: 60
+
+    Stage:
+      type: object
+      required: [id, name, type, color, position]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          $ref: '#/components/schemas/StageName'
+        type:
+          $ref: '#/components/schemas/StageType'
+        color:
+          $ref: '#/components/schemas/StageColor'
+        position:
+          type: integer
+          minimum: 1
+          description: Posición en el pipeline (1 = etapa inicial). Las activas van de 1 a n sin huecos.
+
+    StageList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Stage'
+
+    StageCreate:
+      type: object
+      required: [name, type, color]
+      additionalProperties: false
+      properties:
+        name:
+          $ref: '#/components/schemas/StageName'
+        type:
+          $ref: '#/components/schemas/StageType'
+        color:
+          $ref: '#/components/schemas/StageColor'
+        position:
+          type: integer
+          minimum: 1
+          description: De 1 a la cantidad de etapas activas más uno. Sin el campo, al final.
+
+    StageUpdate:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      description: Solo cambian los campos presentes; ninguno admite `null`.
+      properties:
+        name:
+          $ref: '#/components/schemas/StageName'
+        type:
+          $ref: '#/components/schemas/StageType'
+        color:
+          $ref: '#/components/schemas/StageColor'
+
+    StageMove:
+      type: object
+      required: [position]
+      additionalProperties: false
+      properties:
+        position:
+          type: integer
+          minimum: 1
+          description: De 1 a la cantidad de etapas activas.
+
+    CategoryType:
+      type: string
+      description: '`income` = ingreso; `expense` = egreso. No cambia después de crear la categoría.'
+      enum: [income, expense]
+
+    SystemCategoryKey:
+      type: string
+      description: |
+        Clave estable de una categoría de sistema (la usan las operaciones automáticas de las specs
+        006 y 007). Las specs siguientes pueden agregar valores (ADR-028); es un cambio *minor*.
+        - customer_receipts: Cobros de clientes (ingreso)
+        - partner_contributions: Aportes de socios (ingreso)
+        - supplier_payments: Pagos a proveedores (egreso)
+        - employee_payments: Pagos a empleados (egreso)
+        - partner_withdrawals: Retiros de socios (egreso)
+      enum:
+        - customer_receipts
+        - partner_contributions
+        - supplier_payments
+        - employee_payments
+        - partner_withdrawals
+
+    CategoryName:
+      type: string
+      minLength: 1
+      maxLength: 60
+
+    Category:
+      type: object
+      required: [id, name, type, system, system_key, archived]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          $ref: '#/components/schemas/CategoryName'
+        type:
+          $ref: '#/components/schemas/CategoryType'
+        system:
+          type: boolean
+          description: Si es true, se puede renombrar pero no archivar.
+        system_key:
+          description: Solo en las categorías de sistema; `null` en las de la empresa.
+          oneOf:
+            - $ref: '#/components/schemas/SystemCategoryKey'
+            - type: 'null'
+        archived:
+          type: boolean
+
+    CategoryList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Category'
+
+    CategoryCreate:
+      type: object
+      required: [name, type]
+      additionalProperties: false
+      properties:
+        name:
+          $ref: '#/components/schemas/CategoryName'
+        type:
+          $ref: '#/components/schemas/CategoryType'
+
+    CategoryRename:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          $ref: '#/components/schemas/CategoryName'
+
+    CatalogUnit:
+      type: string
+      description: |
+        - unit: unidad
+        - square_meter: m² (el presupuesto calcula ancho × alto × cantidad, spec 005)
+        - linear_meter: metro lineal (el presupuesto calcula la longitud, spec 005)
+        - hour: hora
+        - other: otra; requiere `unit_label`
+      enum: [unit, square_meter, linear_meter, hour, other]
+
+    CatalogItem:
+      type: object
+      required: [id, name, description, unit, unit_label, reference_price, archived, created_at, updated_at]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: [string, 'null']
+          maxLength: 1000
+        unit:
+          $ref: '#/components/schemas/CatalogUnit'
+        unit_label:
+          type: [string, 'null']
+          maxLength: 20
+          description: Nombre de la unidad; solo con `unit` = `other`, `null` en las demás.
+        reference_price:
+          description: Precio de referencia por unidad; `null` = sin precio ("a cotizar").
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+        archived:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CatalogItemList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogItem'
+
+    CatalogItemCreate:
+      type: object
+      required: [name, unit]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: [string, 'null']
+          maxLength: 1000
+        unit:
+          $ref: '#/components/schemas/CatalogUnit'
+        unit_label:
+          type: [string, 'null']
+          maxLength: 20
+        reference_price:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+
+    CatalogItemUpdate:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      description: |
+        Solo cambian los campos presentes. `null` borra `description`, `unit_label` o
+        `reference_price`; `name` y `unit` no admiten `null`.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: [string, 'null']
+          maxLength: 1000
+        unit:
+          $ref: '#/components/schemas/CatalogUnit'
+        unit_label:
+          type: [string, 'null']
+          maxLength: 20
+        reference_price:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+
+    GrammaticalGender:
+      type: string
+      description: Género gramatical del nombre, para que la interfaz concuerde artículos y adjetivos ("Nueva obra").
+      enum: [masculine, feminine]
+
+    EntityLabel:
+      type: object
+      required: [singular, plural, gender]
+      additionalProperties: false
+      properties:
+        singular:
+          type: string
+          minLength: 1
+          maxLength: 40
+        plural:
+          type: string
+          minLength: 1
+          maxLength: 40
+        gender:
+          $ref: '#/components/schemas/GrammaticalGender'
+
+    Labels:
+      type: object
+      description: Cómo llama la empresa a cada entidad. La interfaz los usa desde 002; los PDF, desde la spec 005.
+      required: [project, customer, quote]
+      additionalProperties: false
+      properties:
+        project:
+          $ref: '#/components/schemas/EntityLabel'
+        customer:
+          $ref: '#/components/schemas/EntityLabel'
+        quote:
+          $ref: '#/components/schemas/EntityLabel'
+
+    QuoteDefaults:
+      type: object
+      description: Valores que se proponen al crear un presupuesto (spec 005).
+      required: [validity_days, terms]
+      additionalProperties: false
+      properties:
+        validity_days:
+          type: integer
+          minimum: 1
+          maximum: 365
+        terms:
+          type: [string, 'null']
+          maxLength: 2000
+          description: Condiciones comerciales; `null` = sin condiciones.
