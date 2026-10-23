@@ -4753,6 +4753,20 @@ métricas de Lighthouse y el resultado del supuesto S-12.
   *render delay* 431–544 ms. **NFR-F03 no cambia** y todavía no se elige ninguna optimización: la
   tarea se frena acá y vuelve al arquitecto con la evidencia de abajo. Hipótesis a confirmar o
   descartar: una cascada documento → bundle principal → chunk lazy de `/login` y sus dependencias.
+- **Estado 2026-10-22 (NFR-F03 cumplido; aprobado por el usuario el 2026-10-22)**: con la evidencia
+  de abajo (dispatch WebKit `39882672512` sobre `2295215`, 5 corridas *simulate* por ruta,
+  intercaladas), `/login` da 2042, 2044, 2048, 2068 y 2953 ms (mediana 2048, **p75 2068**) y `/`, 1903,
+  2197, 2202, 2203 y 2236 ms (mediana 2202, **p75 2203**), con CLS 0. La cascada hacia el chunk de
+  `LoginPage` existe, pero no explica el desvío: el 2654 anterior venía de que `/login` se medía
+  primero, con el runner frío
+  (`benchmarkIndex` 1759 y `bootup-time` 1482 ms, contra 2424 y 416 ms en `/`, 13 s después). En
+  esta corrida pasa lo mismo: la primera de `/login` (1794, 1201 ms) da 2953 y las otras cuatro
+  (~2400, ~310 ms) dan ~2045. El JS crudo antes del LCP es casi el mismo (347 KB en un chunk, contra
+  246 + 114 KB en paralelo). Lantern multiplica por 4 la CPU observada, así que el frío del runner
+  pesa más que el código. En caliente, `/login` es más rápido que `/` (pregunta 5). Con el OK del
+  usuario, el colector hace primero una corrida *simulate* de calentamiento por ruta, que guarda
+  como evidencia pero excluye de la estadística (`discardedWarmup` en `statistics.json`). No se
+  aplicó ninguna optimización. INP en un Android real sigue pendiente (H-12).
 - **Evidencia a capturar**: misma revisión del binario, mismo runner y el mismo método de medición
   (`--preset=perf --form-factor=mobile --throttling-method=simulate`).
   1. Cinco corridas por ruta (`/login` y `/`), con `--output=json --output=html --save-assets`

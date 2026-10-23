@@ -91,10 +91,16 @@ const environment = {
     'No existing Playwright session, cookies, authentication headers, or storage are reused.',
     'Trace timestamps and LCP breakdown are observed; simulated LCP/FCP are separate model outputs.',
     'The two devtools-throttled runs are diagnostic only and excluded from NFR-F03 statistics.',
+    'One discarded simulate warm-up per route runs first and is excluded from NFR-F03 statistics.',
   ],
 }
 save('environment.json', environment)
-const plan = []
+// T-F704: the first run of the job meets a cold runner (benchmarkIndex ~1760-1790 against ~2400
+// later) and Lantern scales that CPU by 4, so it is kept as evidence but never counted.
+const plan = [
+  { method: 'simulate', pair: 0, route: 'login', warmup: true },
+  { method: 'simulate', pair: 0, route: 'root', warmup: true },
+]
 for (let pair = 1; pair <= 5; pair++) {
   for (const route of pair % 2 ? ['login', 'root'] : ['root', 'login']) {
     plan.push({ method: 'simulate', pair, route })
@@ -122,7 +128,7 @@ const requiredAudits = [
 ]
 try {
   for (const [index, run] of plan.entries()) {
-    const prefix = `${run.method}-${String(run.pair).padStart(2, '0')}-${run.route}`
+    const prefix = `${run.warmup ? 'warmup' : run.method}-${String(run.pair).padStart(2, '0')}-${run.route}`
     const url = `https://localhost:8443/${run.route === 'login' ? 'login' : ''}`
     const args = [
       cli,
@@ -151,7 +157,7 @@ try {
     runs.push(record)
     save('runs.json', runs)
     process.stdout.write(
-      `Lighthouse ${record.order}/12: ${run.method} ${url}\n`,
+      `Lighthouse ${record.order}/${plan.length}: ${run.warmup ? 'warm-up' : run.method} ${url}\n`,
     )
     const log = openSync(join(output, `${prefix}.log`), 'w')
     let result
@@ -216,8 +222,9 @@ try {
   const statistics = {}
   for (const route of ['login', 'root']) {
     const routeRuns = runs.filter(
-      (run) => run.route === route && run.method === 'simulate',
+      (run) => run.route === route && run.method === 'simulate' && !run.warmup,
     )
+    const warmup = runs.find((run) => run.route === route && run.warmup)
     const sorted = routeRuns.map((run) => run.lcpMs).sort((a, b) => a - b)
     statistics[route] = {
       samples: sorted,
@@ -227,6 +234,10 @@ try {
         'nearest rank: ceil(0.75 * 5), fourth of five sorted simulated samples',
       benchmarkIndex: routeRuns.map((run) => run.benchmarkIndex),
       observedLcpMs: routeRuns.map((run) => run.observedLcpMs),
+      discardedWarmup: {
+        lcpMs: warmup.lcpMs,
+        benchmarkIndex: warmup.benchmarkIndex,
+      },
     }
   }
   save('statistics.json', statistics)
