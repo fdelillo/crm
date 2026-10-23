@@ -3189,6 +3189,17 @@ T-F704 suma la evidencia que hay que capturar sobre el LCP de `/login`, sin camb
 Cambian T-F702, T-F704, T-F707 y la trazabilidad; se corrigen en la rama del PR #45. Sin tareas
 nuevas ni cambios de orden.
 
+**Revisión del PR #45, P-F24 (2026-10-23; `ui.md` P-F24, aprobada por el usuario el 2026-10-23 (los puntos (1) a (4), incluido `--destructive-hover`))** (`ui.md`,
+revisión del PR #45). (1) DD-F35 nueva e INV-F22: toda salida de sesión pasa por `exitSession`
+(`lib/sessionExit.ts`), con un registro por `QueryClient`. `RequireSession` decide con ese registro y
+nunca queda esperando una navegación que nadie hace (`ui.md` §6.4.2). (2) "Cerrar sesión" con cambios
+sin guardar pregunta antes del `POST`, y ninguna salida pasa por el aviso (INV-F18 ampliada; `ui.md`
+§13.8). (3) Lighthouse sale de la tabla de excepciones (está en su última estable) y de `ui.md`;
+queda en T-F704 con versión exacta en `package.json`, y la convención de versiones ahora lo dice. (4)
+`--primary-hover` y `--destructive-hover` (`ui.md` §19.1) e INV-F23, con una regla de ESLint. Cambian
+las convenciones (versiones) y T-F704; T-F707 suma dos bloques, y cambia la trazabilidad. Se corrigen
+en la rama del PR #45. Ningún test existente cambia. Sin tareas nuevas ni cambios de orden.
+
 ### Convenciones de esta sección
 
 - `[T]` = tarea de test. Va **antes** de la tarea de código que la hace pasar, y el test debe
@@ -3228,7 +3239,9 @@ nuevas ni cambios de orden.
   navegador del piso de NFR-F02 sirve para desarrollar.
 - Versiones *(enmienda de versiones, 2026-10-15)*: la última estable de cada librería
   **compatible con las *peer dependencies* del conjunto, sin `--force` ni
-  `--legacy-peer-deps`**, al arrancar la Fase F0; fijadas en `package-lock.json`; T-F001 reporta
+  `--legacy-peer-deps`**, al arrancar la Fase F0; fijadas en `package-lock.json` y escritas en
+  `package.json` como versión exacta, sin `^` ni `~` *(precisado en la revisión del PR #45, P-F24
+  (3))*; T-F001 reporta
   las versiones elegidas. Una librería que queda por debajo de su última estable se registra en
   esta tabla, con el motivo y la condición para revisarla; cada actualización de dependencias
   revisa la tabla:
@@ -3238,7 +3251,6 @@ nuevas ni cambios de orden.
   | `typescript` | 5.9.3 | 7.0.2 | (1) `openapi-typescript` 7.13.0 (la última) declara `peerDependencies.typescript: ^5.x`; (2) `typescript-eslint` 8.71.2 (la última) declara `>=4.8.4 <6.1.0`. 5.9.3 es la última versión que satisface las dos | `openapi-typescript` y `typescript-eslint` acepten TypeScript ≥ 6: se sube a la última que acepten las dos, en un PR propio con `npm run check` en verde |
   | `eslint` | 9.39.5 | 10.12.0 | `eslint-plugin-jsx-a11y` 6.10.2 (la última) declara `peerDependencies.eslint: ^3 \|\| ^4 \|\| ^5 \|\| ^6 \|\| ^7 \|\| ^8 \|\| ^9`; 9.39.5 es la última compatible | `eslint-plugin-jsx-a11y` acepte ESLint ≥ 10; se sube a la última compatible con `npm run check` en verde |
   | `@eslint/js` | 9.39.5 | 10.0.1 | `@eslint/js` 10.0.1 declara `peerDependencies.eslint: ^10.0.0`; se alinea con ESLint 9.39.5, limitado por `eslint-plugin-jsx-a11y` 6.10.2 | `eslint-plugin-jsx-a11y` acepte ESLint ≥ 10; se actualiza junto con ESLint y `npm run check` en verde |
-  | `lighthouse` | 13.5.0 | 13.5.0 (2026-10-22) | Última estable; requiere Node ≥ 22.19 y se usa solo en CI para la medición móvil T-F704 | Cada actualización del entorno Node o de Lighthouse |
 - **Clasificación de dependencias** *(enmienda de F0, ADR-027 §2)*: va en `dependencies` todo
   paquete cuyo JavaScript llega a `web/dist`. Va en `devDependencies` lo que solo corre en desarrollo
   o en CI (build, tests, lint, generadores, el CLI de shadcn) y los paquetes que solo aportan CSS
@@ -4739,6 +4751,12 @@ métricas de Lighthouse y el resultado del supuesto S-12.
   Lighthouse *mobile* sobre el binario en `https://localhost:8443` en `/login` y `/` (LCP, CLS; INP
   en un Android de gama media a mano, con el origen de H-12). **Si un objetivo no se cumple, frenar
   y volver al arquitecto** con los números.
+- **Herramienta** *(revisión del PR #45, P-F24 (3))*: Lighthouse 13.5.0, la última estable al
+  2026-10-22 (pide Node ≥ 22.19; el proyecto usa Node 24.22.0), como `devDependency` con versión
+  exacta (`"lighthouse": "13.5.0"`). Corre solo en CI y no llega a `web/dist` (ADR-027 §2). No es una
+  excepción a la regla de versiones, así que no va en la tabla de las convenciones. Si se sube, se
+  vuelve a medir NFR-F03 y NFR-F04 con la versión nueva en lugar de comparar con cifras de otra
+  versión.
 - **Estado 2026-10-22 (bundle dentro del presupuesto; métricas Lighthouse pendientes)**: con la
   alternativa aprobada de separar las páginas públicas de carga diferida y los esquemas por
   formulario, `vite build --manifest` mide el cierre de `/login` en 188,43 KB gzip (≤ 200 KB), el
@@ -4954,6 +4972,117 @@ aceptación; el test de regresión de cada uno es la propia fila de T-F702.
   y nunca llegaba. Ahora una sola espera con reintentos exige que no quede ningún toast saliendo y
   que los visibles tengan opacidad 1. No se saltea ningún escaneo.
 
+**T-F707 — Salida de sesión única y cerrar sesión con cambios sin guardar** · P-F24 (1) y (2),
+DD-F35, INV-F22, INV-F18, DD-F32, `ui.md` §6.4.2, §12.4, §13.8. Corrige el hallazgo de la revisión
+del PR #45: con `8d85615`, `RequireSession` quedaba en "Cargando…" hasta recargar cuando la sesión
+desaparecía después de un `clear()` que no había hecho el manejador global (por ejemplo, un logout
+frenado por el aviso de S-11).
+- **Red**: casos nuevos; los existentes no se tocan.
+  - `web/src/app/guards/routeGuards.test.tsx`, `describe` nuevo "leaving the session", con el
+    `startSession` y la precarga de chunks del archivo. Es integración con `renderApp`: el router, el
+    `QueryClient`, los guards y los hooks son los reales, y MSW intercepta el borde HTTP. Para
+    retener una salida antes de que el router la empiece, se espía `router.navigate` (`vi.spyOn`): si
+    el destino es `/login`, la implementación espera un `gate()` y después llama a la original;
+    cualquier otro destino pasa directo, y se registran todos. Si en React Router 8.4.0 `<Navigate>`
+    no pasara por `router.navigate`, la aserción equivalente es la URL final más un
+    `router.subscribe` que registre cada `location`.
+
+    | Caso | Resultado observable |
+    |---|---|
+    | G1. Administrador en `/settings/users`; `/me` → `401`; `invalidateQueries(['session'])`; las navegaciones al login, retenidas | Después de que respondió el `GET /me` de la query nueva (el que sale tras el `clear()`): "Cargando la aplicación"; la URL sigue en `/settings/users`; se pidió una sola navegación a `/login`, a `/login?next=%2Fsettings%2Fusers&reason=session_expired`. Al soltar: esa URL y "Tu sesión se cerró. Ingresá de nuevo para seguir.". Es la carrera que quiso evitar `8d85615`, ahora sin depender de los tiempos |
+    | G2. Rutas propias (`routes`): `/other` (`<h1>` "Otra") y `/settings/users` bajo `RequireSession`, y `/login` *lazy* retenido con `gate()`; historial `['/other', '/settings/users']` con la sesión en caché; `/me` → `401`; `invalidateQueries(['session'])`; con la navegación al login en curso (`router.state.navigation.location.pathname === '/login'`), Atrás (`router.navigate(-1)`) | Mientras tanto, "Cargando la aplicación"; "Otra" nunca estuvo en el DOM; dos navegaciones a `/login`, las dos a `/login?next=%2Fsettings%2Fusers&reason=session_expired`. Al soltar el chunk: esa URL y el login. Nunca queda en el indicador |
+    | G3. El mecanismo del hallazgo: Administrador en `/settings`; `/me` → `401`; `queryClient.clear()` sin salida; `router.navigate('/')` | `/login?next=%2F&reason=session_expired` con "Tu sesión se cerró. Ingresá de nuevo para seguir."; nunca queda en "Cargando la aplicación" |
+    | G4. G3 con `renderApp(..., { onUnauthenticated: vi.fn() })`: el manejador global no actúa | Igual que G3: `RequireSession` sale solo (la fila "sin sesión, con una sesión presentada" de `ui.md` §6.4.2) |
+    | G5. Desde el login de G1 (historial `/` → `/settings/users`, reemplazada por el login), Atrás | `/login?next=%2F`, sin `reason`; no aparece "Tu sesión se cerró…" |
+    | G6. Administrador en `/settings`; "Cerrar sesión" (S-08) con `POST /auth/logout` → `204` y `/me` → `401`; la navegación al login retenida hasta que respondió el `GET /me` de la query nueva | `/login?reason=logged_out` con "Cerraste sesión."; ninguna navegación pedida con `reason=session_expired` |
+
+  - `web/src/features/tenant/CompanyUnsavedChanges.test.tsx`, casos nuevos al final (el escenario de
+    la revisión). Administrador en `/settings/company` con "Teléfono" cambiado; "Cerrar sesión" desde
+    el menú del usuario de escritorio. Las navegaciones a `/login` se registran con el espía de G1 o
+    con `router.subscribe`.
+
+    | Caso | Resultado observable |
+    |---|---|
+    | C1. Elegir "Cerrar sesión" | Aviso "Tenés cambios sin guardar. ¿Salir igual?" con "Quedarme" y "Cerrar sesión"; ningún `POST /auth/logout` |
+    | C2. "Quedarme"; después ir a `/` y, en el aviso de S-11, "Salir" | El aviso se cierra y el foco vuelve al botón del menú del usuario (INV-F10); "Teléfono" conserva lo escrito; ningún `POST /auth/logout`. Después, el `<h1>` del panel; nunca "Cargando la aplicación" |
+    | C3. "Cerrar sesión" en el aviso | Un `POST /auth/logout`; `/login?reason=logged_out` con "Cerraste sesión." y sin "Los cambios que no habías guardado se perdieron."; el aviso apareció una sola vez; una sola navegación a `/login` |
+    | C4. "Cerrar sesión" en el aviso, con el `POST` fallando por red | Toast "No pudimos cerrar la sesión. Revisá tu conexión."; sigue en `/settings/company`, con lo escrito y la sesión en caché |
+
+  - `web/src/lib/safeNextPath.test.ts`, donde ya se prueban `sessionExpiredLoginPath` e
+    `isSessionExpiredRedirect`:
+
+    | Entrada | Resultado |
+    |---|---|
+    | `sessionExitPath('session_expired', { pathname: '/settings', search: '?x=1' })` | Lo mismo que `sessionExpiredLoginPath` con ese `from` |
+    | `sessionExitPath('logged_out', …)` y `sessionExitPath('password_changed', …)` | `/login?reason=logged_out` y `/login?reason=password_changed`, sin `next` |
+    | `isSessionExitRedirect` con esas tres URL | `true` |
+    | `isSessionExitRedirect` con `/login?reason=other`, `/login` y `/settings?reason=logged_out` | `false` |
+- **Tests existentes**: no se tocan y siguen en verde. En particular:
+  - `session.test.tsx`: "navigates only once when simultaneous queries lose the session", "treats
+    session-to-null refresh as expiration", "keeps the expiration reason when a session refresh races
+    a pending login chunk" y "clears protected data before replacing the route after query expiration
+    and rechecks on Back".
+  - `logout.test.tsx` y `logoutMenuRace.test.tsx`.
+  - `sessionErrors.test.ts`: el manejador sigue sin actuar con una navegación al login pendiente. Su
+    doble del router no tiene `subscribe`, así que la salida se termina con la promesa de `navigate`.
+  - `CompanyUnsavedChanges.test.tsx`.
+  - `LoginPage.test.tsx`: la fila `logged_out` con `unsavedChangesLost` sigue sin la segunda línea.
+  - `routeGuards.test.tsx`: "shows only the access indicator until a retained 401 completes" tiene
+    que pasar 10 corridas seguidas de `npm test` completo, porque ya no depende de cuándo publica el
+    router su navegación.
+- **Mutaciones**: se aplica cada una, algún caso tiene que fallar, y se restaura.
+  1. `RequireSession` ignora la salida en curso y, sin sesión, navega a `/login?next=…` sin `reason`:
+     falla G1.
+  2. Sin sesión, con una presentada y sin salida, `RequireSession` espera sin navegar (el
+     `wasAuthenticated` de `8d85615`): falla G4.
+  3. Esa misma fila navega sin `reason`: falla G4.
+  4. "Presentó una sesión" se pierde con el `clear()` (vuelve a ser una marca por query): falla G3.
+  5. Una salida `stalled` se trata como `navigating` (sin `resumeSessionExit`): falla G2.
+  6. La salida se da por terminada con cualquier navegación, sin mirar que llegó a `/login`: falla
+     G2.
+  7. La salida no se borra al llegar al login: falla G5.
+  8. `exitSession` reemplaza una salida en curso: fallan G6 y "navigates only once…".
+  9. `useUnsavedChangesGuard` deja pasar solo `session_expired`: falla C3 (dos navegaciones a
+     `/login`, la frenada y la retomada).
+  10. "Cerrar sesión" manda el `POST` sin preguntar con un guard activo: falla C1.
+- **Green**: pasan las tablas, los tests existentes y `npm run check`, y la fila de la desactivación
+  de T-F702 en Chromium (WebKit, reportado).
+- **Refactor**: revisar que:
+  - un solo lugar arme las URL de salida (`sessionExitPath`);
+  - no queden `wasAuthenticated`, `useNavigation` en `RequireSession`, `authenticatedQueries` ni
+    `redirecting`;
+  - `lib/sessionExit.ts` no importe nada de `app/` ni de `features/`, y el registro no guarde
+    `SessionInfo` (INV-F01);
+  - los nombres vayan por funcionalidad, con la trazabilidad en comentarios.
+
+**T-F707 — Versión de Lighthouse y colores de hover** · P-F24 (3) y (4), INV-F23, `ui.md` §19.1.
+- **Código**:
+  - `web/package.json`: `"lighthouse": "13.5.0"`. Correr `npm install` sin cambiar la versión
+    resuelta, con `package-lock.json` en el mismo commit; `make web-vuln` en verde.
+  - `styles/globals.css`: `--primary-hover: #1d4ed8` y `--destructive-hover: #b91c1c`, expuestos como
+    colores de Tailwind, igual que `--success`.
+  - `components/ui/button.tsx`: `default` con `hover:bg-primary-hover`; `destructive` con
+    `hover:bg-destructive-hover`.
+- **Red**: `web/src/test/colorTokens.test.ts`, nuevo, con el método de `importBoundaries.test.ts`
+  (`ESLint.lintText` con el `eslint.config.js` real, comprobando que la regla es `error` para el
+  archivo):
+
+  | Código | Resultado |
+  |---|---|
+  | `className="hover:bg-blue-700"` en `src/components/ui/probe.tsx` | `no-restricted-syntax` lo rechaza |
+  | `'bg-red-600 text-white'` en `src/features/users/probe.ts` | Rechazado |
+  | `` `text-slate-500 ${tone}` `` en `src/app/probe.tsx` | Rechazado |
+  | `'hover:bg-primary-hover'`, `'bg-black/50'` (el fondo de los diálogos) y `'text-muted-foreground'` en `src/components/ui/probe.tsx` | Permitidos |
+
+  La regla va en cada bloque de `no-restricted-syntax` que aplica a archivos de `src/` que no son de
+  test, porque en *flat config* el último bloque que configura la regla reemplaza a los anteriores.
+  El selector es una expresión regular sobre `Literal` y `TemplateElement` (sin `/`, como pide el
+  helper `rx`).
+- **Mutaciones**: volver a `hover:bg-blue-700` hace fallar `npm run lint`; quitar el selector hace
+  fallar las tres primeras filas.
+- **Green**: pasan la tabla y `npm run check`. T-F705 verifica con herramienta el contraste de los
+  dos tokens con texto blanco (≥ 4,5:1).
+
 **Checkpoint Fase F7**: `npm run check` y `npm run e2e` en verde (Chromium en CI; WebKit
 reportado); reportes de T-F704, T-F705 y T-F706 adjuntos; resultado de S-12 (y del respaldo, si se
 usó) reportado.
@@ -5019,4 +5148,5 @@ usó) reportado.
 | P-F21 (textos y foco del diálogo de "Quitar" y del aviso de salida; DD-F27 con los nombres anteriores de las zonas argentinas; DD-F26 con la comparación de bytes; lectura del archivo entero; `resized`; `unknown` como `unsupported_format`; firmas de `LogoUploader`, `ConfirmDialog`, `tenantQuery`, `companyInitials`), `ui.md` §7, §9.1, §11.1, §13.11, §13.11.1, §14.4, §15, §22, §24, §25 | T-F602, T-F603, T-F604, T-F605 |
 | P-F22 (cola de los cambios de la empresa y cancelación de las lecturas en vuelo: DD-F33, INV-F20, S-F15; DD-F27 sin dos nombres para la misma zona), `ui.md` §9.2, §10.3, §13.11, §14.4, §15.4, §24, §25, §26, §29 | T-F602, T-F603, T-F605 |
 | DD-F34 / INV-F21 (relectura de `/me` al entrar con el permiso en caché denegado), P-F23, `ui.md` §6.4.1, §14.5 | T-F707, T-F702 |
+| DD-F35 / INV-F22 (salida de sesión única; cerrar sesión con cambios sin guardar, INV-F18 ampliada), INV-F23 (colores solo con tokens), P-F24, S-F16, `ui.md` §6.4.2, §13.8, §19.1 | T-F707, T-F704 |
 | NFR-F01..F13 | T-F002 (F02, F07, F08), T-F702 (F01, F06, F10, F12), T-F703 (F09, F11), T-F704 (F03..F05), T-F705 (F06..F08), T-F706 (F13) |
