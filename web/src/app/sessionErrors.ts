@@ -1,51 +1,32 @@
 import type { QueryClient } from '@tanstack/react-query'
-import type { Location, NavigateOptions } from 'react-router'
+import type { Location } from 'react-router'
 import { toast } from 'sonner'
 import { queryKeys } from '@/api/queryKeys'
-import { sessionExpiredLoginPath } from '@/lib/sessionExpiredRedirect'
-import { hasUnsavedChanges } from '@/lib/unsavedChanges'
-import { clearVerifyBannerDismissed } from '@/lib/verifyBannerDismissal'
-export function expireSession(
-  client: QueryClient,
-  location: Pick<Location, 'pathname' | 'search'>,
-  navigate: (to: string, options: NavigateOptions) => unknown,
-) {
-  if (location.pathname === '/login') return
-  const unsavedChangesLost = hasUnsavedChanges()
-  client.clear()
-  clearVerifyBannerDismissed()
-  return navigate(sessionExpiredLoginPath(location), {
-    replace: true,
-    ...(unsavedChangesLost ? { state: { unsavedChangesLost: true } } : {}),
-  })
-}
+import {
+  attachSessionExitRouter,
+  exitSession,
+  type SessionExitRouter,
+} from '@/lib/sessionExit'
+
 export function createSessionErrorHandlers(
   client: QueryClient,
-  router: {
+  router: SessionExitRouter & {
     state: {
       location: Location
       navigation: { location?: Location }
     }
-    navigate: (to: string, options: NavigateOptions) => Promise<void>
   },
 ) {
-  let redirecting = false
+  attachSessionExitRouter(client, router)
   return {
     onUnauthenticated: () => {
       if (
-        redirecting ||
         router.state.location.pathname === '/login' ||
         router.state.navigation.location?.pathname === '/login'
       )
         return
-      redirecting = true
-      void Promise.resolve(
-        expireSession(client, router.state.location, (to, options) =>
-          router.navigate(to, options),
-        ),
-      ).finally(() => {
-        redirecting = false
-      })
+      // A 401 or a null session during an exit in progress changes nothing (DD-F35).
+      exitSession(client, 'session_expired')
     },
     onForbidden: () => {
       toast.error('No tenés permiso para hacer esto.')

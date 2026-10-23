@@ -1084,6 +1084,7 @@ Metadatos y orientación de los JPEG:
 | **Volver a codificar todo JPEG (aplicando la orientación con `imageOrientation: 'from-image'`)** | Quita GPS y datos del dispositivo; el logo queda derecho en cualquier visor y en el PDF; el servidor no lo hace (guarda los bytes tal cual, INV-24 del plan) | Una re-codificación con calidad 0,90 aunque no hiciera falta achicar | **Elegida** (DD-F21, **confirmada por el usuario, P-F6**) |
 | Solo volver a codificar cuando supera los límites | Sin re-codificación innecesaria | Un JPEG chico de celular sube con GPS y puede quedar de costado en el PDF | Descartada |
 | Borrar los segmentos EXIF por bytes, sin re-codificar | Sin pérdida | Se pierde la orientación sin aplicarla: la foto queda de costado | Descartada |
+| *(Revisión del PR #45, P-F25)* **Además** de volver a codificar, quitar del resultado los segmentos de metadatos que agrega el codificador del navegador (antes del primer `SOS` quedan solo `APP0` JFIF, `APP2` ICC y `APP14` Adobe) | Sin metadatos en ningún navegador: WebKit de macOS agrega un `APP1`/`Exif` propio. La orientación ya está en los píxeles, así que no tiene el problema de la fila anterior | Una función pura propia que recorre segmentos de JPEG; cada paso de la escalera JPEG lee su `Blob` | **Elegida como complemento** (DD-F36) |
 
 Dónde se procesa:
 

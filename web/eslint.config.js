@@ -60,6 +60,18 @@ const forbiddenNetworkImports = {
 // Slashes are written as \x2f so the same source works in ESLint selectors,
 // whose regex literals cannot contain a "/".
 const rx = (source) => source.replaceAll('/', '\\x2f')
+// INV-F23: components paint with the tokens of globals.css, never with the Tailwind
+// palette (bg-blue-700, text-slate-500). Opacity over a token (bg-primary/90) is not linted.
+const paletteClass = String.raw`(?:^|[\s:!-])(?:bg|text|border|ring|outline|fill|stroke|from|via|to|divide|decoration|accent|caret|shadow|placeholder)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3}(?:$|[\s/])`
+const colorMessage =
+  'Use the color tokens of globals.css (bg-primary-hover, text-muted-foreground), not the Tailwind palette (INV-F23).'
+const colorSelectors = [
+  { selector: `Literal[value=/${rx(paletteClass)}/]`, message: colorMessage },
+  {
+    selector: `TemplateElement[value.cooked=/${rx(paletteClass)}/]`,
+    message: colorMessage,
+  },
+]
 const features = readdirSync(new URL('./src/features', import.meta.url), {
   withFileTypes: true,
 })
@@ -132,9 +144,19 @@ const dynamicClientImport = dynamicImport(
   'HTTP clients belong in api/.',
 )
 const syntaxRule = (...groups) => ['error', ...groups.flat()]
+// INV-F22: its subscription decides when a finished session exit is cleared, so only
+// RequireSession (routeGuards.tsx, exempted below) may use it.
+const sessionLifecycleOnlyInGuard = {
+  regex: rx('(?:^|/)sessionExit$'),
+  importNames: ['useSessionLifecycle'],
+  message: 'Only RequireSession reads the session lifecycle (INV-F22).',
+}
 const noRestrictedImports = (patterns) => [
   'error',
-  { paths: [forbiddenNetworkImports, restrictedBlocker], patterns },
+  {
+    paths: [forbiddenNetworkImports, restrictedBlocker],
+    patterns: [...patterns, sessionLifecycleOnlyInGuard],
+  },
 ]
 const testFiles = ['**/*.test.*', 'src/test/**']
 export default tseslint.config(
@@ -164,28 +186,34 @@ export default tseslint.config(
     rules: {
       ...reactHooks.configs.recommended.rules,
       ...jsxA11y.configs.recommended.rules,
-      'no-restricted-imports': ['error', { paths: [restrictedBlocker] }],
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [restrictedBlocker],
+          patterns: [sessionLifecycleOnlyInGuard],
+        },
+      ],
     },
   },
   {
     files: ['src/**/*.{ts,tsx}'],
     ignores: ['src/api/**', ...testFiles],
     rules: {
-      'no-restricted-imports': [
-        'error',
-        { paths: [forbiddenNetworkImports, restrictedBlocker] },
-      ],
+      'no-restricted-imports': noRestrictedImports([]),
       'no-restricted-syntax': syntaxRule(
         networkSelectors,
         canvasSelectors,
         dynamicClientImport,
+        colorSelectors,
       ),
     },
   },
   {
     files: ['src/api/**/*.{ts,tsx}'],
     ignores: ['**/*.test.*'],
-    rules: { 'no-restricted-syntax': syntaxRule(canvasSelectors) },
+    rules: {
+      'no-restricted-syntax': syntaxRule(canvasSelectors, colorSelectors),
+    },
   },
   {
     files: ['src/components/**/*.{ts,tsx}'],
@@ -206,6 +234,7 @@ export default tseslint.config(
         canvasSelectors,
         dynamicClientImport,
         dynamicImports(componentPatterns),
+        colorSelectors,
       ),
     },
   },
@@ -232,6 +261,7 @@ export default tseslint.config(
             canvasSelectors,
             dynamicClientImport,
             dynamicImports(patterns),
+            colorSelectors,
           ),
         },
       },
@@ -240,7 +270,22 @@ export default tseslint.config(
   {
     files: ['src/lib/unsavedChanges.ts'],
     rules: {
-      'no-restricted-imports': ['error', { paths: [forbiddenNetworkImports] }],
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [forbiddenNetworkImports],
+          patterns: [sessionLifecycleOnlyInGuard],
+        },
+      ],
+    },
+  },
+  {
+    files: ['src/app/guards/routeGuards.tsx', 'src/lib/sessionExit.test.tsx'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { paths: [forbiddenNetworkImports, restrictedBlocker] },
+      ],
     },
   },
   // The tenant HTTP module may call fetch; the logo module is the only canvas user.
@@ -252,6 +297,7 @@ export default tseslint.config(
         canvasSelectors,
         dynamicClientImport,
         dynamicImports(featurePatterns('tenant')),
+        colorSelectors,
       ),
     },
   },
@@ -262,6 +308,7 @@ export default tseslint.config(
         networkSelectors,
         dynamicClientImport,
         dynamicImports(featurePatterns('tenant')),
+        colorSelectors,
       ),
     },
   },

@@ -49,6 +49,10 @@ export function jpegBytes(options: {
   app1Segments?: number
   // A DHT (0xFFC4) segment before the frame header.
   dht?: boolean
+  // Whole segments (marker included, see jpegSegment) placed before the frame header.
+  segments?: number[][]
+  // Bytes written after the SOS marker, standing for the entropy-coded data.
+  scan?: number[]
   // First marker after SOI: 0xE0 (JFIF) or 0xE1 (EXIF).
   first?: number
   size?: number
@@ -60,6 +64,8 @@ export function jpegBytes(options: {
     exifBytes,
     app1Segments = 0,
     dht,
+    segments = [],
+    scan = [],
     first,
     size,
   } = options
@@ -78,11 +84,70 @@ export function jpegBytes(options: {
     bytes.push(0xff, 0xc4, ...u16(19), 0x00, ...u16(0x0bb8), ...u16(0x07d0))
     for (let i = 0; i < 12; i++) bytes.push(0x01)
   }
+  for (const segment of segments) bytes.push(...segment)
   bytes.push(0xff, sof, ...u16(17), 8, ...u16(height), ...u16(width), 3)
   bytes.push(1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1)
-  bytes.push(0xff, 0xda)
+  bytes.push(0xff, 0xda, ...scan)
   return pad(bytes, size)
 }
+
+/** One marker segment: FF, marker, the length (which counts itself) and the payload. */
+export const jpegSegment = (marker: number, payload: number[]) => [
+  0xff,
+  marker,
+  ...u16(payload.length + 2),
+  ...payload,
+]
+
+/**
+ * The APP1 that WebKit on macOS (ImageIO) writes into canvas.toBlob JPEGs, dumped from the
+ * logo saved by the E2E (P-F25, DD-F36): 76 bytes, big-endian TIFF, an IFD0 whose only entry
+ * points at an Exif IFD of three entries (ColorSpace = 1, width, height). No photo data.
+ */
+export const webkitExifSegment = (width: number, height: number) => [
+  0xff,
+  0xe1,
+  0x00,
+  0x4c,
+  ...ascii('Exif'),
+  0,
+  0,
+  ...ascii('MM'),
+  0x00,
+  0x2a,
+  ...u32(8),
+  ...u16(1),
+  0x87,
+  0x69,
+  0x00,
+  0x04,
+  ...u32(1),
+  ...u32(0x1a),
+  ...u32(0),
+  ...u16(3),
+  0xa0,
+  0x01,
+  0x00,
+  0x03,
+  ...u32(1),
+  0x00,
+  0x01,
+  0x00,
+  0x00,
+  0xa0,
+  0x02,
+  0x00,
+  0x04,
+  ...u32(1),
+  ...u32(width),
+  0xa0,
+  0x03,
+  0x00,
+  0x04,
+  ...u32(1),
+  ...u32(height),
+  ...u32(0),
+]
 
 export const gifBytes = () => pad([...ascii('GIF89a'), 1, 0, 1, 0])
 export const webpBytes = () =>

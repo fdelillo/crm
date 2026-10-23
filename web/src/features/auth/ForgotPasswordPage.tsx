@@ -15,7 +15,10 @@ import {
 } from '@/api/errorMessages'
 import { isApiError } from '@/api/errors'
 import { useRequestPasswordReset } from './api'
-import { passwordResetSchema, type PasswordResetFormValues } from './schemas'
+import {
+  passwordResetSchema,
+  type PasswordResetFormValues,
+} from './passwordResetSchema'
 
 export function ForgotPasswordPage() {
   const location = useLocation()

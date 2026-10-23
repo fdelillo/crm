@@ -3179,6 +3179,50 @@ de `Intl`, la opción que es la misma zona con otro nombre no se muestra; `ARGEN
 pasa a mapa. Cambian T-F602, T-F603, T-F605 y la trazabilidad; se corrigen en la rama del PR #43.
 Sin tareas nuevas ni cambios de orden.
 
+**Enmienda de F7, P-F23 (2026-10-22; `ui.md` P-F23: opción A elegida por el usuario el 2026-10-22,
+detalles (1) a (4) aprobados por el usuario el 2026-10-22)** (`ui.md`, enmienda de F7, P-F23): T-F702 encontró que un
+Operador desactivado con la sesión abierta veía "Sin permiso" en lugar del aviso de sesión cerrada.
+DD-F34 nueva e INV-F21: `RequirePermission` relee `/me` una vez por entrada cuando el permiso en
+caché está denegado (§6.4.1, §14.5). La fila de la desactivación de T-F702 queda más precisa, sin
+relajarse. T-F707 suma la corrección con sus tests (`web/src/app/guards/routeGuards.test.tsx`).
+T-F704 suma la evidencia que hay que capturar sobre el LCP de `/login`, sin cambiar NFR-F03.
+Cambian T-F702, T-F704, T-F707 y la trazabilidad; se corrigen en la rama del PR #45. Sin tareas
+nuevas ni cambios de orden.
+
+**Revisión del PR #45, P-F24 (2026-10-23; `ui.md` P-F24, aprobada por el usuario el 2026-10-23 (los puntos (1) a (4), incluido `--destructive-hover`))** (`ui.md`,
+revisión del PR #45). (1) DD-F35 nueva e INV-F22: toda salida de sesión pasa por `exitSession`
+(`lib/sessionExit.ts`), con un registro por `QueryClient`. `RequireSession` decide con ese registro y
+nunca queda esperando una navegación que nadie hace (`ui.md` §6.4.2). (2) "Cerrar sesión" con cambios
+sin guardar pregunta antes del `POST`, y ninguna salida pasa por el aviso (INV-F18 ampliada; `ui.md`
+§13.8). (3) Lighthouse sale de la tabla de excepciones (está en su última estable) y de `ui.md`;
+queda en T-F704 con versión exacta en `package.json`, y la convención de versiones ahora lo dice. (4)
+`--primary-hover` y `--destructive-hover` (`ui.md` §19.1) e INV-F23, con una regla de ESLint. Cambian
+las convenciones (versiones) y T-F704; T-F707 suma dos bloques, y cambia la trazabilidad. Se corrigen
+en la rama del PR #45. Ningún test existente cambia. Sin tareas nuevas ni cambios de orden.
+
+**Ajustes de la implementación de P-F24 (2026-10-23; `ui.md` §6.4.2, DD-F35, INV-F22, S-F16,
+RF-19; revisados por `frontend-architect`, sin cambios de producto)**. Tres desvíos del texto,
+aceptados:
+
+1. S-F16 resultó falso con el chunk de `/login` pendiente. La salida termina con `router.subscribe`
+   (`navigation.state === 'idle'`), y la promesa de `navigate` queda de respaldo.
+2. La salida que llegó a `/login` se borra cuando se desmonta el último `RequireSession`, no cuando
+   el router publica la ruta.
+3. Durante una salida, `RequireSession` no lee `['session']` (se parte en dos), así que no sale
+   ningún `GET /me` hasta el login. G1 y G6 de T-F707 se ajustan a eso.
+
+Además, `useLogout` y `useConfirmPasswordReset` ya no esperan un `cancelQueries` antes de la salida
+(`clear()` cancela las lecturas en vuelo), y `ConfirmDialog` entra al chunk del shell (lo mide T-F704
+frente a NFR-F05). Cambian T-F707 (G1, G6, tests existentes, mutaciones y refactor) y la
+trazabilidad. Ningún test existente cambia. Sin tareas nuevas ni cambios de orden.
+
+**Revisión del PR #45, P-F25 (2026-10-23; `ui.md` DD-F36, INV-F13, S-F17; aprobada por el usuario el 2026-10-23: A, lista cerrada y corrida manual en WebKit de macOS)**. El JPEG del logo que codifica WebKit de macOS sale con un `APP1`/`Exif` de 76 bytes que
+agrega el codificador de Apple, sin datos de la foto. El E2E de T-F706 falla en macOS y pasa en CI.
+`encodeBitmap` pasa todo JPEG por `withoutJpegMetadata` (`features/tenant/logo/jpegMetadata.ts`),
+que antes del primer `SOS` deja solo `APP0`, `APP2` ICC y `APP14` Adobe. T-F706 suma dos aserciones
+y una corrida en WebKit de macOS antes de liberar, y T-F707 suma un bloque. Cambian "qué se
+sustituye" y la trazabilidad. Ningún test existente cambia. Sin tareas nuevas ni cambios de orden.
+
 ### Convenciones de esta sección
 
 - `[T]` = tarea de test. Va **antes** de la tarea de código que la hace pasar, y el test debe
@@ -3208,6 +3252,7 @@ Sin tareas nuevas ni cambios de orden.
   | `window.location.reload` (espía) en el test de `vite:preloadError` | El backend en los E2E (Fase F7) |
   | `Intl.DateTimeFormat().resolvedOptions().timeZone` en el test del registro | Las funciones puras de preparación del logo (firma, dimensiones, plan) |
   | El adaptador de canvas del logo (`decodeImage`, `encodeBitmap`): como parámetro de `prepareLogo` en sus tests y con `vi.mock` del módulo `features/tenant/logo/canvas.ts` en los de pantalla (jsdom no tiene `createImageBitmap` ni canvas) | El adaptador de canvas real en los E2E (T-F706) |
+  | *(P-F25)* El codificador del navegador (`getContext` y `toBlob` del prototipo de `HTMLCanvasElement`), solo en `features/tenant/logo/canvas.test.ts`, para probar lo que `encodeBitmap` hace con los bytes que devuelve | `withoutJpegMetadata` (la función pura que quita los metadatos), también dentro de ese test |
   | — | El certificado y la cookie en los E2E: HTTPS real con la CA de mkcert (`ui.md` §21.3) |
 
 - En jsdom la barra inferior y la lateral están ambas en el DOM (no hay CSS aplicado): los tests
@@ -3218,7 +3263,9 @@ Sin tareas nuevas ni cambios de orden.
   navegador del piso de NFR-F02 sirve para desarrollar.
 - Versiones *(enmienda de versiones, 2026-10-15)*: la última estable de cada librería
   **compatible con las *peer dependencies* del conjunto, sin `--force` ni
-  `--legacy-peer-deps`**, al arrancar la Fase F0; fijadas en `package-lock.json`; T-F001 reporta
+  `--legacy-peer-deps`**, al arrancar la Fase F0; fijadas en `package-lock.json` y escritas en
+  `package.json` como versión exacta, sin `^` ni `~` *(precisado en la revisión del PR #45, P-F24
+  (3))*; T-F001 reporta
   las versiones elegidas. Una librería que queda por debajo de su última estable se registra en
   esta tabla, con el motivo y la condición para revisarla; cada actualización de dependencias
   revisa la tabla:
@@ -4622,6 +4669,37 @@ flujo de arriba pasó 3 de 3 corridas, con dos pasos nuevos.
 
 ### Fase F7 — End-to-end, PWA, accesibilidad y performance (verificación)
 
+**Estado T-F701 (2026-10-22)**: configuración Playwright, global setup estricto de CA/TLS y
+servicios, helpers de accesibilidad/errores/email, fixtures sintéticos y job de CI implementados.
+`npm run check`, `npx tsc --noEmit -p tsconfig.e2e.json` y generación de fixtures pasan. La
+corrida E2E local pasó el global setup (compose y HTTPS con CA) pero Chromium no pudo iniciar
+por `MachPortRendezvousServer … Permission denied (1100)` del sandbox macOS; S-12 queda pendiente,
+sin fallback `ignoreHTTPSErrors`. La validación del job de CI queda para su ejecución en GitHub.
+
+**Estado T-F702 (2026-10-22)**: agregado `web/e2e/critical-flows.spec.ts` con los flujos de
+registro, sesión, verificación, invitaciones, permisos, recuperación y bloqueo; el helper de correo
+filtra por destinatario. `npm run check`, `npx tsc --noEmit -p tsconfig.e2e.json` y `git diff --check`
+pasan. La corrida E2E local no pudo evaluar los pasos: Chromium se detuvo al arrancar con
+`MachPortRendezvousServer … Permission denied (1100)` del sandbox macOS; el workflow Chromium de CI
+queda pendiente. WebKit aborta en este host (`Abort trap: 6`). El dispatch autorizado de
+`ci.yml` (`browser=chromium`) respondió HTTP 422: GitHub no pudo parsear `.github/workflows/ci.yml`
+porque `matrix.browser` no se reconoce en el `if` del job `e2e` (línea 100). No se evaluaron las
+interacciones E2E en Chromium ni WebKit. Corregí el selector de navegador en el workflow para
+construir una matriz dinámica desde el input manual (Chromium o WebKit), con Chromium solamente
+para PR/push (`a5de9b8`). El segundo dispatch devolvió el mismo 422 con la expresión anterior:
+GitHub valida `workflow_dispatch` desde el archivo de la rama por defecto, donde T-F701 aún no está
+integrada. La corrida Chromium queda pendiente de que el flujo de la rama esté disponible para un
+evento que evalúe esa versión; no se abrió PR ni se hizo merge.
+
+**Actualización CI 2026-10-22**: GitHub rechazó los pushes con un error de archivo workflow antes
+de crear jobs porque `jobs.e2e.if` usaba el contexto `matrix.browser`, no disponible en esa
+condición. Eliminé el `if` inválido; la matriz dinámica conserva Chromium para push/PR y el
+navegador seleccionado para `workflow_dispatch`. YAML, selección local de la matriz y
+`git diff --check` pasan. Commit `3b349dafb835bd8381be89163e729c085c69a179`
+(`fix(ci): remove invalid matrix job condition`) enviado. No se generó un run de esa revisión:
+`ci.yml` limita `push` a `main`, y todavía no hay PR; el primer run de la corrección será al abrir
+el PR. El check E2E requerido se llama `Playwright (chromium)`; no se cambió el ruleset.
+
 **Objetivo**: los flujos críticos funcionan de punta a punta sobre el binario real servido por
 HTTPS local; la PWA, la CSP, la cookie de sesión real, la preparación del logo y la accesibilidad
 están verificadas; los objetivos de performance están medidos. Esta fase **verifica y cierra
@@ -4668,7 +4746,7 @@ métricas de Lighthouse y el resultado del supuesto S-12.
   | Admin invita → enlace de Mailpit → invitado acepta → panel de Operador → `/settings/users` | "Sin permiso" |
   | Admin reinvita a un invitado con otro rol → el invitado acepta | entra con el rol nuevo |
   | Olvidé mi contraseña → enlace → contraseña nueva → ingresar; reabrir el enlace | éxito; "Este enlace ya no sirve." |
-  | Admin desactiva al operador (otro contexto de navegador) → el operador navega | login con "Tu sesión se cerró." |
+  | Admin desactiva al operador (otro contexto de navegador) → el operador, en el panel y sin recargar, navega a `/settings/users` (navegación del cliente; DD-F34) | login con "Tu sesión se cerró. Ingresá de nuevo para seguir." y URL `/login?next=%2Fsettings%2Fusers&reason=session_expired`; después de la desactivación sale un `GET /me` y responde `401` |
   | 5 contraseñas incorrectas → 6.º intento | estado Bloqueado con la hora |
   | En cada pantalla visitada | axe sin violaciones *serious*/*critical*; a 320 px de ancho, `scrollWidth ≤ innerWidth`; 0 violaciones de CSP; 0 errores de consola |
   | Cabeceras de `/` en el binario local | CSP de §10.7 presente; `Strict-Transport-Security` **ausente** (modo local, DD-24) |
@@ -4697,6 +4775,75 @@ métricas de Lighthouse y el resultado del supuesto S-12.
   Lighthouse *mobile* sobre el binario en `https://localhost:8443` en `/login` y `/` (LCP, CLS; INP
   en un Android de gama media a mano, con el origen de H-12). **Si un objetivo no se cumple, frenar
   y volver al arquitecto** con los números.
+- **Herramienta** *(revisión del PR #45, P-F24 (3))*: Lighthouse 13.5.0, la última estable al
+  2026-10-22 (pide Node ≥ 22.19; el proyecto usa Node 24.22.0), como `devDependency` con versión
+  exacta (`"lighthouse": "13.5.0"`). Corre solo en CI y no llega a `web/dist` (ADR-027 §2). No es una
+  excepción a la regla de versiones, así que no va en la tabla de las convenciones. Si se sube, se
+  vuelve a medir NFR-F03 y NFR-F04 con la versión nueva en lugar de comparar con cifras de otra
+  versión.
+- **Estado 2026-10-22 (bundle dentro del presupuesto; métricas Lighthouse pendientes)**: con la
+  alternativa aprobada de separar las páginas públicas de carga diferida y los esquemas por
+  formulario, `vite build --manifest` mide el cierre de `/login` en 188,43 KB gzip (≤ 200 KB), el
+  recorrido acumulado login → AppShell → Dashboard en 223,67 KB (≤ 250 KB), y el chunk compartido
+  `schemas` en 37,42 KB (≤ 40 KB). La primera implementación cumple los tres presupuestos sin
+  migrar Zod, React Hook Form ni zodResolver. Lighthouse no se repitió: la ejecución anterior no
+  pudo iniciar Chrome 146 en macOS (`Permission denied (1100)` de Crashpad), por lo que LCP/CLS no
+  están medidos; INP Android sigue pendiente.
+- **Estado 2026-10-22 (LCP de `/login` fuera del objetivo; diagnóstico pendiente)**: Lighthouse
+  13.5.0 *mobile* simulado en CI da en `/login` 2621, 2654 y 2674 ms (objetivo ≤ 2500), con CLS 0;
+  en `/`, 2076 ms. El nodo LCP es el `<h1>` "Ingresá a tu cuenta"; FCP ~2130 ms, TTFB ~42 ms y
+  *render delay* 431–544 ms. **NFR-F03 no cambia** y todavía no se elige ninguna optimización: la
+  tarea se frena acá y vuelve al arquitecto con la evidencia de abajo. Hipótesis a confirmar o
+  descartar: una cascada documento → bundle principal → chunk lazy de `/login` y sus dependencias.
+- **Estado 2026-10-22 (NFR-F03 cumplido; aprobado por el usuario el 2026-10-22)**: con la evidencia
+  de abajo (dispatch WebKit `39882672512` sobre `2295215`, 5 corridas *simulate* por ruta,
+  intercaladas), `/login` da 2042, 2044, 2048, 2068 y 2953 ms (mediana 2048, **p75 2068**) y `/`, 1903,
+  2197, 2202, 2203 y 2236 ms (mediana 2202, **p75 2203**), con CLS 0. La cascada hacia el chunk de
+  `LoginPage` existe, pero no explica el desvío: el 2654 anterior venía de que `/login` se medía
+  primero, con el runner frío
+  (`benchmarkIndex` 1759 y `bootup-time` 1482 ms, contra 2424 y 416 ms en `/`, 13 s después). En
+  esta corrida pasa lo mismo: la primera de `/login` (1794, 1201 ms) da 2953 y las otras cuatro
+  (~2400, ~310 ms) dan ~2045. El JS crudo antes del LCP es casi el mismo (347 KB en un chunk, contra
+  246 + 114 KB en paralelo). Lantern multiplica por 4 la CPU observada, así que el frío del runner
+  pesa más que el código. En caliente, `/login` es más rápido que `/` (pregunta 5). Con el OK del
+  usuario, el colector hace primero una corrida *simulate* de calentamiento por ruta, que guarda
+  como evidencia pero excluye de la estadística (`discardedWarmup` en `statistics.json`). No se
+  aplicó ninguna optimización. INP en un Android real sigue pendiente (H-12).
+- **Evidencia a capturar**: misma revisión del binario, mismo runner y el mismo método de medición
+  (`--preset=perf --form-factor=mobile --throttling-method=simulate`).
+  1. Cinco corridas por ruta (`/login` y `/`), con `--output=json --output=html --save-assets`
+     (confirmar el nombre del flag con `lighthouse --help` de 13.5.0). Cada corrida deja el LHR (JSON
+     y HTML), el trace y el devtools log, y todo sube como artefacto (hoy el job sube solo el JSON).
+  2. Datos del LHR de cada corrida:
+     - `largest-contentful-paint` y `first-contentful-paint`.
+     - `metrics`, con los valores observados además de los simulados.
+     - `lcp-phases-insight`, `network-dependency-tree-insight` y `render-blocking-insight`.
+     - `network-requests` (inicio, fin, bytes transferidos y descomprimidos, prioridad y tipo).
+     - `bootup-time` y `mainthread-work-breakdown`.
+     - `screenshot-thumbnails` y `final-screenshot` (filmstrip).
+     - `environment.benchmarkIndex`.
+  3. El `manifest.json` de `vite build --manifest` de la misma revisión, para saber qué chunk es cada
+     request y qué cuelga del de `LoginPage`.
+  4. El trace abierto en el panel Performance de Chrome DevTools: captura de las pistas de red y del
+     hilo principal entre el FCP y el LCP, con el nombre de las tareas largas.
+  5. Una corrida de diagnóstico por ruta con `--throttling-method=devtools`, solo para comparar con
+     la simulación. No reemplaza la medición de NFR-F03.
+- **Preguntas que la evidencia tiene que responder**:
+  1. ¿Qué requests están antes del LCP de `/login`, en qué orden y en qué profundidad de cadena?
+     ¿El chunk de `LoginPage` y sus dependencias se descubren recién cuando terminó de ejecutarse el
+     bundle principal? ¿Cuántos KB gzip viajan antes del LCP?
+  2. ¿Qué se pinta en el FCP si el `<h1>` llega ~500 ms después? ¿Qué muestra cada cuadro del
+     filmstrip entre los dos?
+  3. ¿Qué ocupa el hilo principal durante el *render delay*: qué script se evalúa, el render de
+     React, tareas largas de qué archivo?
+  4. ¿El pintado del `<h1>` espera algo que no sea JS: `GET /me` (`PublicOnly` no debería esperarlo,
+     `ui.md` §6.4), el service worker, el manifest, los íconos o el CSS?
+  5. ¿Por qué `/` (2076 ms) es más rápido que `/login`, si termina en el mismo `<h1>` y descarga más
+     JS? ¿Cuál es su nodo LCP y cuándo se pinta?
+  6. ¿Cuánto se separan el LCP simulado y el observado? ¿Cuánto varía el `benchmarkIndex` entre
+     corridas?
+  7. Con las cinco corridas por ruta, ¿cuál es la mediana y cuál el p75, que es la métrica de
+     NFR-F03?
 
 **T-F705 — Verificación manual de accesibilidad** · NFR-F06, NFR-F07, NFR-F08, INV-F19, `ui.md` §18, P-F20
 - Checklist: todos los flujos solo con teclado; TalkBack (Chrome Android) y VoiceOver (Safari
@@ -4718,22 +4865,356 @@ métricas de Lighthouse y el resultado del supuesto S-12.
   también pasan a una `LiveRegion`. Sin Windows con NVDA, el reporte dice "INV-F19 no verificada en
   NVDA" y la garantía queda en los tests estructurales.
 
+**Estado T-F705 2026-10-22 (parcial; navegación de navegador y tecnología asistiva pendiente)**:
+`PATH=/private/tmp/node-v24.22.0-darwin-x64/bin:$PATH npm run check` pasó (lint, formato,
+generación, typecheck, 44 archivos Vitest: 652 pasaron, 2 expected-fail; build). La inspección
+estática confirmó `prefers-reduced-motion`, viewport sin `maximum-scale`, `scroll-padding-bottom`
+y reserva inferior de la app shell. La revisión con fórmula WCAG 2.x de luminancia relativa de
+los valores hex de `globals.css` pasó todos los pares de §19.1: foreground/background 17,06:1;
+card y popover foreground/fondo 17,85:1; primary y primary-foreground/primary 5,17:1;
+secondary-foreground/secondary 16,30:1; muted-foreground/background 7,24:1;
+accent-foreground/accent 8,01:1; destructive/blanco 4,83:1; input/blanco 4,76:1;
+ring/blanco 5,17:1 y ring/background 4,94:1; success/blanco 5,48:1; warning/warning-muted
+6,84:1. `border` es decorativo según §19.1. Se halló el botón de icono de acciones de usuario
+de 36×44 CSS px (`size-9` más el mínimo global de alto); se corrigió a 44×44 (`size-11`) y se
+añadió una aserción E2E de ancho/alto mínimo en el flujo de gestión de usuarios (regresión
+T-F707). No pudo ejecutarse el navegador: con `PLAYWRIGHT_BROWSERS_PATH=/private/tmp/crm-f7-browsers`
+y `NODE_EXTRA_CA_CERTS` de mkcert, Chromium abortó antes de navegar con
+`MachPortRendezvousServer… Permission denied (1100)`. CUA informó sin apps ni browsers y `iab`
+no estuvo disponible. Por eso teclado en flujos completos, zoom 200 %, reduced-motion visual,
+tamaño/espaciado real de todos los targets y foco frente a la barra inferior siguen sin
+evaluación visual; la evidencia CSS no los da por aprobados. TalkBack/Chrome Android, VoiceOver/
+Safari iOS, VoiceOver macOS, NVDA/Windows, INP Android y H-12 en teléfono real quedan pendientes.
+Para INV-F19: correr en NVDA/Firefox o Chrome y mantener el foco quieto mientras se prueban C-01,
+S-05, C-02, aviso W/“Preparando la imagen…” y un `401 invalid_credentials`; cada anuncio debe
+leerse completo una vez. En Android/iOS repetir registro, ingresar, usuarios y empresa/logo por
+HTTPS de H-12; comprobar zoom 200 %, reduced-motion, targets de 44×44 separados ≥8 px y que el
+foco no quede bajo la barra inferior. No se declara la checklist manual en verde.
+
 **T-F706 [T] — Preparación del logo en navegadores reales** · DD-F20, DD-F21, DD-F22, INV-F13, NFR-F13, S-F7, S-F9, `ui.md` §13.11.1
 - **Red** (Playwright, Chromium y WebKit; cada caso sube por la UI y después descarga
   `/api/v1/tenant/logo` desde la página para inspeccionar lo que guardó el servidor):
 
   | Fixture | Esperado |
   |---|---|
-  | JPEG 4000×3000, ~5 MB, EXIF orientación 6 y GPS | se sube; el logo guardado es JPEG ≤ 2 097 152 bytes (`LOGO_TARGET_MAX_BYTES`), **vertical** (alto > ancho: se aplicó la orientación), lado mayor ≤ 2000, **sin** segmento `APP1`/`Exif` (sin GPS); tiempo de preparación reportado (NFR-F13) |
+  | JPEG 4000×3000, ~5 MB, EXIF orientación 6 y GPS | se sube; el logo guardado es JPEG ≤ 2 097 152 bytes (`LOGO_TARGET_MAX_BYTES`), **vertical** (alto > ancho: se aplicó la orientación), lado mayor ≤ 2000, **sin** segmento `APP1`/`Exif` (sin GPS); *(P-F25)* antes del primer `SOS`, sus únicos `APPn` son `APP0` (`JFIF`), `APP2` (`ICC_PROFILE`) y `APP14` (`Adobe`), sin `COM`, y el archivo entero no contiene los bytes `Exif\0\0` ni `http://ns.adobe.com/xap/1.0/` (búsqueda de bytes, sin parsear: S-F17); la anotación lista los segmentos encontrados; tiempo de preparación reportado (NFR-F13) |
   | PNG 3000×3000 con transparencia | se sube como PNG ≤ 2000 px y ≤ 2 097 152 bytes; el píxel de una esquina transparente tiene alfa 0 (se lee dibujando el logo guardado en un canvas de la página) |
   | PNG 800×400 < 1 MB | los bytes guardados son **idénticos** a los del archivo |
   | PNG ≤ 2000 px de entre 1 900 000 y 2 097 152 bytes | los bytes guardados son **idénticos** (sin margen: DD-F22) |
   | SVG / GIF | mensaje de §13.11.1; ningún `PUT` en la red |
-- **Green**: pasa en Chromium y WebKit; si S-F7 falla en algún navegador (foto horizontal), frenar
+- **Green**: pasa en Chromium y WebKit *(P-F25: también en WebKit de macOS, a mano antes de liberar y
+  reportado, porque el CI corre WebKit de Linux, cuyo codificador no agrega metadatos)*; si S-F7
+  falla en algún navegador (foto horizontal), frenar
   y volver al arquitecto con el resultado (respaldo previsto: leer la orientación del EXIF y rotar
   en el canvas).
 
+**Estado T-F706 2026-10-22 (spec listo; ejecución conductual bloqueada por sandbox macOS)**:
+`web/e2e/logo-preparation.spec.ts` cubre los cinco grupos de casos de la tabla mediante
+filechooser real y la descarga del logo guardado desde la página; no retiene ni rehace el PUT.
+`npm run check` y `tsc --noEmit -p tsconfig.e2e.json` pasan. Playwright no llegó a abrir una
+página en Chromium (`MachPortRendezvousServer… Permission denied (1100)`) ni WebKit (`Abort trap:
+6`). No se obtuvo evidencia Red/Green, byte-identidad en runtime, resultado de S-F7 ni tiempo
+NFR-F13; ejecutar ambos proyectos en el runner Linux/PR.
+
 **T-F707 — Correcciones** que surjan de T-F702..T-F706, cada una con su test de regresión.
+
+**Estado T-F707 2026-10-22 (test estabilizado; CI del PR #45 pendiente)**:
+`session.test.tsx` precarga las rutas lazy en `beforeAll` y verifica el reenvío mediante la banda
+real de AppShell, evitando duplicar el botón con un harness paralelo. MSW empieza con la sesión
+no verificada y cambia a verificada al responder el POST; así la lectura posterior al reenvío cubre
+el resultado confirmado sin que una lectura inicial reemplace la pantalla antes del clic. Una
+corrida dirigida pasó; cinco corridas dirigidas simultáneas pasaron (5/5); `npm run check` pasó
+(44 archivos Vitest, 652 pasaron, 2 expected-fail, typecheck y build). Esperar el check del PR #45
+para evidencia CI.
+
+**T-F707 — Relectura de `/me` al entrar sin permiso** · DD-F34, INV-F21, P-F23, DD-41, DD-44, `ui.md` §6.4.1, §12.4, §14.5. Corrige el hallazgo de T-F702: un Operador desactivado con la sesión abierta veía "Sin permiso" en lugar del aviso de sesión cerrada.
+- **Red**: `web/src/app/guards/routeGuards.test.tsx`, archivo nuevo junto al guard. Es una prueba de
+  integración con `renderApp`, las rutas reales de `appRoutes` y MSW en el borde HTTP. **No** se
+  sustituyen `useSession`, `useCan` ni el guard. `GET /me` usa un `vi.fn` para contar requests y
+  `gate()` para retener la respuesta. Como `session.test.tsx`, precarga los chunks lazy en
+  `beforeAll` (auth, users, tenant, dashboard, AppShell), para que la carga de un chunk no se cruce
+  con la respuesta retenida. Salvo que la fila diga otra cosa, se arranca en `/` con una sesión de
+  Operador en caché y se entra con `router.navigate(...)`: es la navegación del cliente que hace el
+  E2E.
+
+  | Caso | Resultado observable |
+  |---|---|
+  | `/me` responde `401 unauthenticated`; navegar a `/settings/users` | login con "Tu sesión se cerró. Ingresá de nuevo para seguir."; URL `/login?next=%2Fsettings%2Fusers&reason=session_expired`; ningún `GET /users`; "No tenés acceso a esta sección" no aparece |
+  | Lo mismo, con `/me` retenido | `status` "Comprobando tu acceso" con `aria-busy="true"`; no están "No tenés acceso a esta sección" ni el `<h1>` "Usuarios"; al soltar `/me`, lo de la fila anterior |
+  | `/me` responde `200` sin `settings.manage` | "No tenés acceso a esta sección" con el foco en su `<h1>`; `document.title` "No tenés acceso a esta sección · Empresa de prueba"; exactamente **un** `GET /me` desde la navegación |
+  | `/me` responde `200` con `settings.manage` (rol ascendido) | el `<h1>` "Usuarios"; "No tenés acceso a esta sección" nunca estuvo en el DOM |
+  | `/me` responde `503`, o falla la red (el cliente de test usa `retry: false`) | `<h1>` "No pudimos comprobar tu acceso"; "El servicio no está disponible en este momento." o "No hay conexión.", según `messageForError(error, 'generic')`; "Reintentar"; enlace "Volver al inicio" con `href="/"`; no aparece "No tenés acceso…" |
+  | Desde ese error, "Reintentar" (clic, y en otra corrida Tab + Enter) con `/me` → `200` sin el permiso | primero el indicador, después "No tenés acceso a esta sección" con el foco en su `<h1>`; un `GET /me` más |
+  | Con "Sin permiso" a la vista, un re-render por otra causa (`setQueryData(['tenant'])` con otro nombre) | ningún `GET /me` más |
+  | Desde "Sin permiso" en `/settings/users`, navegar a `/settings/company` y volver | un `GET /me` por cada entrada (2 más); "Sin permiso" en las dos |
+  | Un `GET /me` en curso al navegar (lanzado con `invalidateQueries(['session'])` y retenido) | un solo `GET /me` en total; al soltarlo, ese resultado decide |
+  | `renderApp(..., { strictMode: true })` y navegar | un solo `GET /me` para la entrada |
+  | Sin conexión (`onlineManager.setOnline(false)`) al navegar | el indicador y ningún `GET /me`; al volver la conexión sale uno y decide |
+  | Administrador (permiso concedido) en el panel, dentro del `staleTime`, navega a `/settings/users` | la pantalla, sin ningún `GET /me` |
+- **Tests existentes**: no se tocan y tienen que seguir en verde, salvo esta excepción aprobada por el usuario el 2026-10-22: únicamente en `web/src/app/shell.test.tsx`, el escenario `moves focus to the heading when navigating between routes that reuse the same heading node` cambia la navegación de `/settings/users` → `/settings/company` a `/missing-page-a` → `/missing-page-b`; conserva todas sus aserciones. La excepción se limita a ese test y a ese escenario; el resto de los tests existentes no se toca.
+  - `session.test.tsx`: en "does not mount an unauthorized page or request its data", "Sin permiso"
+    llega ahora después de una relectura. En "refreshes permissions after forbidden" llega sin
+    relectura, porque el permiso se pierde sin una entrada nueva. Los dos esperan con `findBy`.
+  - `UsersPage.test.tsx`: el caso de cambiarse a uno mismo a Operador mantiene
+    `expect(me).toHaveBeenCalledOnce()`, que pasa a ser la guarda de "sin entrada nueva no hay
+    relectura" (INV-F21).
+  - El test inestable conocido de `session.test.tsx` (el reenvío con la sesión ya confirmada) siembra
+    un Administrador: entra con el permiso concedido y no suma ningún `GET /me`. Los casos nuevos van
+    en un archivo propio para no agregarle tiempo ni requests a `session.test.tsx`.
+- **Mutaciones**: se aplica cada una, algún caso tiene que fallar, y se restaura.
+  1. El guard decide solo con `useCan`: falla la primera fila y la del rol ascendido.
+  2. `refetch()` sin `cancelRefetch: false`: falla la del `GET /me` en curso.
+  3. Relectura en cada render: falla la del re-render.
+  4. Relectura también cuando el permiso se pierde sin entrada nueva: falla `UsersPage.test.tsx`.
+  5. El error muestra "Sin permiso": falla la del `503`.
+- **Green**: pasan la tabla, los tests existentes sin cambios y la fila de la desactivación de
+  T-F702 en Chromium (WebKit, reportado).
+- **Refactor**: revisar que:
+  - el indicador comparta con `SessionLoader` solo el spinner, no el `<main>`;
+  - `usePermissionCheck` guarde solo la entrada comprobada y el error de su relectura, nunca la sesión
+    ni el permiso (INV-F01);
+  - los nombres vayan por funcionalidad, con la trazabilidad en comentarios.
+
+**T-F707 — Correcciones del cierre de T-F702 (2026-10-22)**. Con la relectura de `/me` en verde, la
+corrida de T-F702 llegó más lejos y mostró tres desvíos. Ninguno cambia el diseño ni relaja una
+aceptación; el test de regresión de cada uno es la propia fila de T-F702.
+- **Reabrir el enlace de reset** (S-04, `ui.md`: "no hay vista previa: el token se valida al
+  enviar"). El E2E esperaba "Este enlace ya no sirve." apenas abría el enlace usado, pero la pantalla
+  lo dice recién al enviar. Ahora el paso envía una contraseña y exige `400 token_invalid` (solo el
+  status y un código permitido, como el registro duplicado) antes del mensaje. Suma un `POST` al cupo
+  de reset (3 de 5 por IP).
+- **CSP y Zod** (NFR-F10, ADR-019). Zod 4 prueba `new Function` para decidir si compila los
+  parsers; con `script-src 'self'` el navegador reporta esa prueba como violación aunque Zod atrape
+  el error (8 en la corrida local). `web/src/lib/zodConfig.ts` activa `jitless`, y `main.tsx` lo
+  importa antes que cualquier schema. Mutación: sin ese import, la fila "0 violaciones de CSP" falla.
+- **Errores de consola** (T-F702: "0 errores de consola"). Chromium escribe "Failed to load
+  resource" por cada `4xx`, también los que pide el contrato: `/me` sin sesión, la contraseña
+  incorrecta, el email duplicado y el enlace usado. `captureBrowserDiagnostics` deja fuera solo esos
+  avisos del navegador para `4xx` de `/api/v1/` del mismo origen. Un `5xx` o cualquier error que
+  escriba la aplicación siguen contando.
+- **Toasts antes de axe** (CI `39887682542` sobre `17ce783`, sin cambios de la app ni de E2E respecto
+  de `2295215`, que había pasado). `expectNoAccessibilityViolations` contaba los toasts visibles y
+  esperaba opacidad 1 en cada uno, pero uno que ya estaba saliendo (`data-removed="true"`) bajaba a 0
+  y nunca llegaba. Ahora una sola espera con reintentos exige que no quede ningún toast saliendo y
+  que los visibles tengan opacidad 1. No se saltea ningún escaneo.
+
+**T-F707 — Salida de sesión única y cerrar sesión con cambios sin guardar** · P-F24 (1) y (2),
+DD-F35, INV-F22, INV-F18, DD-F32, `ui.md` §6.4.2, §12.4, §13.8. Corrige el hallazgo de la revisión
+del PR #45: con `8d85615`, `RequireSession` quedaba en "Cargando…" hasta recargar cuando la sesión
+desaparecía después de un `clear()` que no había hecho el manejador global (por ejemplo, un logout
+frenado por el aviso de S-11).
+- **Red**: casos nuevos; los existentes no se tocan.
+  - `web/src/app/guards/routeGuards.test.tsx`, `describe` nuevo "leaving the session", con el
+    `startSession` y la precarga de chunks del archivo. Es integración con `renderApp`: el router, el
+    `QueryClient`, los guards y los hooks son los reales, y MSW intercepta el borde HTTP. Para
+    retener una salida antes de que el router la empiece, se espía `router.navigate` (`vi.spyOn`): si
+    el destino es `/login`, la implementación espera un `gate()` y después llama a la original;
+    cualquier otro destino pasa directo, y se registran todos. Si en React Router 8.4.0 `<Navigate>`
+    no pasara por `router.navigate`, la aserción equivalente es la URL final más un
+    `router.subscribe` que registre cada `location`.
+
+    | Caso | Resultado observable |
+    |---|---|
+    | G1. Administrador en `/settings/users`; `/me` → `401`; `invalidateQueries(['session'])`; las navegaciones al login, retenidas | *(Ajustado en la implementación)* Con la navegación retenida: "Cargando la aplicación"; la URL sigue en `/settings/users`; `/me` se pidió una sola vez (la relectura que dio `401`: durante la salida nadie vuelve a leer la sesión); se pidió una sola navegación a `/login`, a `/login?next=%2Fsettings%2Fusers&reason=session_expired`. Al soltar: esa URL y "Tu sesión se cerró. Ingresá de nuevo para seguir.". Es la carrera que quiso evitar `8d85615`, ahora sin depender de los tiempos |
+    | G2. Rutas propias (`routes`): `/other` (`<h1>` "Otra") y `/settings/users` bajo `RequireSession`, y `/login` *lazy* retenido con `gate()`; historial `['/other', '/settings/users']` con la sesión en caché; `/me` → `401`; `invalidateQueries(['session'])`; con la navegación al login en curso (`router.state.navigation.location.pathname === '/login'`), Atrás (`router.navigate(-1)`) | Mientras tanto, "Cargando la aplicación"; "Otra" nunca estuvo en el DOM; dos navegaciones a `/login`, las dos a `/login?next=%2Fsettings%2Fusers&reason=session_expired`. Al soltar el chunk: esa URL y el login. Nunca queda en el indicador |
+    | G3. El mecanismo del hallazgo: Administrador en `/settings`; `/me` → `401`; `queryClient.clear()` sin salida; `router.navigate('/')` | `/login?next=%2F&reason=session_expired` con "Tu sesión se cerró. Ingresá de nuevo para seguir."; nunca queda en "Cargando la aplicación" |
+    | G4. G3 con `renderApp(..., { onUnauthenticated: vi.fn() })`: el manejador global no actúa | Igual que G3: `RequireSession` sale solo (la fila "sin sesión, con una sesión presentada" de `ui.md` §6.4.2) |
+    | G5. Desde el login de G1 (historial `/` → `/settings/users`, reemplazada por el login), Atrás | `/login?next=%2F`, sin `reason`; no aparece "Tu sesión se cerró…" |
+    | G6. Administrador en `/settings`; "Cerrar sesión" (S-08) con `POST /auth/logout` → `204` y `/me` → `401`; con la navegación al login retenida, un `GET /tenant` que responde `401` *(ajustado en la implementación: durante la salida ya no sale un `GET /me` que haga de `401` tardío)* | Mientras está retenida, "Cargando la aplicación". Al soltar: `/login?reason=logged_out` con "Cerraste sesión."; un solo `POST /auth/logout`; una sola navegación pedida a `/login`, la de `logged_out`, y ninguna con `reason=session_expired` |
+
+  - `web/src/features/tenant/CompanyUnsavedChanges.test.tsx`, casos nuevos al final (el escenario de
+    la revisión). Administrador en `/settings/company` con "Teléfono" cambiado; "Cerrar sesión" desde
+    el menú del usuario de escritorio. Las navegaciones a `/login` se registran con el espía de G1 o
+    con `router.subscribe`.
+
+    | Caso | Resultado observable |
+    |---|---|
+    | C1. Elegir "Cerrar sesión" | Aviso "Tenés cambios sin guardar. ¿Salir igual?" con "Quedarme" y "Cerrar sesión"; ningún `POST /auth/logout` |
+    | C2. "Quedarme"; después ir a `/` y, en el aviso de S-11, "Salir" | El aviso se cierra y el foco vuelve al botón del menú del usuario (INV-F10); "Teléfono" conserva lo escrito; ningún `POST /auth/logout`. Después, el `<h1>` del panel; nunca "Cargando la aplicación" |
+    | C3. "Cerrar sesión" en el aviso | Un `POST /auth/logout`; `/login?reason=logged_out` con "Cerraste sesión." y sin "Los cambios que no habías guardado se perdieron."; el aviso apareció una sola vez; una sola navegación a `/login` |
+    | C4. "Cerrar sesión" en el aviso, con el `POST` fallando por red | Toast "No pudimos cerrar la sesión. Revisá tu conexión."; sigue en `/settings/company`, con lo escrito y la sesión en caché |
+
+  - `web/src/lib/safeNextPath.test.ts`, donde ya se prueban `sessionExpiredLoginPath` e
+    `isSessionExpiredRedirect`:
+
+    | Entrada | Resultado |
+    |---|---|
+    | `sessionExitPath('session_expired', { pathname: '/settings', search: '?x=1' })` | Lo mismo que `sessionExpiredLoginPath` con ese `from` |
+    | `sessionExitPath('logged_out', …)` y `sessionExitPath('password_changed', …)` | `/login?reason=logged_out` y `/login?reason=password_changed`, sin `next` |
+    | `isSessionExitRedirect` con esas tres URL | `true` |
+    | `isSessionExitRedirect` con `/login?reason=other`, `/login` y `/settings?reason=logged_out` | `false` |
+- **Tests existentes**: no se tocan y siguen en verde. En particular:
+  - `session.test.tsx`: "navigates only once when simultaneous queries lose the session", "treats
+    session-to-null refresh as expiration", "keeps the expiration reason when a session refresh races
+    a pending login chunk" y "clears protected data before replacing the route after query expiration
+    and rechecks on Back".
+  - `logout.test.tsx` y `logoutMenuRace.test.tsx`.
+  - `sessionErrors.test.ts`: el manejador sigue sin actuar con una navegación al login pendiente. Su
+    doble del router no tiene `subscribe`, así que ahí la salida se termina con la promesa de
+    `navigate`, que queda de respaldo *(ajuste de la implementación: con el router real termina con
+    `router.subscribe`, porque S-F16 resultó falso)*.
+  - `logout.test.tsx`, "disables the logout action while the request is pending" *(ajuste de la
+    implementación)*: su MSW sigue devolviendo la sesión después del logout. Con un `GET /me` durante
+    la salida, `PublicOnly` rebotaba a `/` antes de mostrar el login (falló entre el 20 y el 33 % de
+    las corridas). Sin lecturas durante la salida, el primer `GET /me` es el del login, y "Cerraste
+    sesión." ya está a la vista cuando responde. El test no se toca.
+  - `CompanyUnsavedChanges.test.tsx`.
+  - `LoginPage.test.tsx`: la fila `logged_out` con `unsavedChangesLost` sigue sin la segunda línea.
+  - `routeGuards.test.tsx`: "shows only the access indicator until a retained 401 completes" tiene
+    que pasar 10 corridas seguidas de `npm test` completo, porque ya no depende de cuándo publica el
+    router su navegación.
+- **Mutaciones**: se aplica cada una, algún caso tiene que fallar, y se restaura.
+  1. `RequireSession` ignora la salida en curso y, sin sesión, navega a `/login?next=…` sin `reason`:
+     falla G1.
+  2. Sin sesión, con una presentada y sin salida, `RequireSession` espera sin navegar (el
+     `wasAuthenticated` de `8d85615`): falla G4.
+  3. Esa misma fila navega sin `reason`: falla G4.
+  4. "Presentó una sesión" se pierde con el `clear()` (vuelve a ser una marca por query): falla G3.
+  5. Una salida `stalled` se trata como `navigating` (sin `resumeSessionExit`): falla G2.
+  6. La salida se da por terminada con cualquier navegación, sin mirar que llegó a `/login`: falla
+     G2.
+  7. La salida no se borra al llegar al login: falla G5.
+  8. `exitSession` reemplaza una salida en curso: fallan G6 y "navigates only once…".
+  9. `useUnsavedChangesGuard` deja pasar solo `session_expired`: falla C3 (dos navegaciones a
+     `/login`, la frenada y la retomada).
+  10. "Cerrar sesión" manda el `POST` sin preguntar con un guard activo: falla C1.
+  11. *(Ajustes de la implementación)* La salida termina solo con la promesa de `navigate`, sin
+      `router.subscribe`: falla G2 (una sola navegación a `/login` hasta que llega el chunk).
+  12. `RequireSession` monta la parte que lee `['session']` también con una salida: falla G1 (`/me`
+      dos veces).
+  13. La salida se borra apenas el router publica `/login`, sin esperar a que se desmonte el guard:
+      tiene que fallar algún caso de "leaving the session" (una navegación a `/login?next=…` sin
+      `reason`). El desarrollador reporta cuál. Si ninguno falla de forma determinista, volver al
+      arquitecto con la corrida: hace falta un caso nuevo.
+      *(Resultado)* En "leaving the session" ningún caso falla de forma determinista. Fallan
+      "handles mutation unauthenticated by stable code" (`session.test.tsx`) y "logs out from
+      Settings and does not restore the old session on Back" (`logout.test.tsx`) en 3 de 3 corridas,
+      pero dependen de tiempos. El caso determinista es nuevo: `web/src/lib/sessionExit.test.tsx`,
+      "keeps the exit after reaching /login until the last follower unmounts".
+  14. `useSessionLifecycle` pasa a `useSyncExternalStore` una función de suscripción nueva en cada
+      render (en lugar del `subscribe` estable del registro): falla `sessionExit.test.tsx`, "does not
+      subscribe again on re-render, which would clear the exit early".
+- **Green**: pasan las tablas, los tests existentes y `npm run check`, y la fila de la desactivación
+  de T-F702 en Chromium (WebKit, reportado).
+- **Refactor**: revisar que:
+  - un solo lugar arme las URL de salida (`sessionExitPath`);
+  - no queden `wasAuthenticated`, `useNavigation` en `RequireSession`, `authenticatedQueries` ni
+    `redirecting`;
+  - `lib/sessionExit.ts` no importe nada de `app/` ni de `features/`, y el registro no guarde
+    `SessionInfo` (INV-F01);
+  - *(ajustes de la implementación)* `useSessionLifecycle` se use solo en
+    `app/guards/routeGuards.tsx`, con un `subscribe` estable por registro, y ninguna salida espere un
+    `cancelQueries` antes de registrarse (INV-F22);
+  - los nombres vayan por funcionalidad, con la trazabilidad en comentarios.
+
+**T-F707 — Versión de Lighthouse y colores de hover** · P-F24 (3) y (4), INV-F23, `ui.md` §19.1.
+- **Código**:
+  - `web/package.json`: `"lighthouse": "13.5.0"`. Correr `npm install` sin cambiar la versión
+    resuelta, con `package-lock.json` en el mismo commit; `make web-vuln` en verde.
+  - `styles/globals.css`: `--primary-hover: #1d4ed8` y `--destructive-hover: #b91c1c`, expuestos como
+    colores de Tailwind, igual que `--success`.
+  - `components/ui/button.tsx`: `default` con `hover:bg-primary-hover`; `destructive` con
+    `hover:bg-destructive-hover`.
+- **Red**: `web/src/test/colorTokens.test.ts`, nuevo, con el método de `importBoundaries.test.ts`
+  (`ESLint.lintText` con el `eslint.config.js` real, comprobando que la regla es `error` para el
+  archivo):
+
+  | Código | Resultado |
+  |---|---|
+  | `className="hover:bg-blue-700"` en `src/components/ui/probe.tsx` | `no-restricted-syntax` lo rechaza |
+  | `'bg-red-600 text-white'` en `src/features/users/probe.ts` | Rechazado |
+  | `` `text-slate-500 ${tone}` `` en `src/app/probe.tsx` | Rechazado |
+  | `'hover:bg-primary-hover'`, `'bg-black/50'` (el fondo de los diálogos) y `'text-muted-foreground'` en `src/components/ui/probe.tsx` | Permitidos |
+
+  La regla va en cada bloque de `no-restricted-syntax` que aplica a archivos de `src/` que no son de
+  test, porque en *flat config* el último bloque que configura la regla reemplaza a los anteriores.
+  El selector es una expresión regular sobre `Literal` y `TemplateElement` (sin `/`, como pide el
+  helper `rx`).
+- **Mutaciones**: volver a `hover:bg-blue-700` hace fallar `npm run lint`; quitar el selector hace
+  fallar las tres primeras filas.
+- **Green**: pasan la tabla y `npm run check`. T-F705 verifica con herramienta el contraste de los
+  dos tokens con texto blanco (≥ 4,5:1).
+
+**T-F707 — JPEG del logo sin los metadatos del codificador** · P-F25, DD-F36, DD-F21, INV-F13,
+BR-F13, S-F17, `ui.md` §13.11.1. Corrige el hallazgo de T-F706 en WebKit de macOS: el JPEG guardado
+traía un `APP1`/`Exif` de 76 bytes que agrega el codificador de Apple.
+- **Antes del Red**: volcar en hexadecimal el encabezado (hasta el primer `SOS`) del JPEG que sale de
+  WebKit de macOS (el logo guardado por T-F706) y adjuntarlo al PR, con la lista de etiquetas del
+  `APP1` (`exiftool -v3` o equivalente).
+  - Se espera un IFD0 con solo el puntero al IFD Exif y un IFD Exif con espacio de color, ancho y
+    alto.
+  - Si trae otra cosa (fecha, programa, modelo), o si queda un `APP2` ICC que no es un perfil estándar
+    (sRGB o Display P3), reportarlo. Cambia la urgencia, no el diseño.
+  - Ese segmento, con el ancho y el alto de la prueba, es el modelo de las tablas de abajo
+    (`webkitExifSegment` en `src/test/imageBytes.ts`). Si no se puede volcar, se arma con esa
+    estructura: `FF E1`, largo, `Exif\0\0`, TIFF `MM`, IFD0 con `0x8769`, IFD Exif con `0xA001` = 1,
+    `0xA002` y `0xA003`.
+- **Red**: casos nuevos; los existentes no se tocan.
+  - `web/src/features/tenant/logo/jpegMetadata.test.ts`, nuevo. Es unitario, con bytes armados con
+    `jpegBytes` de `src/test/imageBytes.ts`, que suma una opción para segmentos arbitrarios antes del
+    `SOF` sin cambiar a sus llamadores actuales:
+
+    | Entrada | Resultado |
+    |---|---|
+    | `SOI`, `APP0` `JFIF`, el `APP1` de WebKit, `DQT`, `SOF0`, `DHT`, `SOS` y datos | Los mismos bytes sin ese `APP1`: el tamaño baja exactamente lo que ocupa el segmento (marcador incluido). Lo demás queda en el mismo orden e idéntico, y desde el `SOS`, byte a byte |
+    | Un `APP1` XMP (`http://ns.adobe.com/xap/1.0/\0`) | Se quita |
+    | `APP13` (`Photoshop 3.0`), `APP3`, `APP15` y un `COM` | Se quitan |
+    | `APP2` `ICC_PROFILE\0` y `APP14` `Adobe` | Se quedan, en su orden |
+    | `APP2` `MPF\0` y un `APP0` que no es `JFIF\0` (`JFXX\0`) | Se quitan |
+    | 20 `APP1` de 65 533 bytes (`app1Segments: 20`) | Se quitan los 20 |
+    | Nada que quitar (`SOI`, `APP0` `JFIF`, `DQT`, `SOF0`, `DHT`, `SOS`) | La misma instancia (`toBe`) |
+    | Bytes de relleno (`FF FF`) antes de un marcador | Se aceptan; el resultado no los conserva |
+    | Después del `SOS`, los bytes `FF E1 00 10` y 14 más | No se tocan: desde el primer `SOS` se copia sin mirar |
+    | Sin `FF D8` al principio; un segmento cuyo largo pasa el final; un largo menor que 2; `EOI` antes del `SOS`; termina sin `SOS`; un byte distinto de `FF` donde va un marcador | Lanza (una fila por caso) |
+
+  - `web/src/features/tenant/logo/canvas.test.ts`, nuevo. En jsdom, con `getContext` y `toBlob` de
+    `HTMLCanvasElement.prototype` sustituidos (`vi.spyOn`):
+    - `getContext` devuelve un contexto con `drawImage` vacío;
+    - `toBlob` devuelve los bytes que pide la fila;
+    - el bitmap es un objeto con `width` y `height`.
+
+    Es el borde con el navegador, como MSW con la red. `withoutJpegMetadata` no se sustituye.
+
+    | Caso | Resultado |
+    |---|---|
+    | `format: 'image/jpeg'`; `toBlob` devuelve un JPEG con el `APP1` de WebKit | Un `Blob` `image/jpeg` sin ese `APP1` |
+    | `format: 'image/jpeg'`; `toBlob` devuelve un JPEG sin metadatos (como Chromium) | El mismo `Blob` que devolvió `toBlob` |
+    | `format: 'image/png'`; `toBlob` devuelve bytes PNG | El mismo `Blob` |
+    | `format: 'image/jpeg'`; `toBlob` devuelve bytes que no son un JPEG | `encodeBitmap` rechaza |
+    | `toBlob` devuelve `null` | Rechaza, como hoy |
+    | Cada fila anterior | El canvas queda con `width` y `height` en 0 (el `finally` de hoy) |
+
+  - `web/e2e/logo-preparation.spec.ts` (T-F706): dos aserciones nuevas después de la de
+    `hasExifApp1`, que se queda.
+    1. Los `APPn` antes del primer `SOS` del logo guardado son solo `APP0` `JFIF`, `APP2`
+       `ICC_PROFILE` y `APP14` `Adobe`, sin `COM`. Una ayuda del archivo lista marcador e
+       identificador.
+    2. `preparedJPEG.body` no contiene `Exif\0\0` ni `http://ns.adobe.com/xap/1.0/` en ningún lugar.
+       Es una búsqueda de bytes, sin parsear, y cubre lo que supone S-F17.
+
+    La anotación de NFR-F13 lista los segmentos encontrados.
+- **Tests existentes**: no se tocan.
+  - `prepareLogo.test.ts` sigue igual, porque sustituye el adaptador entero: sus `Blob` de ceros
+    nunca pasan por `withoutJpegMetadata`.
+  - La aserción `hasExifApp1` del E2E se queda y vuelve a pasar en WebKit de macOS.
+- **Mutaciones**: se aplica cada una, algún caso tiene que fallar, y se restaura.
+  1. `encodeBitmap` no llama a `withoutJpegMetadata`: falla la primera fila de `canvas.test.ts` (en
+     CI) y la aserción `hasExifApp1` del E2E en WebKit de macOS.
+  2. Se quita solo `APP1` (una lista de lo que se quita, no de lo que queda): falla la fila de
+     `APP13`, `APP3`, `APP15` y `COM`.
+  3. Se quitan también `APP2` ICC y `APP14`: falla su fila.
+  4. Con bytes mal formados devuelve la entrada sin tocar: fallan las filas de "Lanza" y la de bytes
+     que no son un JPEG de `canvas.test.ts`.
+  5. El PNG también pasa por la función: falla la fila del PNG (el `Blob` no es el mismo).
+  6. Sigue recorriendo después del `SOS`: falla la fila "Después del `SOS`".
+  7. Siempre copia, aunque no quite nada: fallan "la misma instancia" y "el mismo `Blob`".
+- **Green**: pasan las tablas, los tests existentes y `npm run check`. T-F706 queda en verde en
+  Chromium y WebKit en CI y en WebKit de macOS a mano (reportado, con el tiempo de NFR-F13).
+- **Refactor**: revisar que:
+  - `jpegMetadata.ts` no use nada del navegador (ni `Blob`): recibe y devuelve bytes;
+  - el recorrido de marcadores no duplique el de `readImageSize` (`sniff.ts`): si comparten la forma de
+    avanzar, un solo helper interno del módulo `logo/`, con cada llamador decidiendo si tolera o lanza;
+  - los nombres vayan por funcionalidad, con la trazabilidad en comentarios.
 
 **Checkpoint Fase F7**: `npm run check` y `npm run e2e` en verde (Chromium en CI; WebKit
 reportado); reportes de T-F704, T-F705 y T-F706 adjuntos; resultado de S-12 (y del respaldo, si se
@@ -4799,4 +5280,7 @@ usó) reportado.
 | P-F20 (marca del aviso C-01 fija y sin email, borrada en los puntos de INV-F03; props de C-01 y del aviso W con el objeto de `messageForError`; INV-F19, regiones corteses montadas antes que su texto), `ui.md` §8, §9.2, §10.1, §13.5, §13.9, §13.11, §13.13, §15.1, §15.4, §17, §18, §22, DD-F29 | T-F106, T-F404, T-F405, T-F406, T-F502, T-F505, T-F506, T-F603, T-F703, T-F705 |
 | P-F21 (textos y foco del diálogo de "Quitar" y del aviso de salida; DD-F27 con los nombres anteriores de las zonas argentinas; DD-F26 con la comparación de bytes; lectura del archivo entero; `resized`; `unknown` como `unsupported_format`; firmas de `LogoUploader`, `ConfirmDialog`, `tenantQuery`, `companyInitials`), `ui.md` §7, §9.1, §11.1, §13.11, §13.11.1, §14.4, §15, §22, §24, §25 | T-F602, T-F603, T-F604, T-F605 |
 | P-F22 (cola de los cambios de la empresa y cancelación de las lecturas en vuelo: DD-F33, INV-F20, S-F15; DD-F27 sin dos nombres para la misma zona), `ui.md` §9.2, §10.3, §13.11, §14.4, §15.4, §24, §25, §26, §29 | T-F602, T-F603, T-F605 |
+| DD-F34 / INV-F21 (relectura de `/me` al entrar con el permiso en caché denegado), P-F23, `ui.md` §6.4.1, §14.5 | T-F707, T-F702 |
+| DD-F35 / INV-F22 (salida de sesión única; cerrar sesión con cambios sin guardar, INV-F18 ampliada), INV-F23 (colores solo con tokens), P-F24, S-F16 (refutado; respaldo con `router.subscribe`), RF-19, `ui.md` §6.4.2, §13.8, §19.1, §23 | T-F707, T-F704 |
+| DD-F36 (JPEG del logo sin los metadatos del codificador), INV-F13 precisada, BR-F13, P-F25, S-F17, S-F7 (validado en Chromium y WebKit), RF-9, `ui.md` §13.11.1, §15.4 | T-F707, T-F706 |
 | NFR-F01..F13 | T-F002 (F02, F07, F08), T-F702 (F01, F06, F10, F12), T-F703 (F09, F11), T-F704 (F03..F05), T-F705 (F06..F08), T-F706 (F13) |

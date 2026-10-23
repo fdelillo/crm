@@ -1,7 +1,7 @@
 # UI (frontend): Empresas, usuarios y roles
 
 **Spec**: [`spec.md`](spec.md) · **Rama**: `001-empresas-usuarios` · **Fecha**: 2026-09-29
-**Autor**: `frontend-architect` · **Estado**: Revisión 3 aprobada por el usuario el 2026-10-12; Revisión 4 aprobada por el usuario el 2026-10-13 (P-F10: sí; P-F11: no); enmienda H-16 a la Revisión 4 aprobada por el usuario el 2026-10-13; enmienda DD-F31 *Accepted*, aprobada por el usuario el 2026-10-14; enmienda de versiones del 2026-10-15: React Router 8 por decisión del usuario, regla de versiones y excepción de TypeScript confirmadas por el usuario el 2026-10-15 (P-F12); enmienda de F0 del 2026-10-15: P-F13, P-F14 y P-F15 aprobadas por el usuario el 2026-10-16; enmienda de F1 del 2026-10-16: P-F16, P-F17 y P-F18 aprobadas por el usuario el 2026-10-16; enmienda de F3 del 2026-10-17: P-F19 aprobada por el usuario el 2026-10-17; enmienda de F4 del 2026-10-20: P-F20 aprobada por el usuario el 2026-10-20; enmienda de F6 del 2026-10-21: P-F21 aprobada por el usuario el 2026-10-21; enmienda de F6 del 2026-10-22: P-F22 aprobada por el usuario el 2026-10-22; mantenimiento de la documentación del 2026-10-22, sin cambios de diseño (PR de documentación aprobado por el usuario)
+**Autor**: `frontend-architect` · **Estado**: Revisión 3 aprobada por el usuario el 2026-10-12; Revisión 4 aprobada por el usuario el 2026-10-13 (P-F10: sí; P-F11: no); enmienda H-16 a la Revisión 4 aprobada por el usuario el 2026-10-13; enmienda DD-F31 *Accepted*, aprobada por el usuario el 2026-10-14; enmienda de versiones del 2026-10-15: React Router 8 por decisión del usuario, regla de versiones y excepción de TypeScript confirmadas por el usuario el 2026-10-15 (P-F12); enmienda de F0 del 2026-10-15: P-F13, P-F14 y P-F15 aprobadas por el usuario el 2026-10-16; enmienda de F1 del 2026-10-16: P-F16, P-F17 y P-F18 aprobadas por el usuario el 2026-10-16; enmienda de F3 del 2026-10-17: P-F19 aprobada por el usuario el 2026-10-17; enmienda de F4 del 2026-10-20: P-F20 aprobada por el usuario el 2026-10-20; enmienda de F6 del 2026-10-21: P-F21 aprobada por el usuario el 2026-10-21; enmienda de F6 del 2026-10-22: P-F22 aprobada por el usuario el 2026-10-22; mantenimiento de la documentación del 2026-10-22, sin cambios de diseño (PR de documentación aprobado por el usuario); enmienda de F7 del 2026-10-22: P-F23 aprobada por el usuario el 2026-10-22 (opción A y detalles (1) a (4)); revisión del PR #45 del 2026-10-23: P-F24 aprobada por el usuario el 2026-10-23 (los puntos (1) a (4), incluido `--destructive-hover`); ajustes de la implementación de P-F24 del 2026-10-23 (S-F16 refutado y su respaldo aplicado; la salida se borra al desmontarse el guard; el guard no lee la sesión durante una salida), revisados por `frontend-architect`, sin cambios de producto; revisión del PR #45 del 2026-10-23: P-F25 aprobada por el usuario el 2026-10-23: A, lista cerrada y corrida manual en WebKit de macOS (escrita por `frontend-architect`)
 **Contrato consumido**: [`contracts/openapi.yaml`](contracts/openapi.yaml) **v0.5.0** (**canónico**; el diseño original se hizo contra v0.3.1; la Revisión 3, contra v0.4.3)
 **Revisión 1 (2026-09-29)**: respuestas del usuario a P-F1 a P-F5 (§26) y resolución de los
 hallazgos H-1 a H-9 por el backend (`plan.md` §18, DD-22 a DD-30, §10.7, contrato v0.3.0). Cambios:
@@ -192,6 +192,71 @@ el shell apaga al cerrar sesión) y `logoVersion`. (3) §22 suma los archivos de
 `features/tenant/` y de `src/test/` que no figuraban, y aclara que en `src/` el árbol no lista los
 tests que viven junto al código. Cambian §9.2, §15.4, §22, §24, §25, §26 y §29. Tareas: cambia la
 entrada "P-F22 implementada" de `tasks.md`. Sistema visual sin cambios.
+
+**Enmienda de F7, P-F23 (2026-10-22; opción A y detalles (1) a (4) aprobados por el usuario el
+2026-10-22)**: T-F702 encontró que un Operador al que otro Administrador desactiva
+con la sesión abierta, al navegar sin recargar a `/settings/users`, veía "No tenés acceso a esta
+sección" en lugar de "Tu sesión se cerró. Ingresá de nuevo para seguir.": `RequirePermission`
+decidía solo con el permiso en caché y no pedía `/me`, aunque el backend ya había revocado la sesión
+(DD-41). (1) **DD-F34 nueva e INV-F21**: si al entrar a una ruta con permiso (montaje del guard o
+cambio de pathname) el permiso en caché está denegado, el guard relee `/me` una vez y se une a una
+lectura que ya esté en curso. Hasta tener la respuesta muestra "Comprobando tu acceso…". Con `401`
+va al login con `reason=session_expired` (§12.4), con el permiso muestra la pantalla, sin el permiso
+"Sin permiso", y con un error de red o `5xx` una pantalla de error con "Reintentar". (2) §6.4.1 y
+§14.5 nuevas con el contrato y la secuencia. (3) Se cierra el bloque Mermaid de §14.4, al que le
+faltaba la línea de cierre y se tragaba el comienzo de §15. Cambian §6.4, §9.2, §10.1, §12.4, §13.9,
+§14.4, §14.5, §15.3, §15.4, §17, §24, §26 y §29. Tareas: cambian T-F702 (la fila de la desactivación
+queda más precisa, sin relajarse), T-F704 (evidencia del LCP de `/login`, sin cambiar NFR-F03) y
+T-F707 (la corrección con sus tests), y la trazabilidad. Sistema visual sin cambios: el indicador
+reutiliza el spinner de la pantalla de arranque.
+
+**Revisión del PR #45, P-F24 (2026-10-23; aprobada por el usuario el 2026-10-23 (los puntos (1) a (4), incluido `--destructive-hover`))**: hallazgos de la revisión
+de código de la parte de F7 que implementó Codex. (1) **`RequireSession` sin salida** (DD-F35 nueva,
+INV-F22): el estado `wasAuthenticated` de `8d85615` esperaba una navegación que el manejador global
+no hacía si la sesión desaparecía después de un `queryClient.clear()` que no era suyo (su marca era
+por query), y la pantalla quedaba en "Cargando…" hasta recargar. Toda salida de sesión (vencida,
+cerrada o tras restablecer la contraseña) pasa por una sola función, `exitSession`, con un solo
+registro por `QueryClient` que dice si la pestaña presentó una sesión y cuál es la salida en curso;
+`RequireSession` decide con ese registro y no con el estado del router (§6.4.2). (2) **Cerrar sesión
+con cambios sin guardar**: el aviso de S-11 frenaba la navegación después del `204`, con la sesión
+ya cerrada, y "Quedarme" dejaba la pantalla montada sin sesión (ya pasaba en `main`). El aviso va
+**antes** del `POST /auth/logout`, y ninguna salida de sesión pasa por él (INV-F18 ampliada; §13.8).
+(3) **Lighthouse**: la "Enmienda de versiones de F7", escrita por el implementador sin aprobación,
+sale de este documento: Lighthouse es una herramienta de CI en su última estable, no una excepción a
+la regla de versiones. Queda en T-F704, con versión exacta en `package.json`. (4) **Hover del
+botón**: `--primary-hover` y `--destructive-hover` (§19.1, INV-F23) en lugar de `hover:bg-blue-700`
+y de la opacidad sobre el color base, que baja el contraste del texto a ~4,3:1. Cambian §6.1, §6.4,
+§6.4.1, §6.4.2 (nueva), §9.2, §10.1, §12.4, §13.4, §13.8, §15.3, §15.4, §19.1, §22, §24, §25, §26,
+§28 y §29. Tareas: cambian las convenciones (versiones) y T-F704; T-F707 suma dos bloques, y cambia
+la trazabilidad. Ningún test existente cambia. Sistema visual: dos tokens nuevos de hover; el aviso
+de cerrar sesión reutiliza `ConfirmDialog` con los textos del de S-11.
+
+**Ajustes de la implementación de P-F24 (2026-10-23; revisados por `frontend-architect`, sin
+cambios de producto)**: tres desvíos del texto que encontró la implementación, aceptados. (1)
+**S-F16 refutado**: con el chunk de `/login` pendiente, la promesa de una navegación interrumpida se
+resuelve recién cuando llega el chunk. La salida termina con `router.subscribe` (`navigation.state
+=== 'idle'`), y la promesa queda de respaldo. (2) **Llegada al login**: el router publica `/login`
+antes de que React desmonte la pantalla protegida, así que la salida se borra cuando se desmonta el
+último `RequireSession`, no cuando el router publica la ruta. (3) **Sin lecturas durante una
+salida**: `RequireSession` se parte en dos, y la parte que lee `['session']` no existe mientras hay
+una salida, así que no sale ningún `GET /me` hasta el login. Además, `clear()` ya cancela las
+lecturas en vuelo (sin `cancelQueries` antes de la salida), y `ConfirmDialog` entra al chunk del
+shell. Cambian §6.4.2, §9.2 (INV-F22), §10.1, §15.4, §23, §24 (DD-F35), §25 (S-F16), §28 (RF-19) y
+§29. Tareas: cambian T-F707 (G1, G6, tests existentes, mutaciones y refactor) y la trazabilidad.
+Ningún test existente cambia.
+
+**Revisión del PR #45, P-F25 (2026-10-23; aprobada por el usuario el 2026-10-23: A, lista cerrada y corrida manual en WebKit de macOS)**: en WebKit de macOS, el
+JPEG del logo que vuelve a codificar la SPA sale con un `APP1`/`Exif` de 76 bytes que agrega el
+codificador de Apple (ImageIO). No trae datos de la foto: la orientación ya está en los píxeles y el
+GPS no sobrevive. Pero INV-F13 dice "nunca conserva metadatos", y el celular real es Safari de iOS,
+con el mismo codificador. El E2E de T-F706 lo detecta en macOS. En CI (Chromium y WebKit de Linux)
+pasa, porque esos codificadores no agregan nada. **DD-F36 (nueva)**: `encodeBitmap` pasa todo JPEG
+por `withoutJpegMetadata` (`logo/jpegMetadata.ts`, pura), que antes del primer `SOS` deja solo `APP0`
+(JFIF), `APP2` (ICC) y `APP14` (Adobe). INV-F13 conserva su sentido y se precisa. Cambian BR-F13,
+INV-F13, §13.11.1, §15.4, §22, §24 (DD-F21 y DD-F36), §25 (S-F7 y S-F17, nuevo), §26 (P-F25), §28
+(RF-9) y §29; `research.md` suma una fila. Tareas: T-F706 suma aserciones y una corrida en WebKit de
+macOS, T-F707 suma un bloque, y cambian "qué se sustituye" y la trazabilidad. Ningún test existente
+cambia.
 
 | Archivo | Contenido |
 |---|---|
@@ -385,7 +450,7 @@ flowchart TD
 ├── reset-password                  ResetPasswordPage     #token=<token>   (APP_LINK_RESET)
 ├── verify-email                    VerifyEmailPage       #token=<token>   (APP_LINK_VERIFY)
 ├── accept-invitation               AcceptInvitationPage  #token=<token>   (APP_LINK_INVITATION)
-├── [RequireSession] → AppShell                           (sin sesión → /login?next=<ruta actual>)
+├── [RequireSession] → AppShell                           (sin sesión → /login?next=<ruta actual>; salida de sesión: §6.4.2)
 │   ├── (index)                     DashboardPage
 │   ├── settings                    SettingsPage
 │   └── [RequirePermission settings.manage]               (sin permiso → estado "Sin permiso" en la misma URL)
@@ -430,13 +495,184 @@ flowchart TD
 
 | Guard | Lee | Mientras carga | Sin sesión / sin permiso | Error de red o `5xx` |
 |---|---|---|---|---|
-| `RequireSession` | `['session']` | Pantalla de arranque (marca + spinner con `aria-busy`), sin parpadeo del login | `<Navigate to="/login?next=<ruta actual>" replace>` | Sin sesión en caché (primera carga, `isLoadingError`): estado de error a pantalla completa con "Reintentar". Con la sesión en caché (falla un refetch, `isRefetchError`; en TanStack Query v5 `isError` es `true` en los dos casos): el shell y la pantalla siguen montados, sin aviso, y el próximo refetch (foco, montaje) vuelve a intentar (§12.5, P-F18) |
+| `RequireSession` | `['session']` | Pantalla de arranque (marca + spinner con `aria-busy`), sin parpadeo del login | *(Revisión del PR #45, §6.4.2)* Si la pestaña no presentó ninguna sesión (o ya llegó al login): `<Navigate to="/login?next=<ruta actual>" replace>`, sin `reason`. Si presentó una, o hay una salida de sesión en curso: pantalla de arranque hasta que la salida llega al login, nunca una espera sin salida | Sin sesión en caché (primera carga, `isLoadingError`): estado de error a pantalla completa con "Reintentar". Con la sesión en caché (falla un refetch, `isRefetchError`; en TanStack Query v5 `isError` es `true` en los dos casos): el shell y la pantalla siguen montados, sin aviso, y el próximo refetch (foco, montaje) vuelve a intentar (§12.5, P-F18) |
 | `PublicOnly` | `['session']` | Renderiza el formulario (el `GET /me` anónimo es rápido; no se bloquea la pantalla) | Con sesión → `<Navigate to={safeNextPath(next)} replace>` | Renderiza el formulario (el error de sesión no impide ingresar) |
-| `RequirePermission` | `session.permissions` | — (ya hay sesión) | Estado **Sin permiso** en la misma URL: "No tenés acceso a esta sección" + "Pedile a un administrador si lo necesitás" + botón "Volver al inicio" | — |
+| `RequirePermission` | `session.permissions` | *(Enmienda de F7, DD-F34)* Si al entrar (montaje o cambio de pathname) el permiso en caché está denegado: "Comprobando tu acceso…" (spinner, `role="status"`, `aria-busy`) mientras relee `/me` una vez (§6.4.1). Con el permiso concedido no hay espera: ya hay sesión | Después de la relectura: `401` → §12.4 (login con `reason=session_expired`); sin el permiso → estado **Sin permiso** en la misma URL: "No tenés acceso a esta sección" + "Pedile a un administrador si lo necesitás" + botón "Volver al inicio"; con el permiso (rol ascendido) → la pantalla | Si falla la relectura (red o `5xx`, después de los reintentos de §10.2): "No pudimos comprobar tu acceso" + el mensaje de `messageForError(error, 'generic')` + "Reintentar" (relee otra vez) + "Volver al inicio". Sin conexión, la relectura queda en pausa con el indicador y C-02 (§12.1) |
 
 Si `['session']` pasa de un usuario a `null` (por ejemplo, un refetch al volver a la pestaña
 después de 24 h), se trata igual que el `401` global (§12.4): caché vacía y login con
-`reason=session_expired`.
+`reason=session_expired`. *(Revisión del PR #45)* Lo hace la salida de sesión única de §6.4.2,
+también cuando la sesión falta después de un `clear()` que no hizo el manejador.
+
+#### 6.4.1 Relectura de `/me` al entrar sin permiso (DD-F34, INV-F21; enmienda de F7)
+
+"Sin permiso" es el único estado de una ruta protegida que no hace ningún request. Si el permiso
+está concedido, la pantalla pide sus datos y un `401` la saca (§12.4). Si está denegado, la caché
+puede estar mostrando el permiso de una sesión que el servidor ya cerró (por ejemplo, otro
+Administrador desactivó al usuario, DD-41), y nada se lo avisa al cliente. Por eso el guard relee
+`/me` una vez antes de mostrar "Sin permiso".
+
+**Disparo.** Una relectura por **entrada**. Una entrada es el montaje de `RequirePermission` o un
+cambio de `location.pathname` mientras sigue montado: pasar de `/settings/company` a
+`/settings/users` es otra entrada y relee otra vez. La relectura se hace solo si al entrar el permiso
+en caché está **denegado**. Si estaba concedido, esa entrada no relee nunca, aunque el permiso se
+pierda después: esa pérdida ya viene de una lectura del servidor (el refetch al enfocar, o
+`invalidateQueries` tras un `403 forbidden`, §12.4), y la pantalla pasa directo a "Sin permiso".
+Un re-render por otra causa (la caché de la empresa, un toast, el foco) no es una entrada.
+
+**Una sola request.** La relectura es un `refetch` de la query `['session']` con
+`cancelRefetch: false`. Si ya hay un `GET /me` en curso (el refetch al enfocar, una invalidación, el
+doble efecto de `StrictMode` en desarrollo), se une a él en lugar de cancelarlo o de mandar otro
+(TanStack Query 5.104.3, `Query.fetch`). Usa la `queryFn` de `useSession`, que mapea el `401` a
+`null` (DD-F4). No tiene reintentos propios: valen los de §10.2 (hasta 2, solo con red o `503`). No
+hay *polling*.
+
+**Mientras relee.** En el lugar de la pantalla, dentro del shell, se ve el indicador "Comprobando tu
+acceso…": `role="status"`, `aria-busy="true"`, nombre accesible "Comprobando tu acceso", spinner
+`aria-hidden` con `motion-reduce:animate-none` y sin `<h1>`. Nunca se ven "Sin permiso" ni la
+pantalla. No es `SessionLoader`, porque `AppShell` ya pone el `<main>`. Sin conexión, la query queda
+en pausa: el indicador sigue, C-02 avisa y la relectura sale sola cuando vuelve la red (§12.1).
+
+**Resultado.**
+
+| Respuesta de `GET /me` | Qué ve el usuario |
+|---|---|
+| `401 unauthenticated` (sesión revocada o vencida) | `['session']` pasa a `null` y la transición de arriba hace el resto: `clear()` y login con `next=<ruta>` y `reason=session_expired`, con "Tu sesión se cerró. Ingresá de nuevo para seguir." (§12.4). Desde que empieza la salida, `RequireSession` muestra la pantalla de arranque hasta que aparece el login (§6.4.2); nunca se ve "Sin permiso" |
+| `200` con el permiso (rol ascendido) | La pantalla de la ruta |
+| `200` sin el permiso | "Sin permiso" (`ForbiddenState`) |
+| Red o `5xx`, después de los reintentos de §10.2 | `<h1>` "No pudimos comprobar tu acceso" (`PageHeader`), `ErrorState` con `messageForError(error, 'generic')` (título, descripción y, en `500`, `requestId`, como `RequireSession`), "Reintentar" y el enlace "Volver al inicio". "Reintentar" vuelve al indicador y relee con las mismas reglas. No se muestra "Sin permiso", que sin la lectura podría ser falso |
+
+**Foco y título.** El indicador no tiene `<h1>`, así que el foco y `document.title` cambian recién
+con el resultado (`RootLayout`, INV-F10): van al `<h1>` de "Sin permiso", de la pantalla o del
+error. Después de "Reintentar" el botón desaparece y el foco va al `<h1>` nuevo, con el mismo
+mecanismo que la recuperación de `RequireSession`.
+
+**Por qué `reason=session_expired`.** Ese valor lo pone la transición a `null`, no el guard.
+`/me` responde `401 unauthenticated` igual cuando el usuario fue desactivado que cuando la sesión
+venció (DD-44), así que el cliente no puede distinguirlos, y "Tu sesión se cerró" es cierto en los
+dos casos. Si el usuario está desactivado y prueba ingresar, el login responde `403
+account_disabled` con su propio texto (§12.2). `logged_out` y `password_changed` serían falsos, y
+cualquier otro valor no muestra aviso (§6.3).
+
+**Lo que no cambia.**
+
+- La carrera de `RequireSession` con las navegaciones al login: el guard está debajo de
+  `RequireSession`, que muestra `SessionLoader` mientras hay una salida de sesión en curso *(desde la
+  revisión del PR #45, con el registro de §6.4.2 y no con el estado del router)*.
+- El manejo del `403 forbidden` (§12.4) y "Sin permiso" en la misma URL.
+- La autorización, que sigue en el servidor (ADR-013).
+- El Administrador no hace ningún request de más: tiene el permiso concedido al entrar.
+
+**Límites aceptados.**
+
+- Una ruta sin `RequirePermission` y sin requests propios, como Ajustes, no se entera de la
+  revocación hasta el próximo request o el refetch al enfocar (§17).
+- Una entrada directa a una ruta denegada (recarga, URL escrita a mano o login con `next`) hace dos
+  `GET /me` seguidos: el de `RequireSession` y la relectura.
+
+Secuencia en §14.5.
+
+#### 6.4.2 Salida de la sesión (DD-F35, INV-F22; revisión del PR #45)
+
+Una **salida de sesión** es lo que pasa cuando la sesión se pierde o se cierra: se vacía la caché y
+se navega al login con un `reason`. La hace una sola función, `exitSession(client, reason)`
+(`lib/sessionExit.ts`). La sigue un solo registro por `QueryClient` con dos datos: si la pestaña
+**presentó una sesión** (`['session']` tuvo un usuario desde que cargó o desde la última llegada al
+login) y cuál es la **salida en curso**, si hay una. El registro no guarda `SessionInfo` (INV-F01).
+Antes, "estaba autenticado" vivía en dos lugares que no coincidían: el guard lo recordaba por
+instancia y el manejador por query. Después de un `clear()` que no hacía el manejador, la pantalla
+quedaba en "Cargando…" sin que nadie navegara.
+
+**Qué hace `exitSession`.** Si ya hay una salida en curso, nada: gana la primera, y por eso un `401`
+durante el logout no cambia `logged_out` por `session_expired`. Si no hay ninguna, en este orden:
+
+1. Lee `hasUnsavedChanges()`.
+2. Registra la salida (`to`, `state`, `navigating`).
+3. Ejecuta `queryClient.clear()` y `clearVerifyBannerDismissed()` (INV-F03). `clear()` también
+   cancela en silencio las lecturas en vuelo (TanStack Query 5: `QueryCache.remove` →
+   `Query.destroy` → `cancel({ silent: true })`). Por eso nadie hace un `cancelQueries` antes de la
+   salida *(ajuste de la implementación)*: abriría una espera en la que la salida todavía no está
+   registrada y un `401` podría empezar otra.
+4. Navega con `replace`.
+
+*(Ajustado en la implementación; S-F16 refutado)* **Cuándo termina.** La salida termina cuando el
+router vuelve a `idle` (`router.subscribe`, `navigation.state === 'idle'`), mirando
+`router.state.location`. La promesa de `router.navigate` no alcanza: con el chunk de `/login`
+cargando, la de una navegación interrumpida se resuelve recién cuando llega el chunk. Queda de
+respaldo para un router sin `subscribe` (el doble de `sessionErrors.test.ts`) y para una navegación
+que termina en el mismo tick, antes de que exista la suscripción. Con el router en `idle`:
+
+- **Llegó a `/login`.** Si no queda montado ningún componente que siga el registro
+  (`useSessionLifecycle`, que solo usa `RequireSession`), la salida se borra y la pestaña queda sin
+  sesión presentada. Si queda alguno, se borra cuando se desmonta el último. El router publica
+  `/login` antes de que React desmonte la pantalla protegida. Si la salida se borrara en ese
+  momento, el guard todavía montado vería "sin sesión y sin ninguna presentada" y pediría
+  `/login?next=…` sin `reason`.
+- **Terminó en otra ruta** (otra navegación la interrumpió, por ejemplo Atrás mientras carga el
+  login): la salida queda `stalled`.
+
+| Quién la empieza | Cuándo | `reason` | `next` | `state.unsavedChangesLost` |
+|---|---|---|---|---|
+| Manejador global (§12.4) | `401 unauthenticated` en cualquier request, o `['session']` recibe `null` con una sesión presentada (refetch, relectura de DD-F34) | `session_expired` | La ruta actual | Si había un guard de cambios activo (DD-F32) |
+| `RequireSession` | No hay sesión, la pestaña presentó una y no hay salida en curso | `session_expired` | La ruta actual | Igual |
+| `useLogout` | `204` de `POST /auth/logout` | `logged_out` | — | Nunca: con cambios, el usuario ya confirmó antes del `POST` (§13.8) |
+| `useConfirmPasswordReset` | `204` del restablecimiento | `password_changed` | — | Nunca |
+
+```mermaid
+stateDiagram-v2
+    [*] --> SinSesion
+    SinSesion --> Presentada : session con un usuario
+    Presentada --> Saliendo : exitSession
+    SinSesion --> Saliendo : exitSession
+    Saliendo --> SinSesion : llega a /login y se desmonta el guard
+    Saliendo --> Trabada : otra navegacion la interrumpe
+    Trabada --> Saliendo : RequireSession la retoma
+```
+
+**`RequireSession`.** Decide con el registro y con `['session']`, nunca con el estado del router. La
+salida queda registrada antes del `clear()`, así que el guard no tiene que adivinar si el router ya
+publicó la navegación. *(Ajustado en la implementación)* Tiene dos partes:
+
+- La externa mira solo el registro. Con una salida, muestra la pantalla de arranque y no monta nada
+  más.
+- La interna (`GuardedSession`) es la única que lee `['session']`, y existe solo sin salida.
+
+Por eso **durante una salida nadie lee la sesión**. No sale ningún `GET /me` hasta que el login
+monta `PublicOnly`, y una respuesta tardía o vieja no puede volver a marcar "presentó una sesión" en
+medio de la salida. Si la marcara, al llegar al login quedaría en `false` con un usuario en la
+caché.
+
+Se aplica la primera fila que corresponde:
+
+| Situación | Qué muestra |
+|---|---|
+| Salida `navigating` | La pantalla de arranque (`SessionLoader`), aunque la caché todavía tenga la sesión: ninguna pantalla se dibuja con la caché vaciándose |
+| Salida `stalled` | La pantalla de arranque, y retoma la salida (`resumeSessionExit`): mismo `to` y mismo `state` |
+| `isPending` | La pantalla de arranque |
+| `isLoadingError` | Error a pantalla completa con "Reintentar" (§6.4, sin cambios) |
+| Con sesión | La pantalla |
+| Sin sesión, con una sesión presentada | La pantalla de arranque, y `exitSession(client, 'session_expired')` desde un efecto |
+| Sin sesión y sin ninguna presentada | `<Navigate to="/login?next=<ruta actual>" replace>`, sin `reason` (primera carga, o Atrás después de llegar al login) |
+
+Ninguna fila espera algo que nadie va a hacer: una salida termina en el login o queda `stalled`, y
+una salida `stalled` se retoma.
+
+**Cambios sin guardar.** Ninguna salida pasa por el aviso de S-11: `useUnsavedChangesGuard` deja
+pasar las tres URL de salida (`isSessionExitRedirect`, INV-F18). Para cerrar sesión, el aviso va
+**antes** del `POST` (§13.8). Después del `204` la sesión ya no existe, y "Quedarme" no conservaría
+nada que se pudiera guardar.
+
+**Qué reemplaza.** En `RequireSession`, el estado `wasAuthenticated` y la rama que miraba
+`useNavigation`. En el manejador, la marca por query (`WeakSet`) y la bandera `redirecting`. Las
+comprobaciones del manejador sobre la ruta actual y una navegación pendiente a `/login` se quedan.
+
+**Límites aceptados.** Desde que empieza una salida, la pantalla de arranque reemplaza al shell hasta
+que se pinta el login (lo que tarda su chunk). *(Ajustado en la implementación)* El primer `GET /me`
+después de una salida es el de `PublicOnly` en el login, como antes de esta revisión. Si el servidor
+todavía responde una sesión, `PublicOnly` lleva a `next` (§6.4). Si algo frenara siempre la
+navegación a `/login`, la salida quedaría trabada (RF-19). Hoy no pasa: el único bloqueador deja
+pasar las URL de salida (INV-F18), y uno que viva debajo de `RequireSession` se desmonta al empezar
+la salida.
 
 ---
 
@@ -456,7 +692,7 @@ después de 24 h), se trata igual que el `401` global (§12.4): caché vacía y 
 | BR-F10 | Todo botón de envío queda deshabilitado y con texto de progreso mientras la operación está en curso (sin doble envío). Salir de Datos de la empresa con cambios sin guardar, o mientras se prepara o sube el logo, pide confirmación. | Casos borde |
 | BR-F11 | Si el email de una invitación rechazada con `409 email_taken` coincide con un usuario **desactivado** de la lista, se sugiere "Es de {nombre}, que está desactivado. Podés reactivarlo desde la lista". | DD-21 |
 | BR-F12 | Al aceptar una invitación con otra sesión abierta en el navegador se avisa: "Tenés una sesión abierta como {email}. Si aceptás, se va a cerrar." | Casos borde |
-| BR-F13 | Un logo que supera los límites del servidor (tamaño o dimensiones) se achica en el navegador antes de subirlo; un JPEG siempre se vuelve a codificar para aplicar la orientación y quitar los metadatos de la foto (ubicación GPS, modelo del celular). El usuario ve "Preparando la imagen…" y, si se achicó (el original superaba los límites o hubo que bajar calidad o resolución para que entrara), "Lo achicamos para que pese menos"; un JPEG que solo se volvió a codificar muestra "Logo actualizado." (P-F21). El servidor sigue siendo quien acepta o rechaza. | P-F2, P-F6, DD-11, DD-31, DD-F20, DD-F21 |
+| BR-F13 | Un logo que supera los límites del servidor (tamaño o dimensiones) se achica en el navegador antes de subirlo; un JPEG siempre se vuelve a codificar para aplicar la orientación y quitar los metadatos de la foto (ubicación GPS, modelo del celular), y el archivo que se sube tampoco lleva los metadatos que agrega el navegador al codificar *(revisión del PR #45, P-F25)*. El usuario ve "Preparando la imagen…" y, si se achicó (el original superaba los límites o hubo que bajar calidad o resolución para que entrara), "Lo achicamos para que pese menos"; un JPEG que solo se volvió a codificar muestra "Logo actualizado." (P-F21). El servidor sigue siendo quien acepta o rechaza. | P-F2, P-F6, DD-11, DD-31, DD-F20, DD-F21, DD-F36 |
 | BR-F14 | *(Revisión 4, P-F8)* Con `user.email_verified = false`, todo lo que emite una invitación aparece **deshabilitado con el motivo visible** ("Confirmá tu email para invitar a tu equipo.") y el botón "Reenviar email de confirmación" al lado (aviso W, `VerifyToInviteNotice`): "+ Invitar" y el "Invitar" del estado vacío (S-09), "Invitá a tu equipo" (S-07), "Reenviar invitación" de un invitado y "Reactivar" de un desactivado que nunca aceptó (S-09); S-10 muestra el aviso en lugar del formulario. Mismo patrón que BR-F02. Es UX: el servidor decide (`403 email_not_verified`, §12.2) y la UI maneja su rechazo (INV-F06). | DD-46, INV-37 (plan), DD-F28 |
 
 ---
@@ -564,14 +800,17 @@ Propiedades que se rompen **sin que falle la compilación**. Cada una tiene un t
 | INV-F10 | Al cerrar un diálogo o menú, el foco vuelve al control que lo abrió; al cambiar de ruta, el foco va al `<h1>` de la pantalla nueva. | T-F106, T-F503 |
 | INV-F11 | Todo campo tiene `<label>` asociado; todo error de campo está enlazado con `aria-describedby`; los errores generales se anuncian (`role="alert"`). | Tests por rol/nombre accesible + axe |
 | INV-F12 | Ningún componente formatea fechas o dinero por su cuenta: usa `lib/format` con la zona horaria de la empresa (ADR-023). Sin sesión no hay empresa: S-02 (hora de reintento, `formatRetryAt`) y la vista previa de una invitación usan la zona del navegador, como dice ADR-023 (enmienda de F1, P-F17). | Revisión + T-F501, T-F101 |
-| INV-F13 | Lo que la UI sube como logo es PNG o JPEG, ≤ 2000 px por lado y ≤ `LOGO_TARGET_MAX_BYTES` (2 097 152 bytes, el límite exacto del archivo en el servidor, DD-31); un JPEG subido nunca conserva metadatos EXIF (se vuelve a codificar). El cliente usa los mismos límites que el servidor, que igual decide (INV-24 del plan). | T-F604, T-F706 |
+| INV-F13 | Lo que la UI sube como logo es PNG o JPEG, ≤ 2000 px por lado y ≤ `LOGO_TARGET_MAX_BYTES` (2 097 152 bytes, el límite exacto del archivo en el servidor, DD-31); un JPEG subido nunca lleva metadatos: se vuelve a codificar (DD-F21) y, *(revisión del PR #45, P-F25; DD-F36)* del resultado, se quitan los segmentos que agrega el codificador del navegador. Antes del primer `SOS` quedan solo `APP0` (`JFIF`), `APP2` (`ICC_PROFILE`) y `APP14` (`Adobe`), y ningún `COM`. El cliente usa los mismos límites que el servidor, que igual decide (INV-24 del plan). Se rompe sin que falle la compilación si `encodeBitmap` deja de pasar el JPEG por `withoutJpegMetadata`, si la lista de lo que queda crece sin revisar DD-F36, o si un JPEG que no se puede recorrer sube tal cual en lugar de contar como un paso que no entró | T-F604, T-F706, T-F707 (`jpegMetadata.test.ts`, `canvas.test.ts`) |
 | INV-F14 | El logo se muestra siempre con la URL versionada `/api/v1/tenant/logo?v={id}-{updated_at}` (parámetro `v` del contrato, ignorado por el servidor): al cambiar el logo o la empresa, cambia la URL. | T-F603 |
 | INV-F15 | *(Revisión 3)* El body de `PATCH /tenant` solo lleva claves de `TenantUpdate` que cambiaron; `name` y `timezone` nunca van como `null`; `base_currency` nunca va (DD-43; el servidor responde `400` ante una clave desconocida o un `null` en esos campos). | T-F602 |
 | INV-F16 | *(Revisión 4)* El manejador global de `403` (§12.4) dispara **solo** con `code = forbidden`. El `403 email_not_verified` (DD-46) lo maneja la pantalla que invitó: nunca muestra "Sin permiso" ni "No tenés permiso para hacer esto.". Se rompe sin que falle la compilación si el manejador pasa a mirar `status === 403`. | T-F104, T-F504 |
 | INV-F17 | *(Enmienda DD-F31)* Ningún texto dice que se reenvió la confirmación sin una lectura de `/me` posterior al `202` que traiga `email_verified = false`. Se rompe sin que falle la compilación si el hook vuelve a resolver con el `202` solo o lee `/me` de la caché. | T-F404, T-F405, T-F502 |
-| INV-F18 | *(Enmienda de F0, DD-F32)* Ninguna navegación de sesión vencida (§12.4, §6.4) queda frenada por un aviso de cambios sin guardar. La URL sale siempre de `sessionExpiredLoginPath`, y todo bloqueo de salida usa `useUnsavedChangesGuard`: `useBlocker` no se importa en ningún otro archivo (`no-restricted-imports`). Se rompe sin que falle la compilación si un formulario usa `useBlocker` directo o si el manejador arma la URL a mano. | T-F103, T-F602, lint (T-F605) |
+| INV-F18 | *(Enmienda de F0, DD-F32; ampliada en la revisión del PR #45, DD-F35)* Ninguna navegación de salida de sesión (`session_expired`, `logged_out` o `password_changed`; §6.4.2, §12.4) queda frenada por un aviso de cambios sin guardar. La URL sale siempre de `sessionExitPath` (con `session_expired`, de `sessionExpiredLoginPath`), y todo bloqueo de salida usa `useUnsavedChangesGuard`, que deja pasar `isSessionExitRedirect`: `useBlocker` no se importa en ningún otro archivo (`no-restricted-imports`). Se rompe sin que falle la compilación si un formulario usa `useBlocker` directo, si el manejador o el logout arman la URL a mano, o si el bloqueador vuelve a dejar pasar solo `session_expired`. | T-F103, T-F602, lint (T-F605), T-F707 (cerrar sesión con cambios, `CompanyUnsavedChanges.test.tsx`) |
 | INV-F19 | *(Enmienda de F4, P-F20)* Todo mensaje con anuncio cortés (`role="status"` o `aria-live="polite"`) que aparece sin mover el foco se escribe en una región que ya estaba en el DOM, vacía, desde que se montó su contenedor: cambia el contenido, nunca el nodo. La región es `LiveRegion` (§15.1), una por lugar donde aparece el mensaje, y no contiene otra región viva; mientras la acción está pendiente se vacía, así un resultado igual al anterior se vuelve a anunciar. Excepciones: un error con `role="alert"` (`FormAlert` de error, `FieldError`, `LockedNotice`) puede montarse con su texto; un mensaje presente al entrar a la pantalla no se anuncia (se lee después del `<h1>`, INV-F10); los toasts los anuncia `sonner`, cuyo contenedor está siempre montado. Se rompe sin que falle la compilación si un componente monta `{texto && <p aria-live="polite">…}` o un `FormAlert` de éxito junto con su texto. | T-F106, T-F404, T-F405, T-F502, T-F603 (la región existe vacía antes del mensaje y es el mismo nodo después) + T-F705 (lector de pantalla, con NVDA) |
 | INV-F20 | *(Enmienda de F6, P-F22)* La caché `['tenant']` no retrocede: una respuesta leída o confirmada antes que otra que ya se escribió nunca la reemplaza. Los cambios de la empresa (`PATCH /tenant`, `PUT` y `DELETE /tenant/logo`) comparten la cola `TENANT_CHANGES_SCOPE`: cada uno sale después de la respuesta del anterior, y así el orden de las respuestas es el de los `COMMIT`. La mutación que escribe su respuesta cancela antes las lecturas de `['tenant']` en vuelo (DD-F33). Se rompe sin que falle la compilación si una de esas mutaciones pierde el `scope`, si una mutación nueva escribe `['tenant']` sin él, o si la respuesta se escribe sin cancelar. Cancelar **después** de escribir no la rompe con TanStack Query 5.104.3 (el `revert` restaura la respuesta recién escrita, S-F15), pero eso depende de un detalle interno de la librería: el orden es el de DD-F33, cancelar y después escribir. | T-F602, T-F603. El orden de la cancelación no lo fija ninguna prueba de comportamiento (para lo que queda en la caché, el inverso es un mutante equivalente en 5.104.3, S-F15) y no se agrega un test que espíe el orden de las llamadas (DD-F33): lo cuidan DD-F33, la revisión de código y §29 |
+| INV-F21 | *(Enmienda de F7, DD-F34)* Si una entrada a una ruta con permiso (montaje de `RequirePermission` o cambio de pathname) empieza con el permiso en caché denegado, el guard no muestra "Sin permiso" hasta que termine un `GET /me` de esa entrada, iniciado al entrar o ya en curso; mientras tanto se ve "Comprobando tu acceso…". Cada entrada así hace como mucho un `GET /me`, más los reintentos de §10.2, y una entrada con el permiso concedido no hace ninguno. Se rompe sin que falle la compilación si el guard vuelve a decidir solo con `useCan`, si relee en cada render, si usa `invalidateQueries` o `refetch()` con `cancelRefetch: true` (cancela la lectura en curso y manda otra) o si relee cuando el permiso se pierde sin una entrada nueva | `routeGuards.test.tsx` (T-F707); `UsersPage.test.tsx` (un solo `/me` al bajarse el rol a uno mismo); fila de la desactivación de T-F702 |
+| INV-F22 | *(Revisión del PR #45, DD-F35)* Ninguna pantalla protegida queda esperando una navegación que nadie hace. Con una salida de sesión en curso, `RequireSession` muestra la pantalla de arranque, y la salida termina en `/login` o se retoma. Sin sesión, sale: con `session_expired` si la pestaña presentó una, sin `reason` si no. "La pestaña presentó una sesión" y "hay una salida en curso" viven en un solo registro por `QueryClient`, que escriben solo `lib/sessionExit.ts` (`exitSession`, la reanudación y la llegada al login) y la llegada de un usuario a `['session']`; ninguna otra pieza (guard, manejador, hook) guarda su propia copia. Un `401` o un `null` durante una salida no cambian su `reason`. *(Ajustado en la implementación)* Durante una salida nada lee `['session']`: `RequireSession` no monta su parte que usa `useSession`. `useSessionLifecycle` se usa solo dentro de `RequireSession`, y su suscripción cambia solo al montar y desmontar: la salida que llegó al login se borra cuando se desmonta el último componente que lo usa. Uno que siguiera montado en el login la dejaría registrada para siempre: el próximo login vería la pantalla de arranque y `exitSession` no volvería a actuar. Se rompe sin que falle la compilación si un guard o un hook vuelve a recordar "estaba autenticado" por su cuenta, si algo hace `clear()` por fin de sesión y navega sin `exitSession`, si el guard vuelve a decidir con el estado del router, si vuelve a leer la sesión durante una salida o si otro componente usa `useSessionLifecycle` | `routeGuards.test.tsx`, "leaving the session" (T-F707; G1: `/me` una sola vez); revisión (dónde se usa `useSessionLifecycle`); `CompanyUnsavedChanges.test.tsx` (cerrar sesión con cambios); `logout.test.tsx`; `logoutMenuRace.test.tsx`; `session.test.tsx` |
+| INV-F23 | *(Revisión del PR #45, P-F24 (4))* Los componentes pintan con los tokens de §19.1, también en `hover`, `focus` y `disabled`: ninguna clase usa la paleta de Tailwind con escala (`blue-700`, `red-600`, `slate-500`…). Un estado con texto encima usa su token opaco, no el color base con opacidad. Se rompe sin que falle la compilación si un componente vuelve a escribir un color de la paleta (lo frena `no-restricted-syntax`) o si un `hover` con texto usa `/90` (no lo frena el lint: lo cuidan la revisión y T-F705) | `colorTokens.test.ts` y `npm run lint` (T-F707); contraste en T-F705 |
 
 ---
 
@@ -587,6 +826,8 @@ Propiedades que se rompen **sin que falle la compilación**. Cada una tiene un t
 | Plantillas de rubro | Server state | Query `['industry-templates']` | Pública; cambia muy poco |
 | Vista previa de invitación | Server state | Query `['invitation-preview', token]` | `POST` de solo lectura (el token viaja en el body); `gcTime` corto |
 | Permiso "¿puede X?" | Derivado | `useCan(p)` lee `['session']` | No se guarda |
+| Entrada ya comprobada por el guard de permiso y error de su relectura (DD-F34) | Client local | Estado de `usePermissionCheck`, dentro de `RequirePermission` | Se reinicia en cada entrada (pathname). No copia la sesión: el permiso se sigue leyendo de `['session']` (INV-F01) |
+| Sesión presentada en la pestaña y salida de sesión en curso (DD-F35, revisión del PR #45) | Client global | Registro por `QueryClient` en `lib/sessionExit.ts`, leído con `useSessionLifecycle()` | Un booleano y la salida (`to`, `state`, `navigating` o `stalled`). Nunca `SessionInfo` (INV-F01). Lo escriben `exitSession` y la llegada de un usuario a `['session']`; se borra cuando la navegación llegó a `/login` y ya no queda montado ningún `RequireSession` (§6.4.2) |
 | ¿Es el único admin activo? | Derivado | `countActiveAdmins(users)` | No se guarda |
 | ¿Puede invitar? (revisión 4, BR-F14) | Derivado | `useInviteBlockedReason()` lee `session.user.email_verified` | No se guarda |
 | `next`, `reason` | URL state | Query string de `/login` | |
@@ -600,7 +841,10 @@ Propiedades que se rompen **sin que falle la compilación**. Cada una tiene un t
 | Toasts | Client global | `sonner` (`<Toaster/>` en `RootLayout`) | Librería traída por shadcn |
 
 **No hay store global** (ni Context propio de datos): la única información que varias ramas
-necesitan (sesión, permisos, empresa) es server state y ya la comparte la caché (ADR-018).
+necesitan (sesión, permisos, empresa) es server state y ya la comparte la caché (ADR-018). El
+registro de la salida de sesión (DD-F35) no es un store de datos: guarda si la pestaña presentó una
+sesión y la salida en curso, nunca datos del servidor, como el contador de cambios sin guardar de
+DD-F32.
 
 ### 10.2 Configuración de TanStack Query
 
@@ -1004,9 +1248,13 @@ Detalles:
   falta de permiso, lo muestra la pantalla que invitó (§12.2) y no pasa por `onForbidden`. Un
   `401` en una acción de administración porque al actor lo desactivaron mientras tanto (DD-44) es
   un `401 unauthenticated` más: vuelve al login.
-- Si varias queries fallan a la vez, la navegación ocurre una sola vez (la segunda llamada ve que
-  ya está en `/login`).
+- Si varias queries fallan a la vez, la navegación ocurre una sola vez: la primera empieza la salida
+  de sesión y las siguientes la encuentran en curso (DD-F35). Una salida que ya empezó no cambia de
+  `reason`.
 - `next` = ruta + query de la pantalla actual (sin fragmento).
+- *(Enmienda de F7, DD-F34)* El `401` también puede llegar por la relectura de `/me` que hace
+  `RequirePermission` cuando se entra con el permiso en caché denegado (§6.4.1, §14.5). Es la
+  transición a `null` de §6.4 y termina igual: login con `reason=session_expired`.
 - **Lo que se pierde** (DD-F5): si el `401` llega al **enviar** un formulario, lo cargado se
   pierde en 001 (formularios de ≤ 7 campos); `next` devuelve a la misma pantalla. Las specs con
   formularios largos (005 presupuestos, 007 operaciones) definen en su `ui.md` un borrador en
@@ -1019,6 +1267,10 @@ Detalles:
   unsavedChangesLost: true }` y el login suma "Los cambios que no habías guardado se perdieron.".
   Si el aviso estaba abierto, se cierra. `next` es la pantalla actual, no el destino que el aviso
   había frenado.
+- *(Revisión del PR #45, DD-F35)* El manejador no vacía la caché ni navega por su cuenta: llama a
+  `exitSession(client, 'session_expired')`, la misma función del logout y del restablecimiento
+  (§6.4.2). El `null` de `['session']` lo dispara si la pestaña presentó una sesión, aunque la query
+  sea nueva después de un `clear()`.
 
 ### 12.5 Límites de error (*error boundaries*)
 
@@ -1202,7 +1454,7 @@ Sin campo "repetir contraseña": el control de mostrar/ocultar cumple esa funci�
 | Carga | N/A (no hay vista previa: el token se valida al enviar) |
 | Error | `token_invalid` → estado Enlace inválido: "Este enlace ya no sirve. Vence a la hora o ya se usó." + "Pedir un enlace nuevo". `422` (`too_short`, `too_long`, `same_as_email`) en el campo; `429` (mismo cupo por IP que S-03, §11.1), `503`, `500`, red |
 | Enviando | "Guardando…" |
-| Éxito | `204` → `clear()` → `replace` a `/login?reason=password_changed` |
+| Éxito | `204` → salida de sesión (`exitSession`, `password_changed`, DD-F35): `clear()` → `replace` a `/login?reason=password_changed` |
 | Sin permiso / Sesión vencida | N/A (si había una sesión del mismo usuario, el backend la cerró; por eso `clear()`) |
 
 ### 13.5 S-05 Confirmar email (`/verify-email#token=`) · US-1.3, DD-13
@@ -1325,11 +1577,28 @@ toast (DD-F31).
 | Carga / Vacío | N/A (usa `['session']`) |
 | Error | Cerrar sesión con error de red: toast "No pudimos cerrar la sesión. Revisá tu conexión." y se queda (la cookie sigue válida en el servidor: no se finge un cierre) |
 | Enviando | "Cerrando sesión…" |
-| Éxito | `204` → `clear()` → `replace` a `/login?reason=logged_out` |
+| Éxito | `204` → salida de sesión (`exitSession`, `logged_out`, DD-F35): `clear()` → `replace` a `/login?reason=logged_out`. Desde el `204` hasta que aparece el login se ve la pantalla de arranque (§6.4.2) |
 | Sin permiso | El Operador no ve la sección "Tu empresa" (BR-F04) |
 | Sesión vencida | §12.4 |
 
 En escritorio, "Cerrar sesión" también está en el menú del usuario de la barra lateral.
+
+*(Revisión del PR #45, P-F24 (2))* **Con cambios sin guardar** (un `useUnsavedChangesGuard` activo,
+`hasUnsavedChanges()`; hoy solo S-11, a la que se llega con el menú de escritorio), "Cerrar sesión"
+abre primero el aviso de salida. Es un `ConfirmDialog` con el título y la descripción del aviso de
+S-11 ("Tenés cambios sin guardar. ¿Salir igual?" / "Si salís ahora, se pierden los cambios que
+todavía no se guardaron."), los botones "Quedarme" y "Cerrar sesión" (destructivo) y el mismo foco
+inicial que el de S-11.
+
+- **"Quedarme"**: cierra el aviso sin mandar nada, y el foco vuelve al botón del menú del usuario
+  (INV-F10).
+- **"Cerrar sesión"**: manda el `POST`. Con el `204`, la salida no vuelve a preguntar (INV-F18) y el
+  login no suma la línea de cambios perdidos, porque el usuario eligió descartarlos.
+- **Si el `POST` falla**: el toast de error, y la pantalla sigue con lo escrito, como sin cambios.
+
+El aviso se abre con el menú ya cerrado, para que el foco no se pierda entre los dos componentes de
+Radix. Antes de esta revisión, el aviso de S-11 frenaba la navegación después del `204`, y
+"Quedarme" dejaba la pantalla montada sin sesión.
 
 ### 13.9 S-09 Usuarios (`/settings/users`) · US-3, FR-005, FR-008
 
@@ -1448,7 +1717,7 @@ Para un invitado, {nombre} es su email (`name` es `null` hasta que acepta).
 | Acción en curso | El ítem del menú y el botón del diálogo muestran progreso; el resto de la lista sigue usable |
 | Éxito de acción | Diálogo cerrado, foco de vuelta al `⋮` de esa fila, toast: "{nombre} ahora es Administrador" / "…ahora es Operador" / "Desactivaste a {nombre}" / "Reactivaste a {nombre}" o "Le enviamos una invitación nueva a {email}" (si volvió a `invited`) / "Reenviamos la invitación a {email}" |
 | Error de acción | `last_admin`, `invalid_state`, `not_found` según §12.2 (con refresco de la lista); `403 forbidden` → Sin permiso. *(Revisión 4)* "Reenviar invitación" o "Reactivar" → `429` (cupo compartido por empresa y por IP, DD-48): toast "Por ahora no podemos enviar más invitaciones." con la espera (DD-F29); el diálogo se cierra y la lista no se vuelve a pedir. "Reenviar invitación" → `403 email_not_verified`: toast con el texto de §12.2 y `/me` pedido de nuevo (nunca "Sin permiso", INV-F16) |
-| Sin permiso | Guard: "No tenés acceso a esta sección" (Operador por URL, o Administrador al que le bajaron el rol mientras miraba) |
+| Sin permiso | Guard: "No tenés acceso a esta sección" (Operador por URL, o Administrador al que le bajaron el rol mientras miraba). *(Enmienda de F7, DD-F34)* Si al entrar el permiso en caché ya estaba denegado, antes se ve "Comprobando tu acceso…" mientras se relee `/me` (§6.4.1): con un `401`, va al login en lugar de "Sin permiso" |
 | Sesión vencida | §12.4. Si el Administrador se desactivó a sí mismo, el siguiente request da `401` y cae acá. También si otro Administrador lo desactivó mientras hacía una acción: el servidor relee al actor bajo el lock de la empresa y responde `401` (DD-44, revisión 4) |
 
 ### 13.10 S-10 Invitar usuario (`/settings/users/invite`) · US-3.1, DD-5, DD-21, DD-26
@@ -1641,6 +1910,16 @@ Reglas:
   datos del dispositivo que no deben terminar en un logo que se envía a clientes. El servidor no lo
   hace por su cuenta (guarda los bytes tal cual, INV-24 del plan): si lo sube otro cliente, el
   riesgo queda aceptado del lado del backend (R-13 del plan).
+- *(Revisión del PR #45, P-F25; DD-F36)* **Sin metadatos del codificador**: volver a codificar
+  quita los metadatos de la foto, porque el canvas solo recibe píxeles. Pero el codificador del
+  navegador puede agregar los suyos: WebKit de macOS (ImageIO de Apple) escribe un `APP1`/`Exif` de
+  76 bytes sin datos de la foto, y Chromium y WebKit de Linux no escriben ninguno. Por eso
+  `encodeBitmap` pasa todo JPEG por `withoutJpegMetadata` (`logo/jpegMetadata.ts`, pura). Antes del
+  primer `SOS` deja solo `APP0` (`JFIF`), `APP2` (`ICC_PROFILE`) y `APP14` (`Adobe`), que cambian
+  cómo se decodifica la imagen, y quita los demás `APPn` y todo `COM`. Desde el `SOS` copia los bytes
+  sin tocarlos. Si no hay nada que quitar, devuelve el mismo `Blob`. Si el JPEG no se puede recorrer
+  hasta el `SOS`, el paso falla y cuenta como uno que no entró: nunca sube tal cual. El servidor sigue
+  sin tocar los bytes (DD-11).
 - **PNG que no cumple**: se vuelve a codificar como **PNG** (conserva la transparencia: el canvas
   arranca transparente y no se pinta fondo).
 - **JPEG que no cumple**: se codifica como **JPEG** (no tiene transparencia; convertirlo a PNG lo
@@ -1649,8 +1928,9 @@ Reglas:
   'from-image' })` (Chrome 112, Firefox 111, Safari 16: NFR-F02); cada paso de la escalera dibuja
   ese bitmap en un `<canvas>` del tamaño destino con `imageSmoothingQuality = 'high'` y codifica con
   `canvas.toBlob(tipo, calidad)`. Al terminar se libera (`bitmap.close()`).
-- **Un paso "entra"** si el `Blob` resultante pesa ≤ 2 097 152 bytes (y, por construcción, su lado
-  mayor es ≤ 2000). Si un paso falla al codificar (`toBlob` devuelve `null` o lanza), cuenta como
+- **Un paso "entra"** si el `Blob` resultante, ya sin metadatos (DD-F36), pesa ≤ 2 097 152 bytes (y,
+  por construcción, su lado mayor es ≤ 2000). Si un paso falla al codificar (`toBlob` devuelve `null`
+  o lanza, o *(P-F25)* su JPEG no se puede recorrer hasta el `SOS`), cuenta como
   que no entró y se prueba el siguiente; si no entra ninguno, `cannot_shrink` (P-F21).
 - **Resultado**: un `File` (`logo.png` o `logo.jpg`, el nombre no importa: el servidor genera la
   clave) que va a `putTenantLogo` como única parte `file`. El servidor vuelve a validar tipo,
@@ -1673,7 +1953,13 @@ Mensajes (en el control del logo, `role="alert"`; no hay request):
 **Cómo se prueba**: las funciones puras (firma, dimensiones, plan, escalera, incluidos los bordes
 2 097 152 / 2 097 153 bytes) con tablas de bytes en Vitest (T-F604); la pantalla con el adaptador
 de canvas sustituido, porque jsdom no tiene `createImageBitmap` ni canvas (T-F603); el adaptador
-real con imágenes de verdad en Playwright, Chromium y WebKit (T-F706).
+real con imágenes de verdad en Playwright, Chromium y WebKit (T-F706). *(Revisión del PR #45,
+P-F25)* `withoutJpegMetadata` se prueba con tablas de bytes. `encodeBitmap` se prueba en jsdom con
+el codificador del navegador sustituido (`getContext` y `toBlob` del prototipo de
+`HTMLCanvasElement`) por uno que devuelve un JPEG con el `APP1` de WebKit de macOS (T-F707). El CI
+corre WebKit de Linux, cuyo codificador no agrega metadatos, así que ahí el E2E no distingue si
+`encodeBitmap` los quita. La corrida de T-F706 en WebKit de macOS se hace a mano antes de liberar y
+se reporta.
 
 ### 13.12 S-12 No encontrado (`*`)
 
@@ -1913,6 +2199,46 @@ sequenceDiagram
         Q-->>P: clear de la caché, que vacía también la cola
         P-->>A: login con Los cambios que no habías guardado se perdieron, el PATCH no sale
     end
+```
+
+### 14.5 Entrar a una sección de Administrador con el permiso denegado en caché (DD-F34, T-F702)
+
+El Operador tiene la app abierta en el panel, y otro Administrador lo desactiva desde otro
+navegador. El backend revoca su sesión (DD-41), pero la caché del Operador todavía tiene su
+`SessionInfo`. Contrato completo en §6.4.1.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor O as Operador
+    participant R as Router
+    participant G as RequirePermission
+    participant Q as TanStack Query
+    participant H as Manejador global
+    participant API as /api/v1
+
+    O->>R: navega a /settings/users sin recargar
+    R->>G: monta el guard con el permiso en caché denegado
+    G-->>O: Comprobando tu acceso
+    G->>Q: refetch de session sin cancelar una lectura en curso
+    Q->>API: GET /me
+    alt sesión revocada o vencida
+        API-->>Q: 401 unauthenticated
+        Q->>H: session pasa a null
+        H->>Q: queryClient.clear()
+        H->>R: navigate a /login con next y reason session_expired, replace
+        R-->>O: Ingresar con el aviso Tu sesión se cerró
+    else 200 con settings.manage
+        API-->>Q: SessionInfo con el permiso
+        G-->>O: la pantalla de la ruta
+    else 200 sin settings.manage
+        API-->>Q: SessionInfo sin el permiso
+        G-->>O: No tenés acceso a esta sección
+    else red o 5xx después de los reintentos de la query
+        API-->>Q: error
+        G-->>O: No pudimos comprobar tu acceso, con Reintentar y Volver al inicio
+    end
+```
 
 ---
 
@@ -2111,8 +2437,8 @@ export interface LogoUploaderProps {
 | Componente | Responsabilidad | Hooks que usa |
 |---|---|---|
 | `RootLayout` | `<Outlet/>`, `<Toaster/>`, `<OfflineBanner/>`, `<ScrollRestoration/>`, foco al `<h1>` al cambiar de ruta | `useLocation` |
-| `RequireSession`, `PublicOnly`, `RequirePermission` | Guards (§6.4) | `useSession`, `useCan` |
-| `AppShell` | Encabezado, avisos, navegación inferior/lateral, `<main id="main">` | `useSession`, `useTenant`, `useCan`, `useResendEmailVerification` |
+| `RequireSession`, `PublicOnly`, `RequirePermission` | Guards (§6.4). `RequirePermission` además relee `/me` cuando se entra con el permiso en caché denegado (§6.4.1, DD-F34). `RequireSession` sigue la salida de sesión (§6.4.2, DD-F35) | `useSession`, `useCan`, `usePermissionCheck`, `useSessionLifecycle` |
+| `AppShell` | Encabezado, avisos, navegación inferior/lateral, `<main id="main">`, "Cerrar sesión" del menú con su aviso (§13.8) | `useSession`, `useTenant`, `useCan`, `useResendEmailVerification`, `useLogoutRequest` |
 | `SignupPage`, `LoginPage`, `ForgotPasswordPage`, `ResetPasswordPage`, `VerifyEmailPage`, `AcceptInvitationPage` | Pantallas S-01..S-06 | los de §15.4 |
 | `DashboardPage`, `SettingsPage`, `UsersPage`, `InviteUserPage`, `CompanyPage`, `NotFoundPage` | Pantallas S-07..S-12 | los de §15.4; `CompanyPage` además `prepareLogo` |
 
@@ -2123,6 +2449,24 @@ export interface LogoUploaderProps {
 export function useSession(): UseQueryResult<SessionInfo | null, ApiError>;  // 401 → null
 export function useCurrentSession(): SessionInfo;   // solo dentro de RequireSession; lanza si no hay
 export function useCan(permission: Permission): boolean;
+/** Enmienda de F7, DD-F34 (§6.4.1, INV-F21): estado de acceso de una entrada a una ruta con permiso.
+ *  entryKey = location.pathname; un entryKey nuevo (o el montaje) es una entrada nueva.
+ *  - 'granted' siempre que el permiso en caché esté concedido.
+ *  - Si al entrar está denegado, relee /me una vez: refetch de ['session'] con cancelRefetch: false,
+ *    que se une a una lectura en curso. Hasta que termina: 'checking' (también con la query en pausa
+ *    sin conexión). Un re-render no relee.
+ *  - Si al entrar estaba concedido, esa entrada no relee nunca: si el permiso se pierde, pasa directo
+ *    a 'denied'.
+ *  - Sin sesión en caché (null, o la caché recién vaciada): 'checking'. Decide RequireSession; el 401
+ *    lo maneja la transición a null (§6.4).
+ *  - retry: vuelve a 'checking' y relee con las mismas reglas.
+ *  Guarda solo la entrada comprobada y el error de su relectura, nunca la sesión (INV-F01). */
+export type PermissionCheck =
+  | { status: 'granted' }
+  | { status: 'checking' }
+  | { status: 'denied' }
+  | { status: 'failed'; error: ApiError; retry: () => void };
+export function usePermissionCheck(permission: Permission, entryKey: string): PermissionCheck;
 /** Revisión 4 (BR-F14, DD-46): 'email_not_verified' si session.user.email_verified = false; null si no.
  *  Es UX: el servidor decide (403 email_not_verified). */
 export function useInviteBlockedReason(): 'email_not_verified' | null;
@@ -2139,9 +2483,19 @@ export function useResendEmailVerification(): UseMutationResult<ResendVerificati
 // useIndustryTemplates: vive en api/industryTemplates.ts y este módulo la reexporta (enmienda de F3, P-F19)
 export function useSignup(): UseMutationResult<SessionInfo, ApiError, SignupRequest>;
 export function useLogin(): UseMutationResult<SessionInfo, ApiError, LoginRequest>;
-export function useLogout(): UseMutationResult<void, ApiError, void>;
+export function useLogout(): UseMutationResult<void, ApiError, void>;   // 204 → exitSession(client, 'logged_out') (DD-F35)
+/** "Cerrar sesión" del menú del shell y de S-08 (§13.8; revisión del PR #45). request(): con hasUnsavedChanges()
+ *  abre el aviso (confirming = true) sin mandar nada; si no, manda el POST. confirm() manda el POST desde el aviso;
+ *  cancel() lo cierra sin mandar nada. */
+export function useLogoutRequest(): {
+  logout: UseMutationResult<void, ApiError, void>;
+  confirming: boolean;
+  request: () => void;
+  confirm: () => void;
+  cancel: () => void;
+};
 export function useRequestPasswordReset(): UseMutationResult<void, ApiError, PasswordResetRequest>;
-export function useConfirmPasswordReset(): UseMutationResult<void, ApiError, PasswordResetConfirmRequest>;
+export function useConfirmPasswordReset(): UseMutationResult<void, ApiError, PasswordResetConfirmRequest>; // 204 → exitSession(client, 'password_changed')
 export function useConfirmEmailVerification(): UseMutationResult<void, ApiError, TokenRequest>;
 // useResendEmailVerification: en features/auth/session.ts desde la revisión 4
 export function useInvitationPreview(token: string | null): UseQueryResult<InvitationPreview, ApiError>; // deshabilitada si token = null
@@ -2177,7 +2531,15 @@ export function decodeImage(file: Blob): Promise<ImageBitmap>;             // im
 export function encodeBitmap(
   bitmap: ImageBitmap,
   options: { maxSide: number; format: 'image/png' | 'image/jpeg'; quality?: number },
-): Promise<Blob>;
+): Promise<Blob>;   // con 'image/jpeg', el Blob de toBlob pasado por withoutJpegMetadata (el mismo Blob si no había nada que quitar); rechaza si toBlob da null o lanza, o si el JPEG no se puede recorrer (DD-F36, P-F25)
+
+// features/tenant/logo/jpegMetadata.ts — pura; no usa Blob ni nada del navegador (DD-F36, INV-F13; revisión del PR #45, P-F25)
+/** Quita los segmentos de metadatos antes del primer SOS. Deja solo APP0 que empieza con 'JFIF\0', APP2 con
+ *  'ICC_PROFILE\0' y APP14 con 'Adobe'; quita todo otro APPn y todo COM, y descarta los bytes de relleno (FF FF).
+ *  Desde el primer SOS copia sin mirar. Si no quita nada, devuelve la misma instancia.
+ *  Lanza si no empieza con SOI, si un largo es < 2 o pasa el final, si llega a EOI o al final sin SOS, o si
+ *  donde va un marcador no hay FF. */
+export function withoutJpegMetadata(bytes: Uint8Array): Uint8Array;
 
 // features/tenant/logo/prepareLogo.ts — orquesta: tamaño → leer el archivo entero → firma → plan → decodificar una vez → escalera
 // Un archivo de más de LOGO_INPUT_MAX_BYTES se rechaza sin leerlo; el resto se lee entero, como image.DecodeConfig del servidor (P-F21)
@@ -2255,17 +2617,59 @@ export function applyServerFieldErrors<T extends FieldValues>(
   setError: UseFormSetError<T>, fieldErrors: FieldError[], knownFields: ReadonlyArray<Path<T>>,
 ): FieldError[];
 
-// lib/sessionExpiredRedirect.ts — DD-F32: única fuente de la URL de sesión vencida
+// lib/sessionExpiredRedirect.ts — DD-F32, DD-F35: única fuente de las URL de salida de sesión
 /** '/login?next=<pathname+search codificado>&reason=session_expired' (sin fragmento, §12.4). */
 export function sessionExpiredLoginPath(from: Pick<Location, 'pathname' | 'search'>): string;
 export function isSessionExpiredRedirect(to: Pick<Location, 'pathname' | 'search'>): boolean;
+export type SessionExitReason = 'session_expired' | 'logged_out' | 'password_changed';
+/** session_expired → sessionExpiredLoginPath(from); logged_out y password_changed → '/login?reason=<reason>', sin next. */
+export function sessionExitPath(reason: SessionExitReason, from: Pick<Location, 'pathname' | 'search'>): string;
+/** true si `to` es /login con una de las tres reason de salida (la usa useUnsavedChangesGuard, INV-F18). */
+export function isSessionExitRedirect(to: Pick<Location, 'pathname' | 'search'>): boolean;
 export interface SessionExpiredLoginState { unsavedChangesLost?: true }   // location.state de /login
 
+// lib/sessionExit.ts — DD-F35, INV-F22 (revisión del PR #45): la única salida de sesión; un registro por QueryClient (§6.4.2)
+export interface SessionExit {
+  to: string;                          // sessionExitPath(reason, router.state.location al empezar)
+  state?: SessionExpiredLoginState;    // { unsavedChangesLost: true } solo con session_expired y hasUnsavedChanges()
+  status: 'navigating' | 'stalled';    // stalled: su navegación terminó fuera de /login
+}
+export interface SessionLifecycle {
+  presented: boolean;                  // ['session'] tuvo un usuario desde la carga o desde la última llegada a /login
+  exit: SessionExit | null;
+}
+/** Lo que la salida necesita del router: el de createBrowserRouter/createMemoryRouter o el doble de sessionErrors.test.ts. */
+export interface SessionExitRouter {
+  state: {
+    location: Pick<Location, 'pathname' | 'search'>;
+    navigation?: { state?: string };   // el router real lo tiene (createSessionErrorHandlers también lee navigation.location)
+  };
+  navigate: (to: string, options: NavigateOptions) => Promise<void>;
+  /** El router real lo tiene; el doble de sessionErrors.test.ts, no (S-F16, ajuste de la implementación). */
+  subscribe?: (
+    listener: (state: { location: Pick<Location, 'pathname' | 'search'>; navigation: { state?: string } }) => void,
+  ) => () => void;
+}
+/** La llama createSessionErrorHandlers. Sin router registrado, exitSession lanza (error de programación). */
+export function attachSessionExitRouter(client: QueryClient, router: SessionExitRouter): void;
+/** Si ya hay una salida, no hace nada. Si no: lee hasUnsavedChanges(), registra la salida, clear() (que cancela
+ *  en silencio las lecturas en vuelo), clearVerifyBannerDismissed() y router.navigate(to, { replace: true, state }).
+ *  Termina con el router en idle (subscribe; la promesa de navigate, de respaldo: S-F16). Si router.state.location
+ *  es /login, exit = null y presented = false: enseguida o, con un useSessionLifecycle montado, cuando se desmonta
+ *  el último. Si no, status = 'stalled'. */
+export function exitSession(client: QueryClient, reason: SessionExitReason): void;
+/** Con una salida stalled, vuelve a navegar a su `to` con su `state` (status = 'navigating'). Si no, nada. */
+export function resumeSessionExit(client: QueryClient): void;
+/** La llama la suscripción de createAppQueryClient cuando ['session'] recibe un usuario. */
+export function markSessionPresented(client: QueryClient): void;
+export function sessionLifecycleOf(client: QueryClient): SessionLifecycle;   // fuera de React: QueryCache y manejador
+export function useSessionLifecycle(): SessionLifecycle;                     // useSyncExternalStore sobre el cliente de useQueryClient(), con un subscribe estable; solo dentro de RequireSession (INV-F22)
+
 // lib/unsavedChanges.ts — DD-F32, INV-F18: único archivo que importa useBlocker
-/** Bloquea la salida si `when` es true y el destino no es una redirección de sesión vencida.
+/** Bloquea la salida si `when` es true y el destino no es una salida de sesión (isSessionExitRedirect, DD-F35).
  *  Mientras está montado con `when` = true, hasUnsavedChanges() devuelve true. */
 export function useUnsavedChangesGuard(when: boolean): Blocker;
-export function hasUnsavedChanges(): boolean;   // lo lee el manejador de §12.4 antes de navegar
+export function hasUnsavedChanges(): boolean;   // lo leen exitSession antes de navegar y "Cerrar sesión" antes del POST (§13.8)
 
 // lib/verifyBannerDismissal.ts — enmienda de F4, P-F20: marca del aviso C-01 (§10.1)
 /** sessionStorage['crm.verifyBanner.dismissed'] = 'true'. Clave fija, sin email ni otro dato de la sesión (NFR-F09). */
@@ -2330,7 +2734,8 @@ export function formatRetryAt(retryAfterSeconds: number, now: Date): { time: str
 - **Autorización**: la hace el servidor en cada request. Los permisos de `/me` solo ocultan
   opciones (ADR-013, INV-F06).
 - **Vencimiento**: 24 h sin uso o 7 días (DD-10). El cliente no lleva un reloj propio: se entera
-  por el `401` del siguiente request o del refetch de `/me` al volver a la pestaña (§12.4). No hay
+  por el `401` del siguiente request, por el refetch de `/me` al volver a la pestaña (§12.4) o por la
+  relectura de `/me` al entrar a una ruta con el permiso en caché denegado (§6.4.1, DD-F34). No hay
   refresco silencioso: la política del backend no lo contempla (la sesión se extiende sola con el
   uso, hasta los 7 días).
 - **CSRF**: lo resuelve el backend (`Sec-Fetch-Site`/`Origin`, `SameSite=Lax`, JSON obligatorio;
@@ -2402,6 +2807,7 @@ Contrastes calculados contra el fondo indicado (a verificar con herramienta en T
 | `--card-foreground` / `--popover-foreground` | `#0F172A` | Texto sobre tarjetas | 17,8:1 |
 | `--primary` | `#2563EB` | Botón primario, enlaces, selección | 5,2:1 sobre blanco |
 | `--primary-foreground` | `#FFFFFF` | Texto sobre `primary` | 5,2:1 |
+| `--primary-hover` *(revisión del PR #45)* | `#1D4ED8` | Fondo del botón primario en `hover`, con texto `primary-foreground` | 6,7:1 con texto blanco |
 | `--secondary` | `#F1F5F9` | Botones secundarios | — |
 | `--secondary-foreground` | `#0F172A` | Texto sobre `secondary` | 16:1 |
 | `--muted` | `#F1F5F9` | Fondos atenuados, *skeletons* | — |
@@ -2409,6 +2815,7 @@ Contrastes calculados contra el fondo indicado (a verificar con herramienta en T
 | `--accent` | `#EFF6FF` | Hover/ítem activo de navegación | — |
 | `--accent-foreground` | `#1E40AF` | Texto del ítem activo | 8,1:1 sobre `accent` |
 | `--destructive` | `#DC2626` | Acciones destructivas, errores | 4,8:1 sobre blanco |
+| `--destructive-hover` *(revisión del PR #45)* | `#B91C1C` | Fondo del botón destructivo en `hover`, con texto blanco | 6,5:1 con texto blanco |
 | `--border` | `#E2E8F0` | Separadores decorativos | (decorativo) |
 | `--input` | `#64748B` | Borde de campos | 4,8:1 sobre blanco (≥ 3:1, 1.4.11) |
 | `--ring` | `#2563EB` | Anillo de foco | 5,2:1 |
@@ -2416,6 +2823,14 @@ Contrastes calculados contra el fondo indicado (a verificar con herramienta en T
 | `--success-muted` (propio) | `#ECFDF5` | Fondo de éxito | — |
 | `--warning` (propio) | `#92400E` | Texto de avisos (C-01, "Invitado", invitación vencida) | 7:1 sobre `warning-muted` |
 | `--warning-muted` (propio) | `#FFFBEB` | Fondo de avisos | — |
+
+*(Revisión del PR #45, P-F24 (4); INV-F23)* Los componentes usan solo estos tokens, también en
+`hover`, `focus` y `disabled`, y nunca un color de la paleta de Tailwind (`blue-700`). Un estado con
+texto encima tiene su token opaco: `bg-primary/90` o `bg-destructive/90` sobre blanco bajan el
+contraste del texto a ~4,3:1, menos que AA. Los dos tokens de `hover` se exponen como colores de
+Tailwind (`bg-primary-hover`, `bg-destructive-hover`), como `--success`. `#1D4ED8` y `#B91C1C` son el
+escalón siguiente del mismo azul y del mismo rojo (`--primary` es `#2563EB`; `--accent-foreground`,
+`#1E40AF`).
 
 ### 19.2 Tipografía, espaciado y forma
 
@@ -2637,10 +3052,10 @@ web/                            # también es el paquete Go `web` (embed.go)
     │   └── tenant/             # CompanyPage (carga y error), CompanyEditor (formulario, TimeZoneSelect y guard de salida),
     │       │                   #   useLogoActions.ts (preparar, subir y quitar el logo), api.ts, schemas.ts (zod del
     │       │                   #   formulario y armado del PATCH, INV-F15), timezones.ts (DD-F27), components/LogoUploader
-    │       └── logo/           # limits.ts, sniff.ts, plan.ts, canvas.ts (adaptador), prepareLogo.ts
+    │       └── logo/           # limits.ts, sniff.ts, plan.ts, canvas.ts (adaptador), prepareLogo.ts, jpegMetadata.ts (DD-F36)
     ├── components/             # presentación compartida (§15.1)
     │   └── ui/                 # generados por shadcn
-    ├── lib/                    # utils (cn), format, cuit, safeNextPath, linkToken, onlineStatus, verifyBannerDismissal (P-F20), companyInitials (P-F21)
+    ├── lib/                    # utils (cn), format, cuit, safeNextPath, linkToken, onlineStatus, verifyBannerDismissal (P-F20), companyInitials (P-F21), sessionExit (DD-F35)
     └── test/                   # setup.ts, msw/ (server, handlers), fixtures.ts, renderApp.tsx, queryClient.ts (cliente
                                 #   de test), unhandledRequests.ts, harness.test.tsx, importBoundaries.test.ts (reglas de
                                 #   no-restricted-imports, §9.1, INV-F18); de S-11: company.ts (handlers y ayudas de la
@@ -2667,8 +3082,12 @@ porque, salvo el primero, no llevan el nombre de un archivo de código.
 - **Code splitting por ruta** (`lazy` de React Router): (1) pantallas públicas; (2) shell +
   panel; (3) cada pantalla de Ajustes por separado. `AppShell` se carga con `lazy` (P-F18): Radix
   DropdownMenu entra con el shell (menú del usuario, §13.13) y Usuarios lo reusa (menú `⋮`); Radix
-  Dialog y la preparación del logo solo entran con Usuarios y Datos de la empresa. Ninguno llega a
-  las pantallas públicas.
+  Dialog y la preparación del logo solo entraban con Usuarios y Datos de la empresa. *(Revisión del
+  PR #45, ajuste de la implementación de P-F24)* Desde el aviso de cerrar sesión con cambios sin
+  guardar (`ConfirmDialog`, §13.8), Radix AlertDialog, y con él Dialog, del que depende, entra con el
+  shell; la preparación del logo sigue fuera. Ninguno llega a las pantallas públicas. T-F704 mide si
+  el chunk del shell sigue dentro de NFR-F05; si se pasa, volver al arquitecto (alternativa: cargar
+  el aviso con `lazy` al abrirlo).
 - **Sin fuentes web** (DD-F14) ni imágenes pesadas: el LCP de `/login` es texto.
 - **Precarga**: al tocar un enlace de navegación, React Router descarga el chunk de la ruta
   mientras navega; no se precarga nada más.
@@ -2705,7 +3124,7 @@ porque, salvo el primero, no llevan el nombre de un archivo de código.
 | **DD-F18** | Desde el `409` del registro se navega a S-03 con el email prellenado (no se envía el pedido automáticamente) | Reusa una pantalla con sus estados; el usuario confirma el email antes de enviar | Dos toques en vez de uno |
 | **DD-F19** | Mutaciones con `networkMode: 'always'` | Sin conexión fallan enseguida con mensaje claro | El usuario reintenta a mano |
 | **DD-F20** | La preparación del logo usa solo APIs del navegador: firma y dimensiones leídas de los bytes (funciones puras), `createImageBitmap` con orientación EXIF, `<canvas>` y `toBlob`; escalera fija de tamaños y calidades; PNG se mantiene PNG (transparencia) y JPEG se mantiene JPEG; sin *Web Worker* | Sin dependencias; las decisiones viven en funciones puras que se prueban con tablas; lo que depende del navegador es un adaptador chico | La escalera es fija (no busca la calidad óptima); el procesamiento corre en el hilo principal salvo la codificación |
-| **DD-F21** | Todo JPEG se vuelve a codificar aunque ya cumpla los límites. **Confirmada por el usuario (P-F6).** | Aplica la orientación EXIF a los píxeles (el logo nunca queda de costado en el PDF de 005, que puede ignorar EXIF) y quita la ubicación GPS y los datos del celular de una imagen que termina en documentos enviados a clientes; el servidor no lo hace (INV-24 del plan) | Una re-codificación con calidad 0,90 (pérdida mínima) aun cuando no hacía falta achicar |
+| **DD-F21** | Todo JPEG se vuelve a codificar aunque ya cumpla los límites. **Confirmada por el usuario (P-F6).** *(Revisión del PR #45, P-F25)* Volver a codificar quita los metadatos de la foto; los que agrega el codificador del navegador los quita DD-F36 | Aplica la orientación EXIF a los píxeles (el logo nunca queda de costado en el PDF de 005, que puede ignorar EXIF) y quita la ubicación GPS y los datos del celular de una imagen que termina en documentos enviados a clientes; el servidor no lo hace (INV-24 del plan) | Una re-codificación con calidad 0,90 (pérdida mínima) aun cuando no hacía falta achicar |
 | **DD-F22** | *(Nueva, revisión 2)* `LOGO_TARGET_MAX_BYTES` = **2 097 152 bytes**, el límite exacto del archivo en el servidor (DD-31), sin margen; se compara con `≤` | El servidor mide el contenido de la parte `file`, que es el `size` exacto del archivo preparado; los encabezados multipart tienen su propio margen de 64 KiB en el límite del cuerpo. Un margen extra solo bajaría la calidad o re-codificaría un PNG que el servidor acepta | Si el backend cambia el límite, el cliente tiene que cambiar la constante en el mismo PR (matriz §29); si no, un `413` lo delata (RF-6) |
 | **DD-F23** | *(Nueva, revisión 2)* Desarrollo con Vite sobre HTTPS con el mismo certificado de mkcert que `crm serve`; *proxy* a `https://localhost:8443` sin `changeOrigin` y **con** verificación de certificado (Node confía por `NODE_EXTRA_CA_CERTS`); `strictPort` | Es la receta del plan (§10.5.1) llevada a la configuración de Vite; verificar el certificado hace visible una configuración rota en vez de esconderla | Un paso más por equipo (exportar la variable) |
 | **DD-F24** | *(Nueva, revisión 3)* Variantes de `invalid_value` y `too_long` por campo en `fieldErrorMessage` (§12.3); texto por defecto de `invalid_value`: "Revisá este dato." | El servidor usa `invalid_value` para vacíos y largos en campos de texto (H-13); "Elegí una opción de la lista" era incorrecto ahí. Descartado: pedir al backend que cambie a `required`/`too_long` (cambia comportamiento probado; queda como alternativa de H-13) | Más filas en el mapa; en nombre y empresa el texto cubre vacío y largo a la vez |
@@ -2718,6 +3137,9 @@ porque, salvo el primero, no llevan el nombre de un archivo de código.
 | **DD-F31** | *(Nueva, enmienda del 2026-10-14; Accepted, aprobada por el usuario)* Tras el `202` del reenvío de la confirmación (C-01, aviso W, S-05), `useResendEmailVerification` vuelve a pedir `/me` ignorando el `staleTime` y el texto sale de esa lectura: `email_verified = false` → "Listo, te lo reenviamos…"; `true` → toast "Tu email ya está confirmado. No hace falta otro enlace." y el aviso desaparece con la caché; `/me` falla → "Si todavía no lo confirmaste, te mandamos un enlace nuevo. Revisá también el correo no deseado.". Si el control con foco desaparece, el foco va al `<h1>` (destino de INV-F10). S-05 no ofrece "Reenviar" si la sesión ya tiene el email confirmado | El servidor responde `202` sin enviar si el email ya está confirmado (`resendEmailVerification`, v0.5.0). DD-F28 no cubre todos los casos: TanStack Query v5 relee con `visibilitychange`, no al pasar a otra ventana que sigue visible ni cuando se confirma desde otro dispositivo. Como la confirmación no se deshace, si `/me` después del `202` sigue en `false`, el servidor también vio `false` y pidió el envío: el texto es exacto sin tocar el contrato. Descartado: (a) releer `/me` antes de reenviar (queda la ventana entre el `GET` y el `POST`, y demora el envío); (b) un texto neutro siempre (deja el aviso viejo y "Invitar" deshabilitado hasta volver a la pestaña, y le quita certeza al caso normal); (c) que el servidor distinga el caso con otro estado o un cuerpo (cambia el contrato y lo decide el backend; `/me` da el mismo dato) | Un `GET /me` más por cada `202` (como mucho 3 cada 20 min por usuario, DD-46 (3)); "Enviando…" dura un viaje más; un resultado más en el hook y dos textos nuevos. Si `/me` falla después del `202`, el texto es neutro |
 | **DD-F32** | *(Nueva, enmienda de F0, 2026-10-15; Accepted: aprobada por el usuario el 2026-10-16, P-F14)* La navegación de sesión vencida (§12.4 y la transición a `null` de §6.4) no se bloquea por cambios sin guardar. (1) La URL la arma siempre `sessionExpiredLoginPath(location)` y la reconoce `isSessionExpiredRedirect(location)`, las dos en `lib/sessionExpiredRedirect.ts`. (2) Ningún formulario usa `useBlocker` directo: usa `useUnsavedChangesGuard(when)` (`lib/unsavedChanges.ts`), que bloquea solo si `when` es verdadero y el destino no es una redirección de sesión vencida. S-11 pasa `when` = formulario con cambios **o** logo preparándose o subiendo (un solo guard por pantalla). (3) Mientras un guard está activo, `hasUnsavedChanges()` es verdadero. El manejador lo lee **antes** de navegar y, si es verdadero, pasa `state: { unsavedChangesLost: true }`. (4) Con `reason=session_expired` y ese `state`, la zona C del login suma "Los cambios que no habías guardado se perdieron.". (5) `next` es la pantalla donde estaba (`/settings/company`), no el destino que el aviso había frenado. Al volver, el formulario se arma con los datos del servidor (INV-F01) | Sin la excepción, "¿Salir igual?" aparece sobre una sesión muerta. "Quedarme" deja una pantalla con la caché vacía (rompe INV-F03), y cada query que se vuelve a pedir trae otro `401` y otro aviso. Con la regla en un solo hook, los formularios de 005 y 007 la heredan. El aviso del login responde "¿se guardó?" cuando el `401` llegó al tocar "Guardar". Descartado: (a) la excepción solo dentro de S-11 (cada formulario futuro tendría que acordarse, y la pérdida es muda); (b) seguir bloqueando y dejar elegir (pantalla sin sesión, bucle de `401`); (c) un borrador en `sessionStorage` (DD-F5 lo deja para 005 y 007; datos de la empresa en el almacenamiento del navegador); (d) un toast desde el bloqueador (efecto dentro de la función del bloqueador; el anuncio compite con el foco que va al `<h1>` del login); (e) la línea siempre que `reason=session_expired` (alarma en el caso común, donde no se perdió nada) | Un contador a nivel de módulo, fuera de React (estado del cliente, no del servidor: INV-F01 no aplica). Una regla de `no-restricted-imports` para `useBlocker`. Lo cargado se sigue perdiendo (DD-F5). `useBlocker` no cubre recargar ni cerrar la pestaña (eso no cambia) |
 | **DD-F33** | *(Nueva, enmienda de F6, P-F22)* Los cambios de la empresa se envían de a uno: `useUpdateTenant`, `useUploadLogo` y `useDeleteLogo` comparten `scope: TENANT_CHANGES_SCOPE` (`features/tenant/api.ts`), y TanStack Query arranca cada uno cuando terminó el anterior, incluidos su relectura de DD-F26 y su `onSuccess`. Mientras espera, la mutación ya está pendiente (`isPending`): "Guardando…" o "Subiendo logo…" aparecen desde el toque y nada se bloquea. Antes de escribir su respuesta en `['tenant']`, la mutación cancela las lecturas de esa clave en vuelo: `await cancelQueries` y después `setQueryData`, en ese orden *(precisado en el mantenimiento del 2026-10-22)*. Un `401` vacía la caché (INV-F03) y lo que esperaba en la cola no se envía (S-F15) | Revisión 2 del PR #43: con el logo subiéndose, el formulario permitía guardar. `SetLogo` confirma y, antes de responder, borra el objeto anterior del almacenamiento, así que un `PATCH` que confirmaba después podía responder antes, y la respuesta tardía del `PUT` dejaba en la caché la empresa anterior durante los 5 min de `staleTime` (rompe INV-F04). Cada respuesta es la fila entera después de su `COMMIT`: en orden, la última siempre es la correcta. La cola es una opción de la librería instalada: sin estado, textos ni estados de pantalla nuevos. La cancelación cubre el mismo defecto con una lectura (el *refetch* al volver a la pestaña) que salió antes del `COMMIT` y llega después. Se cancela antes de escribir porque así el resultado no depende de qué restaura el `revert`: la caché vuelve al estado de antes de la lectura y la respuesta se escribe encima. En 5.104.3 el orden inverso da lo mismo, porque `setQueryData` pasa a ser el estado que restaura el `revert` (S-F15); pero es un detalle interno que el comentario público de `cancelQueries` no dice ("vuelve al estado de antes de la lectura"), y si una versión se ajusta a ese comentario, cancelar después devolvería la caché a la empresa de antes de la lectura. Descartado: (a) deshabilitar "Guardar cambios" mientras el logo está en curso, y "Cambiar logo" y "Quitar" mientras se guarda, a mano o con `useIsMutating` (dos estados deshabilitados que necesitan su motivo visible, como DD-F28; el usuario tiene que volver a tocar; no cubre la lectura en vuelo); (b) no dejar que una respuesta con `updated_at` más viejo reemplace a la de la caché (el RFC3339 de Go recorta los ceros finales y no se compara como texto; `Date.parse` con más de tres decimales queda fuera del formato que garantiza ECMAScript; habría que escribir un parser, y el orden depende de que coincidan los relojes de las instancias del servidor); (c) invalidar cuando termina la última mutación (`isMutating`) (la caché queda vieja hasta que responde el `GET`, y si falla, sigue vieja); (d) `invalidateQueries` en vez de `setQueryData` (un `GET` más por cambio, y hasta que responde el encabezado sigue con el dato anterior); (e) cancelar después de `setQueryData` (equivalente en 5.104.3, pero solo por el detalle interno de arriba) | Un guardado pedido durante una subida espera a que termine (en 3G, lo que tarde un logo de hasta 2 MiB), con "Guardando…" en el botón y "Subiendo logo…" a la vista. Una lectura cancelada que traía un cambio de otra sesión se pierde hasta la lectura siguiente. Si la relectura de una subida incierta se une a una lectura que salió antes del `COMMIT`, da "Reintentar" aunque se haya guardado: el lado seguro de DD-F26. Tras un `401`, la promesa de la mutación que esperaba no se resuelve (la pantalla ya se desmontó). Entre pestañas no hay cola. En 5.104.3 ninguna prueba de comportamiento fija el orden de la cancelación *(precisado en el mantenimiento del 2026-10-22)*: con "cancelar después de `setQueryData`" la caché y la pantalla terminan igual, así que para esas pruebas es un mutante equivalente (`tasks.md`, "P-F22 implementada"). Un test que espiara `cancelQueries` y `setQueryData` sí fijaría el orden, y no se agrega: afirmaría una secuencia interna del `QueryClient` que en esta versión no cambia nada de lo que se ve, contra las convenciones de los tests del frontend (se prueba lo que el usuario percibe; ADR-022). Tampoco hace falta para el caso en que el orden sí importe: si una versión restaura el estado de antes de la lectura también después de un `setQueryData` y el código tuviera el orden inverso, la caché volvería a la empresa de antes de la lectura, y eso lo ven "does not let a read in flight overwrite the PATCH response" y su par del `PUT`, que afirman que el logo queda con el `updated_at` de la respuesta. Lo cuidan esta decisión, la revisión de código y la fila de §29 sobre la versión de TanStack Query |
+| **DD-F34** | *(Nueva, enmienda de F7, P-F23; *Accepted*: opción A y detalles (1) a (4) aprobados por el usuario el 2026-10-22)* `RequirePermission` relee `/me` una vez por entrada cuando el permiso en caché está denegado (§6.4.1, INV-F21). (1) **Entrada**: el montaje del guard o un cambio de `location.pathname` dentro de él. Si al entrar el permiso está concedido, esa entrada no relee nunca, aunque después lo pierda. (2) **Relectura**: `refetch` de `['session']` con `cancelRefetch: false`, que se une a un `GET /me` en curso, con la `queryFn` de `useSession`; un `401` llega como `null` y sigue la transición de §6.4. (3) **Mientras tanto**: "Comprobando tu acceso…", nunca "Sin permiso"; sin conexión, en pausa con C-02. (4) **Resultado**: `401` → §12.4 con `reason=session_expired`; con el permiso → la pantalla; sin el permiso → "Sin permiso"; red o `5xx` → "No pudimos comprobar tu acceso" + `ErrorState` con `messageForError(error, 'generic')` + "Reintentar" + "Volver al inicio" | Con el permiso concedido, la pantalla pide sus datos y un `401` la saca (§12.4). Denegado, no hay ningún request, y la UI le decía "No tenés acceso a esta sección" a alguien a quien el servidor ya había desconectado (T-F702, DD-41). Se relee al entrar porque es el único momento en que la UI va a afirmar algo con un dato que puede estar viejo. Una pérdida del permiso sin una entrada nueva ya viene de una lectura del servidor. `reason=session_expired` porque el `401 unauthenticated` de `/me` es igual por desactivación que por vencimiento (DD-44): "Tu sesión se cerró" es cierto en los dos casos, y si el usuario está desactivado, el login se lo dice (`403 account_disabled`). Un error de la relectura no cae en "Sin permiso", porque sin la lectura ese texto puede ser falso (por ejemplo, con un rol ascendido). Descartado: (a) relajar la aceptación de T-F702 (opción B, que el usuario descartó); (b) leer `/me` cada N segundos (un request periódico por pestaña para un caso raro; el usuario descartó el *polling*); (c) releer en cada navegación o con `refetchOnMount: 'always'` en el guard (un `/me` también para el Administrador, cuya pantalla ya se entera por sus propios requests); (d) mostrar "Sin permiso" y releer en segundo plano (muestra un estado falso y después lo cambia); (e) `invalidateQueries` o `refetch()` con `cancelRefetch: true` (cancela una lectura en curso y manda otra); (f) no releer si la sesión se leyó hace menos de N segundos, para ahorrar el segundo `/me` de una entrada directa (un número mágico, y la desactivación puede caer dentro de esa ventana); (g) un aviso del servidor en tiempo real, con SSE o WebSocket (infraestructura nueva para un caso del MVP); (h) un `reason` nuevo `account_disabled` (el cliente no lo sabe sin cambiar el contrato) | Una entrada directa a una ruta denegada (recarga, URL escrita a mano o login con `next`) hace dos `GET /me` seguidos, y "Sin permiso" aparece un viaje de red más tarde. Es un caso raro: el Operador no tiene enlaces a esas rutas (BR-F04). Una ruta sin `RequirePermission` y sin requests propios, como Ajustes, no se entera de la revocación hasta el próximo request o el refetch al enfocar (§17), igual que antes. El guard suma un estado local (la entrada comprobada y el error), que no copia la sesión (INV-F01). Sin conexión, el indicador queda hasta que vuelve la red, como cualquier query (§12.1) |
+| **DD-F35** | *(Nueva, revisión del PR #45, P-F24; *Accepted*: aprobada por el usuario el 2026-10-23 (los puntos (1) a (4), incluido `--destructive-hover`))* Una sola salida de sesión (§6.4.2, INV-F22). (1) **Registro** por `QueryClient` en `lib/sessionExit.ts`: si la pestaña presentó una sesión (`['session']` tuvo un usuario desde la carga o desde la última llegada al login) y la salida en curso (`to`, `state`, `navigating` o `stalled`). No guarda datos del servidor. (2) **`exitSession(client, reason)`** es la única que vacía la caché por fin de sesión y navega al login: la usan el manejador global (`session_expired`), `RequireSession` (`session_expired`), `useLogout` (`logged_out`) y `useConfirmPasswordReset` (`password_changed`). Si ya hay una salida, no hace nada. (3) **Termina** cuando el router vuelve a `idle` *(ajustado en la implementación: con `router.subscribe`, porque S-F16 resultó falso; la promesa de `navigate` queda de respaldo)*. Si llegó a `/login`, el registro vuelve a "sin sesión presentada" cuando ya no queda montado ningún `RequireSession`: si fuera antes, el guard todavía montado pediría el login sin `reason`. Si terminó en otra ruta, queda `stalled` y `RequireSession` la retoma con el mismo destino y el mismo `state`. (4) **`RequireSession`** decide con el registro, no con el router: con una salida, pantalla de arranque, sin leer `['session']` *(ajustado en la implementación: la parte que usa `useSession` no se monta)*; sin sesión y con una presentada, sale con `session_expired`; sin sesión y sin ninguna presentada, `/login?next=` sin `reason`. (5) **Cerrar sesión con un guard de cambios activo** pregunta antes del `POST` (§13.8), y ninguna salida pasa por el aviso: amplía (1) y (2) de DD-F32 a las tres `reason` | `8d85615` agregó `wasAuthenticated` en el guard para que su `<Navigate>` sin `reason` no le ganara a la navegación del manejador cuando la sesión llega `null` antes de que el router publique la navegación pendiente. Pero "estaba autenticado" quedó en dos lugares que no coinciden: el guard lo recordaba por instancia y el manejador por query. Después de un `clear()` que no hizo el manejador, la query nueva traía `null`, el manejador no actuaba y el guard esperaba para siempre (revisión del PR #45). Con la salida registrada **antes** del `clear()`, el guard no necesita adivinar por el router si alguien está navegando: lo sabe. Como toda salida pasa por la misma función, un `401` o un `null` durante el logout no pueden convertir `logged_out` en `session_expired`. El aviso antes del `POST` es el único momento en que "Quedarme" todavía conserva algo: después del `204` la sesión ya no existe (el argumento de DD-F32). Descartado: (a) navegar desde el guard a `sessionExpiredLoginPath` cuando `wasAuthenticated` (siguen dos fuentes; ese `<Navigate>` pisa la navegación del manejador y pierde `unsavedChangesLost`, y si el router todavía no publicó la del logout, cambia `logged_out` por `session_expired`); (b) exponer el `redirecting` del manejador y esperar solo mientras dure (no cubre el logout ni el restablecimiento, y "terminó de redirigir" no dice si llegó); (c) que la marca del manejador sobreviva al `clear()` sin registrar la salida (el guard sigue sin distinguir "el router todavía no publicó" de "nadie navega"); (d) escribir `null` en `['session']` al salir para ahorrar el `GET /me` de la query nueva (ahorra un request y no resuelve la salida interrumpida; desde el ajuste de la implementación ese `GET /me` ya no sale, porque el guard no lee la sesión durante la salida); (e) una librería de máquinas de estado (tres estados no la justifican); (f) que el logout no pregunte y el login sume la línea de cambios perdidos (una pérdida que el usuario no eligió; cambia una fila existente de `LoginPage.test.tsx`) | Un registro más, fuera de la caché (estado del cliente, como el contador de DD-F32; INV-F01 no aplica), y una función que concentra cuatro salidas. Desde que empieza una salida, la pantalla de arranque reemplaza al shell hasta que se pinta el login (lo que tarda el chunk de `/login`), en lugar de dejar el shell con la caché vacía. *(Ajustado en la implementación)* Durante la salida no se lee la sesión: el primer `GET /me` es el del login. "Cerrar sesión" con cambios suma un diálogo. Que la salida termine depende de que el router publique `idle` al terminar cada navegación (S-F16, refutado en su forma original y reemplazado). Que se borre depende de que solo `RequireSession` use `useSessionLifecycle` (INV-F22). Si algo frenara siempre la navegación a `/login`, la salida quedaría trabada (RF-19, hoy no alcanzable) |
+| **DD-F36** | *(Nueva, revisión del PR #45, P-F25; *Accepted*: aprobada por el usuario el 2026-10-23: A, lista cerrada y corrida manual en WebKit de macOS)* Todo JPEG que devuelve `encodeBitmap` sale sin segmentos de metadatos (§13.11.1, INV-F13). (1) `withoutJpegMetadata(bytes)` (`features/tenant/logo/jpegMetadata.ts`, pura) recorre los segmentos hasta el primer `SOS` y deja solo `APP0` con `JFIF\0`, `APP2` con `ICC_PROFILE\0` y `APP14` con `Adobe`. Quita todos los demás `APPn` (`APP1` Exif y XMP, `APP2` MPF, `APP13` IPTC, cualquier otro) y todo `COM`, y desde el `SOS` copia sin tocar. (2) Si no quita nada, devuelve la misma instancia, y `encodeBitmap` el mismo `Blob`: en Chromium y en WebKit de Linux los bytes no cambian. (3) Si los bytes no se pueden recorrer hasta el `SOS` (sin `SOI`, un largo fuera de rango, `EOI` o fin antes del `SOS`), lanza. `encodeBitmap` rechaza y el paso cuenta como uno que no entró (§13.11.1): un JPEG nunca sube sin pasar por la función. (4) La función corre en el adaptador, antes de comparar el tamaño, así que lo que se compara con `LOGO_TARGET_MAX_BYTES` es lo que se sube | El E2E de T-F706 en WebKit de macOS encontró en el JPEG guardado un `APP1`/`Exif` de 76 bytes, que agrega el codificador de Apple (ImageIO). No trae GPS ni orientación ni nada de la foto. Por su largo, es un IFD0 con un puntero a un IFD Exif de tres entradas, que coincide con lo que ImageIO suele escribir: espacio de color, ancho y alto *(inferido; lo confirma el volcado de T-F707)*. Hoy no filtra nada, pero INV-F13 dice "nunca conserva metadatos", y el celular real es Safari de iOS, con el mismo codificador. Quitar los segmentos **después** de volver a codificar no tiene el problema por el que research descartó borrarlos **en lugar de** volver a codificar (R-24 y "Metadatos y orientación de los JPEG"): la orientación ya está en los píxeles. La lista de lo que queda es cerrada, así que lo que agregue un codificador futuro en cualquier `APPn` o `COM` sale sin cambiar el código. `APP0`, `APP2` ICC y `APP14` quedan porque cambian cómo se decodifica la imagen: sin el perfil ICC o sin la marca de Adobe, los colores pueden cambiar. Descartado: (a) reformular INV-F13 a "sin metadatos de la foto" y cambiar la aserción del E2E por "sin GPS y sin orientación distinta de 1" (no lleva código, pero el criterio pasa a depender de lo que escribe cada versión de ImageIO, que el CI no ve; una versión que agregara el programa, la fecha o el modelo del equipo que sube pasaría; y relaja una aceptación existente); (b) quitar solo `APP1` (cubre el caso de hoy, no un `APP13`, un `COM` o un `APP2` MPF de una versión futura, por el mismo costo); (c) quitar también `APP2` ICC y `APP14` (los colores pueden cambiar si un codificador escribe un perfil que no es sRGB o una transformación de Adobe); (d) pedirle al codificador que no escriba metadatos (`toBlob` y `convertToBlob` solo reciben tipo y calidad); (e) un codificador JPEG en JS o una librería (otra dependencia, más lenta; DD-F20); (f) quitarlos en el servidor (DD-11: guarda los bytes tal cual, y el backend no cambia); (g) correr WebKit de macOS en CI (los runners de macOS no tienen Docker para el backend y cuestan más minutos); (h) llamar a la función en `prepareLogo` (cambia el *fake* de `prepareLogo.test.ts`, y el adaptador seguiría devolviendo bytes distintos según el navegador) | Una función pura propia que recorre segmentos de JPEG (unas 50 líneas, sin dependencias), y un test del adaptador con el codificador del navegador sustituido. Cada paso de la escalera JPEG lee su `Blob` entero (hasta unos pocos MB) para recorrerlo, y lo copia si quita algo: unos milisegundos frente a los 3 s de NFR-F13 *(estimado, no medido; T-F706 reporta el tiempo)*. Solo mira los segmentos antes del primer `SOS`: no ve un metadato entre barridos de un JPEG progresivo ni después del `EOI`, por ejemplo una segunda imagen MPF (S-F17). Los codificadores de canvas escriben JPEG secuencial, y T-F706 busca `Exif` y XMP en el archivo entero. Un JPEG mal formado que devuelva el codificador termina en `cannot_shrink` ("No pudimos achicar la imagen lo suficiente"), un texto inexacto para un caso que hoy no se alcanza. En CI, el E2E no ve la diferencia (WebKit de Linux no agrega metadatos): lo cuidan `canvas.test.ts` y la corrida de T-F706 en macOS antes de liberar |
 
 ---
 
@@ -2731,7 +3153,7 @@ porque, salvo el primero, no llevan el nombre de un archivo de código.
 | S-F4 | Los usuarios tienen navegadores de NFR-F02 (celulares de los últimos ~4 años) | Abierto | Consultas de soporte | Tailwind v4 no funciona en navegadores más viejos: habría que volver a v3.4 (nuevo ADR) |
 | S-F5 | Nombre e íconos de la app son provisorios ("CRM", íconos genéricos) | Confirmado por el usuario (P-F1) | — | Se cambian manifest e íconos, sin impacto en código |
 | S-F6 | El backend ignora parámetros de query en `GET /tenant/logo` | **Resuelto**: el contrato declara `v` (DD-23) | — | — |
-| S-F7 | `createImageBitmap(file, { imageOrientation: 'from-image' })` aplica la orientación EXIF en Chrome ≥ 112, Firefox ≥ 111 y Safari ≥ 16 (documentado; falta verlo con una foto real) | Abierto | T-F706 (Chromium y WebKit) con una foto de orientación 6 | Leer la orientación del EXIF con una función pura y rotar en el canvas |
+| S-F7 | `createImageBitmap(file, { imageOrientation: 'from-image' })` aplica la orientación EXIF en Chrome ≥ 112, Firefox ≥ 111 y Safari ≥ 16 (documentado; falta verlo con una foto real) | **Validado en Chromium y WebKit** (2026-10-23; revisión del PR #45, P-F25): con la foto de orientación 6, el logo guardado sale vertical en Chromium y WebKit de Linux (CI del PR #45) y en WebKit de macOS (corrida local). Firefox y Safari de iOS sin verificar (Safari de iOS, con H-12) | T-F706 (Chromium y WebKit) con una foto de orientación 6 | Leer la orientación del EXIF con una función pura y rotar en el canvas |
 | S-F8 | En iOS, un `<input type="file" accept="image/png,image/jpeg">` entrega las fotos HEIC convertidas a JPEG | Abierto | Prueba manual en un iPhone (checkpoint F6; necesita un origen HTTPS accesible desde el teléfono, H-12) | Se rechazan con "tiene que ser PNG o JPG" (el usuario puede sacar una captura); evaluar aceptar HEIC en Safari, que lo decodifica |
 | S-F9 | `canvas.toBlob('image/png')` conserva la transparencia y `toBlob('image/jpeg', q)` respeta la calidad pedida en los navegadores de NFR-F02 | Abierto | T-F706 | Ajustar la escalera |
 | S-12 (plan) | Tras `mkcert -install`, Chrome, Firefox y Safari en desarrollo, y Chromium y WebKit de Playwright en CI, confían en el certificado de `localhost` | Abierto | Primera corrida de T-F701 (y spike de T-F006 en desarrollo) | Respaldo en CI: `ignoreHTTPSErrors` solo si el service worker se registra igual (T-F703); si no, volver al arquitecto |
@@ -2741,6 +3163,8 @@ porque, salvo el primero, no llevan el nombre de un archivo de código.
 | S-F13 | *(Enmienda de F0)* Con el aviso de cambios sin guardar abierto (una navegación frenada), una navegación nueva que el bloqueador deja pasar se completa, el aviso desaparece y el bloqueador vuelve a `unblocked` (React Router 8.4.0; la documentación de `useBlocker` no cubre el caso) | Abierto | T-F602 | Volver al arquitecto. Opciones: `blocker.reset()` antes de navegar, o recarga completa al login (pierde el `state`) |
 | S-F14 | *(Enmienda de F0)* `npm audit`, del npm del Node de `web/.nvmrc`, funciona solo con `package-lock.json`, sin `node_modules`, y termina con un código distinto de 0 si no puede consultar el registro. La documentación dice que necesita el lockfile, no que alcance solo con él | **Validado** (controles de T-F010, registrados en el PR #33): sin `node_modules`, `make web-vuln` sobre `main` dio 0, el mismo resultado que con `node_modules`; con el registro inalcanzable terminó con un código distinto de 0. No hizo falta el respaldo: el job no lleva `npm ci --ignore-scripts` y ADR-027 no necesita nota | Controles de T-F010 | — |
 | S-F15 | *(Enmienda de F6, P-F22)* En TanStack Query 5.104.3, una mutación con el mismo `scope.id` que otra pendiente queda `pending` con `isPaused: true` y arranca cuando la anterior terminó (después de su `onSuccess` u `onError`), sin depender del foco ni de la red; una que falla no frena a la siguiente; `queryClient.clear()` vacía la cola y la que esperaba no se envía. `invalidateQueries` cancela la lectura en vuelo (`cancelRefetch: true`). `cancelQueries` cancela con `revert: true` por defecto, y lo que restaura depende de si ya hubo un `setQueryData` *(precisado en el mantenimiento del 2026-10-22)*: la lectura guarda al salir el estado de la query, y `setQueryData` escribe con `manual: true`, que reemplaza ese estado guardado por el recién escrito. Cancelar **antes** de `setQueryData` restaura el estado de antes de la lectura, y la respuesta se escribe encima; cancelar **después** restaura la respuesta recién escrita, no el estado de antes de la lectura. En los dos órdenes la caché termina con la respuesta y la lectura cancelada no escribe nada, así que ninguna prueba de comportamiento distingue el orden de DD-F33 (solo lo haría un test que espiara las llamadas, que no se agrega: DD-F33) | **Validado** (2026-10-22) por lectura del código instalado: `query-core/src/mutation.ts` (`execute`: `pending` con `isPaused`, `runNext` en el `finally`), `mutationCache.ts` (`canRun`, `runNext`, `clear`), `retryer.ts` (`start` espera con `canStart`, no con el foco), `queryClient.ts` (`cancelQueries`, `refetchQueries`; `setQueryData` llama a `setData` con `manual: true`) y `query.ts` (`fetch` guarda `#revertState` al salir y `onCancel` lo restaura; el *reducer* de `success` hace `#revertState = action.manual ? newState : undefined`: `src/query.ts:974`, `build/modern/query.js:502`). Qué restaura cada orden lo confirmaron el `frontend-developer` (mutante equivalente, `tasks.md`) y la revisión 3 del PR #43 | Filas de la cola de T-F602 y T-F603, que lo fijan ante una actualización, salvo qué restaura `cancelQueries` (ninguna prueba de comportamiento lo distingue: se relee `query.ts`, §29) | Volver al arquitecto: alternativa (a) de DD-F33 (deshabilitar los botones mientras hay otro cambio en curso). Si una versión restaura el estado de antes de la lectura también después de un `setQueryData` (lo que dice el comentario público de `cancelQueries`), el orden de DD-F33 sigue siendo correcto y el inverso deja de serlo |
+| S-F16 | *(Revisión del PR #45, DD-F35)* En React Router 8.4.0, la promesa de `router.navigate` se resuelve también cuando otra navegación interrumpe la que estaba en curso (por ejemplo, Atrás mientras carga el chunk de `/login`) o cuando un bloqueador la frena, y en ese momento `router.state.location` ya es la ruta que quedó | **Refutado** (2026-10-23, implementación de P-F24). Con el chunk *lazy* de `/login` pendiente, la promesa de la navegación interrumpida se resuelve recién cuando llega el chunk (caso G2 de T-F707). Con un bloqueador, sí se resuelve enseguida (`navigate` vuelve después de `updateBlocker`). **Respaldo aplicado**: la salida termina con `router.subscribe`, cuando `navigation.state` vuelve a `idle`, mirando `state.location`. La promesa queda para un router sin `subscribe` y para una navegación que termina en el mismo tick. Leído en `router.js` de 8.4.0: toda navegación que termina pasa por `completeNavigation`, que publica `IDLE_NAVIGATION` con la ruta nueva; `navigate` publica `loading` en el mismo tick en que se lo llama (sin `getContext`, `patchRoutesOnNavigation` ni `dataStrategy`, que el proyecto no usa), así que ningún `idle` ajeno llega entre el pedido y el comienzo. Si llegara alguno, la salida quedaría `stalled` y se retomaría con la misma URL: una navegación de más, nunca una espera sin salida | G2 de T-F707 (sin la suscripción, falla: mutación 11) | Si una versión de React Router deja de publicar `idle` al terminar o interrumpir una navegación, o publica `loading` después de un `await`: volver al arquitecto |
+| S-F17 | *(Revisión del PR #45, DD-F36)* Los codificadores JPEG de `canvas.toBlob` de los navegadores de NFR-F02 escriben sus segmentos de metadatos antes del primer `SOS`, y no escriben nada después del `EOI` ni entre barridos (JPEG secuencial, sin una segunda imagen MPF) | Abierto. Chromium y WebKit de Linux no escriben metadatos; WebKit de macOS escribe un `APP1` antes del `SOS` (2026-10-23) | T-F706: los bytes del logo guardado no contienen `Exif\0\0` ni el espacio de nombres XMP en ningún lugar, en Chromium y WebKit de Linux (CI) y en WebKit de macOS (a mano) | Volver al arquitecto. Alternativa: recorrer el archivo entero hasta el `EOI` (los barridos y los segmentos entre ellos) y descartar lo que venga después |
 
 ## 26. Preguntas
 
@@ -2812,6 +3236,19 @@ Preguntas de la enmienda de F6 (2026-10-21):
 *(2026-10-22, mantenimiento de la documentación)* Sin pregunta nueva: las correcciones de la
 revisión del PR #43 (qué restaura `cancelQueries` en cada orden, la firma de `useTenant` y los
 archivos que faltaban en §22) no cambian ninguna decisión. Las registra el encabezado.
+
+Preguntas de la enmienda de F7 (2026-10-22):
+
+| ID | Pregunta | Estado | Default propuesto |
+|---|---|---|---|
+| P-F23 | T-F702: un Operador al que otro Administrador desactiva con la sesión abierta navega sin recargar a `/settings/users` y ve "No tenés acceso a esta sección" en lugar del aviso de sesión cerrada, porque el guard decide con el permiso en caché y no pide `/me`. ¿Cómo se entera la UI, y con qué detalle? | **Aprobada** por el usuario el 2026-10-22: opción A, releer `/me` una vez al entrar a una ruta con el permiso en caché denegado, sin *polling* (descartó la B, relajar la aceptación); detalles (1) a (4) aprobados tal como se proponen | DD-F34 y §6.4.1. (1) **Entrada = montaje o cambio de pathname**: pasar entre dos rutas denegadas relee en cada una. Alternativa: una vez por montaje del guard (no relee al pasar de Datos de la empresa a Usuarios). (2) **Una entrada directa hace dos `/me`**, sin heurística de tiempo. Alternativa: no releer si la sesión se leyó hace menos de N segundos (un número mágico que la desactivación puede cruzar). (3) **Un error de la relectura muestra una pantalla de error con "Reintentar"**, no "Sin permiso". Alternativa: "Sin permiso" con el dato viejo, que puede ser falso. (4) **`reason=session_expired`**: el cliente no distingue la desactivación del vencimiento (DD-44) y el login dice "desactivado" si corresponde. Alternativa: un `reason` nuevo, que exige cambiar el contrato |
+
+Preguntas de la revisión del PR #45 (2026-10-23):
+
+| ID | Pregunta | Estado | Default propuesto |
+|---|---|---|---|
+| P-F24 | Revisión de código del PR #45 (la parte de F7 de Codex). (1) `RequireSession` queda en "Cargando…" sin salida si la sesión desaparece después de un `clear()` que no hizo el manejador: ¿cómo sale la UI de una sesión, con una sola fuente de verdad? (2) Cerrar sesión con cambios sin guardar: el aviso frena la navegación con la sesión ya cerrada (también en `main`). ¿Se corrige acá? (3) La enmienda de Lighthouse 13.5.0 la escribió el implementador y no está aprobada; `package.json` la tiene con `^`. (4) `hover:bg-blue-700` en el botón primario, fuera de los tokens | **Aprobada** por el usuario el 2026-10-23: los puntos (1) a (4) tal como se proponen, incluido `--destructive-hover` | (1) DD-F35 y §6.4.2: `exitSession` única y un registro por `QueryClient` (sesión presentada, salida en curso). `RequireSession` muestra la pantalla de arranque mientras hay una salida, la retoma si otra navegación la interrumpió, y sale con `session_expired` si la sesión presentada falta sin salida. Alternativas: (a) del revisor, navegar desde el guard con `sessionExpiredLoginPath` (dos fuentes de verdad; pierde `unsavedChangesLost` y puede pisar `logged_out`); (b) del revisor, esperar solo mientras el manejador redirige (cubre el manejador, no el logout). (2) **Sí, acá**: el aviso va antes del `POST`; "Quedarme" no cierra la sesión y ninguna salida pregunta (INV-F18 ampliada). Sin esto, que la salida no pregunte convierte el aviso roto en una pérdida muda. Alternativa: la salida no pregunta y el login suma "Los cambios que no habías guardado se perdieron." también con `logged_out` (cambia una fila existente de `LoginPage.test.tsx`, con excepción). (3) Sale de `ui.md` y de la tabla de excepciones de `tasks.md`, porque Lighthouse está en su última estable; queda como herramienta en T-F704, con `"lighthouse": "13.5.0"` exacta como el resto, y la convención de versiones lo dice. Alternativa: dejarla en `ui.md` como enmienda aprobada (no es una decisión de diseño). (4) `--primary-hover` `#1D4ED8` (6,7:1 con texto blanco) y `--destructive-hover` `#B91C1C` (6,5:1; `bg-destructive/90` da ~4,3:1); INV-F23 con una regla de ESLint contra la paleta de Tailwind. Alternativa: `hover:bg-primary/90` de shadcn (~4,3:1, no llega a AA) |
+| P-F25 | Revisión del PR #45: en WebKit de macOS, el JPEG del logo sale con un `APP1`/`Exif` de 76 bytes que agrega el codificador de Apple, sin datos de la foto (ni GPS ni orientación). INV-F13 dice "nunca conserva metadatos EXIF", y el E2E falla en macOS; en CI (Chromium y WebKit de Linux) pasa. ¿Se quita en el cliente o se reformula el criterio? | **Aprobada** por el usuario el 2026-10-23: A, con la lista cerrada (`APP0`, `APP2` ICC y `APP14`) y la corrida manual de T-F706 en WebKit de macOS antes de liberar | **Se quita en el cliente** (DD-F36): `withoutJpegMetadata`, pura, deja solo `APP0` JFIF, `APP2` ICC y `APP14` Adobe antes del primer `SOS`, y `encodeBitmap` pasa por ella todo JPEG. INV-F13 conserva su sentido y se precisa. Ningún test existente cambia: el E2E suma dos aserciones y una corrida en WebKit de macOS antes de liberar. Detalles: (1) una lista cerrada de lo que queda, no "quitar `APP1`" (alternativa: quitar solo `APP1`, que no cubre otro segmento de una versión futura); (2) un JPEG que no se puede recorrer hace fallar el paso y nunca sube tal cual (alternativa: subirlo sin tocar, que rompe INV-F13 en silencio). Alternativa general: reformular INV-F13 a "sin metadatos de la foto" y relajar la aserción del E2E (no lleva código, pero el criterio depende de lo que escribe cada versión de ImageIO, que el CI no ve, y cambia un test existente) |
 
 **Revisión 16 del backend: cerrada para la UI** (la lista "Dependiente de la revisión 16" de la
 Revisión 3 queda resuelta en la Revisión 4):
@@ -2913,7 +3350,7 @@ Otros puntos menores (los dos **resueltos** al 2026-10-12, revisión 3: el índi
 | RF-6 | Deriva entre las reglas del cliente y del servidor (longitudes, CUIT, límites del logo) | Media | Bajo | Esquemas atados al tipo del contrato; tabla de casos de CUIT compartida con T-B701; la constante del logo es el límite exacto del servidor y T-F604 prueba 2 097 152 / 2 097 153 bytes; un `413` en producción lo delata (§12.2) |
 | RF-7 | Presupuesto de JS superado | Media | Medio | Chunks por ruta; medición en T-F704 |
 | RF-8 | Un celular de gama baja se queda sin memoria al decodificar una foto grande | Media | Medio | Tope de 25 MP y 20 MB antes de decodificar; una sola decodificación; mensaje que propone una captura del logo |
-| RF-9 | Diferencias entre navegadores al codificar (tamaño de PNG, orientación EXIF) | Media | Bajo | Escalera que termina bien por debajo del límite; E2E en Chromium y WebKit con fotos reales (T-F706); S-F7, S-F9 |
+| RF-9 | Diferencias entre navegadores al codificar (tamaño de PNG, orientación EXIF; *(P-F25)* metadatos que agrega el codificador: WebKit de macOS escribe un `APP1`/`Exif`) | Media | Bajo | Escalera que termina bien por debajo del límite; E2E en Chromium y WebKit con fotos reales (T-F706); S-F7, S-F9; *(P-F25)* `withoutJpegMetadata` con una lista cerrada de segmentos (DD-F36), y T-F706 en WebKit de macOS a mano antes de liberar, porque el CI corre WebKit de Linux; S-F17 |
 | RF-10 | *(Revisado)* Configuración local de HTTPS incompleta en un equipo (sin `mkcert -install`, sin `make dev-certs` o sin `NODE_EXTRA_CA_CERTS`): aviso de certificado, proxy de Vite caído o sin sesión | Media | Bajo | Mensaje de `vite.config.ts` si faltan los certificados; tabla de diagnóstico de §21.3; README (T-B014, T-F009). El riesgo anterior (sin sesión en Chrome sobre `http://localhost`) quedó cerrado por H-10 |
 | RF-11 | Chromium o WebKit de Playwright no confían en la CA de mkcert en CI (S-12) | Media | Medio | Se ve en la primera corrida de T-F701; respaldo `ignoreHTTPSErrors` solo si T-F703 pasa |
 | RF-12 | Se filtra la clave de la CA local (`rootCA-key.pem`) de un desarrollador | Baja | Medio | No se comparte ni se copia al repo; `.certs/` ignorado por git; en CI la CA es efímera (R-14 del plan) |
@@ -2923,6 +3360,7 @@ Otros puntos menores (los dos **resueltos** al 2026-10-12, revisión 3: el índi
 | RF-15 | *(Revisión 3)* El selector de zona no muestra la zona guardada porque el navegador usa un alias (S-F11) | Baja | Bajo | DD-F27; T-F602 |
 | RF-17 | *(Enmienda de F0)* `npm audit` no analiza alcance: un aviso de producción que no aplica bloquea un PR | Media | Bajo | ADR-027 §6: subir la dependencia, `overrides` o una excepción con vencimiento aprobada por el usuario |
 | RF-18 | *(Enmienda de F0)* Un paquete que llega a `dist` queda en `devDependencies` y la pasada de producción no lo ve (ADR-027 I-2) | Baja | Medio | Convención de clasificación en `tasks.md`; revisión de cada PR que toca `package.json`; regla de ESLint como alternativa si pasa una vez |
+| RF-19 | *(Revisión del PR #45, ajuste de la implementación de P-F24)* Algo frena siempre la navegación de una salida a `/login`: un bloqueador fuera de las rutas protegidas, o uno que deja de dejar pasar las URL de salida. La salida retomada vuelve a quedar `stalled` en el mismo tick y la pantalla de arranque queda sin salida (o, si el bloqueo se publicara más tarde, reintenta sin fin): rompe INV-F22 | Baja (hoy no alcanzable) | Alto (pantalla trabada hasta recargar) | INV-F18: `useBlocker` solo en `lib/unsavedChanges.ts` (lint), y ese bloqueador deja pasar `isSessionExitRedirect`. Un bloqueador debajo de `RequireSession` se desmonta al empezar la salida, así que frena como mucho el primer intento, que se retoma. Si aparece un bloqueador fuera de las rutas protegidas, volver al arquitecto (alternativa: un tope de reintentos y, al agotarlo, cargar `to` con una navegación completa del documento) |
 
 ---
 
@@ -2942,23 +3380,26 @@ La actualización va **en el mismo cambio** que el código.
 | Props de un componente compartido | §15 + sus usos |
 | Dónde vive una pieza de estado o una clave de caché | §10 + `api/queryKeys.ts` + invariantes §9.2 |
 | Una invalidación | §10.3 + test de la pantalla |
-| Un token visual | §19 + `styles/globals.css` + verificación de contraste |
+| Un token visual | §19 + `styles/globals.css` + verificación de contraste + INV-F23 (la regla de ESLint y `colorTokens.test.ts`, si cambia qué clases se aceptan) |
 | Cabeceras, CSP o reglas del handler de la SPA | `plan.md` §10.7 (fuente) + §21 + ADR-019 (nuevo ADR si cambia la decisión) + test Go de T-F007 |
 | Los límites del logo en el servidor (DD-11, DD-31) o su política de caché (DD-23) | §11.1 + §13.11.1 (constantes y escalera) + `features/tenant/logo/limits.ts` + T-F604/T-F706 |
+| Lo que escribe el codificador JPEG de un navegador (una versión nueva de Safari o Chrome, otro navegador de NFR-F02) o qué segmentos deja `withoutJpegMetadata` | DD-F36 + INV-F13 + `features/tenant/logo/jpegMetadata.ts` y su tabla de T-F707 + el segmento de WebKit de `src/test/imageBytes.ts` si cambia el modelo + T-F706 en WebKit de macOS (a mano) + S-F17 |
 | El HTTPS local, los puertos o `APP_BASE_URL` de desarrollo (plan DD-24, §10.5.1) | §21.3 + `vite.config.ts` + `playwright.config.ts` + job de E2E + README (sección de desarrollo) + T-F006/T-F701 |
 | El service worker o el manifest | §20 + ADR-020 + T-F703 |
 | Una decisión de ADR-015..023 | ADR nuevo que la reemplace o nota fechada si es una aclaración (nunca reescribir uno aceptado) |
 | Cómo se construye o corre el frontend | README (sección de desarrollo) + §21.3 + comandos de `tasks.md` |
 | Una versión mayor de una librería con ADR (p. ej. React Router 8), o una versión fijada por debajo de su última estable (hoy, TypeScript 5.9.3) | Nota fechada en su ADR + §0 + RF-1 + tabla de excepciones de `tasks.md` (Frontend, convenciones) + las tareas afectadas + `package-lock.json` en el mismo PR |
 | Una dependencia npm (agregarla, subirla, quitarla o moverla entre `dependencies` y `devDependencies`) | Clasificación de ADR-027 §2 + `make web-vuln` en verde + tabla de versiones de `tasks.md` si queda por debajo de la última estable o lleva `overrides` + `docs/seguridad/vulnerabilidades-aceptadas.md` si cambia una excepción |
-| Un formulario que pide confirmación al salir, o la URL de sesión vencida | `useUnsavedChangesGuard` (nunca `useBlocker` directo) + `lib/sessionExpiredRedirect.ts` + INV-F18 + DD-F32 + el test de la pantalla (las filas de T-F602 como modelo) |
+| Un formulario que pide confirmación al salir, o una URL de salida de sesión | `useUnsavedChangesGuard` (nunca `useBlocker` directo) + `lib/sessionExpiredRedirect.ts` (`sessionExitPath`, `isSessionExitRedirect`) + INV-F18 + DD-F32 + DD-F35 + el aviso antes de cerrar sesión (§13.8), si la pantalla nueva se alcanza con el menú del shell + el test de la pantalla (las filas de T-F602 y los casos de cerrar sesión de T-F707 como modelo) |
 | Un mensaje que aparece sin mover el foco (resultado de una acción, aviso, progreso) | `LiveRegion` montada con su contenedor (INV-F19) + la fila "la región existe vacía antes y es el mismo nodo después" en el test de la pantalla + checklist de T-F705 |
 | Una marca de `sessionStorage` | §10.1 + NFR-F09 (clave fija, valor booleano, sin datos de la sesión) + INV-F03 si depende de la sesión + T-F703 |
 | Las zonas argentinas de IANA (una zona nueva fuera de `America/Argentina/`, o un enlace argentino nuevo en `backward`) | `ARGENTINA_LEGACY_ZONES` (nombre anterior → zona actual) en `features/tenant/timezones.ts` + DD-F27 + T-F602 |
 | Lo que usa la reconciliación del logo (los campos de `Tenant`, el `ETag` de `/tenant/logo`, que el servidor guarde los bytes tal cual) | DD-F26 + §11.1 + §13.11 + §14.4 + `useUploadLogo` + T-F603 |
 | Una mutación nueva que escribe `['tenant']`, o cómo escriben la caché las tres actuales | `TENANT_CHANGES_SCOPE` + `cancelQueries` antes de `setQueryData` (DD-F33) + INV-F20 + §10.3 + §15.4 + T-F602/T-F603 |
-| La versión de TanStack Query | S-F15 (la cola por `scope`, `clear()` y qué restaura el `revert` de `cancelQueries` antes y después de un `setQueryData`: se relee `query.ts`, porque ninguna prueba de comportamiento distingue el orden de DD-F33) + DD-F33 e INV-F20 si cambia lo que restaura + las filas de la cola de T-F602 y T-F603 |
-| Cómo se cierra sesión (`useLogout`, la navegación al login o lo que el shell lee mientras tanto) | §13.8 (estados de "Cerrar sesión") + el `enabled` de `useTenant` en §15.4 + `logout.test.tsx` y `logoutMenuRace.test.tsx` |
+| La versión de TanStack Query | DD-F34 (que `refetch` con `cancelRefetch: false` se una a un `GET /me` en curso; lo fija la fila "un `GET /me` en curso al navegar" de `routeGuards.test.tsx`) + S-F15 (la cola por `scope`, `clear()` y qué restaura el `revert` de `cancelQueries` antes y después de un `setQueryData`: se relee `query.ts`, porque ninguna prueba de comportamiento distingue el orden de DD-F33) + DD-F33 e INV-F20 si cambia lo que restaura + las filas de la cola de T-F602 y T-F603 |
+| Cómo se cierra sesión (`useLogout`, `useLogoutRequest`, la navegación al login o lo que el shell lee mientras tanto) | §13.8 (estados de "Cerrar sesión" y el aviso con cambios sin guardar) + el `enabled` de `useTenant` en §15.4 + §6.4.2 y DD-F35 (el logout sale por `exitSession`) + `logout.test.tsx`, `logoutMenuRace.test.tsx` y los casos de cerrar sesión de `CompanyUnsavedChanges.test.tsx` |
+| Cómo se pierde o se cierra una sesión (una `reason` nueva, quién llama a `exitSession`, cuándo termina una salida, qué muestra `RequireSession`) | §6.4.2 + DD-F35 + INV-F22 + §12.4 + `lib/sessionExit.ts` y `sessionExitPath` en §15.4 + la zona C de S-02 (§13.2) si cambia un aviso + "leaving the session" de `routeGuards.test.tsx` + S-F16 si se actualiza React Router (que publique `idle` al terminar o interrumpir una navegación) + RF-19 si aparece otro bloqueador de navegación + INV-F22 si otro componente necesita `useSessionLifecycle` |
+| El guard de permiso o cómo relee la sesión (qué es una entrada, `cancelRefetch`, el indicador, la pantalla de error) | §6.4 y §6.4.1 + DD-F34 + INV-F21 + §14.5 + `usePermissionCheck` en §15.4 + `routeGuards.test.tsx` + el `toHaveBeenCalledOnce` de `/me` en `UsersPage.test.tsx` (pérdida del permiso sin entrada nueva) + la fila de la desactivación de T-F702 |
 
 ## 30. Fuentes consultadas
 

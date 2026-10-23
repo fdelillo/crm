@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useLocation, useNavigate } from 'react-router'
@@ -18,6 +19,8 @@ import type {
 } from '@/api/types'
 import { safeNextPath } from '@/lib/safeNextPath'
 import { clearVerifyBannerDismissed } from '@/lib/verifyBannerDismissal'
+import { exitSession } from '@/lib/sessionExit'
+import { hasUnsavedChanges } from '@/lib/unsavedChanges'
 
 export function useSignup() {
   const client = useQueryClient()
@@ -56,17 +59,11 @@ export function useLogin() {
 
 export function useLogout() {
   const client = useQueryClient()
-  const navigate = useNavigate()
   return useMutation<void, ApiError, void>({
     mutationFn: async () => {
       unwrap<void>(await api.POST('/auth/logout'))
     },
-    onSuccess: async () => {
-      await client.cancelQueries()
-      client.clear()
-      clearVerifyBannerDismissed()
-      void navigate('/login?reason=logged_out', { replace: true })
-    },
+    onSuccess: () => exitSession(client, 'logged_out'),
     onError: (error) => {
       if (isApiError(error) && error.kind === 'network') {
         toast.error('No pudimos cerrar la sesión. Revisá tu conexión.')
@@ -80,6 +77,25 @@ export function useLogout() {
   })
 }
 
+/** "Cerrar sesión" of the shell menu and of S-08 (ui.md §13.8, P-F24 (2)): with unsaved changes
+ *  the prompt comes before the POST, so "Quedarme" keeps the session. */
+export function useLogoutRequest() {
+  const logout = useLogout()
+  const [confirming, setConfirming] = useState(false)
+  const send = () =>
+    logout.mutate(undefined, { onError: () => setConfirming(false) })
+  return {
+    logout,
+    confirming,
+    request: () => {
+      if (hasUnsavedChanges()) setConfirming(true)
+      else send()
+    },
+    confirm: send,
+    cancel: () => setConfirming(false),
+  }
+}
+
 export function useRequestPasswordReset() {
   return useMutation<void, ApiError, PasswordResetRequest>({
     mutationFn: async (body) => {
@@ -90,17 +106,11 @@ export function useRequestPasswordReset() {
 
 export function useConfirmPasswordReset() {
   const client = useQueryClient()
-  const navigate = useNavigate()
   return useMutation<void, ApiError, PasswordResetConfirmRequest>({
     mutationFn: async (body) => {
       unwrap<void>(await api.POST('/auth/password-reset/confirm', { body }))
     },
-    onSuccess: async () => {
-      await client.cancelQueries()
-      client.clear()
-      clearVerifyBannerDismissed()
-      void navigate('/login?reason=password_changed', { replace: true })
-    },
+    onSuccess: () => exitSession(client, 'password_changed'),
   })
 }
 

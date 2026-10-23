@@ -1,6 +1,8 @@
 import { expect, it } from 'vitest'
 import { safeNextPath } from './safeNextPath'
 import {
+  isSessionExitRedirect,
+  sessionExitPath,
   sessionExpiredLoginPath,
   isSessionExpiredRedirect,
 } from './sessionExpiredRedirect'
@@ -44,4 +46,32 @@ it.each([
   expect(isSessionExpiredRedirect(new URL(path, 'https://app.example'))).toBe(
     false,
   ),
+)
+
+// T-F707 (DD-F35, INV-F18): one place builds and recognizes every session-exit URL.
+const settings = { pathname: '/settings', search: '?x=1' }
+it('builds the expiration exit like sessionExpiredLoginPath', () =>
+  expect(sessionExitPath('session_expired', settings)).toBe(
+    sessionExpiredLoginPath(settings),
+  ))
+it.each(['logged_out', 'password_changed'] as const)(
+  'builds the %s exit without next',
+  (reason) =>
+    expect(sessionExitPath(reason, settings)).toBe(`/login?reason=${reason}`),
+)
+it.each([
+  sessionExpiredLoginPath(settings),
+  '/login?reason=logged_out',
+  '/login?reason=password_changed',
+])('recognizes %s as a session exit', (path) =>
+  expect(isSessionExitRedirect(new URL(path, 'https://app.example'))).toBe(
+    true,
+  ),
+)
+it.each(['/login?reason=other', '/login', '/settings?reason=logged_out'])(
+  'does not recognize %s as a session exit',
+  (path) =>
+    expect(isSessionExitRedirect(new URL(path, 'https://app.example'))).toBe(
+      false,
+    ),
 )

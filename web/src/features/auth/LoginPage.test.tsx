@@ -175,7 +175,7 @@ describe('LoginPage', () => {
       screen.getByRole('button', { name: 'Restablecer contraseña' }),
     )
     expect(
-      screen.getByRole('heading', { name: 'Recuperá tu contraseña' }),
+      await screen.findByRole('heading', { name: 'Recuperá tu contraseña' }),
     ).toBeVisible()
     expect(router.state.location.state).toEqual({ email: 'ana@example.test' })
   })

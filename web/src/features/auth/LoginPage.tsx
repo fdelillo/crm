@@ -17,7 +17,7 @@ import {
 } from '@/api/errorMessages'
 import { isApiError } from '@/api/errors'
 import { useLogin } from './api'
-import { loginSchema, type LoginFormValues } from './schemas'
+import { loginSchema, type LoginFormValues } from './loginSchema'
 
 const loginFields = ['email', 'password'] as const
 

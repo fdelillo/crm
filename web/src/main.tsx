@@ -1,3 +1,4 @@
+import './lib/zodConfig'
 import { StrictMode, lazy, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import './styles/globals.css'

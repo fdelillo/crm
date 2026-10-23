@@ -26,7 +26,7 @@ import { queryKeys } from '@/api/queryKeys'
 import { useIndustryTemplates, useSignup } from './api'
 import { CurrencyPicker } from './components/CurrencyPicker'
 import { IndustryTemplatePicker } from './components/IndustryTemplatePicker'
-import { signupSchema, type SignupFormValues } from './schemas'
+import { signupSchema, type SignupFormValues } from './signupSchema'
 
 const signupFields = [
   'name',

@@ -4,6 +4,14 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      browser:
+        description: Browser to run for the pre-release E2E check
+        required: true
+        type: choice
+        options: [chromium, webkit]
+        default: webkit
 
 permissions:
   contents: read
@@ -76,6 +84,10 @@ jobs:
             tools.sum
       - name: make build
         run: make build
+      - name: Record matching Vite manifest and embedded asset hashes
+        run: |
+          cd web
+          node scripts/record-build-assets.mjs "$RUNNER_TEMP/lighthouse-build"
       # A tar archive preserves the executable bit when a later E2E job downloads the artifact.
       - name: Package binary
         run: tar -C bin -czf bin/crm-linux-amd64.tar.gz crm
@@ -85,3 +97,176 @@ jobs:
           path: bin/crm-linux-amd64.tar.gz
           if-no-files-found: error
           retention-days: 7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: crm-frontend-build-evidence
+          path: ${{ runner.temp }}/lighthouse-build
+          if-no-files-found: error
+          retention-days: 7
+
+  e2e:
+    name: Playwright (${{ matrix.browser }})
+    needs: [build]
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: ${{ github.event_name == 'workflow_dispatch' && fromJSON(format('["{0}"]', inputs.browser)) || fromJSON('["chromium"]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Both managed server generations inherit the same synthetic development configuration.
+    env:
+      DATABASE_URL: postgres://crm_app:crm_app_dev@localhost:5432/crm?sslmode=disable
+      DATABASE_MIGRATION_URL: postgres://crm_owner:crm_owner_dev@localhost:5432/crm?sslmode=disable
+      AUTH_HMAC_KEY: dGVzdC1vbmx5LW5vdC1hLXJlYWwtc2VjcmV0LWF0LWxlYXN0LTMyLWJ5dGVz
+      APP_BASE_URL: https://localhost:8443
+      HTTP_ADDR: :8443
+      TLS_CERT_FILE: .certs/localhost.pem
+      TLS_KEY_FILE: .certs/localhost-key.pem
+      SMTP_HOST: localhost
+      SMTP_PORT: "1025"
+      SMTP_FROM: no-reply@crm.local
+      S3_ENDPOINT: localhost:9000
+      S3_BUCKET: crm-dev
+      S3_ACCESS_KEY: minio_dev
+      S3_SECRET_KEY: minio_dev_secret
+      S3_USE_SSL: "false"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            tools.sum
+      - name: Install certutil
+        run: sudo apt-get update && sudo apt-get install --yes libnss3-tools
+      - name: Install pinned mkcert
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error \
+            https://github.com/FiloSottile/mkcert/releases/download/v1.4.4/mkcert-v1.4.4-linux-amd64 \
+            --output "$RUNNER_TEMP/mkcert"
+          echo '6d31c65b03972c6dc4a14ab429f2928300518b26503f58723e532d1b0a3bbb52  '"$RUNNER_TEMP/mkcert" | sha256sum --check
+          chmod +x "$RUNNER_TEMP/mkcert"
+          sudo install "$RUNNER_TEMP/mkcert" /usr/local/bin/mkcert
+          mkcert -version
+      - name: Install the runner-local CA and create localhost certificate
+        run: |
+          mkdir -p "$HOME/.pki/nssdb"
+          certutil -N --empty-password -d "sql:$HOME/.pki/nssdb"
+          mkcert -install
+          make dev-certs
+      - name: Start development services
+        run: docker compose up --detach --wait
+      - name: Download CRM binary
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v6.0.0
+        with:
+          name: crm-linux-amd64
+          path: bin
+      - name: Migrate and start CRM over HTTPS
+        shell: bash
+        env:
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/mkcert-root-ca.pem
+        run: |
+          set -euo pipefail
+          tar -C bin -xzf bin/crm-linux-amd64.tar.gz
+          ./bin/crm migrate up
+          cp "$(mkcert -CAROOT)/rootCA.pem" "$RUNNER_TEMP/mkcert-root-ca.pem"
+          node web/scripts/manage-e2e-server.mjs start
+      - name: Install frontend dependencies
+        run: |
+          cd web
+          npm ci
+      - name: Install Playwright browser and system dependencies
+        env:
+          E2E_BROWSER: ${{ matrix.browser }}
+        run: |
+          cd web
+          npx playwright install --with-deps "$E2E_BROWSER"
+      - name: Run Playwright
+        id: playwright
+        env:
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/mkcert-root-ca.pem
+          E2E_BROWSER: ${{ matrix.browser }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp "$(mkcert -CAROOT)/rootCA.pem" "$RUNNER_TEMP/mkcert-root-ca.pem"
+          cd web
+          # T-F702: each group stays within the existing registration burst, with identical tests.
+          # Keep both results: a failed first group still fails the step after the second runs.
+          auxiliary_status=0
+          npx playwright test --project="$E2E_BROWSER" \
+            --output=test-results/auxiliary \
+            e2e/application.spec.ts e2e/shell-layout.spec.ts \
+            e2e/pwa-lifecycle.spec.ts e2e/logo-preparation.spec.ts || auxiliary_status=$?
+          node scripts/manage-e2e-server.mjs restart
+          critical_status=0
+          npx playwright test --project="$E2E_BROWSER" \
+            --output=test-results/critical \
+            e2e/critical-flows.spec.ts || critical_status=$?
+          echo "Playwright exit codes: auxiliary=$auxiliary_status critical=$critical_status"
+          if [[ "$auxiliary_status" -ne 0 || "$critical_status" -ne 0 ]]; then exit 1; fi
+      - name: Upload sanitized Playwright failure diagnostics
+        if: always() && steps.playwright.outcome == 'failure'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-${{ matrix.browser }}-failure-diagnostics
+          path: web/test-results/**/session-expiry-diagnostic.txt
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Download matching frontend build evidence
+        if: always() && matrix.browser == 'webkit'
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v6.0.0
+        with:
+          name: crm-frontend-build-evidence
+          path: ${{ runner.temp }}/lighthouse-evidence/build
+      - name: Collect repeated mobile Lighthouse evidence
+        if: always() && matrix.browser == 'webkit'
+        env:
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/mkcert-root-ca.pem
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp "$(mkcert -CAROOT)/rootCA.pem" "$RUNNER_TEMP/mkcert-root-ca.pem"
+          cd web
+          npx playwright install --with-deps chromium
+          node scripts/collect-performance-evidence.mjs "$RUNNER_TEMP/lighthouse-evidence"
+      - name: Open saved traces in Chrome DevTools Performance
+        if: always() && matrix.browser == 'webkit'
+        run: |
+          cd web
+          node scripts/capture-performance-panel.mjs "$RUNNER_TEMP/lighthouse-evidence"
+      - name: Check anonymous evidence before upload
+        id: performance-upload
+        if: always() && matrix.browser == 'webkit'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd web
+          node scripts/validate-performance-evidence.mjs "$RUNNER_TEMP/lighthouse-evidence"
+          echo 'safe=true' >> "$GITHUB_OUTPUT"
+      - name: Upload Lighthouse reports
+        if: always() && matrix.browser == 'webkit' && steps.performance-upload.outputs.safe == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lighthouse-mobile-reports
+          path: ${{ runner.temp }}/lighthouse-evidence
+          if-no-files-found: error
+          retention-days: 7
+      - name: Stop CI-owned CRM process
+        if: always()
+        run: node web/scripts/manage-e2e-server.mjs stop
+      - name: Stop development services
+        if: always()
+        run: docker compose down --volumes

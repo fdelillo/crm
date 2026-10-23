@@ -4,6 +4,10 @@ import { expect, test } from '@playwright/test'
 test('opens the embedded application', async ({ page }) => {
   await page.goto('/login')
   await expect(
-    page.getByRole('heading', { level: 1, name: 'Ingresar', exact: true }),
+    page.getByRole('heading', {
+      level: 1,
+      name: 'Ingresá a tu cuenta',
+      exact: true,
+    }),
   ).toBeVisible()
 })
