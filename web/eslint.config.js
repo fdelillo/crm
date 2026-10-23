@@ -144,9 +144,19 @@ const dynamicClientImport = dynamicImport(
   'HTTP clients belong in api/.',
 )
 const syntaxRule = (...groups) => ['error', ...groups.flat()]
+// INV-F22: its subscription decides when a finished session exit is cleared, so only
+// RequireSession (routeGuards.tsx, exempted below) may use it.
+const sessionLifecycleOnlyInGuard = {
+  regex: rx('(?:^|/)sessionExit$'),
+  importNames: ['useSessionLifecycle'],
+  message: 'Only RequireSession reads the session lifecycle (INV-F22).',
+}
 const noRestrictedImports = (patterns) => [
   'error',
-  { paths: [forbiddenNetworkImports, restrictedBlocker], patterns },
+  {
+    paths: [forbiddenNetworkImports, restrictedBlocker],
+    patterns: [...patterns, sessionLifecycleOnlyInGuard],
+  },
 ]
 const testFiles = ['**/*.test.*', 'src/test/**']
 export default tseslint.config(
@@ -176,17 +186,20 @@ export default tseslint.config(
     rules: {
       ...reactHooks.configs.recommended.rules,
       ...jsxA11y.configs.recommended.rules,
-      'no-restricted-imports': ['error', { paths: [restrictedBlocker] }],
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [restrictedBlocker],
+          patterns: [sessionLifecycleOnlyInGuard],
+        },
+      ],
     },
   },
   {
     files: ['src/**/*.{ts,tsx}'],
     ignores: ['src/api/**', ...testFiles],
     rules: {
-      'no-restricted-imports': [
-        'error',
-        { paths: [forbiddenNetworkImports, restrictedBlocker] },
-      ],
+      'no-restricted-imports': noRestrictedImports([]),
       'no-restricted-syntax': syntaxRule(
         networkSelectors,
         canvasSelectors,
@@ -257,7 +270,22 @@ export default tseslint.config(
   {
     files: ['src/lib/unsavedChanges.ts'],
     rules: {
-      'no-restricted-imports': ['error', { paths: [forbiddenNetworkImports] }],
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [forbiddenNetworkImports],
+          patterns: [sessionLifecycleOnlyInGuard],
+        },
+      ],
+    },
+  },
+  {
+    files: ['src/app/guards/routeGuards.tsx'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { paths: [forbiddenNetworkImports, restrictedBlocker] },
+      ],
     },
   },
   // The tenant HTTP module may call fetch; the logo module is the only canvas user.
