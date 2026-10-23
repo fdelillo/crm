@@ -60,6 +60,18 @@ const forbiddenNetworkImports = {
 // Slashes are written as \x2f so the same source works in ESLint selectors,
 // whose regex literals cannot contain a "/".
 const rx = (source) => source.replaceAll('/', '\\x2f')
+// INV-F23: components paint with the tokens of globals.css, never with the Tailwind
+// palette (bg-blue-700, text-slate-500). Opacity over a token (bg-primary/90) is not linted.
+const paletteClass = String.raw`(?:^|[\s:!-])(?:bg|text|border|ring|outline|fill|stroke|from|via|to|divide|decoration|accent|caret|shadow|placeholder)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3}(?:$|[\s/])`
+const colorMessage =
+  'Use the color tokens of globals.css (bg-primary-hover, text-muted-foreground), not the Tailwind palette (INV-F23).'
+const colorSelectors = [
+  { selector: `Literal[value=/${rx(paletteClass)}/]`, message: colorMessage },
+  {
+    selector: `TemplateElement[value.cooked=/${rx(paletteClass)}/]`,
+    message: colorMessage,
+  },
+]
 const features = readdirSync(new URL('./src/features', import.meta.url), {
   withFileTypes: true,
 })
@@ -179,13 +191,16 @@ export default tseslint.config(
         networkSelectors,
         canvasSelectors,
         dynamicClientImport,
+        colorSelectors,
       ),
     },
   },
   {
     files: ['src/api/**/*.{ts,tsx}'],
     ignores: ['**/*.test.*'],
-    rules: { 'no-restricted-syntax': syntaxRule(canvasSelectors) },
+    rules: {
+      'no-restricted-syntax': syntaxRule(canvasSelectors, colorSelectors),
+    },
   },
   {
     files: ['src/components/**/*.{ts,tsx}'],
@@ -206,6 +221,7 @@ export default tseslint.config(
         canvasSelectors,
         dynamicClientImport,
         dynamicImports(componentPatterns),
+        colorSelectors,
       ),
     },
   },
@@ -232,6 +248,7 @@ export default tseslint.config(
             canvasSelectors,
             dynamicClientImport,
             dynamicImports(patterns),
+            colorSelectors,
           ),
         },
       },
@@ -252,6 +269,7 @@ export default tseslint.config(
         canvasSelectors,
         dynamicClientImport,
         dynamicImports(featurePatterns('tenant')),
+        colorSelectors,
       ),
     },
   },
@@ -262,6 +280,7 @@ export default tseslint.config(
         networkSelectors,
         dynamicClientImport,
         dynamicImports(featurePatterns('tenant')),
+        colorSelectors,
       ),
     },
   },
