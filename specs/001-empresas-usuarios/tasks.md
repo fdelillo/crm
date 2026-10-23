@@ -4700,6 +4700,18 @@ navegador seleccionado para `workflow_dispatch`. YAML, selección local de la ma
 `ci.yml` limita `push` a `main`, y todavía no hay PR; el primer run de la corrección será al abrir
 el PR. El check E2E requerido se llama `Playwright (chromium)`; no se cambió el ruleset.
 
+**Actualización 2026-10-23 (T-F701 / S-12)**: el PR #45 se mergeó en `7dc66c4` (cabeza `29bbb1d`)
+con los 6 checks verdes, incluido `Playwright (chromium)` (job `e2e` de `.github/workflows/ci.yml`,
+cuyo nombre es `Playwright (${{ matrix.browser }})`). El dispatch de WebKit `39982289641` pasó en el
+intento 2 (el primero falló por un espejo apt lento). **S-12 validado**: Chromium y WebKit abren
+`https://localhost:8443` con la CA de mkcert instalada en el runner, **sin** el respaldo
+`ignoreHTTPSErrors` (`playwright.config.ts` lo deja en `false`).
+
+**Actualización 2026-10-23 (T-F702)**: los flujos críticos pasan en Chromium en el PR #45 y en
+WebKit en el dispatch `39982289641`, con los tres cierres de T-F707 (reabrir el enlace de reset, CSP
+con Zod `jitless` y errores de consola) y la relectura de `/me` (DD-F34). Ya no queda el bloqueo del
+sandbox macOS de las entradas del 2026-10-22.
+
 **Objetivo**: los flujos críticos funcionan de punta a punta sobre el binario real servido por
 HTTPS local; la PWA, la CSP, la cookie de sesión real, la preparación del logo y la accesibilidad
 están verificadas; los objetivos de performance están medidos. Esta fase **verifica y cierra
@@ -4891,6 +4903,44 @@ leerse completo una vez. En Android/iOS repetir registro, ingresar, usuarios y e
 HTTPS de H-12; comprobar zoom 200 %, reduced-motion, targets de 44×44 separados ≥8 px y que el
 foco no quede bajo la barra inferior. No se declara la checklist manual en verde.
 
+**Estado T-F705 2026-10-23 (parcial; sin corrección de hallazgos por decisión del usuario)**: esta
+máquina sí corre Playwright (Chromium y WebKit). Se armó una exploración fuera del repo
+(`/private/tmp/crm-a11y-explore`, contra el binario real por HTTPS) y se inspeccionaron en
+**Chromium** 81 combinaciones de pantalla y ancho (375, 320 y 640 px como equivalente de zoom 200 %),
+incluidos menú de acciones, diálogos de desactivar, de quitar logo y de cambios sin guardar, con
+capturas y `results.json` en `/private/tmp/crm-a11y-evidence/chromium/`. Resultado: **sin scroll
+horizontal ni texto recortado** en ninguna pantalla, salvo el menú de acciones (hallazgo 3); el
+resto de los hallazgos son de objetivos táctiles. WebKit no se exploró. El usuario decidió el
+2026-10-23 cerrar F7 sin corregir hallazgos visuales ni de layout, porque hace las pruebas manuales
+y la interfaz se rediseña al final; por eso no hay T-F707 de accesibilidad y ningún hallazgo tiene
+test de regresión todavía. Hallazgos (todos en 375 px, Chromium):
+1. `+ Invitar` (Usuarios) e `Invitar` (estado vacío) y `Cancelar` (Invitar usuario) son enlaces con
+   aspecto de botón de 36 px de alto: la regla global de 44 px alcanza a `button` y `nav a`, no a
+   `a[data-slot="button"]`. Arreglo previsto: sumar ese selector a la regla (NFR-F07, `size.touch`).
+2. Los radios de rol, rubro y moneda se dibujan como píldoras de 16×44 en lugar de círculos, porque la
+   misma regla de 44 px alcanza a `button[role="radio"]`; el objetivo real es la tarjeta `<label>`
+   (≥ 44 px, ancho completo). Arreglo previsto: excluir `[role="radio"]` de la regla. Es una decisión
+   visual: confirmar con el arquitecto.
+3. El menú de acciones de un usuario con acción deshabilitada ("Tiene que quedar al menos un
+   administrador activo") mide 462 px y sale del viewport de 375 y 320 px, con el texto cortado
+   (1.4.10). Arreglo previsto: limitar el ancho a `--radix-dropdown-menu-content-available-width` y
+   dejar que el motivo salte de línea.
+4. Enlaces que no usan el patrón `inline-flex min-h-11 items-center` de las demás pantallas y miden
+   17–18 px de alto: "Ir al inicio" (S-12 y pantalla de error de render), "Volver al inicio"
+   (sin permiso y error al comprobar el acceso), y "Registrá tu empresa" / "Ingresá" (enlaces dentro
+   de la frase de Ingresar y Registro).
+5. **Para el arquitecto (diseño)**: NFR-F07 pide objetivos "separados ≥ 8 px", pero §13.8 dibuja las
+   filas de Ajustes ("Datos de la empresa", "Usuarios") pegadas (0 px), igual que los ítems de los
+   menús; todas miden ≥ 44 px. O se relaja NFR-F07 para listas agrupadas (WCAG 2.5.8 pide 24 px, no
+   separación, si el objetivo es ≥ 24), o se separan las filas.
+Las mediciones de separación entre controles tuvieron ruido (la barra inferior fija contra contenido
+fuera de vista; ya corregido en el script, sin repetir la corrida). **Sin verificar** (el
+script de teclado se detuvo en el registro por un error del propio script y no se repitió):
+teclado de punta a punta (registro, ingresar, cerrar sesión, usuarios, datos de la empresa con
+logo y "Quitar", recuperar contraseña), `prefers-reduced-motion`, foco frente a la barra inferior,
+y toda la exploración en WebKit. **Siguen pendientes manuales**: VoiceOver macOS/iOS, TalkBack,
+NVDA/Windows (INV-F19), INP en Android y H-12. No se declara la checklist en verde.
+
 **T-F706 [T] — Preparación del logo en navegadores reales** · DD-F20, DD-F21, DD-F22, INV-F13, NFR-F13, S-F7, S-F9, `ui.md` §13.11.1
 - **Red** (Playwright, Chromium y WebKit; cada caso sube por la UI y después descarga
   `/api/v1/tenant/logo` desde la página para inspeccionar lo que guardó el servidor):
@@ -4915,6 +4965,10 @@ filechooser real y la descarga del logo guardado desde la página; no retiene ni
 página en Chromium (`MachPortRendezvousServer… Permission denied (1100)`) ni WebKit (`Abort trap:
 6`). No se obtuvo evidencia Red/Green, byte-identidad en runtime, resultado de S-F7 ni tiempo
 NFR-F13; ejecutar ambos proyectos en el runner Linux/PR.
+
+**Actualización T-F706 2026-10-23**: en verde en Chromium (`Playwright (chromium)` del PR #45) y en
+WebKit (dispatch `39982289641`, intento 2) sobre la cabeza `29bbb1d`. En WebKit de macOS hubo una
+corrida manual correcta después de P-F25 (sin el `APP1`/`Exif` del codificador de Apple).
 
 **T-F707 — Correcciones** que surjan de T-F702..T-F706, cada una con su test de regresión.
 
@@ -5219,6 +5273,20 @@ traía un `APP1`/`Exif` de 76 bytes que agrega el codificador de Apple.
 **Checkpoint Fase F7**: `npm run check` y `npm run e2e` en verde (Chromium en CI; WebKit
 reportado); reportes de T-F704, T-F705 y T-F706 adjuntos; resultado de S-12 (y del respaldo, si se
 usó) reportado.
+
+**Fase F7 completa (2026-10-23)**: T-F701 a T-F707 implementadas y mergeadas en el PR #45
+(`7dc66c4`, cabeza `29bbb1d`). Checkpoint: `npm run check` en verde (Node 24) y los 6 checks del PR
+en verde, incluido `Playwright (chromium)`; el dispatch de WebKit `39982289641` en verde (intento
+2). S-12 validado: Chromium y WebKit abren `https://localhost:8443` con la CA de mkcert del runner
+sin el respaldo `ignoreHTTPSErrors`. Reportes: T-F704 (bundle dentro del presupuesto; LCP p75
+`/login` 2048 ms y `/` 2052 ms contra NFR-F03 ≤ 2500, con el calentamiento aprobado), T-F705 ("Estado
+T-F705 2026-10-23": parcial) y T-F706 (verde en Chromium y WebKit de CI, y WebKit de macOS a mano
+tras P-F25). **Pendientes manuales que no bloquean el cierre** (los hace el usuario y se retoman en
+el rediseño final de la interfaz): VoiceOver macOS/iOS, TalkBack, NVDA/Windows (INV-F19), INP en
+Android, H-12 (celular real) y lo de T-F705 sin verificar (teclado de punta a punta, `prefers-reduced-motion`,
+foco frente a la barra inferior y la exploración en WebKit). **Hallazgos de T-F705 sin corregir**
+(decisión del usuario del 2026-10-23: la interfaz se rediseña al final): ver "Estado T-F705
+2026-10-23". Ninguno es de seguridad ni de contrato.
 
 ---
 
