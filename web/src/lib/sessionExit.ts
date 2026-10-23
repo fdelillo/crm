@@ -41,6 +41,9 @@ interface Registry {
   lifecycle: SessionLifecycle
   router: SessionExitRouter | null
   listeners: Set<() => void>
+  // One function per registry: a new one on every render would make React unsubscribe and
+  // subscribe again, and the unsubscribe could settle a finished exit too early (INV-F22).
+  subscribe: (listener: () => void) => () => void
   // The navigation reached /login while a screen that follows the lifecycle was still mounted.
   settleOnRelease: boolean
 }
@@ -49,12 +52,21 @@ const registries = new WeakMap<QueryClient, Registry>()
 function registryOf(client: QueryClient): Registry {
   let registry = registries.get(client)
   if (!registry) {
-    registry = {
+    const created: Registry = {
       lifecycle: { presented: false, exit: null },
       router: null,
       listeners: new Set(),
+      subscribe: (listener) => {
+        created.listeners.add(listener)
+        return () => {
+          created.listeners.delete(listener)
+          if (created.settleOnRelease && created.listeners.size === 0)
+            arrive(created)
+        }
+      },
       settleOnRelease: false,
     }
+    registry = created
     registries.set(client, registry)
   }
   return registry
@@ -82,17 +94,7 @@ export function sessionLifecycleOf(client: QueryClient): SessionLifecycle {
 
 export function useSessionLifecycle(): SessionLifecycle {
   const registry = registryOf(useQueryClient())
-  return useSyncExternalStore(
-    (listener) => {
-      registry.listeners.add(listener)
-      return () => {
-        registry.listeners.delete(listener)
-        if (registry.settleOnRelease && registry.listeners.size === 0)
-          arrive(registry)
-      }
-    },
-    () => registry.lifecycle,
-  )
+  return useSyncExternalStore(registry.subscribe, () => registry.lifecycle)
 }
 
 function arrive(registry: Registry) {

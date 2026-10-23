@@ -280,7 +280,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['src/app/guards/routeGuards.tsx'],
+    files: ['src/app/guards/routeGuards.tsx', 'src/lib/sessionExit.test.tsx'],
     rules: {
       'no-restricted-imports': [
         'error',

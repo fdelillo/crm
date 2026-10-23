@@ -5076,6 +5076,14 @@ frenado por el aviso de S-11).
       tiene que fallar algún caso de "leaving the session" (una navegación a `/login?next=…` sin
       `reason`). El desarrollador reporta cuál. Si ninguno falla de forma determinista, volver al
       arquitecto con la corrida: hace falta un caso nuevo.
+      *(Resultado)* En "leaving the session" ningún caso falla de forma determinista. Fallan
+      "handles mutation unauthenticated by stable code" (`session.test.tsx`) y "logs out from
+      Settings and does not restore the old session on Back" (`logout.test.tsx`) en 3 de 3 corridas,
+      pero dependen de tiempos. El caso determinista es nuevo: `web/src/lib/sessionExit.test.tsx`,
+      "keeps the exit after reaching /login until the last follower unmounts".
+  14. `useSessionLifecycle` pasa a `useSyncExternalStore` una función de suscripción nueva en cada
+      render (en lugar del `subscribe` estable del registro): falla `sessionExit.test.tsx`, "does not
+      subscribe again on re-render, which would clear the exit early".
 - **Green**: pasan las tablas, los tests existentes y `npm run check`, y la fila de la desactivación
   de T-F702 en Chromium (WebKit, reportado).
 - **Refactor**: revisar que:
