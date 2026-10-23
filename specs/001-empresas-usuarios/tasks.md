@@ -3216,6 +3216,13 @@ Además, `useLogout` y `useConfirmPasswordReset` ya no esperan un `cancelQueries
 frente a NFR-F05). Cambian T-F707 (G1, G6, tests existentes, mutaciones y refactor) y la
 trazabilidad. Ningún test existente cambia. Sin tareas nuevas ni cambios de orden.
 
+**Revisión del PR #45, P-F25 (2026-10-23; `ui.md` DD-F36, INV-F13, S-F17; aprobada por el usuario el 2026-10-23: A, lista cerrada y corrida manual en WebKit de macOS)**. El JPEG del logo que codifica WebKit de macOS sale con un `APP1`/`Exif` de 76 bytes que
+agrega el codificador de Apple, sin datos de la foto. El E2E de T-F706 falla en macOS y pasa en CI.
+`encodeBitmap` pasa todo JPEG por `withoutJpegMetadata` (`features/tenant/logo/jpegMetadata.ts`),
+que antes del primer `SOS` deja solo `APP0`, `APP2` ICC y `APP14` Adobe. T-F706 suma dos aserciones
+y una corrida en WebKit de macOS antes de liberar, y T-F707 suma un bloque. Cambian "qué se
+sustituye" y la trazabilidad. Ningún test existente cambia. Sin tareas nuevas ni cambios de orden.
+
 ### Convenciones de esta sección
 
 - `[T]` = tarea de test. Va **antes** de la tarea de código que la hace pasar, y el test debe
@@ -3245,6 +3252,7 @@ trazabilidad. Ningún test existente cambia. Sin tareas nuevas ni cambios de ord
   | `window.location.reload` (espía) en el test de `vite:preloadError` | El backend en los E2E (Fase F7) |
   | `Intl.DateTimeFormat().resolvedOptions().timeZone` en el test del registro | Las funciones puras de preparación del logo (firma, dimensiones, plan) |
   | El adaptador de canvas del logo (`decodeImage`, `encodeBitmap`): como parámetro de `prepareLogo` en sus tests y con `vi.mock` del módulo `features/tenant/logo/canvas.ts` en los de pantalla (jsdom no tiene `createImageBitmap` ni canvas) | El adaptador de canvas real en los E2E (T-F706) |
+  | *(P-F25)* El codificador del navegador (`getContext` y `toBlob` del prototipo de `HTMLCanvasElement`), solo en `features/tenant/logo/canvas.test.ts`, para probar lo que `encodeBitmap` hace con los bytes que devuelve | `withoutJpegMetadata` (la función pura que quita los metadatos), también dentro de ese test |
   | — | El certificado y la cookie en los E2E: HTTPS real con la CA de mkcert (`ui.md` §21.3) |
 
 - En jsdom la barra inferior y la lateral están ambas en el DOM (no hay CSS aplicado): los tests
@@ -4889,12 +4897,14 @@ foco no quede bajo la barra inferior. No se declara la checklist manual en verde
 
   | Fixture | Esperado |
   |---|---|
-  | JPEG 4000×3000, ~5 MB, EXIF orientación 6 y GPS | se sube; el logo guardado es JPEG ≤ 2 097 152 bytes (`LOGO_TARGET_MAX_BYTES`), **vertical** (alto > ancho: se aplicó la orientación), lado mayor ≤ 2000, **sin** segmento `APP1`/`Exif` (sin GPS); tiempo de preparación reportado (NFR-F13) |
+  | JPEG 4000×3000, ~5 MB, EXIF orientación 6 y GPS | se sube; el logo guardado es JPEG ≤ 2 097 152 bytes (`LOGO_TARGET_MAX_BYTES`), **vertical** (alto > ancho: se aplicó la orientación), lado mayor ≤ 2000, **sin** segmento `APP1`/`Exif` (sin GPS); *(P-F25)* antes del primer `SOS`, sus únicos `APPn` son `APP0` (`JFIF`), `APP2` (`ICC_PROFILE`) y `APP14` (`Adobe`), sin `COM`, y el archivo entero no contiene los bytes `Exif\0\0` ni `http://ns.adobe.com/xap/1.0/` (búsqueda de bytes, sin parsear: S-F17); la anotación lista los segmentos encontrados; tiempo de preparación reportado (NFR-F13) |
   | PNG 3000×3000 con transparencia | se sube como PNG ≤ 2000 px y ≤ 2 097 152 bytes; el píxel de una esquina transparente tiene alfa 0 (se lee dibujando el logo guardado en un canvas de la página) |
   | PNG 800×400 < 1 MB | los bytes guardados son **idénticos** a los del archivo |
   | PNG ≤ 2000 px de entre 1 900 000 y 2 097 152 bytes | los bytes guardados son **idénticos** (sin margen: DD-F22) |
   | SVG / GIF | mensaje de §13.11.1; ningún `PUT` en la red |
-- **Green**: pasa en Chromium y WebKit; si S-F7 falla en algún navegador (foto horizontal), frenar
+- **Green**: pasa en Chromium y WebKit *(P-F25: también en WebKit de macOS, a mano antes de liberar y
+  reportado, porque el CI corre WebKit de Linux, cuyo codificador no agrega metadatos)*; si S-F7
+  falla en algún navegador (foto horizontal), frenar
   y volver al arquitecto con el resultado (respaldo previsto: leer la orientación del EXIF y rotar
   en el canvas).
 
@@ -5125,6 +5135,87 @@ frenado por el aviso de S-11).
 - **Green**: pasan la tabla y `npm run check`. T-F705 verifica con herramienta el contraste de los
   dos tokens con texto blanco (≥ 4,5:1).
 
+**T-F707 — JPEG del logo sin los metadatos del codificador** · P-F25, DD-F36, DD-F21, INV-F13,
+BR-F13, S-F17, `ui.md` §13.11.1. Corrige el hallazgo de T-F706 en WebKit de macOS: el JPEG guardado
+traía un `APP1`/`Exif` de 76 bytes que agrega el codificador de Apple.
+- **Antes del Red**: volcar en hexadecimal el encabezado (hasta el primer `SOS`) del JPEG que sale de
+  WebKit de macOS (el logo guardado por T-F706) y adjuntarlo al PR, con la lista de etiquetas del
+  `APP1` (`exiftool -v3` o equivalente).
+  - Se espera un IFD0 con solo el puntero al IFD Exif y un IFD Exif con espacio de color, ancho y
+    alto.
+  - Si trae otra cosa (fecha, programa, modelo), o si queda un `APP2` ICC que no es un perfil estándar
+    (sRGB o Display P3), reportarlo. Cambia la urgencia, no el diseño.
+  - Ese segmento, con el ancho y el alto de la prueba, es el modelo de las tablas de abajo
+    (`webkitExifSegment` en `src/test/imageBytes.ts`). Si no se puede volcar, se arma con esa
+    estructura: `FF E1`, largo, `Exif\0\0`, TIFF `MM`, IFD0 con `0x8769`, IFD Exif con `0xA001` = 1,
+    `0xA002` y `0xA003`.
+- **Red**: casos nuevos; los existentes no se tocan.
+  - `web/src/features/tenant/logo/jpegMetadata.test.ts`, nuevo. Es unitario, con bytes armados con
+    `jpegBytes` de `src/test/imageBytes.ts`, que suma una opción para segmentos arbitrarios antes del
+    `SOF` sin cambiar a sus llamadores actuales:
+
+    | Entrada | Resultado |
+    |---|---|
+    | `SOI`, `APP0` `JFIF`, el `APP1` de WebKit, `DQT`, `SOF0`, `DHT`, `SOS` y datos | Los mismos bytes sin ese `APP1`: el tamaño baja exactamente lo que ocupa el segmento (marcador incluido). Lo demás queda en el mismo orden e idéntico, y desde el `SOS`, byte a byte |
+    | Un `APP1` XMP (`http://ns.adobe.com/xap/1.0/\0`) | Se quita |
+    | `APP13` (`Photoshop 3.0`), `APP3`, `APP15` y un `COM` | Se quitan |
+    | `APP2` `ICC_PROFILE\0` y `APP14` `Adobe` | Se quedan, en su orden |
+    | `APP2` `MPF\0` y un `APP0` que no es `JFIF\0` (`JFXX\0`) | Se quitan |
+    | 20 `APP1` de 65 533 bytes (`app1Segments: 20`) | Se quitan los 20 |
+    | Nada que quitar (`SOI`, `APP0` `JFIF`, `DQT`, `SOF0`, `DHT`, `SOS`) | La misma instancia (`toBe`) |
+    | Bytes de relleno (`FF FF`) antes de un marcador | Se aceptan; el resultado no los conserva |
+    | Después del `SOS`, los bytes `FF E1 00 10` y 14 más | No se tocan: desde el primer `SOS` se copia sin mirar |
+    | Sin `FF D8` al principio; un segmento cuyo largo pasa el final; un largo menor que 2; `EOI` antes del `SOS`; termina sin `SOS`; un byte distinto de `FF` donde va un marcador | Lanza (una fila por caso) |
+
+  - `web/src/features/tenant/logo/canvas.test.ts`, nuevo. En jsdom, con `getContext` y `toBlob` de
+    `HTMLCanvasElement.prototype` sustituidos (`vi.spyOn`):
+    - `getContext` devuelve un contexto con `drawImage` vacío;
+    - `toBlob` devuelve los bytes que pide la fila;
+    - el bitmap es un objeto con `width` y `height`.
+
+    Es el borde con el navegador, como MSW con la red. `withoutJpegMetadata` no se sustituye.
+
+    | Caso | Resultado |
+    |---|---|
+    | `format: 'image/jpeg'`; `toBlob` devuelve un JPEG con el `APP1` de WebKit | Un `Blob` `image/jpeg` sin ese `APP1` |
+    | `format: 'image/jpeg'`; `toBlob` devuelve un JPEG sin metadatos (como Chromium) | El mismo `Blob` que devolvió `toBlob` |
+    | `format: 'image/png'`; `toBlob` devuelve bytes PNG | El mismo `Blob` |
+    | `format: 'image/jpeg'`; `toBlob` devuelve bytes que no son un JPEG | `encodeBitmap` rechaza |
+    | `toBlob` devuelve `null` | Rechaza, como hoy |
+    | Cada fila anterior | El canvas queda con `width` y `height` en 0 (el `finally` de hoy) |
+
+  - `web/e2e/logo-preparation.spec.ts` (T-F706): dos aserciones nuevas después de la de
+    `hasExifApp1`, que se queda.
+    1. Los `APPn` antes del primer `SOS` del logo guardado son solo `APP0` `JFIF`, `APP2`
+       `ICC_PROFILE` y `APP14` `Adobe`, sin `COM`. Una ayuda del archivo lista marcador e
+       identificador.
+    2. `preparedJPEG.body` no contiene `Exif\0\0` ni `http://ns.adobe.com/xap/1.0/` en ningún lugar.
+       Es una búsqueda de bytes, sin parsear, y cubre lo que supone S-F17.
+
+    La anotación de NFR-F13 lista los segmentos encontrados.
+- **Tests existentes**: no se tocan.
+  - `prepareLogo.test.ts` sigue igual, porque sustituye el adaptador entero: sus `Blob` de ceros
+    nunca pasan por `withoutJpegMetadata`.
+  - La aserción `hasExifApp1` del E2E se queda y vuelve a pasar en WebKit de macOS.
+- **Mutaciones**: se aplica cada una, algún caso tiene que fallar, y se restaura.
+  1. `encodeBitmap` no llama a `withoutJpegMetadata`: falla la primera fila de `canvas.test.ts` (en
+     CI) y la aserción `hasExifApp1` del E2E en WebKit de macOS.
+  2. Se quita solo `APP1` (una lista de lo que se quita, no de lo que queda): falla la fila de
+     `APP13`, `APP3`, `APP15` y `COM`.
+  3. Se quitan también `APP2` ICC y `APP14`: falla su fila.
+  4. Con bytes mal formados devuelve la entrada sin tocar: fallan las filas de "Lanza" y la de bytes
+     que no son un JPEG de `canvas.test.ts`.
+  5. El PNG también pasa por la función: falla la fila del PNG (el `Blob` no es el mismo).
+  6. Sigue recorriendo después del `SOS`: falla la fila "Después del `SOS`".
+  7. Siempre copia, aunque no quite nada: fallan "la misma instancia" y "el mismo `Blob`".
+- **Green**: pasan las tablas, los tests existentes y `npm run check`. T-F706 queda en verde en
+  Chromium y WebKit en CI y en WebKit de macOS a mano (reportado, con el tiempo de NFR-F13).
+- **Refactor**: revisar que:
+  - `jpegMetadata.ts` no use nada del navegador (ni `Blob`): recibe y devuelve bytes;
+  - el recorrido de marcadores no duplique el de `readImageSize` (`sniff.ts`): si comparten la forma de
+    avanzar, un solo helper interno del módulo `logo/`, con cada llamador decidiendo si tolera o lanza;
+  - los nombres vayan por funcionalidad, con la trazabilidad en comentarios.
+
 **Checkpoint Fase F7**: `npm run check` y `npm run e2e` en verde (Chromium en CI; WebKit
 reportado); reportes de T-F704, T-F705 y T-F706 adjuntos; resultado de S-12 (y del respaldo, si se
 usó) reportado.
@@ -5191,4 +5282,5 @@ usó) reportado.
 | P-F22 (cola de los cambios de la empresa y cancelación de las lecturas en vuelo: DD-F33, INV-F20, S-F15; DD-F27 sin dos nombres para la misma zona), `ui.md` §9.2, §10.3, §13.11, §14.4, §15.4, §24, §25, §26, §29 | T-F602, T-F603, T-F605 |
 | DD-F34 / INV-F21 (relectura de `/me` al entrar con el permiso en caché denegado), P-F23, `ui.md` §6.4.1, §14.5 | T-F707, T-F702 |
 | DD-F35 / INV-F22 (salida de sesión única; cerrar sesión con cambios sin guardar, INV-F18 ampliada), INV-F23 (colores solo con tokens), P-F24, S-F16 (refutado; respaldo con `router.subscribe`), RF-19, `ui.md` §6.4.2, §13.8, §19.1, §23 | T-F707, T-F704 |
+| DD-F36 (JPEG del logo sin los metadatos del codificador), INV-F13 precisada, BR-F13, P-F25, S-F17, S-F7 (validado en Chromium y WebKit), RF-9, `ui.md` §13.11.1, §15.4 | T-F707, T-F706 |
 | NFR-F01..F13 | T-F002 (F02, F07, F08), T-F702 (F01, F06, F10, F12), T-F703 (F09, F11), T-F704 (F03..F05), T-F705 (F06..F08), T-F706 (F13) |
