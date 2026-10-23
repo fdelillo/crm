@@ -4,6 +4,8 @@ import userEvent from '@testing-library/user-event'
 import { onlineManager } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { api } from '@/api/client'
+import { unwrap } from '@/api/errors'
 import { queryKeys } from '@/api/queryKeys'
 import {
   buildCurrentUser,
@@ -532,6 +534,16 @@ describe('leaving the session', () => {
       )
       await waitFor(() => expect(navigation.toLogin()).toHaveLength(1))
       expect(loader()).toBeVisible()
+      // A 401 from any other request while the exit is held must not change its reason.
+      server.use(http.get(`${base}/tenant`, () => failure(401)))
+      await act(() =>
+        app.queryClient
+          .fetchQuery({
+            queryKey: queryKeys.tenant,
+            queryFn: async () => unwrap(await api.GET('/tenant')),
+          })
+          .catch(() => undefined),
+      )
     } finally {
       release.open()
     }
