@@ -557,6 +557,33 @@ test('critical registration, session, recovery, invitation, and access flows', a
   await reopenedReset.setViewportSize({ width: 320, height: 720 })
   await track(reopenedReset)
   await reopenedReset.goto(resetURL.toString())
+  // ui.md S-04: the reset link has no preview, so a consumed token is only
+  // rejected when the form is sent.
+  await reopenedReset.getByLabel('Nueva contraseña').fill(initialPassword)
+  const reopenedResetResponse = reopenedReset.waitForResponse(
+    (response) =>
+      response.url() === `${origin}/api/v1/auth/password-reset/confirm` &&
+      response.request().method() === 'POST',
+  )
+  await reopenedReset
+    .getByRole('button', { name: 'Guardar contraseña' })
+    .click()
+  const reopenedResetConfirm = await reopenedResetResponse
+  const reopenedResetCode = await reopenedResetConfirm
+    .json()
+    .then((payload: unknown) => {
+      if (typeof payload !== 'object' || payload === null) return 'other'
+      const code = (payload as { code?: unknown }).code
+      return code === 'token_invalid' || code === 'rate_limited'
+        ? code
+        : 'other'
+    })
+    .catch(() => 'unavailable')
+  // T-F702: expose only the HTTP status and an allowlisted code on failure.
+  expect(
+    { status: reopenedResetConfirm.status(), code: reopenedResetCode },
+    'Reused reset link response (HTTP status and allowed code only)',
+  ).toEqual({ status: 400, code: 'token_invalid' })
   await expect(
     reopenedReset.getByText('Este enlace ya no sirve.'),
   ).toBeVisible()

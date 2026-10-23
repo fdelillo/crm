@@ -4917,6 +4917,24 @@ para evidencia CI.
     ni el permiso (INV-F01);
   - los nombres vayan por funcionalidad, con la trazabilidad en comentarios.
 
+**T-F707 — Correcciones del cierre de T-F702 (2026-10-22)**. Con la relectura de `/me` en verde, la
+corrida de T-F702 llegó más lejos y mostró tres desvíos. Ninguno cambia el diseño ni relaja una
+aceptación; el test de regresión de cada uno es la propia fila de T-F702.
+- **Reabrir el enlace de reset** (S-04, `ui.md`: "no hay vista previa: el token se valida al
+  enviar"). El E2E esperaba "Este enlace ya no sirve." apenas abría el enlace usado, pero la pantalla
+  lo dice recién al enviar. Ahora el paso envía una contraseña y exige `400 token_invalid` (solo el
+  status y un código permitido, como el registro duplicado) antes del mensaje. Suma un `POST` al cupo
+  de reset (3 de 5 por IP).
+- **CSP y Zod** (NFR-F10, ADR-019). Zod 4 prueba `new Function` para decidir si compila los
+  parsers; con `script-src 'self'` el navegador reporta esa prueba como violación aunque Zod atrape
+  el error (8 en la corrida local). `web/src/lib/zodConfig.ts` activa `jitless`, y `main.tsx` lo
+  importa antes que cualquier schema. Mutación: sin ese import, la fila "0 violaciones de CSP" falla.
+- **Errores de consola** (T-F702: "0 errores de consola"). Chromium escribe "Failed to load
+  resource" por cada `4xx`, también los que pide el contrato: `/me` sin sesión, la contraseña
+  incorrecta, el email duplicado y el enlace usado. `captureBrowserDiagnostics` deja fuera solo esos
+  avisos del navegador para `4xx` de `/api/v1/` del mismo origen. Un `5xx` o cualquier error que
+  escriba la aplicación siguen contando.
+
 **Checkpoint Fase F7**: `npm run check` y `npm run e2e` en verde (Chromium en CI; WebKit
 reportado); reportes de T-F704, T-F705 y T-F706 adjuntos; resultado de S-12 (y del respaldo, si se
 usó) reportado.

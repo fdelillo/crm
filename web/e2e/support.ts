@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect } from '@playwright/test'
-import type { Page } from '@playwright/test'
+import type { ConsoleMessage, Page } from '@playwright/test'
 
 const mailpitURL = process.env.MAILPIT_URL ?? 'http://localhost:8025'
 
@@ -21,6 +21,25 @@ export type BrowserDiagnostics = {
   policyViolations: string[]
 }
 
+// T-F702 (NFR-F10): the browser itself logs "Failed to load resource" for every 4xx, including the
+// ones the contract expects (anonymous /me, wrong password, duplicate email, reused link). Only
+// those same-origin API rejections are left out; 5xx and anything the application logs still count.
+const apiRejectionLog =
+  /^Failed to load resource: the server responded with a status of 4\d\d\b/
+
+function isExpectedAPIRejection(page: Page, message: ConsoleMessage): boolean {
+  if (!apiRejectionLog.test(message.text())) return false
+  try {
+    const resource = new URL(message.location().url)
+    return (
+      resource.origin === new URL(page.url()).origin &&
+      resource.pathname.startsWith('/api/v1/')
+    )
+  } catch {
+    return false
+  }
+}
+
 export async function captureBrowserDiagnostics(
   page: Page,
 ): Promise<BrowserDiagnostics> {
@@ -31,8 +50,9 @@ export async function captureBrowserDiagnostics(
   }
 
   page.on('console', (message) => {
-    if (message.type() === 'error')
-      diagnostics.consoleErrors.push(message.text())
+    if (message.type() !== 'error' || isExpectedAPIRejection(page, message))
+      return
+    diagnostics.consoleErrors.push(message.text())
   })
   page.on('pageerror', (error) => diagnostics.pageErrors.push(error.message))
   await page.exposeFunction('__crmReportCSPViolation', (detail: string) => {
