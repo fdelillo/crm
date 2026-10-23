@@ -74,12 +74,25 @@ export async function captureBrowserDiagnostics(
 export async function expectNoAccessibilityViolations(
   page: Page,
 ): Promise<void> {
-  const activeToasts = page.locator(
-    '[data-sonner-toast][data-mounted="true"][data-visible="true"]',
-  )
-  for (let index = 0; index < (await activeToasts.count()); index += 1) {
-    await expect(activeToasts.nth(index)).toHaveCSS('opacity', '1')
-  }
+  // Axe measures contrast mid-animation, so wait until no toast is leaving and every visible one is
+  // opaque. A single polled check: a toast can start leaving between counting and inspecting it.
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          () =>
+            !document.querySelector(
+              '[data-sonner-toast][data-removed="true"]',
+            ) &&
+            Array.from(
+              document.querySelectorAll<HTMLElement>(
+                '[data-sonner-toast][data-mounted="true"][data-visible="true"]',
+              ),
+            ).every((toast) => getComputedStyle(toast).opacity === '1'),
+        ),
+      { message: 'toasts settled before the accessibility scan' },
+    )
+    .toBe(true)
 
   const result = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])

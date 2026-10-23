@@ -4948,6 +4948,11 @@ aceptación; el test de regresión de cada uno es la propia fila de T-F702.
   incorrecta, el email duplicado y el enlace usado. `captureBrowserDiagnostics` deja fuera solo esos
   avisos del navegador para `4xx` de `/api/v1/` del mismo origen. Un `5xx` o cualquier error que
   escriba la aplicación siguen contando.
+- **Toasts antes de axe** (CI `39887682542` sobre `17ce783`, sin cambios de la app ni de E2E respecto
+  de `2295215`, que había pasado). `expectNoAccessibilityViolations` contaba los toasts visibles y
+  esperaba opacidad 1 en cada uno, pero uno que ya estaba saliendo (`data-removed="true"`) bajaba a 0
+  y nunca llegaba. Ahora una sola espera con reintentos exige que no quede ningún toast saliendo y
+  que los visibles tengan opacidad 1. No se saltea ningún escaneo.
 
 **Checkpoint Fase F7**: `npm run check` y `npm run e2e` en verde (Chromium en CI; WebKit
 reportado); reportes de T-F704, T-F705 y T-F706 adjuntos; resultado de S-12 (y del respaldo, si se
