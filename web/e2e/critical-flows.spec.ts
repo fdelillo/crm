@@ -12,6 +12,21 @@ import {
 const origin = 'https://localhost:8443'
 const initialPassword = 'Example test password 123!'
 const resetPassword = 'Another example password 456!'
+// ui.md §21.2 (= plan §10.7): the exact policy, so a looser one served by the binary fails.
+const documentContentSecurityPolicy = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' blob: data:",
+  "font-src 'self'",
+  "connect-src 'self'",
+  "manifest-src 'self'",
+  "worker-src 'self'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ')
 
 // T-F702: exercise the approved critical journeys through the real HTTPS binary and API.
 test('critical registration, session, recovery, invitation, and access flows', async ({
@@ -36,7 +51,9 @@ test('critical registration, session, recovery, invitation, and access flows', a
   await track(page)
 
   const shellResponse = await page.goto('/')
-  expect(shellResponse?.headers()['content-security-policy']).toBeTruthy()
+  expect(shellResponse?.headers()['content-security-policy']).toBe(
+    documentContentSecurityPolicy,
+  )
   expect(shellResponse?.headers()['strict-transport-security']).toBeUndefined()
   await expect(
     page.getByRole('heading', { level: 1, name: 'Ingresá a tu cuenta' }),
@@ -127,9 +144,32 @@ test('critical registration, session, recovery, invitation, and access flows', a
     verificationPage.getByText('¡Listo! Tu email quedó confirmado.'),
   ).toBeVisible()
   await inspectScreen(verificationPage)
-  // Headless Chromium reports every page as visible, so reload the original
-  // tab to restore the now-verified session from the real server.
-  await page.reload()
+  // T-F702 (DD-46, DD-F28): "+ Invitar" enables without reloading. Headless
+  // browsers never hide a tab, so returning to it is the visibilitychange that
+  // TanStack's focusManager listens for on window; it must bubble from document.
+  const verifiedSessionResponse = page.waitForResponse(
+    (response) =>
+      response.url() === `${origin}/api/v1/me` &&
+      response.request().method() === 'GET',
+  )
+  await page.bringToFront()
+  await page.evaluate(() =>
+    document.dispatchEvent(new Event('visibilitychange', { bubbles: true })),
+  )
+  const verifiedSession = await verifiedSessionResponse
+  expect(
+    {
+      status: verifiedSession.status(),
+      emailVerified: await verifiedSession
+        .json()
+        .then(
+          (payload: { user?: { email_verified?: unknown } }) =>
+            payload.user?.email_verified,
+        )
+        .catch(() => 'unavailable'),
+    },
+    'Session reread on returning to the tab (status and flag only)',
+  ).toEqual({ status: 200, emailVerified: true })
   await expect(page.getByRole('link', { name: '+ Invitar' })).toBeEnabled()
   await inspectScreen(page)
 

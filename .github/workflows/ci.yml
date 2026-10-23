@@ -187,13 +187,16 @@ jobs:
           cd web
           npm ci
       - name: Install Playwright browser and system dependencies
+        env:
+          E2E_BROWSER: ${{ matrix.browser }}
         run: |
           cd web
-          npx playwright install --with-deps "${{ matrix.browser }}"
+          npx playwright install --with-deps "$E2E_BROWSER"
       - name: Run Playwright
         id: playwright
         env:
           NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/mkcert-root-ca.pem
+          E2E_BROWSER: ${{ matrix.browser }}
         shell: bash
         run: |
           set -euo pipefail
@@ -202,13 +205,13 @@ jobs:
           # T-F702: each group stays within the existing registration burst, with identical tests.
           # Keep both results: a failed first group still fails the step after the second runs.
           auxiliary_status=0
-          npx playwright test --project="${{ matrix.browser }}" \
+          npx playwright test --project="$E2E_BROWSER" \
             --output=test-results/auxiliary \
             e2e/application.spec.ts e2e/shell-layout.spec.ts \
             e2e/pwa-lifecycle.spec.ts e2e/logo-preparation.spec.ts || auxiliary_status=$?
           node scripts/manage-e2e-server.mjs restart
           critical_status=0
-          npx playwright test --project="${{ matrix.browser }}" \
+          npx playwright test --project="$E2E_BROWSER" \
             --output=test-results/critical \
             e2e/critical-flows.spec.ts || critical_status=$?
           echo "Playwright exit codes: auxiliary=$auxiliary_status critical=$critical_status"
