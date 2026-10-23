@@ -208,6 +208,34 @@ function jpegExifDetails(bytes: Buffer): {
   return { hasExifApp1: false, orientation: null, hasGPSIFD: false }
 }
 
+// T-F707 (P-F25, DD-F36): the APPn and COM segments before the first SOS, each as marker and
+// identifier ("APP0 JFIF", "APP1 Exif", "COM"). Anything else is not metadata and is skipped.
+function jpegMetadataSegments(bytes: Buffer): string[] {
+  const found: string[] = []
+  let offset = 2
+  while (offset + 4 <= bytes.length) {
+    if (bytes[offset] !== 0xff) break
+    while (bytes[offset + 1] === 0xff) offset += 1
+    const marker = bytes[offset + 1]
+    if (marker === undefined || marker === 0xda || marker === 0xd9) break
+    if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd8)) {
+      offset += 2
+      continue
+    }
+    const length = bytes.readUInt16BE(offset + 2)
+    if (length < 2) break
+    if (marker >= 0xe0 && marker <= 0xef) {
+      const payload = bytes.subarray(offset + 4, offset + 2 + length)
+      const identifier = payload.toString('latin1').split('\0')[0]
+      found.push(`APP${marker - 0xe0} ${identifier?.slice(0, 20) ?? ''}`.trim())
+    } else if (marker === 0xfe) {
+      found.push('COM')
+    }
+    offset += 2 + length
+  }
+  return found
+}
+
 // T-F706 (DD-F20..22, S-F7, S-F9, NFR-F13): exercise real browser image APIs and saved bytes.
 test('prepares company logos with real browser encoders', async ({
   page,
@@ -275,11 +303,24 @@ test('prepares company logos with real browser encoders', async ({
   expect(jpegPixels.height).toBeLessThanOrEqual(2000)
   expect(jpegPixels.height).toBeGreaterThan(jpegPixels.width)
   expect(jpegExifDetails(preparedJPEG.body).hasExifApp1).toBe(false)
+  // P-F25 (DD-F36, S-F17): only the segments that change how the image decodes survive, and
+  // no Exif or XMP bytes are anywhere in the file (a byte search, nothing parsed).
+  const metadataSegments = jpegMetadataSegments(preparedJPEG.body)
+  expect(
+    metadataSegments.filter(
+      (segment) =>
+        !['APP0 JFIF', 'APP2 ICC_PROFILE', 'APP14 Adobe'].includes(segment),
+    ),
+  ).toEqual([])
+  expect(preparedJPEG.body.includes(Buffer.from('Exif\0\0'))).toBe(false)
+  expect(
+    preparedJPEG.body.includes(Buffer.from('http://ns.adobe.com/xap/1.0/')),
+  ).toBe(false)
   testInfo.annotations.push({
     type: 'NFR-F13 JPEG preparation',
     description:
       `Tiempo hasta “Subiendo logo…”: ${jpegDuration?.toFixed(0)} ms; guardado ` +
-      `${preparedJPEG.body.length} bytes ${jpegPixels.width}x${jpegPixels.height}, sin APP1/Exif.`,
+      `${preparedJPEG.body.length} bytes ${jpegPixels.width}x${jpegPixels.height}, sin APP1/Exif; segmentos antes del SOS: ${metadataSegments.join(', ') || 'ninguno'}.`,
   })
 
   const transparentPNG = await readFile(transparentPNGFixture)
