@@ -1,12 +1,7 @@
-import { useState } from 'react'
+import { useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { LoaderCircle } from 'lucide-react'
-import {
-  Link,
-  Navigate,
-  Outlet,
-  useLocation,
-  useNavigation,
-} from 'react-router'
+import { Link, Navigate, Outlet, useLocation } from 'react-router'
 import { usePermissionCheck, useSession } from '@/features/auth/session'
 import { messageForError } from '@/api/errorMessages'
 import { safeNextPath } from '@/lib/safeNextPath'
@@ -14,7 +9,11 @@ import { Button } from '@/components/ui/button'
 import { ErrorState } from '@/components/ErrorState'
 import { PageHeader } from '@/components/PageHeader'
 import { ForbiddenState } from '@/components/ForbiddenState'
-import { isSessionExpiredRedirect } from '@/lib/sessionExpiredRedirect'
+import {
+  exitSession,
+  resumeSessionExit,
+  useSessionLifecycle,
+} from '@/lib/sessionExit'
 export function PublicOnly() {
   const { data } = useSession()
   const location = useLocation()
@@ -47,14 +46,29 @@ function SessionLoader() {
   )
 }
 
+// DD-F35, INV-F22 (ui.md §6.4.2): decides with the session-exit registry, never with the router state.
+// During an exit the session is not read at all: the cache was just cleared, a new GET /me would
+// only race the navigation to the login (and bounce it if the server still answered a session).
 export function RequireSession() {
+  const client = useQueryClient()
+  const { exit } = useSessionLifecycle()
+  const stalled = exit?.status === 'stalled'
+  useEffect(() => {
+    if (stalled) resumeSessionExit(client)
+  }, [client, stalled])
+  return exit ? <SessionLoader /> : <GuardedSession />
+}
+
+function GuardedSession() {
+  const client = useQueryClient()
   const session = useSession()
   const location = useLocation()
-  const navigation = useNavigation()
-  const [wasAuthenticated, setWasAuthenticated] = useState(
-    Boolean(session.data),
-  )
-  if (session.data && !wasAuthenticated) setWasAuthenticated(true)
+  const { presented } = useSessionLifecycle()
+  const leaving =
+    !session.isPending && !session.isLoadingError && !session.data && presented
+  useEffect(() => {
+    if (leaving) exitSession(client, 'session_expired')
+  }, [client, leaving])
   if (session.isPending) return <SessionLoader />
   if (session.isLoadingError) {
     const message = messageForError(session.error, 'generic')
@@ -73,29 +87,14 @@ export function RequireSession() {
       </main>
     )
   }
-  // Keep intentional login destinations while their lazy chunk loads. The
-  // session query is cleared during these navigations, so a plain Navigate
-  // here would race them and drop their reason.
-  if (
-    !session.data &&
-    navigation.location &&
-    navigation.location.pathname === '/login' &&
-    (isSessionExpiredRedirect(navigation.location) ||
-      new URLSearchParams(navigation.location.search).get('reason') ===
-        'logged_out')
+  if (session.data) return <Outlet />
+  if (presented) return <SessionLoader />
+  return (
+    <Navigate
+      to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`}
+      replace
+    />
   )
-    return <SessionLoader />
-  // Cache clear can publish a fresh null before the router's pending snapshot.
-  // Once authenticated, wait for the existing session/logout handler to navigate.
-  if (!session.data && wasAuthenticated) return <SessionLoader />
-  if (!session.data)
-    return (
-      <Navigate
-        to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`}
-        replace
-      />
-    )
-  return <Outlet />
 }
 export function RequirePermission() {
   const location = useLocation()

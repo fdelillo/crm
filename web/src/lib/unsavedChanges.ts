@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useBlocker } from 'react-router'
-import { isSessionExpiredRedirect } from './sessionExpiredRedirect'
+import { isSessionExitRedirect } from './sessionExpiredRedirect'
 // DD-F32: client editing state only; no server data is retained here.
 let activeGuards = 0
 export function hasUnsavedChanges(): boolean {
@@ -15,6 +15,6 @@ export function useUnsavedChangesGuard(when: boolean) {
     }
   }, [when])
   return useBlocker(
-    ({ nextLocation }) => when && !isSessionExpiredRedirect(nextLocation),
+    ({ nextLocation }) => when && !isSessionExitRedirect(nextLocation),
   )
 }
