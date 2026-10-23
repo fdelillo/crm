@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect } from '@playwright/test'
-import type { ConsoleMessage, Page } from '@playwright/test'
+import type { ConsoleMessage, Page, Response } from '@playwright/test'
 
 const mailpitURL = process.env.MAILPIT_URL ?? 'http://localhost:8025'
 
@@ -19,18 +19,21 @@ export type BrowserDiagnostics = {
   consoleErrors: string[]
   pageErrors: string[]
   policyViolations: string[]
+  // Every same-origin API 4xx as "METHOD /path -> status", ids replaced by {id}. The spec
+  // compares them against the rejections its journey expects.
+  apiRejections: string[]
 }
 
 // T-F702 (NFR-F10): the browser itself logs "Failed to load resource" for every 4xx, including the
-// ones the contract expects (anonymous /me, wrong password, duplicate email, reused link). Only
-// those same-origin API rejections are left out; 5xx and anything the application logs still count.
+// ones the contract expects (anonymous /me, wrong password, duplicate email, reused link). That log
+// is left out only for same-origin API calls, because each of those responses is recorded in
+// `apiRejections` and checked there; 5xx and anything the application logs still count.
 const apiRejectionLog =
   /^Failed to load resource: the server responded with a status of 4\d\d\b/
 
-function isExpectedAPIRejection(page: Page, message: ConsoleMessage): boolean {
-  if (!apiRejectionLog.test(message.text())) return false
+const isSameOriginAPI = (page: Page, url: string): boolean => {
   try {
-    const resource = new URL(message.location().url)
+    const resource = new URL(url)
     return (
       resource.origin === new URL(page.url()).origin &&
       resource.pathname.startsWith('/api/v1/')
@@ -40,6 +43,22 @@ function isExpectedAPIRejection(page: Page, message: ConsoleMessage): boolean {
   }
 }
 
+function isRecordedAPIRejection(page: Page, message: ConsoleMessage): boolean {
+  return (
+    apiRejectionLog.test(message.text()) &&
+    isSameOriginAPI(page, message.location().url)
+  )
+}
+
+const resourceID =
+  /\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?=\/|$)/gi
+
+// Method, path and status only: reading the body can fail once the page has moved on.
+function describeAPIRejection(response: Response): string {
+  const path = new URL(response.url()).pathname.replace(resourceID, '/{id}')
+  return `${response.request().method()} ${path} -> ${response.status()}`
+}
+
 export async function captureBrowserDiagnostics(
   page: Page,
 ): Promise<BrowserDiagnostics> {
@@ -47,10 +66,17 @@ export async function captureBrowserDiagnostics(
     consoleErrors: [],
     pageErrors: [],
     policyViolations: [],
+    apiRejections: [],
   }
 
+  page.on('response', (response) => {
+    const status = response.status()
+    if (status < 400 || status >= 500 || !isSameOriginAPI(page, response.url()))
+      return
+    diagnostics.apiRejections.push(describeAPIRejection(response))
+  })
   page.on('console', (message) => {
-    if (message.type() !== 'error' || isExpectedAPIRejection(page, message))
+    if (message.type() !== 'error' || isRecordedAPIRejection(page, message))
       return
     diagnostics.consoleErrors.push(message.text())
   })

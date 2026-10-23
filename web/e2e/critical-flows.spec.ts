@@ -663,6 +663,18 @@ test('critical registration, session, recovery, invitation, and access flows', a
     expect(entry.consoleErrors, 'browser console errors').toEqual([])
     expect(entry.pageErrors, 'uncaught page errors').toEqual([])
   }
+  // The console leaves out the browser's own log of an API 4xx, so every one of them must be a
+  // rejection this journey provokes on purpose: a new 404, 422 or 429 fails here.
+  const apiRejections = new Set(
+    diagnostics.flatMap((entry) => entry.apiRejections),
+  )
+  expect([...apiRejections].sort(), 'API rejections').toEqual([
+    'GET /api/v1/me -> 401', // anonymous start, and the session the deactivation closed
+    'POST /api/v1/auth/login -> 401', // wrong password
+    'POST /api/v1/auth/login -> 429', // the lockout after repeated wrong passwords
+    'POST /api/v1/auth/password-reset/confirm -> 400', // the reopened reset link
+    'POST /api/v1/auth/signup -> 409', // the duplicate email
+  ])
   await Promise.all(
     trackedPages
       .filter((target) => target !== page)
