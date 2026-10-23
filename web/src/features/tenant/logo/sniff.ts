@@ -1,3 +1,5 @@
+import { EOI, readJpegSegment, SOS } from './jpegSegments'
+
 export type SniffedImageType =
   'png' | 'jpeg' | 'gif' | 'webp' | 'heic' | 'svg' | 'unknown'
 
@@ -49,34 +51,23 @@ function pngSize(bytes: Uint8Array) {
 // Start-of-frame markers are C0-CF except DHT (C4), JPG (C8) and DAC (CC).
 const isFrameMarker = (marker: number) =>
   marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)
-// Markers that carry no length: TEM, RSTn, SOI.
-const isStandalone = (marker: number) =>
-  marker === 0x01 || (marker >= 0xd0 && marker <= 0xd8)
 
 function jpegSize(bytes: Uint8Array) {
   let offset = 2
-  while (offset + 4 <= bytes.length) {
-    if (bytes[offset] !== 0xff) return null
-    const marker = bytes[offset + 1] ?? 0
-    if (marker === 0xff) {
-      offset += 1
-      continue
-    }
-    if (isStandalone(marker)) {
-      offset += 2
-      continue
-    }
+  for (;;) {
+    const segment = readJpegSegment(bytes, offset)
+    // A header that cannot be walked just has no readable size here.
+    if (!segment) return null
     // Reaching the scan (or the end) before any frame header: nothing to read.
-    if (marker === 0xda || marker === 0xd9) return null
-    if (isFrameMarker(marker)) {
-      if (offset + 9 > bytes.length) return null
-      const height = u16(bytes, offset + 5)
-      const width = u16(bytes, offset + 7)
+    if (segment.marker === SOS || segment.marker === EOI) return null
+    if (isFrameMarker(segment.marker)) {
+      if (segment.start + 9 > bytes.length) return null
+      const height = u16(bytes, segment.start + 5)
+      const width = u16(bytes, segment.start + 7)
       return width > 0 && height > 0 ? { width, height } : null
     }
-    offset += 2 + u16(bytes, offset + 2)
+    offset = segment.end
   }
-  return null
 }
 
 /** Raw header dimensions (no EXIF rotation), without decoding the image. */
