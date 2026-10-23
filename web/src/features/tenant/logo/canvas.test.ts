@@ -28,7 +28,10 @@ const jpegFromWebKit = () =>
   })
 
 // Replaces getContext and toBlob; `encoded` is what toBlob yields (null: it failed).
-function stubBrowserEncoder(encoded: Uint8Array | null, type: string) {
+function stubBrowserEncoder(
+  encoded: Uint8Array<ArrayBuffer> | null,
+  type: string,
+) {
   const canvases: HTMLCanvasElement[] = []
   const produced: Blob[] = []
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(

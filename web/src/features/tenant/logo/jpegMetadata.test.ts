@@ -81,7 +81,7 @@ describe('withoutJpegMetadata', () => {
 
     const output = withoutJpegMetadata(input)
 
-    expect(input.length - output.length).toBe(20 * 65_535)
+    expect(input.length - output.length).toBe(20 * 65_537)
     expect(output).toEqual(jpegWith(jfif, dqt))
   })
 
