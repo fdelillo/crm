@@ -15,3 +15,26 @@ export function isSessionExpiredRedirect(
     new URLSearchParams(to.search).get('reason') === 'session_expired'
   )
 }
+export type SessionExitReason =
+  'session_expired' | 'logged_out' | 'password_changed'
+export function sessionExitPath(
+  reason: SessionExitReason,
+  from: Pick<Location, 'pathname' | 'search'>,
+): string {
+  return reason === 'session_expired'
+    ? sessionExpiredLoginPath(from)
+    : `/login?reason=${reason}`
+}
+const exitReasons: readonly string[] = [
+  'session_expired',
+  'logged_out',
+  'password_changed',
+] satisfies SessionExitReason[]
+export function isSessionExitRedirect(
+  to: Pick<Location, 'pathname' | 'search'>,
+): boolean {
+  const reason = new URLSearchParams(to.search).get('reason')
+  return (
+    to.pathname === '/login' && reason !== null && exitReasons.includes(reason)
+  )
+}
