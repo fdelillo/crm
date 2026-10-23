@@ -2,8 +2,8 @@
 
 **Spec**: [`spec.md`](spec.md) · **Plan**: [`plan.md`](plan.md) · **Modelo**: [`data-model.md`](data-model.md)
 · **Contrato**: [`contracts/openapi.yaml`](contracts/openapi.yaml)
-**Estado**: Propuesto (2026-10-23). **No se implementa nada** hasta que el usuario apruebe
-`spec.md` (P-1 a P-10) y el plan. Las tareas asumen las opciones recomendadas.
+**Estado**: Aprobado (2026-10-23), junto con la spec (P-1 a P-10 con las opciones recomendadas) y el
+plan.
 
 ---
 
@@ -14,7 +14,9 @@ completo (`.claude/dev-mode`).
 
 ### Estado de la implementación (2026-10-23)
 
-Ninguna fase empezada. Bloqueado por la aprobación de la spec y del plan.
+Ninguna fase empezada. Spec y plan aprobados: se puede empezar por la Fase 1. Quedan por verificar
+al implementar (no son aprobaciones): la compuerta del sembrado (T-002-B307) y los supuestos S-3
+(sqlc con arrays, T-002-B305) y S-4 (`$ref` entre archivos en libopenapi, T-002-B203).
 
 ### Convenciones de esta sección
 
@@ -71,6 +73,7 @@ backend:
 | Nombres personalizados en toda la UI | `GET /settings/labels` (cualquier rol) | Singular, plural y **género** (`masculine`/`feminine`) para concordar ("Nueva obra"). Se piden al arrancar, junto con `/me` |
 | Colores de etapa | Tokens `gray`, `blue`, `teal`, `green`, `yellow`, `orange`, `red`, `purple` (DD-7) | La UI decide el color real; el rediseño visual no toca la base |
 | Lecturas para el Operador | Todas las `GET` de 002 (DD-11) | Las escrituras devuelven `403` al Operador; `/me` ya trae `permissions` (`settings.manage`) |
+| Condiciones comerciales | `GET/PUT /settings/quote-defaults` | Texto libre (un área de texto); las condiciones de pago con porcentajes son de 005 |
 | Registro | Sin cambios de contrato: elegir la plantilla ahora precarga la configuración | La UI puede mostrar qué trae cada plantilla con un texto propio (el contenido no se expone por `GET /industry-templates`) |
 
 **Disponibilidad de las rutas por fase** (una ruta solo se consume después de mergeada su fase):
@@ -263,7 +266,7 @@ de `categories.go`, `catalog.go` y `preferences.go`, sin acceso a datos).
 
   | Caso | Esperado |
   |---|---|
-  | `industrytemplate.All()` | dos plantillas en `version` 2 con **exactamente** el contenido de P-4 (tabla esperada en el test: nombres, tipos, colores y orden de etapas; categorías por tipo; ítems con unidad; condiciones y validez; nombres por defecto) |
+  | `industrytemplate.All()` | dos plantillas en `version` 2 con **exactamente** el contenido de "Plantillas de rubro" de la spec (tabla esperada en el test: nombres, tipos, colores y orden de etapas; categorías por tipo; ítems con unidad; condiciones y validez; nombres por defecto) |
   | `parseCatalog` con un campo desconocido dentro de una etapa / una plantilla sin `stages` / `version` 0 | error en cada caso |
   | `GET /api/v1/industry-templates` | idéntica a la actual: solo `code` y `name` (contrato de 001 sin cambios) |
   | (en `settings`) cada plantilla de `All()` pasa las reglas de T-002-B301: pipeline válido, enumerados, largos, condiciones; nombres únicos (etapas entre sí; categorías por tipo, **incluidas las de sistema**) | ok; una plantilla de *testdata* con la primera etapa `won`, o con una categoría "Cobros de clientes" de ingreso, falla con un mensaje que nombra la plantilla y la regla |
@@ -271,14 +274,15 @@ de `categories.go`, `catalog.go` y `preferences.go`, sin acceso a datos).
 - **Green**: pasa la tabla.
 
 **T-002-B304 — Implementar `Template` con contenido y `catalog.json` v2** (plan §11.1; valores de
-P-4). Los enumerados son *strings* en `industrytemplate` (no importa `settings`).
+"Plantillas de rubro" de la spec). Los enumerados son *strings* en `industrytemplate` (no importa
+`settings`).
 
 **T-002-B305 [T] — Sembrado en el registro** · FR-006, DD-3, INV-1, INV-4, INV-10, INV-14 de 001
 - **Red** (integración: `tenant.Service.Register` real con `settings.TemplateSeeder` real):
 
   | Caso | Esperado |
   |---|---|
-  | Registrar con `aluminum_carpentry` | `tenant_settings`: nombres por defecto, 15 días, condiciones de P-4; 6 etapas con nombre, tipo, color y posiciones 1..6; 5 categorías de sistema + 9 de la plantilla con sus tipos; 4 ítems sin precio con su unidad; `tenant.registered` igual que antes; **ninguna** fila de auditoría de configuración |
+  | Registrar con `aluminum_carpentry` | `tenant_settings`: nombres por defecto, 15 días, condiciones de la plantilla; 6 etapas con nombre, tipo, color y posiciones 1..6; 5 categorías de sistema + 9 de la plantilla con sus tipos; 4 ítems sin precio con su unidad; `tenant.registered` igual que antes; **ninguna** fila de auditoría de configuración |
   | Registrar con `generic` | 5 etapas; 5 + 8 categorías; 0 ítems; `quote_terms` `NULL` |
   | INV-10, con un `db.Tx` envoltorio que cuenta sentencias | **exactamente 4** en `Seed` con cada plantilla, y con una plantilla de *testdata* de 30 etapas y ningún ítem |
   | El envoltorio falla en la 3.ª sentencia | `Register` devuelve error; no existen la empresa, su rol, el usuario ni ninguna fila de configuración (INV-14 de 001) |
@@ -305,7 +309,8 @@ DD-3, R-1, DD-33 R-b/R-c de 001
 - **Regla de decisión** (fijada antes de medir): **se mantiene** si `seed` p95 ≤ 10 ms **y**
   `hold` p95 (real) − `hold` p95 (noop) ≤ 10 ms. Si además `hold` p95 (real) ≥ 140 ms, se informa al
   usuario (R-b de 001 en riesgo con o sin 002), sin bloquear la fase. **Si no se cumple**, la fase
-  se detiene y vuelve al arquitecto: salida de R-c (research R-3), que necesita aprobación.
+  se detiene y vuelve al arquitecto: salida de R-c (research R-3), que necesita una decisión del
+  usuario.
 - **Green**: resultado y decisión anotados en el plan (estado de la implementación) con los números
   de las dos corridas.
 
@@ -323,7 +328,7 @@ API; las reglas del pipeline valen también con pedidos concurrentes; el Operado
 mover "En curso" a la posición 1, crear "Instalación" antes de "Finalizado", intentar eliminar
 "Finalizado" (`409 invalid_state`) y ver el orden final con `GET /stages` como Operador.
 
-**T-002-B401 [T] — Servicio de etapas** · Historia 1 (1, 2, 4), P-2, P-6, DD-5, DD-6, DD-15, DD-18,
+**T-002-B401 [T] — Servicio de etapas** · Historia 1 (1 a 5), P-2, P-6, DD-5, DD-6, DD-15, DD-18,
 INV-2, INV-6, INV-8, INV-11 a INV-13
 - **Red** (integración; empresa sembrada con `generic`: Presupuesto `open`, Aprobado `open`, En curso
   `open`, Finalizado `won`, Perdido `lost`):
@@ -365,7 +370,7 @@ INV-2, INV-6, INV-8, INV-11 a INV-13
 `ListActiveStages`, `InsertStage`, `UpdateStageFields`, `SetStagePositions` en una sola sentencia,
 `SoftDeleteStage`; mapeo de `23505` en `stages_active_name_key` a `ErrNameTaken`).
 
-**T-002-B403 [T] — Endpoints de etapas** · contrato, FR-007 de 001, DD-11, DD-12, INV-11
+**T-002-B403 [T] — Endpoints de etapas** · contrato, FR-007 de 001, FR-008, DD-11, DD-12, INV-11
 - **Red** (HTTP + contrato; `apitest`):
 
   | Caso | Esperado |
@@ -404,7 +409,7 @@ renombran pero no se archivan; los nombres no se repiten por tipo.
 archivarla (`409 invalid_state`), crear "Combustible" de egreso, archivarla y verla solo con
 `include_archived=true`.
 
-**T-002-B501 [T] — Servicio de categorías** · Historia 3 (1, 2, 3), FR-003, FR-004, P-8, DD-8,
+**T-002-B501 [T] — Servicio de categorías** · Historia 3 (1 a 4), FR-003, FR-004, P-8, DD-8,
 DD-15, INV-4 a INV-6, INV-13
 - **Red** (integración; empresa `generic`):
 
@@ -524,8 +529,9 @@ distinguir faltante de cero; nunca `float64` en la decodificación).
 
 ### Fase 7 — Historias 6 y 2: Condiciones comerciales y nombres personalizados (P2, P3)
 
-**Objetivo**: el Administrador define la validez y las condiciones por defecto de los presupuestos y
-los nombres de Proyecto, Cliente y Presupuesto con su género; cualquier usuario los lee.
+**Objetivo**: el Administrador define la validez y las condiciones por defecto (texto libre) de los
+presupuestos y los nombres de Proyecto, Cliente y Presupuesto con su género; cualquier usuario los
+lee.
 
 **Prueba independiente**: con `curl`: `PUT /settings/labels` con Proyecto → "Obra"/"Obras"
 femenino; `GET /settings/labels` como Operador lo devuelve; `PUT /settings/quote-defaults` con
@@ -541,8 +547,8 @@ P-10, DD-10, DD-15, INV-13
   | `ReplaceLabels` con `project = {Obra, Obras, feminine}` | guardado; `settings.labels_updated {entities: [project]}` |
   | `ReplaceLabels` con los valores actuales | sin `UPDATE` ni auditoría |
   | `ReplaceLabels` con un singular vacío / de 41 caracteres / género `neutral` | `FieldErrors` con `project.singular` `required` / `too_long` / `project.gender` `invalid_value` |
-  | `GetQuoteDefaults` de `generic` / de `aluminum_carpentry` | `{15, nil}` / `{15, condiciones de P-4}` |
-  | `ReplaceQuoteDefaults` `{30, "Seña del 50 %"}` | guardado; `settings.quote_defaults_updated {fields: [validity_days, terms]}` |
+  | `GetQuoteDefaults` de `generic` / de `aluminum_carpentry` | `{15, nil}` / `{15, condiciones de la plantilla}` |
+  | `ReplaceQuoteDefaults` `{30, "Seña del 50 %"}` | guardado como texto, sin interpretar; `settings.quote_defaults_updated {fields: [validity_days, terms]}` |
   | `ReplaceQuoteDefaults` con `terms` `"   "` | `terms` nil |
   | `ReplaceQuoteDefaults` con `validity_days` 0 | `FieldErrors{validity_days: invalid_value}` |
   | Escrituras como operador | `authz.ErrForbidden` |
@@ -552,7 +558,7 @@ P-10, DD-10, DD-15, INV-13
 **T-002-B702 — Implementar los casos de uso de nombres y condiciones** (`preferences.go`; queries
 `GetTenantSettings`, `UpdateLabels`, `UpdateQuoteDefaults`, con `LockTenantSettings` primero).
 
-**T-002-B703 [T] — Endpoints de nombres y condiciones** · contrato
+**T-002-B703 [T] — Endpoints de nombres y condiciones** · contrato, FR-008
 - **Red** (HTTP + contrato):
 
   | Caso | Esperado |
@@ -578,7 +584,7 @@ específico; dejar la documentación viva al día.
 
 **Prueba independiente**: el escenario de T-002-B801 en verde.
 
-**T-002-B801 [T] — Escenario "herrería" solo con la API** · SC-001, FR-001 a FR-007, INV-9, R-9
+**T-002-B801 [T] — Escenario "herrería" solo con la API** · SC-001, FR-001 a FR-008, INV-9, R-9
 - **Red** (HTTP de punta a punta con `apitest`, un solo test):
 
   | Paso | Esperado |
@@ -596,8 +602,7 @@ específico; dejar la documentación viva al día.
 **T-002-B802 — Documentación viva** (plan §16, §17): términos de §17 del plan en
 `docs/glosario.md`; en `docs/modelo-dominio.md` ("Configuración por empresa"), la etapa inicial, las
 categorías de sistema por clave y el precio opcional del catálogo; estado de la implementación en el
-plan y en esta sección; estado de ADR-028 y ADR-029 en `docs/adr/README.md` según lo que haya
-aprobado el usuario; las vistas de `docs/diagramas/` que listen módulos o tablas, según el
+plan y en esta sección; las vistas de `docs/diagramas/` que listen módulos o tablas, según el
 procedimiento de `docs/diagramas/README.md`.
 
 **Checkpoint Fase 8**: `make check` en verde.
@@ -610,16 +615,17 @@ procedimiento de `docs/diagramas/README.md`.
 |---|---|
 | FR-001 Etapas ordenadas con tipo y color | T-002-B101, T-002-B301, T-002-B401..B404 |
 | FR-002 Nombres personalizados | T-002-B101, T-002-B301, T-002-B701..B704 |
-| FR-003 Categorías: crear, renombrar, archivar | T-002-B101, T-002-B501..B504 |
+| FR-003 Categorías: crear, renombrar, archivar, restaurar | T-002-B101, T-002-B501..B504 |
 | FR-004 Categorías de sistema | T-002-B101, T-002-B301, T-002-B305, T-002-B501 |
 | FR-005 Catálogo con unidad, precio y moneda | T-002-B101, T-002-B301, T-002-B601..B604 |
 | FR-006 Plantillas de rubro | T-002-B303..B307 |
 | FR-007 Condiciones y validez por defecto | T-002-B101, T-002-B301, T-002-B701..B704 |
-| Historia 1 (1, 2, 4) / (3, P-2) | T-002-B401, T-002-B403 / T-002-B401 (eliminar); mover proyectos: spec 004 |
+| FR-008 Lectura para todos, escritura solo Administrador | T-002-B403, B503, B603, B703, T-002-B801 |
+| Historia 1 (1, 2, 4, 5) / (3, P-2) | T-002-B401, T-002-B403 / T-002-B401 (eliminar); mover proyectos: spec 004 |
 | Historia 2 | T-002-B701, T-002-B703 |
-| Historia 3 (1, 2, 3) | T-002-B501, T-002-B503 |
+| Historia 3 (1 a 4) | T-002-B501, T-002-B503 |
 | Historia 4 (1, 3) / (2) | T-002-B601, T-002-B603 / spec 005 |
-| Historia 6 (P-10) | T-002-B701, T-002-B703 |
+| Historia 6 | T-002-B701, T-002-B703 |
 | Historia 1.1 de 001 (precarga de la plantilla) | T-002-B305 |
 | SC-001 | T-002-B801 |
 | SC-002 de 001 (0 accesos cruzados) en las rutas nuevas | T-002-B101 (base), T-002-B403, B503, B603, B703 (HTTP) |

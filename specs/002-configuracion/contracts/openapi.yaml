@@ -4,8 +4,8 @@ info:
   version: 0.1.0
   summary: Etapas de proyecto, categorías de ingresos y egresos, catálogo, nombres personalizados y condiciones comerciales por defecto.
   description: |
-    Contrato **canónico** de la spec 002 (`specs/002-configuracion/spec.md`). Estado: propuesto,
-    pendiente de aprobación junto con el plan (2026-10-23).
+    Contrato **canónico** de la spec 002 (`specs/002-configuracion/spec.md`). Aprobado junto con la
+    spec y el plan el 2026-10-23.
 
     Los tipos del cliente se derivan de este archivo. Los handlers Go se escriben a mano y los
     tests validan cada request y response contra este documento (ADR-014; el validador carga los
@@ -21,7 +21,7 @@ info:
       un método no seguro de origen cruzado, `403` con `forbidden` (reglas globales de 001).
     - Un recurso de otra empresa, o un id que no es UUID, responde `404` (INV-12 de 001).
     - **Lecturas**: cualquier usuario autenticado de la empresa. **Escrituras**: permiso
-      `settings.manage` (Administrador); el permiso se decide antes de buscar el recurso.
+      `settings.manage` (Administrador); el permiso se decide antes de buscar el recurso (FR-008).
     - Textos: se guardan sin los espacios de los extremos; los largos máximos se miden sobre el valor
       recibido; un texto vacío o solo con espacios en un campo obligatorio es `required`, y en uno
       opcional equivale a `null`.
@@ -40,7 +40,7 @@ info:
     - En `POST /categories/{categoryId}/archive`: es una categoría de sistema.
 
     Historial:
-    - 0.1.0: versión inicial (propuesta).
+    - 0.1.0: versión inicial (aprobada el 2026-10-23).
 servers:
   - url: /api/v1
 tags:
@@ -651,8 +651,9 @@ paths:
       operationId: replaceQuoteDefaults
       summary: Reemplazar la validez y las condiciones por defecto (Historia 6)
       description: |
-        Requiere `settings.manage`. `terms` vacío o solo con espacios se guarda como `null` (sin
-        condiciones). Cambiarlas no modifica presupuestos ya creados.
+        Requiere `settings.manage`. `terms` es texto libre: el servidor no lo interpreta (las
+        condiciones de pago estructuradas las define la spec 005). `terms` vacío o solo con espacios
+        se guarda como `null` (sin condiciones). Cambiarlas no modifica presupuestos ya creados.
       security:
         - sessionCookie: []
       requestBody:
@@ -1086,4 +1087,6 @@ components:
         terms:
           type: [string, 'null']
           maxLength: 2000
-          description: Condiciones comerciales; `null` = sin condiciones.
+          description: |
+            Condiciones comerciales en texto libre; `null` = sin condiciones. No son condiciones de
+            pago estructuradas (esas las define la spec 005).

@@ -1,6 +1,6 @@
 # ADR-028: Configuración por empresa referenciable: sin borrado físico, claves de sistema estables y alta por migración
 
-**Status**: Proposed (pendiente de aprobación del usuario junto con el plan de 002)
+**Status**: Accepted (aprobado por el usuario con el plan de 002, 2026-10-23)
 **Fecha**: 2026-10-23
 **Origen**: spec 002 (`specs/002-configuracion/plan.md`, DD-6, DD-8); lo usan las specs 004 a 010
 
@@ -82,5 +82,7 @@ sistema" en una spec futura sea un procedimiento conocido, no un diseño nuevo c
   tienen que mostrar elementos eliminados o archivados ("(eliminada)") y tolerar nombres repetidos
   entre una activa y una retirada; agregar una pieza de sistema exige una migración con *backfill*
   y alterar `CHECK`; no hay forma de borrar una categoría creada por error (se archiva).
+- Primer uso previsto fuera de 002: la categoría de sistema "Ajuste de arqueo"
+  (`cash_count_adjustment`), que agrega la spec 006.
 - Si alguna vez hiciera falta borrar físicamente (p. ej. por un pedido legal sobre datos
   personales, que la configuración no tiene), se escribe un ADR que reemplace a este.

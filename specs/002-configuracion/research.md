@@ -1,7 +1,7 @@
 # Research: Configuración por empresa (backend)
 
 **Spec**: [`spec.md`](spec.md) · **Plan**: [`plan.md`](plan.md) · **Fecha**: 2026-10-23
-**Estado**: Propuesto, pendiente de aprobación.
+**Estado**: Aprobado (2026-10-23), junto con el plan.
 
 Alternativas evaluadas por decisión. Criterios que se repiten (los de 001): (1) simplicidad para un
 equipo con Go intermedio, (2) seguridad del aislamiento y del dinero, (3) una sola unidad
@@ -195,6 +195,13 @@ handlers como esqueletos en la Fase 2 (código que responde algo falso durante v
 | **Auditar toda escritura, con `data` sin texto libre** | Trazabilidad entre varios administradores; renombrar una categoría cambia cómo se leen los reportes | Un `INSERT` por operación | **Elegida** |
 | No auditar | Menos código | Ninguna traza de quién cambió el pipeline o una categoría de sistema | Descartada |
 | Auditar con nombres viejos y nuevos en `data` | Más información | Texto libre del usuario en una tabla append-only (DD-37 (5) de 001) | Descartada |
+
+## R-19 Condiciones comerciales: texto libre o estructuradas → DD-10 **(usuario, 2026-10-23)**
+
+| Opción | A favor | En contra | Veredicto |
+|---|---|---|---|
+| **Texto libre en 002; las condiciones de pago estructuradas las define 005** | 002 no anticipa un modelo que todavía no se diseñó; la plantilla trae un texto legible; 005 decide la forma junto con el plan de cobros que las consume | 005 Historia 4.3 no puede precargar el plan de cobros desde el texto de 002 | **Elegida** |
+| Porcentajes estructurados (seña, saldo) en `tenant_settings` desde 002 | La precarga de 005 funcionaría sin más diseño | Adelanta el modelo del plan de cobros (004/005) sin su spec; columnas que nadie usa hasta 005 | Descartada |
 
 ---
 

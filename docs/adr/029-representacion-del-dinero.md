@@ -1,6 +1,6 @@
 # ADR-029: Representación del dinero en la base y en la API: centavos `bigint` + moneda, objeto `Money`, tope 2^53 − 1
 
-**Status**: Proposed (pendiente de aprobación del usuario junto con el plan de 002)
+**Status**: Accepted (aprobado por el usuario con el plan de 002, 2026-10-23)
 **Fecha**: 2026-10-23
 **Origen**: spec 002 (primer importe del sistema: el precio de referencia del catálogo, plan DD-9);
 rige para las specs 004 a 010

@@ -79,6 +79,9 @@ el monto del proyecto.
    En el mismo paso se puede cargar el **plan de cobros** del proyecto (ver
    [004](../004-proyectos/spec.md)), precargado desde las condiciones comerciales si
    estas indican porcentajes (ej. 50 % seña, 50 % contra entrega).
+   *Nota (2026-10-23)*: las condiciones comerciales por defecto de la
+   [spec 002](../002-configuracion/spec.md) son texto libre. Las condiciones de pago
+   con porcentajes que permiten esta precarga se definen en esta spec.
 4. **Dado** un presupuesto aprobado, **entonces** no se puede editar. Para cambiarlo
    se registran adicionales/bonificaciones en el proyecto o se anula la aprobación.
 5. **Dado** un presupuesto aprobado sin cobros imputados al proyecto, **cuando** un

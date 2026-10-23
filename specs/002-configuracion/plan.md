@@ -1,9 +1,10 @@
 # Plan técnico (backend): Configuración por empresa
 
-**Spec**: [`spec.md`](spec.md) (Borrador) · **Fecha**: 2026-10-23 · **Autor**: `backend-architect`
-**Estado**: **Propuesto, pendiente de aprobación.** El plan asume las opciones recomendadas de las
-preguntas P-1 a P-10 (§14.2, y la propuesta al final de `spec.md`). Ninguna fase se implementa hasta
-que el usuario apruebe la spec (CLAUDE.md, constitución V) y este plan.
+**Spec**: [`spec.md`](spec.md) (Aprobada 2026-10-23) · **Fecha**: 2026-10-23 · **Autor**: `backend-architect`
+**Estado**: **Aprobado (2026-10-23).** El usuario aprobó P-1 a P-10 con las opciones recomendadas
+(§14.2) y decidió que las condiciones comerciales de 002 quedan como texto libre (las condiciones de
+pago estructuradas las define 005). Lo que sigue a verificar al implementar está en §14.1 como
+supuestos (S-3, S-4) y en la compuerta de medición de DD-3 (T-002-B307).
 
 Artefactos de esta spec:
 
@@ -15,8 +16,8 @@ Artefactos de esta spec:
 | [`contracts/openapi.yaml`](contracts/openapi.yaml) | Contrato HTTP **canónico** de 002 (OpenAPI 3.1, `$ref` a los componentes compartidos de 001) |
 | [`tasks.md`](tasks.md) | Plan TDD: sección Backend (este arquitecto) y lugar de la sección Frontend (`frontend-architect`) |
 | `ui.md` | Lo escribe el `frontend-architect` (no existe todavía) |
-| [`docs/adr/028`](../../docs/adr/028-configuracion-referenciable-sin-borrado-fisico.md) | Configuración referenciable: sin borrado físico, claves de sistema estables, alta por migración (*Proposed*) |
-| [`docs/adr/029`](../../docs/adr/029-representacion-del-dinero.md) | Representación del dinero en base y API (*Proposed*) |
+| [`docs/adr/028`](../../docs/adr/028-configuracion-referenciable-sin-borrado-fisico.md) | Configuración referenciable: sin borrado físico, claves de sistema estables, alta por migración (*Accepted*) |
+| [`docs/adr/029`](../../docs/adr/029-representacion-del-dinero.md) | Representación del dinero en base y API (*Accepted*) |
 
 Convención de identificadores (DD-17): en este plan `DD-n`, `INV-n`, `S-n`, `R-n` y `P-n` son de
 **002**. Las de 001 se citan con su spec ("DD-40 de 001", "INV-14 de 001"). En el código, los
@@ -61,13 +62,13 @@ configuración chica (S-1): decenas de etapas y categorías, hasta ~1.000 ítems
 | **II. Genérico por configuración** | ✅ | Es el corazón de esta spec. Las diferencias entre rubros son **datos** (`catalog.json` v2). INV-9: ningún código de producción ramifica por código de plantilla (un test lo vigila). SC-001 se demuestra con un escenario "herrería" armado solo por la API (T-002-B801). |
 | **III. Aislamiento entre empresas** | ✅ | Las 4 tablas siguen el checklist de 001: `tenant_id NOT NULL` con FK, RLS habilitada y forzada, `tenant_isolation`, `UNIQUE (tenant_id, id)` para las FK compuestas futuras, sin `DELETE`. Los barridos de catálogo y aislamiento de 001 (T-B107..T-B110) las cubren solos; cada ruta nueva entra en el barrido HTTP (T-B801 de 001). No hay queries de sistema nuevas (§4.4 de 001 no cambia). |
 | **IV. Integridad del dinero** | ✅ | El precio de referencia es `bigint` de centavos + moneda ISO 4217, ambos o ninguno (INV-7, ADR-029). No hay conversión ni tipo de cambio en 002. No es un movimiento: es un dato de referencia que 005 **copia** (no referencia) al armar un presupuesto, así que cambiarlo no altera presupuestos existentes (Historia 4.2). Cada operación es una transacción. La auditoría registra cada escritura de configuración (DD-14). |
-| **V. Spec Driven Development** | ⚠️ | `spec.md` está en **Borrador**. Este plan asume las respuestas recomendadas de P-1 a P-10 y queda **bloqueado para implementar** hasta su aprobación. Las preguntas no bloquean el diseño: cada una tiene default. |
+| **V. Spec Driven Development** | ✅ | `spec.md` **aprobada** el 2026-10-23, con sus clarificaciones (P-1 a P-10) incorporadas al cuerpo. Los criterios Dado/Cuando/Entonces se trazan a tareas `[T]` (`tasks.md`). |
 | **VI. Tests primero** | ✅ | Todas las fases son TDD con `[T]` antes del código. El contrato se valida en cada test HTTP con el validador de 001, extendido a varios contratos (T-002-B203). |
 | **VII. Mobile-first** | ✅ | Payloads chicos; mover una etapa es un request con una posición (DD-18), apto para arrastrar en el celular. Ninguna decisión del backend depende de la UI actual (colores por token, DD-7, por el rediseño visual previsto). |
 | **Stack** | ✅ | Go, PostgreSQL, OpenAPI, monolito modular. Sin dependencias nuevas. |
-| **Convenciones** | ✅ | Documentación en español; tablas, columnas, rutas e identificadores en inglés con nombres del glosario (`Stage`, `Category`, `CatalogItem`, `IndustryTemplate`). Términos nuevos propuestos en §17. Fechas `timestamptz` en UTC. |
+| **Convenciones** | ✅ | Documentación en español; tablas, columnas, rutas e identificadores en inglés con nombres del glosario (`Stage`, `Category`, `CatalogItem`, `IndustryTemplate`). Términos nuevos en §17. Fechas `timestamptz` en UTC. |
 
-La única marca ⚠️ es el estado de la spec, que es exactamente lo que este plan pide resolver.
+Ninguna excepción: el plan no está bloqueado por la constitución.
 
 ---
 
@@ -265,7 +266,7 @@ registra qué les queda. Cada plan futuro decide su lado.
 | Spec | Qué consume de 002 | Cómo, previsto (lo confirma su plan) | Qué le queda a esa spec |
 |---|---|---|---|
 | 004 Proyectos | Etapa inicial, tipo de cada etapa, orden, nombres personalizados | FK compuesta `(tenant_id, stage_id) → stages(tenant_id, id)` desde proyectos y su historial; lectura por una interfaz chica que **declara `project`** y satisface `*settings.Service` | "Cerrado" se **deriva** del tipo de la etapa actual (P-2): cambiar el tipo de una etapa cierra o reabre sus proyectos sin escribirlos. Eliminar una etapa con proyectos: 004 agrega el destino (`move_to_stage_id`) a `DELETE /stages/{id}` y el `409` si falta; la interfaz `StageUsage` la declara `settings` y la satisface `project`, en la misma transacción (ADR-001 §4). El tablero muestra las etapas eliminadas que aparezcan en el historial como "(eliminada)" |
-| 005 Presupuestos | Catálogo, nombres personalizados (PDF), condiciones y validez por defecto | FK compuesta nullable `quote_items.catalog_item_id → catalog_items(tenant_id, id)`; el ítem **copia** nombre, descripción, unidad y precio (Historia 4.2 de 002) | Los PDF usan los nombres personalizados (P-3). Si 005 necesita porcentajes estructurados para precargar el plan de cobros (005 Historia 4.3), los define 005: 002 guarda texto libre. Un ítem sin precio de referencia se agrega con precio vacío |
+| 005 Presupuestos | Catálogo, nombres personalizados (PDF), condiciones y validez por defecto | FK compuesta nullable `quote_items.catalog_item_id → catalog_items(tenant_id, id)`; el ítem **copia** nombre, descripción, unidad y precio (Historia 4.2 de 002) | Los PDF usan los nombres personalizados (P-3). Las condiciones comerciales de 002 son texto libre; las **condiciones de pago estructuradas** (porcentajes que precargan el plan de cobros, 005 Historia 4.3) las define 005 (decisión del usuario, 2026-10-23). Un ítem sin precio de referencia se agrega con precio vacío |
 | 006 Cuentas de dinero | Categorías y categorías de sistema; cuenta inicial (P-1) | FK compuesta de los movimientos a `categories(tenant_id, id)`; búsqueda por `system_key`. Agrega `cash_count_adjustment` ("Ajuste de arqueo") con una migración que altera el `CHECK` y siembra la fila en todas las empresas (ADR-028). Para la cuenta inicial suma su propio sembrado al registro: `internal/app` compone los dos `Seeder` (un tipo `industrytemplate.Seeders` que corre cada uno en orden; se agrega en 006, no ahora) | Si las categorías de sistema se ofrecen o no en las cargas manuales |
 | 007 Cuentas corrientes | Las 5 categorías de sistema de FR-004 | Búsqueda por `system_key` | FR-007 de 007 (sugerir la categoría del pago) |
 | 008, 009, 010 | Categorías (también archivadas) | Por id; 010 agrega sus claves de sistema con el mismo mecanismo si las necesita | — |
@@ -321,15 +322,15 @@ completas en `research.md`.
 |---|---|---|---|
 | **DD-1** | **Módulo `settings`** dueño de las 4 tablas. Importa `platform/*`, `authz` e `industrytemplate`; no importa `identity` (declara su `RequestMeta{IP, UserAgent}`; el `request_id` de la auditoría ya sale del contexto) ni `tenant`. Sus rutas las monta `internal/app` dentro del grupo con `identity.Authenticate` (`routes_settings.go`, igual que `routes_tenant.go`). `BuildAPIRouter` suma un parámetro `*settings.Service`. | ADR-001 anticipa el nombre. Un módulo que no depende de identidad se prueba solo y no crea ciclos con 004 a 010, que lo van a consumir. | Un `RequestMeta` de dos campos repetido; cambian las llamadas a `BuildAPIRouter` (tests y `serve.go`) y el texto de una mutación del guard de `crm serve` (`serve_router_mutations_test.go`), sin cambiar sus reglas. |
 | **DD-2** | **Plantillas como datos versionados.** `industrytemplate.Template` suma `labels`, `stages`, `categories`, `catalog_items` y `quote_defaults`; las dos plantillas pasan a `version: 2` con el contenido de P-4. Los valores enumerados son *strings* en `industrytemplate` (no conoce los tipos de `settings`); `settings` las valida con sus propias reglas en un test (INV-9). Las **categorías de sistema no son de la plantilla**: las define `settings` (tabla `systemCategories`) y se siembran en toda empresa. `GET /industry-templates` no cambia. | Principio II: un rubro nuevo es una entrada en `catalog.json`. La versión 2 distingue en `tenants.industry_template_version` a las empresas registradas antes de 002 (versión 1, sin contenido). Validar con las reglas reales evita una plantilla que la API rechazaría. | Dos lugares con texto en español semilla (`catalog.json` y la tabla de categorías de sistema de `settings`), más la copia del *backfill* (DD-4). |
-| **DD-3** | **Sembrado dentro de la transacción de registro, por conjuntos**: `settings.TemplateSeeder.Seed` ejecuta exactamente cuatro sentencias (`tenant_settings`, `stages`, `categories`, `catalog_items`), cada una un `INSERT … SELECT FROM unnest(arrays)`; las listas vacías insertan cero filas sin cambiar la cuenta. **Compuerta** (T-002-B307, harness de T-B910 con 10.000 roles): se mantiene si el sembrado tiene p95 ≤ 10 ms **y** la retención p95 con sembrado supera a la sin sembrado en ≤ 10 ms. Si la retención absoluta pasa los 140 ms aunque el delta cumpla, se informa al usuario (R-b de 001 estaría en riesgo con o sin 002). **Si no cumple**, se aplica la salida de R-c: la empresa nace con "configuración pendiente" y el sembrado corre idempotente después del `COMMIT` (diseño de respaldo en `research.md` R-3). | Cumple INV-14 de 001 sin agregar estados: una empresa nunca existe sin configuración. Cuatro sentencias de costo constante (no dependen de la cantidad de roles, a diferencia del `GRANT`). | La transacción que retiene el lock de `GRANT crm_tenant` crece unos pocos milisegundos (a medir). Supuesto S-3 (sqlc genera los parámetros de arrays). |
+| **DD-3** | **Sembrado dentro de la transacción de registro, por conjuntos**: `settings.TemplateSeeder.Seed` ejecuta exactamente cuatro sentencias (`tenant_settings`, `stages`, `categories`, `catalog_items`), cada una un `INSERT … SELECT FROM unnest(arrays)`; las listas vacías insertan cero filas sin cambiar la cuenta. **Compuerta** (T-002-B307, harness de T-B910 con 10.000 roles): se mantiene si el sembrado tiene p95 ≤ 10 ms **y** la retención p95 con sembrado supera a la sin sembrado en ≤ 10 ms. Si la retención absoluta pasa los 140 ms aunque el delta cumpla, se informa al usuario (R-b de 001 estaría en riesgo con o sin 002). **Si no cumple**, se aplica la salida de R-c: la empresa nace con "configuración pendiente" y el sembrado corre idempotente después del `COMMIT` (diseño de respaldo en `research.md` R-3, que necesita una decisión del usuario). | Cumple INV-14 de 001 sin agregar estados: una empresa nunca existe sin configuración. Cuatro sentencias de costo constante (no dependen de la cantidad de roles, a diferencia del `GRANT`). | La transacción que retiene el lock de `GRANT crm_tenant` crece unos pocos milisegundos (a medir). Supuesto S-3 (sqlc genera los parámetros de arrays). |
 | **DD-4** | ***Backfill* en la migración `00010`** para las empresas que ya existen: una fila de `tenant_settings` con los nombres por defecto, validez 15 días y sin condiciones; las 5 categorías de sistema; las 5 etapas de la plantilla "Genérico". Sin categorías propias ni catálogo. `industry_template_version` queda como está (1). Desactiva `FORCE ROW LEVEL SECURITY` solo dentro de la migración (ADR-004 §6). | Sin esto, una empresa previa rompe INV-1, INV-2 e INV-4 (y el primer `GET /settings/labels` sería un `500`). No hay empresas reales en producción (S-2), así que alcanza el mínimo. | El SQL de la migración repite textos del sembrado (una vez, versionado). |
 | **DD-5** | **Reglas del pipeline**: la **etapa inicial es la primera** por posición y debe ser `open`; tiene que haber al menos una `won`; `lost` es opcional (P-6). Una única función pura `validatePipeline([]Stage) error` se evalúa sobre la lista **resultante** de cada operación (crear, cambiar tipo, mover, eliminar). Toda mutación de etapas toma primero `LockTenantSettings` (`FOR NO KEY UPDATE` de la fila de `tenant_settings`) y reescribe las posiciones densas `1..n` de las activas en una sola sentencia. Sin índice único sobre la posición. | Una sola regla, probada una vez, evita la combinatoria de casos por operación. El lock por empresa impide que dos bajas concurrentes de las dos etapas `won` dejen cero. Un índice único no diferible sobre la posición fallaría a mitad de un reordenamiento (PostgreSQL verifica por fila) y uno parcial no puede ser diferible. | Todas las escrituras de etapas (y las de nombres y condiciones, que usan la misma fila) de una empresa se serializan: son acciones raras de un Administrador. La densidad de posiciones la vigila un test, no la base. |
 | **DD-6** | **Eliminar una etapa es lógico** (`deleted_at`) y **no se restaura**. En 002 no hay proyectos, así que no hay nada que mover (P-2); 004 agrega el destino y su `409`. Una etapa eliminada no aparece en `GET /stages` ni se puede modificar (`404`), y su nombre queda libre. | El historial de 004 referencia etapas por id ("renombrar no altera datos históricos", casos borde de la spec): un `DELETE` físico rompería esas FK. Sin restaurar, el usuario ve "eliminar" (spec) y no un concepto nuevo. | 004 tendrá que mostrar "(eliminada)" y desambiguar nombres repetidos en el historial (R-8). |
 | **DD-7** | **Color de etapa por token** de una paleta cerrada: `gray`, `blue`, `teal`, `green`, `yellow`, `orange`, `red`, `purple` (P-7). La UI decide el color real de cada token. | Con el rediseño visual previsto, un hex guardado ata los datos al estilo actual (contraste, modo oscuro). Ocho tokens alcanzan para distinguir un pipeline. | Sin colores arbitrarios; agregar un token es una migración trivial (`CHECK`) y un cambio de contrato *minor*. |
 | **DD-8** | **Categorías**: se **archivan y restauran**, nunca se borran (P-8). `type` y `system_key` son inmutables por privilegio de columna (INV-5). Las de sistema llevan `system_key` (`customer_receipts`, `partner_contributions`: ingreso; `supplier_payments`, `employee_payments`, `partner_withdrawals`: egreso); dos `CHECK` impiden archivarlas y les fijan el tipo; un índice único parcial asegura una por clave. Nombre único por empresa y tipo entre las no archivadas (índice parcial `categories_active_name_key`). | "Solo se puede archivar si tiene movimientos" exige saber si tiene movimientos, que no existen hasta 006: archivar siempre es una regla y no dos. Que la base sostenga lo de sistema protege a 006/007, que van a buscar estas filas por clave. | No se puede borrar una categoría creada por error (se archiva). Las specs siguientes que necesiten otra categoría de sistema alteran el `CHECK` y siembran la fila (ADR-028). |
 | **DD-9** | **Catálogo**: precio de referencia **opcional**, como `Money` (par centavos + moneda) o nada (P-9, ADR-029). `unit` ∈ `unit`, `square_meter`, `linear_meter`, `hour`, `other`; con `other` es obligatorio `unit_label` (≤ 20 caracteres); con otra unidad se descarta. Nombres no únicos. `PATCH` lee con `LockCatalogItem` (`FOR NO KEY UPDATE`), mezcla, compara y escribe (como DD-43 de 001): distingue ausente de `null` con `settings.Patch[T]`. Archivar y restaurar. | Un precio vacío modela "a cotizar" sin inventar un 0 con significado oculto, y deja a las plantillas sin precios que envejecen con la inflación ni dependencia de la moneda base. El lock evita que dos `PATCH` concurrentes se pisen un campo (medido en 001 para `tenants`). | 0 es un precio válido, nunca "sin precio". 005 tiene que tratar el ítem sin precio. |
-| **DD-10** | **Nombres personalizados y condiciones comerciales** en `tenant_settings`, con `PUT` completo (`/settings/labels`, `/settings/quote-defaults`). Cada nombre tiene singular, plural y **género gramatical** (`masculine`\|`feminine`) (P-3). Condiciones: texto opcional ≤ 2.000 caracteres (vacío o solo espacios → `null`, como DD-43 de 001) y validez de 1 a 365 días (P-10). Usan el mismo lock que las etapas. | La pantalla edita todo junto: un `PUT` no necesita la semántica de ausente/`null`. Sin género, la UI escribe "Nuevo Obra" o "Proyectos abiertos" → "Obras abiertos". | Un campo más que el Administrador elige al renombrar. |
-| **DD-11** | **Permisos**: escrituras con `settings.manage` (fila "Configuración y usuarios" de FR-007), aplicado en el grupo de rutas y verificado otra vez en el servicio (como `tenant.Update`); **lecturas** para cualquier usuario autenticado de la empresa (P-5). Sin revalidación del actor bajo lock: estas operaciones no conceden ni restauran autoridad (regla de DD-44 de 001). | El Operador necesita leer etapas (004), catálogo y condiciones (005) y nombres (toda la UI). Leer la configuración no expone importes ni saldos. | Un Operador ve los nombres de las categorías de egreso (p. ej. "Retiros de socios"), sin importes. |
+| **DD-10** | **Nombres personalizados y condiciones comerciales** en `tenant_settings`, con `PUT` completo (`/settings/labels`, `/settings/quote-defaults`). Cada nombre tiene singular, plural y **género gramatical** (`masculine`\|`feminine`) (P-3). Condiciones: **texto libre** opcional ≤ 2.000 caracteres (vacío o solo espacios → `null`, como DD-43 de 001) y validez de 1 a 365 días (P-10); las condiciones de pago estructuradas son de 005. Usan el mismo lock que las etapas. | La pantalla edita todo junto: un `PUT` no necesita la semántica de ausente/`null`. Sin género, la UI escribe "Nuevo Obra" o "Proyectos abiertos" → "Obras abiertos". | Un campo más que el Administrador elige al renombrar. |
+| **DD-11** | **Permisos**: escrituras con `settings.manage` (fila "Configuración y usuarios" de FR-007), aplicado en el grupo de rutas y verificado otra vez en el servicio (como `tenant.Update`); **lecturas** para cualquier usuario autenticado de la empresa (P-5, FR-008). Sin revalidación del actor bajo lock: estas operaciones no conceden ni restauran autoridad (regla de DD-44 de 001). | El Operador necesita leer etapas (004), catálogo y condiciones (005) y nombres (toda la UI). Leer la configuración no expone importes ni saldos. | Un Operador ve los nombres de las categorías de egreso (p. ej. "Retiros de socios"), sin importes. |
 | **DD-12** | **Errores**: un `code` nuevo, `name_taken` (`409`), para un nombre activo repetido (análogo a `email_taken`). Las reglas del pipeline y archivar una categoría de sistema reusan `invalid_state` (`409`) con **un solo significado por endpoint** (tabla en §8.3). Las validaciones reusan los códigos de campo existentes (`required`, `too_long`, `invalid_value`, `invalid_format`). | Un código por endpoint alcanza para que la UI muestre el texto correcto; agregar un valor al enum compartido obliga a tocar el mapa exhaustivo del frontend, así que se agrega uno solo. `name_taken` sí merece código propio: aparece en seis endpoints y la UI lo muestra junto al campo. | El texto de `invalid_state` depende del endpoint en la UI (ya pasa en 001: reactivar vs. cambiar rol). |
 | **DD-13** | **Contratos**: 002 tiene su archivo canónico (`specs/002-configuracion/contracts/openapi.yaml`) con `$ref` externos a los componentes de 001 (DD-17 de 001; `openapi-typescript` ya los resuelve, S-F1 de `ui.md` de 001). `name_taken` y `Money` se agregan al contrato de 001 (**v0.6.0**, *minor*) en T-002-B202, junto con `httpx.CodeNameTaken`. El validador de tests (`internal/testsupport/contract`) carga una **lista explícita** de contratos (001 y 002) y resuelve los `$ref` entre archivos (S-4). El test de rutas contra el contrato (T-B801 de 001) admite una lista `pendingOperations` de `operationId` de 002 todavía no implementados, que cada fase vacía y la Fase 8 deja en cero. | Un archivo por spec mantiene el contrato revisable por spec; los componentes compartidos siguen en un solo lugar. La lista explícita evita que el contrato de una spec en diseño rompa `make check`. | Editar el contrato de 001 desde otra spec; un paso más al agregar una spec (una línea en la lista). Hasta T-002-B202, el `$ref` a `Money` del contrato de 002 apunta a un componente que todavía no existe en 001 (a propósito: no se edita el contrato de 001 antes de cambiar el código que lo verifica). |
 | **DD-14** | **Auditoría de toda escritura de configuración** (catálogo de acciones en `data-model.md` §6), con `data` limitado a enumerados y listas de campos (INV-12). | Varias personas administran; renombrar una categoría cambia cómo se leen los reportes (009). Cuesta un `INSERT` por operación. | Más filas en `audit_log` (volumen despreciable). |
@@ -686,7 +687,7 @@ type EntityLabel struct {
 type Labels struct{ Project, Customer, Quote EntityLabel }
 type QuoteDefaults struct {
     ValidityDays int     // 1..365
-    Terms        *string // nil = sin condiciones
+    Terms        *string // nil = sin condiciones; texto libre
 }
 
 type Service struct{ /* runner db.TxRunner, audit audit.Recorder, clock clock.Clock, logger *slog.Logger */ }
@@ -800,35 +801,40 @@ los vigila el log de request (`duration_ms`).
 
 ### 14.1 Supuestos
 
+Siguen abiertos hasta implementar: no son decisiones del usuario sino verificaciones.
+
 | ID | Supuesto | Impacto si es falso |
 |---|---|---|
 | S-1 | Por empresa: ≤ ~30 etapas, ≤ ~200 categorías, ≤ ~1.000 ítems de catálogo | Agregar búsqueda o paginación al catálogo (lo decidiría 005) |
 | S-2 | No hay empresas reales en producción (P-1 de 001 abierta; nota de DD-43 de 001) | El *backfill* mínimo de DD-4 dejaría a esas empresas con la plantilla "Genérico" aunque hubieran elegido otra; habría que sembrar por código de plantilla |
-| S-3 | sqlc genera parámetros de tipo array para `INSERT … SELECT FROM unnest(@x::text[], …)` con pgx v5 (**supuesto a validar** en Red de T-002-B305; no lo verifiqué en la documentación de sqlc) | Respaldo: `:copyfrom` de sqlc (COPY de pgx), que también es por conjuntos; la cuenta de sentencias de INV-10 se ajusta |
+| S-3 | sqlc genera parámetros de tipo array para `INSERT … SELECT FROM unnest(@x::text[], …)` con pgx v5 (**a validar** en Red de T-002-B305; no lo verifiqué en la documentación de sqlc) | Respaldo: `:copyfrom` de sqlc (COPY de pgx), que también es por conjuntos; la cuenta de sentencias de INV-10 se ajusta |
 | S-4 | libopenapi resuelve `$ref` a archivos locales con la configuración del documento (`BasePath`, `AllowFileReferences`; la documentación de *rolodex* lo menciona) y libopenapi-validator valida con esas referencias resueltas (**a validar** en T-002-B203) | Respaldo: el helper fusiona en memoria los componentes de 001 en el documento de 002 reescribiendo los `$ref` externos a internos (los nombres no chocan) |
 | S-5 | Comparar nombres con `lower()` de PostgreSQL alcanza: "Instalación" e "Instalacion" son distintos | Normalizar acentos con `unaccent` (extensión) en el índice |
 | S-6 | Los datos sembrados van en español (ADR-023, un solo idioma) | Plantillas por idioma |
-| S-7 | La plantilla se aplica solo al registrarse; no se reaplica ni se cambia de rubro después | Una operación nueva de "reaplicar" (con decisiones sobre qué pisar) |
+| S-7 | La plantilla se aplica solo al registrarse; no se reaplica ni se cambia de rubro después (spec, casos borde) | Una operación nueva de "reaplicar" (con decisiones sobre qué pisar) |
 | S-8 | 005 trata los textos de la configuración como no confiables al armar el PDF y el mensaje de WhatsApp | Inyección de contenido en el PDF |
 
-### 14.2 Preguntas (pendientes de aprobación; el plan asume la opción recomendada)
+La compuerta de medición del sembrado (DD-3, T-002-B307) también se resuelve al implementar, con la
+regla de decisión fijada en `tasks.md`.
 
-Las cinco primeras cambian el alcance o el modelo. Las cinco siguientes son defaults que se pueden
-aprobar en bloque. El texto completo, con la redacción propuesta para `spec.md`, está al final de
-[`spec.md`](spec.md).
+### 14.2 Preguntas (resueltas el 2026-10-23)
 
-| ID | Pregunta | Recomendada | Por qué |
-|---|---|---|---|
-| **P-1** | La Historia 5 (cuentas de dinero iniciales y monedas) depende de 006, que no existe | **Sacarla de 002 y moverla a 006**: 006 siembra "Caja efectivo" en la moneda base al registrarse (y a las empresas previas). No hay configuración de monedas: ARS y USD están siempre disponibles y la moneda base se fija al registrarse (DD-15 de 001) | 002 no puede crear una cuenta sin la tabla de cuentas; "Caja efectivo ARS" fija sería incorrecta para una empresa con moneda base USD |
-| **P-2** | ¿Qué pasa con los proyectos al eliminar una etapa o al cambiar su tipo? | **Cambiar el tipo**: se permite si respeta las reglas del pipeline; "cerrado" se deriva del tipo de la etapa actual, así que afecta a sus proyectos al instante, sin escribirlos. **Eliminar**: en 002 se elimina (borrado lógico, sin restaurar); "mover los proyectos antes de eliminar" (escenario 1.3) se implementa y se verifica en 004 | En 002 no hay proyectos; derivar "cerrado" evita sincronizar dos datos |
-| **P-3** | Alcance de los nombres personalizados (UI, PDF que todavía no existen) | **UI desde 002; PDF desde 005** (criterio de aceptación de 005); los emails del sistema no los usan. Cada nombre incluye **género gramatical** (masculino/femenino) además de singular y plural | Sin género, "Nuevo Obra"; los PDF no existen hasta 005 |
-| **P-4** | ¿Qué datos tiene cada plantilla de rubro? | Las tablas de contenido de la propuesta de `spec.md` (P-4): "Genérico" y "Carpintería de aluminio", versión 2. Ítems de catálogo de ejemplo **sin precio**. Nombres por defecto (Proyecto, Cliente, Presupuesto) en las dos. La plantilla se aplica solo al registrarse | Datos concretos para implementar y probar; precios de ejemplo envejecen con la inflación |
-| **P-5** | ¿El Operador puede leer la configuración? | **Sí, leer**: etapas, categorías, catálogo, nombres y condiciones. **Modificar**: solo el Administrador (`settings.manage`) | 004 y 005 (que el Operador usa) necesitan leerla |
-| **P-6** | Reglas de etapas | Etapa inicial = la **primera**, que tiene que ser abierta; al menos una de cierre *ganado*; *perdido* opcional; nombres únicos entre las activas (sin distinguir mayúsculas) | Una regla simple y verificable |
-| **P-7** | Color de etapa | **Paleta cerrada de 8 colores** con nombre (token), no un color libre | Rediseño visual previsto |
-| **P-8** | Categorías | **Solo archivar y restaurar** (nunca borrar); el tipo no cambia después de crearla; nombres únicos por tipo entre las no archivadas; las de sistema son las 5 de FR-004 y las specs siguientes agregan las suyas (p. ej. "Ajuste de arqueo" en 006) | Una regla en vez de dos (archivar siempre) |
-| **P-9** | Catálogo | **Precio de referencia opcional** (importe y moneda juntos); unidad "otra" con un texto corto obligatorio; archivar y restaurar; nombres repetidos permitidos | "A cotizar" sin un 0 con significado oculto |
-| **P-10** | FR-007 (condiciones y validez por defecto) no tiene historia | **Historia 6 nueva (P2)**: texto opcional de hasta 2.000 caracteres y validez de 1 a 365 días; la plantilla define los valores iniciales; los usa 005 | Todo FR necesita un criterio de aceptación |
+El usuario aprobó todas con la opción recomendada, sin cambios. Están incorporadas al cuerpo de
+[`spec.md`](spec.md) y registradas en su sección "Clarificaciones aprobadas".
+
+| ID | Pregunta | Respuesta aprobada |
+|---|---|---|
+| **P-1** | La Historia 5 (cuentas de dinero iniciales y monedas) depende de 006 | Se mueve a 006, que siembra "Caja efectivo" en la moneda base. No hay configuración de monedas: ARS y USD siempre disponibles; la moneda base se fija al registrarse (DD-15 de 001) |
+| **P-2** | ¿Qué pasa con los proyectos al eliminar una etapa o al cambiar su tipo? | Cambiar el tipo se permite si respeta las reglas del pipeline; "cerrado" se deriva del tipo de la etapa actual. Eliminar es borrado lógico, sin restaurar; mover los proyectos antes de eliminar se implementa y se verifica en 004 |
+| **P-3** | Alcance de los nombres personalizados | UI desde 002; PDF desde 005; los emails no los usan. Singular, plural y género gramatical |
+| **P-4** | Datos de cada plantilla de rubro | El contenido de "Plantillas de rubro" de la spec, versión 2; ítems de ejemplo sin precio; nombres por defecto; la plantilla se aplica solo al registrarse |
+| **P-5** | ¿El Operador lee la configuración? | Sí lee; solo el Administrador modifica (FR-008) |
+| **P-6** | Reglas de etapas | Etapa inicial = la primera, abierta; al menos una *ganado*; *perdido* opcional; nombres únicos entre las activas |
+| **P-7** | Color de etapa | Paleta cerrada de 8 tokens |
+| **P-8** | Categorías | Solo archivar y restaurar; tipo inmutable; nombres únicos por tipo entre activas; las 5 de sistema de FR-004 y las specs siguientes agregan las suyas ("Ajuste de arqueo" en 006) |
+| **P-9** | Catálogo | Precio de referencia opcional (importe y moneda juntos); unidad "otra" con nombre; archivar y restaurar; nombres repetidos permitidos |
+| **P-10** | FR-007 sin historia | Historia 6 (P2): texto de hasta 2.000 caracteres, validez de 1 a 365 días |
+| — | Condiciones comerciales y plan de cobros de 005 (hallazgo §18.4) | Las condiciones de 002 quedan como texto libre; las condiciones de pago estructuradas (porcentajes) las define 005 |
 
 ---
 
@@ -855,11 +861,11 @@ La actualización de la documentación va **en el mismo cambio** que el código.
 | Cuando cambies… | También tenés que actualizar… |
 |---|---|
 | Un endpoint de configuración (ruta, payload, código) | `contracts/openapi.yaml` de 002 (versión) + §8 + la fila de aislamiento y de permisos (T-B801/T-B802 de 001) + `ui.md` de 002 |
-| `ErrorCode` o `Money` | Contrato de 001 (versión *minor* si se agrega un valor) + `httpx` (`TestProblemCodesMatchContract`) + §8.2/§9 + mapa de mensajes del frontend + ADR-029 si cambia `Money` |
+| `ErrorCode` o `Money` | Contrato de 001 (versión *minor* si se agrega un valor) + `httpx` (`TestProblemCodesMatchContract`) + §8.2/§9 + mapa de mensajes del frontend + ADR-029 (ADR nuevo si cambia la decisión) |
 | El significado de `invalid_state` en un endpoint de 002 | §8.3 + descripción en el contrato + `ui.md` |
-| Una regla del pipeline (inicial, ganado, perdido) | P-6 / spec + DD-5 + INV-2 + `validatePipeline` y su tabla (T-002-B301) + plantillas (INV-9) + *backfill* si afecta empresas existentes |
+| Una regla del pipeline (inicial, ganado, perdido) | Spec (con aprobación) + DD-5 + INV-2 + `validatePipeline` y su tabla (T-002-B301) + plantillas (INV-9) + *backfill* si afecta empresas existentes |
 | La paleta de colores, las unidades, los tipos o las claves de sistema | `CHECK` (migración nueva) + tipos de `settings` + contrato (enum, *minor*) + `data-model.md` + plantillas + ADR-028 si es una clave de sistema |
-| El contenido de una plantilla | `catalog.json` (versión nueva de esa plantilla) + tabla de P-4 en la spec + T-002-B303 (contenido esperado) |
+| El contenido de una plantilla | `catalog.json` (versión nueva de esa plantilla) + "Plantillas de rubro" en la spec (con aprobación) + T-002-B303 (contenido esperado) |
 | Una plantilla nueva | `catalog.json` + FR-002 de 001 / FR-006 de 002 (con aprobación) + T-002-B303 |
 | Lo que hace el sembrado (tablas, cantidad de sentencias) | DD-3 + INV-10 + T-002-B305 (cuenta) + volver a correr T-002-B307 + DD-33 R-c de 001 |
 | El modelo de datos de configuración | `data-model.md` + migración nueva + fixture (`fixture.CompanyInserters`) + listas de T-B107/T-B108 de 001 |
@@ -871,9 +877,9 @@ La actualización de la documentación va **en el mismo cambio** que el código.
 
 ---
 
-## 17. Términos propuestos para el glosario
+## 17. Términos para el glosario
 
-Se agregan a `docs/glosario.md` al aprobar este plan (T-002-B802).
+Se agregan a `docs/glosario.md` en T-002-B802.
 
 | Término (ES) | Código (EN) | Definición |
 |---|---|---|
@@ -883,21 +889,24 @@ Se agregan a `docs/glosario.md` al aprobar este plan (T-002-B802).
 | Etapa de cierre | — | Etapa de tipo *ganado* o *perdido*; un proyecto en ella está cerrado. |
 | Categoría de sistema | `SystemCategory` (`Category` con `system_key`) | Categoría que usan las operaciones automáticas (ej. "Cobros de clientes"); se puede renombrar, no archivar. |
 | Archivar | `Archive` | Dejar de ofrecer una categoría o un ítem de catálogo sin borrarlo; se puede restaurar. |
-| Condiciones comerciales por defecto | `QuoteDefaults` | Texto y validez en días que se proponen al crear un presupuesto. |
+| Condiciones comerciales por defecto | `QuoteDefaults` | Texto libre y validez en días que se proponen al crear un presupuesto. |
 
 ---
 
 ## 18. Hallazgos al leer el repositorio
 
-Documentación que no coincide con el código o con otras specs (no bloquean 002):
+Documentación que no coincidía con el código o con otras specs. Estado al 2026-10-23:
 
-1. El pedido de diseño menciona 28 ADR; en `docs/adr/` hay 27 (001 a 027). Los nuevos son 028 y 029.
-2. `spec.md` de 002, Historia 5: "Caja efectivo ARS" fija no sirve para una empresa con moneda base
-   USD (P-1).
-3. Spec 006 (Historia 6) usa una categoría "Ajuste de arqueo" que no está entre las de sistema de
-   FR-004 de 002 (P-8: la agrega 006).
+1. El pedido de diseño mencionaba 28 ADR; en `docs/adr/` había 27 (001 a 027). Los nuevos son 028 y
+   029. Sin acción.
+2. `spec.md` de 002, Historia 5: "Caja efectivo ARS" fija no servía para una empresa con moneda base
+   USD. **Resuelto** (P-1): la Historia 5 pasó a 006.
+3. Spec 006 usaba una categoría "Ajuste de arqueo" que no estaba entre las de sistema de FR-004 de
+   002. **Resuelto** (P-8): la agrega 006 como categoría de sistema (ADR-028); la redacción de 006 lo
+   dice.
 4. Spec 005 (Historia 4.3) precarga el plan de cobros "desde las condiciones comerciales si estas
-   indican porcentajes", pero FR-007 de 002 las define como texto libre: 005 tendrá que decidir si
-   pide porcentajes estructurados (§4.6).
+   indican porcentajes", pero FR-007 de 002 las define como texto libre. **Resuelto** (decisión del
+   usuario, 2026-10-23): las condiciones de 002 quedan como texto libre y 005 define sus condiciones
+   de pago estructuradas; la redacción de 005 lo anota.
 5. Spec 002, Historia 1, prueba independiente: "verlas reflejadas en el tablero de proyectos" — el
-   tablero es de 004 (propuesta de redacción en `spec.md`).
+   tablero es de 004. **Resuelto** en la spec aprobada.

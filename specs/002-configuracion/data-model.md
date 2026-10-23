@@ -1,7 +1,7 @@
 # Modelo de datos: Configuración por empresa
 
 **Spec**: [`spec.md`](spec.md) · **Plan**: [`plan.md`](plan.md) · **ADR**: ADR-005, ADR-008, ADR-028, ADR-029
-**Estado**: Propuesto, pendiente de aprobación (2026-10-23).
+**Estado**: Aprobado (2026-10-23), junto con el plan.
 
 DDL **conceptual**: define tablas, tipos, constraints, índices, políticas y privilegios. No es una
 migración ejecutable: la migración goose la escribe quien implementa (T-002-B102), respetando esto.
@@ -118,7 +118,7 @@ defecto de los presupuestos (FR-007).
 | `quote_label_plural` | `text` | no | `BETWEEN 1 AND 40` | "Presupuestos" |
 | `quote_label_gender` | `text` | no | `IN ('masculine','feminine')` | `masculine` |
 | `quote_validity_days` | `integer` | no | `BETWEEN 1 AND 365` | Validez por defecto de un presupuesto nuevo (005) |
-| `quote_terms` | `text` | sí | `char_length BETWEEN 1 AND 2000` | Condiciones comerciales por defecto; `NULL` = sin condiciones. Nunca `''` |
+| `quote_terms` | `text` | sí | `char_length BETWEEN 1 AND 2000` | Condiciones comerciales por defecto, **texto libre**; `NULL` = sin condiciones. Nunca `''`. Las condiciones de pago estructuradas (porcentajes) son de 005 |
 | `created_at` | `timestamptz` | no | default `now()` | |
 | `updated_at` | `timestamptz` | no | default `now()` | Lo escribe la query con el reloj inyectable (DD-18 de 001) |
 
@@ -166,7 +166,7 @@ escrituras.
 | `tenant_id` | `uuid` | no | FK → `tenants(id)` | |
 | `name` | `text` | no | `char_length BETWEEN 1 AND 60` | Se puede renombrar, también la de sistema (Historia 3.3) |
 | `type` | `text` | no | `IN ('income','expense')` | **Inmutable** (sin privilegio `UPDATE`, INV-5) |
-| `system_key` | `text` | sí | `categories_system_key_chk`: `IN ('customer_receipts','partner_contributions','supplier_payments','employee_payments','partner_withdrawals')` | `NULL` = categoría de la empresa. **Inmutable**. Las specs siguientes agregan valores (ADR-028) |
+| `system_key` | `text` | sí | `categories_system_key_chk`: `IN ('customer_receipts','partner_contributions','supplier_payments','employee_payments','partner_withdrawals')` | `NULL` = categoría de la empresa. **Inmutable**. Las specs siguientes agregan valores (ADR-028; p. ej. `cash_count_adjustment` en 006) |
 | `archived_at` | `timestamptz` | sí | | Archivada: no se ofrece, se conserva para el historial |
 | `created_at` | `timestamptz` | no | default `now()` | |
 | `updated_at` | `timestamptz` | no | default `now()` | |
@@ -266,8 +266,8 @@ viajan como arrays paralelos; ninguna sentencia por fila):
 | 3 | `SeedCategories` | Las 5 de sistema + las de la plantilla | `tenant_id`, arrays `names`, `types`, `system_keys` (texto vacío = `NULL`); `now` |
 | 4 | `SeedCatalogItems` | Los ítems de ejemplo (sin precio) | `tenant_id`, arrays `names`, `descriptions`, `units`, `unit_labels` (vacío = `NULL`); `now` |
 
-Un array vacío inserta cero filas y no cambia la cuenta de sentencias. Supuesto S-3: sqlc genera
-los parámetros de arrays; si no, `:copyfrom` (COPY), también por conjuntos.
+Un array vacío inserta cero filas y no cambia la cuenta de sentencias. Supuesto S-3 (a verificar al
+implementar): sqlc genera los parámetros de arrays; si no, `:copyfrom` (COPY), también por conjuntos.
 
 **Categorías de sistema** (iguales para toda plantilla; las define `settings`, DD-2):
 
@@ -279,7 +279,7 @@ los parámetros de arrays; si no, `:copyfrom` (COPY), también por conjuntos.
 | `employee_payments` | `expense` | Pagos a empleados |
 | `partner_withdrawals` | `expense` | Retiros de socios |
 
-El contenido de cada plantilla está en la propuesta P-4 de [`spec.md`](spec.md) y en
+El contenido de cada plantilla está en "Plantillas de rubro" de [`spec.md`](spec.md) y en
 `internal/industrytemplate/catalog.json` (versión 2).
 
 ### 4.2 *Backfill* de las empresas previas (migración `00010`, DD-4)
@@ -295,7 +295,7 @@ configuración). Pasos, todos en la transacción de la migración (ADR-004 §6):
    - la fila de `tenant_settings`: nombres por defecto (Proyecto/Proyectos, Cliente/Clientes,
      Presupuesto/Presupuestos, todos `masculine`), `quote_validity_days = 15`, `quote_terms = NULL`;
    - las 5 categorías de sistema de §4.1;
-   - las 5 etapas de la plantilla "Genérico" (P-4), posiciones 1 a 5.
+   - las 5 etapas de la plantilla "Genérico" (spec, "Plantillas de rubro"), posiciones 1 a 5.
 4. `ALTER TABLE … FORCE ROW LEVEL SECURITY` sobre las cinco tablas. T-B107 de 001 falla si alguna
    queda sin `FORCE`.
 
