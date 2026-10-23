@@ -3200,6 +3200,22 @@ queda en T-F704 con versión exacta en `package.json`, y la convención de versi
 las convenciones (versiones) y T-F704; T-F707 suma dos bloques, y cambia la trazabilidad. Se corrigen
 en la rama del PR #45. Ningún test existente cambia. Sin tareas nuevas ni cambios de orden.
 
+**Ajustes de la implementación de P-F24 (2026-10-23; `ui.md` §6.4.2, DD-F35, INV-F22, S-F16,
+RF-19; revisados por `frontend-architect`, sin cambios de producto)**. Tres desvíos del texto,
+aceptados:
+
+1. S-F16 resultó falso con el chunk de `/login` pendiente. La salida termina con `router.subscribe`
+   (`navigation.state === 'idle'`), y la promesa de `navigate` queda de respaldo.
+2. La salida que llegó a `/login` se borra cuando se desmonta el último `RequireSession`, no cuando
+   el router publica la ruta.
+3. Durante una salida, `RequireSession` no lee `['session']` (se parte en dos), así que no sale
+   ningún `GET /me` hasta el login. G1 y G6 de T-F707 se ajustan a eso.
+
+Además, `useLogout` y `useConfirmPasswordReset` ya no esperan un `cancelQueries` antes de la salida
+(`clear()` cancela las lecturas en vuelo), y `ConfirmDialog` entra al chunk del shell (lo mide T-F704
+frente a NFR-F05). Cambian T-F707 (G1, G6, tests existentes, mutaciones y refactor) y la
+trazabilidad. Ningún test existente cambia. Sin tareas nuevas ni cambios de orden.
+
 ### Convenciones de esta sección
 
 - `[T]` = tarea de test. Va **antes** de la tarea de código que la hace pasar, y el test debe
@@ -4989,12 +5005,12 @@ frenado por el aviso de S-11).
 
     | Caso | Resultado observable |
     |---|---|
-    | G1. Administrador en `/settings/users`; `/me` → `401`; `invalidateQueries(['session'])`; las navegaciones al login, retenidas | Después de que respondió el `GET /me` de la query nueva (el que sale tras el `clear()`): "Cargando la aplicación"; la URL sigue en `/settings/users`; se pidió una sola navegación a `/login`, a `/login?next=%2Fsettings%2Fusers&reason=session_expired`. Al soltar: esa URL y "Tu sesión se cerró. Ingresá de nuevo para seguir.". Es la carrera que quiso evitar `8d85615`, ahora sin depender de los tiempos |
+    | G1. Administrador en `/settings/users`; `/me` → `401`; `invalidateQueries(['session'])`; las navegaciones al login, retenidas | *(Ajustado en la implementación)* Con la navegación retenida: "Cargando la aplicación"; la URL sigue en `/settings/users`; `/me` se pidió una sola vez (la relectura que dio `401`: durante la salida nadie vuelve a leer la sesión); se pidió una sola navegación a `/login`, a `/login?next=%2Fsettings%2Fusers&reason=session_expired`. Al soltar: esa URL y "Tu sesión se cerró. Ingresá de nuevo para seguir.". Es la carrera que quiso evitar `8d85615`, ahora sin depender de los tiempos |
     | G2. Rutas propias (`routes`): `/other` (`<h1>` "Otra") y `/settings/users` bajo `RequireSession`, y `/login` *lazy* retenido con `gate()`; historial `['/other', '/settings/users']` con la sesión en caché; `/me` → `401`; `invalidateQueries(['session'])`; con la navegación al login en curso (`router.state.navigation.location.pathname === '/login'`), Atrás (`router.navigate(-1)`) | Mientras tanto, "Cargando la aplicación"; "Otra" nunca estuvo en el DOM; dos navegaciones a `/login`, las dos a `/login?next=%2Fsettings%2Fusers&reason=session_expired`. Al soltar el chunk: esa URL y el login. Nunca queda en el indicador |
     | G3. El mecanismo del hallazgo: Administrador en `/settings`; `/me` → `401`; `queryClient.clear()` sin salida; `router.navigate('/')` | `/login?next=%2F&reason=session_expired` con "Tu sesión se cerró. Ingresá de nuevo para seguir."; nunca queda en "Cargando la aplicación" |
     | G4. G3 con `renderApp(..., { onUnauthenticated: vi.fn() })`: el manejador global no actúa | Igual que G3: `RequireSession` sale solo (la fila "sin sesión, con una sesión presentada" de `ui.md` §6.4.2) |
     | G5. Desde el login de G1 (historial `/` → `/settings/users`, reemplazada por el login), Atrás | `/login?next=%2F`, sin `reason`; no aparece "Tu sesión se cerró…" |
-    | G6. Administrador en `/settings`; "Cerrar sesión" (S-08) con `POST /auth/logout` → `204` y `/me` → `401`; la navegación al login retenida hasta que respondió el `GET /me` de la query nueva | `/login?reason=logged_out` con "Cerraste sesión."; ninguna navegación pedida con `reason=session_expired` |
+    | G6. Administrador en `/settings`; "Cerrar sesión" (S-08) con `POST /auth/logout` → `204` y `/me` → `401`; con la navegación al login retenida, un `GET /tenant` que responde `401` *(ajustado en la implementación: durante la salida ya no sale un `GET /me` que haga de `401` tardío)* | Mientras está retenida, "Cargando la aplicación". Al soltar: `/login?reason=logged_out` con "Cerraste sesión."; un solo `POST /auth/logout`; una sola navegación pedida a `/login`, la de `logged_out`, y ninguna con `reason=session_expired` |
 
   - `web/src/features/tenant/CompanyUnsavedChanges.test.tsx`, casos nuevos al final (el escenario de
     la revisión). Administrador en `/settings/company` con "Teléfono" cambiado; "Cerrar sesión" desde
@@ -5024,7 +5040,14 @@ frenado por el aviso de S-11).
     and rechecks on Back".
   - `logout.test.tsx` y `logoutMenuRace.test.tsx`.
   - `sessionErrors.test.ts`: el manejador sigue sin actuar con una navegación al login pendiente. Su
-    doble del router no tiene `subscribe`, así que la salida se termina con la promesa de `navigate`.
+    doble del router no tiene `subscribe`, así que ahí la salida se termina con la promesa de
+    `navigate`, que queda de respaldo *(ajuste de la implementación: con el router real termina con
+    `router.subscribe`, porque S-F16 resultó falso)*.
+  - `logout.test.tsx`, "disables the logout action while the request is pending" *(ajuste de la
+    implementación)*: su MSW sigue devolviendo la sesión después del logout. Con un `GET /me` durante
+    la salida, `PublicOnly` rebotaba a `/` antes de mostrar el login (falló entre el 20 y el 33 % de
+    las corridas). Sin lecturas durante la salida, el primer `GET /me` es el del login, y "Cerraste
+    sesión." ya está a la vista cuando responde. El test no se toca.
   - `CompanyUnsavedChanges.test.tsx`.
   - `LoginPage.test.tsx`: la fila `logged_out` con `unsavedChangesLost` sigue sin la segunda línea.
   - `routeGuards.test.tsx`: "shows only the access indicator until a retained 401 completes" tiene
@@ -5045,6 +5068,14 @@ frenado por el aviso de S-11).
   9. `useUnsavedChangesGuard` deja pasar solo `session_expired`: falla C3 (dos navegaciones a
      `/login`, la frenada y la retomada).
   10. "Cerrar sesión" manda el `POST` sin preguntar con un guard activo: falla C1.
+  11. *(Ajustes de la implementación)* La salida termina solo con la promesa de `navigate`, sin
+      `router.subscribe`: falla G2 (una sola navegación a `/login` hasta que llega el chunk).
+  12. `RequireSession` monta la parte que lee `['session']` también con una salida: falla G1 (`/me`
+      dos veces).
+  13. La salida se borra apenas el router publica `/login`, sin esperar a que se desmonte el guard:
+      tiene que fallar algún caso de "leaving the session" (una navegación a `/login?next=…` sin
+      `reason`). El desarrollador reporta cuál. Si ninguno falla de forma determinista, volver al
+      arquitecto con la corrida: hace falta un caso nuevo.
 - **Green**: pasan las tablas, los tests existentes y `npm run check`, y la fila de la desactivación
   de T-F702 en Chromium (WebKit, reportado).
 - **Refactor**: revisar que:
@@ -5053,6 +5084,9 @@ frenado por el aviso de S-11).
     `redirecting`;
   - `lib/sessionExit.ts` no importe nada de `app/` ni de `features/`, y el registro no guarde
     `SessionInfo` (INV-F01);
+  - *(ajustes de la implementación)* `useSessionLifecycle` se use solo en
+    `app/guards/routeGuards.tsx`, con un `subscribe` estable por registro, y ninguna salida espere un
+    `cancelQueries` antes de registrarse (INV-F22);
   - los nombres vayan por funcionalidad, con la trazabilidad en comentarios.
 
 **T-F707 — Versión de Lighthouse y colores de hover** · P-F24 (3) y (4), INV-F23, `ui.md` §19.1.
@@ -5148,5 +5182,5 @@ usó) reportado.
 | P-F21 (textos y foco del diálogo de "Quitar" y del aviso de salida; DD-F27 con los nombres anteriores de las zonas argentinas; DD-F26 con la comparación de bytes; lectura del archivo entero; `resized`; `unknown` como `unsupported_format`; firmas de `LogoUploader`, `ConfirmDialog`, `tenantQuery`, `companyInitials`), `ui.md` §7, §9.1, §11.1, §13.11, §13.11.1, §14.4, §15, §22, §24, §25 | T-F602, T-F603, T-F604, T-F605 |
 | P-F22 (cola de los cambios de la empresa y cancelación de las lecturas en vuelo: DD-F33, INV-F20, S-F15; DD-F27 sin dos nombres para la misma zona), `ui.md` §9.2, §10.3, §13.11, §14.4, §15.4, §24, §25, §26, §29 | T-F602, T-F603, T-F605 |
 | DD-F34 / INV-F21 (relectura de `/me` al entrar con el permiso en caché denegado), P-F23, `ui.md` §6.4.1, §14.5 | T-F707, T-F702 |
-| DD-F35 / INV-F22 (salida de sesión única; cerrar sesión con cambios sin guardar, INV-F18 ampliada), INV-F23 (colores solo con tokens), P-F24, S-F16, `ui.md` §6.4.2, §13.8, §19.1 | T-F707, T-F704 |
+| DD-F35 / INV-F22 (salida de sesión única; cerrar sesión con cambios sin guardar, INV-F18 ampliada), INV-F23 (colores solo con tokens), P-F24, S-F16 (refutado; respaldo con `router.subscribe`), RF-19, `ui.md` §6.4.2, §13.8, §19.1, §23 | T-F707, T-F704 |
 | NFR-F01..F13 | T-F002 (F02, F07, F08), T-F702 (F01, F06, F10, F12), T-F703 (F09, F11), T-F704 (F03..F05), T-F705 (F06..F08), T-F706 (F13) |
