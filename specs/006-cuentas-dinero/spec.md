@@ -34,6 +34,11 @@ listado de cuentas.
 4. **Dado** el uso de cheques, **entonces** existen además dos tipos especiales de
    cuenta que crea el sistema: "Cartera de cheques" y "Cheques propios a debitar"
    (ver [010](../010-cheques/spec.md)). No se crean a mano.
+5. **Dado** una empresa que se registra, **entonces** tiene una cuenta "Caja efectivo"
+   de tipo efectivo en su moneda base. Las empresas que ya existían la reciben al
+   implementarse esta spec. (Viene de la Historia 5 de la
+   [spec 002](../002-configuracion/spec.md), aprobada el 2026-10-23: no hay
+   configuración de monedas; ARS y USD están siempre disponibles.)
 
 ### Historia 2: Registrar gastos e ingresos directos (Prioridad: P1)
 
@@ -92,7 +97,9 @@ impuestos, alquiler pagado en el momento, una venta de rezago).
 
 1. **Dado** una cuenta, **cuando** el Administrador ingresa el saldo real contado,
    **entonces** el sistema muestra la diferencia y, si se confirma, registra un
-   movimiento de ajuste con categoría "Ajuste de arqueo".
+   movimiento de ajuste con categoría "Ajuste de arqueo". "Ajuste de arqueo" es una
+   categoría de sistema que agrega esta spec (ver FR-004 de
+   [002](../002-configuracion/spec.md) y ADR-028).
 
 ### Casos borde
 

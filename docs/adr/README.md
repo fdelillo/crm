@@ -61,6 +61,8 @@ Reglas:
 | [025](025-saneamiento-last-error-y-codigo-extendido.md) | `last_error` sin texto del proveedor después del contenido, redacción de secuencias tipo secreto y código extendido leído del texto en todas las fases | Accepted | 001 (tercera revisión del PR #8) |
 | [026](026-vulnerabilidades-dependencias-govulncheck.md) | Vulnerabilidades conocidas en dependencias Go con govulncheck (bloqueante en PR y `main`, corrida diaria) | Accepted | 001 (auditoría de `b945373`, unidad bloqueada) |
 | [027](027-vulnerabilidades-dependencias-npm.md) | Vulnerabilidades conocidas en dependencias npm del frontend con `npm audit` (producción desde `low`, árbol completo solo `critical`) | Accepted (decisión del usuario, 2026-10-16) | 001 (frontend, cierre de F0) |
+| [028](028-configuracion-referenciable-sin-borrado-fisico.md) | Configuración por empresa referenciable: sin borrado físico, claves de sistema estables y alta por migración | Accepted (aprobado por el usuario con el plan de 002, 2026-10-23) | 002 |
+| [029](029-representacion-del-dinero.md) | Representación del dinero en la base y en la API: centavos `bigint` + moneda, objeto `Money`, tope 2^53 − 1 | Accepted (aprobado por el usuario con el plan de 002, 2026-10-23) | 002 |
 
 Los ADR 001–014 quedaron `Accepted` el 2026-09-29, al aprobarse el plan de la spec 001.
 
@@ -90,3 +92,12 @@ y con el mismo registro de excepciones que ADR-026. ADR-026 no cambia.
 
 La nota 2026-10-15 de ADR-017 (decisión del usuario) pasa React Router de v7 a v8 sin cambiar la
 decisión: misma librería, mismo modo *data*, sin loaders, actions ni middleware.
+
+ADR-028 y ADR-029 (`Accepted` el 2026-10-23, aprobados por el usuario junto con la spec y el plan de
+002). ADR-028 fija cómo se retira y se referencia la configuración de cada empresa (sin borrado
+físico, claves de sistema estables, alta de piezas de sistema por migración) para las specs 004 a
+010; su primer uso fuera de 002 es "Ajuste de arqueo" en 006. ADR-029 fija la forma de un importe en
+la base y en la API (centavos `bigint` + moneda, `Money` en los componentes compartidos de 001, tope
+2^53 − 1); complementa del lado del servidor a ADR-023 (frontend, todavía *Proposed*) sin cambiarlo.
+La validación del contrato en los tests pasa a cargar varios contratos (plan de 002, DD-13): es un
+detalle de cómo se aplica ADR-014, que no cambia, y no se registró como nota en ADR-014.
