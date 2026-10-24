@@ -684,16 +684,564 @@ procedimiento de `docs/diagramas/README.md`.
 
 ## Frontend
 
-**Pendiente**: la escribe el `frontend-architect` junto con `ui.md` de 002, con identificadores
-`T-002-Fnnn`. Lo que necesita del backend está en "Coordinación con la sección Frontend" (arriba),
-incluida la disponibilidad de cada ruta por fase y el cambio de v0.6.0 del contrato de 001
-(`name_taken`, `Money`). No condiciona al backend: el rediseño visual previsto no cambia ninguna
-decisión de este plan (los colores son tokens, DD-7).
+Autor: `frontend-architect`. Implementa: `frontend-developer`, **una fase por invocación**, en modo
+completo (`.claude/dev-mode`). Diseño: [`ui.md`](ui.md) · ADR-030 (*Proposed*) · ADR-015 a ADR-023 y
+ADR-027 de 001.
 
-Tarea reservada por el backend, que el `frontend-architect` detalla:
+### Estado (2026-10-23)
 
-- **T-002-F001 — `name_taken` en el mapa de mensajes de error** (`Record<ErrorCode, …>`, T-F101 de
-  001). Va en la **misma rama que T-002-B201/T-002-B202**. Depende de T-002-B202: regenera los tipos
-  del contrato de 001 v0.6.0. Agrega el mensaje de `name_taken` y su test, y deja el typecheck del
-  frontend en verde. La exige el checkpoint de la Fase 2 del backend (`make check-all`). El texto del
-  mensaje y la forma del test los define el `frontend-architect`, porque son decisiones de UI.
+**Borrador, pendiente de aprobación del usuario** junto con `ui.md` (P-F1 a P-F4 con la opción
+recomendada, `ui.md` §24). Ninguna fase empezada. **T-002-F001 viaja en la rama de T-002-B202**
+(Fase 2 del backend): es lo único que no espera la aprobación del resto, porque sin ella el
+checkpoint de la Fase 2 del backend no queda verde (`ui.md` H-1).
+
+### Convenciones de esta sección
+
+Rigen las de la sección Frontend de [`tasks.md` de 001](../001-empresas-usuarios/tasks.md)
+("Convenciones de esta sección"): `[T]` con Red que falla por la razón correcta; **se prueba lo que
+el usuario percibe** (consultas por rol y nombre accesible, nunca por clase ni por estado interno);
+pantallas con el árbol de rutas real (`createMemoryRouter`), un `QueryClient` nuevo por test y la red
+con MSW (`onUnhandledRequest: 'error'`); handlers y fixtures tipados con los tipos generados y con
+datos ficticios; **nombres por funcionalidad**, nunca por fase o tarea; versiones y clasificación de
+dependencias como en 001 (002 no agrega dependencias). Además:
+
+- **Identificadores** (plan DD-17): `T-002-Fnnn`. En el código:
+  `// T-002-F202 (002/INV-F3): stage writes leave one at a time.` Las decisiones e invariantes de 002
+  se citan `002/DD-F5`, `002/INV-F3`; las de 001, sin prefijo.
+- **Una tarea por rama.** Cada tarea `[T]` incluye su implementación: Red → Green → Refactor en la
+  misma rama, con nombre por funcionalidad desde `main` (p. ej. `feat/002-stages-screen`). Las ramas
+  de una fase se mergean antes de empezar la siguiente. Excepción: **T-002-F001 va en la rama de
+  T-002-B202**.
+- **Rutas del backend**: una fase que consume una ruta de 002 se puede desarrollar y probar con MSW
+  antes, pero se **mergea** después de que su fase del backend está en `main` (tabla de dependencias).
+- **Archivos de test por funcionalidad**: `lib/money.test.ts`, `lib/terminology.test.ts`,
+  `lib/textLength.test.ts`, `lib/removalFocus.test.ts`, `features/configuration/stages/pipeline.test.ts`,
+  `StagesPage.test.tsx`, `StagesOrder.test.tsx` (la cola de etapas), `CategoriesPage.test.tsx`,
+  `catalog/schemas.test.ts`, `CatalogPage.test.tsx`, `CatalogItemPage.test.tsx`,
+  `LabelsPage.test.tsx`, `QuoteDefaultsPage.test.tsx`, `app/terminologyLoading.test.tsx`,
+  `test/terminologyLiterals.test.ts`; E2E en `web/e2e/company-configuration.spec.ts` y
+  `web/e2e/configuration-accessibility.spec.ts`.
+- **Qué se sustituye y qué no**: la tabla de 001 sin cambios. La red con MSW; nunca hooks de datos,
+  `QueryClient`, router, React Hook Form, Zod ni Radix. Las funciones puras nuevas
+  (`pipeline.ts`, `money.ts`, `terminology.ts`, `removalFocus.ts`) se usan **reales** en los tests de
+  pantalla. Nada nuevo se sustituye.
+- **Fixtures** (`src/test/configuration.ts`): empresa "Genérico" con las etapas Presupuesto (`open`,
+  `blue`), Aprobado (`open`, `teal`), En curso (`open`, `yellow`), Finalizado (`won`, `green`) y
+  Perdido (`lost`, `gray`); las 5 categorías de sistema, "Otros ingresos" y 7 de egreso; sin ítems;
+  nombres por defecto; validez 15 y sin condiciones. Variante "renombrada": Proyecto → "Obra"/"Obras"
+  femenino, Cliente → "Comitente"/"Comitentes" masculino, Presupuesto → "Cotización"/"Cotizaciones"
+  femenino. Sesión de Administrador y de Operador.
+
+### Comandos de validación
+
+Los de 001, sin comandos nuevos: `npm run gen:api`, `npm run lint` (incluye la verificación de los
+generados), `npm run typecheck`, `npm test`, `npm run build`, **`npm run check` (checkpoint de cada
+fase)**, `npm run e2e`, `make web-check` y `make check-all`.
+
+### Dependencias con el backend
+
+| Fase | Para mergear necesita en `main` | La prueba independiente necesita | Hallazgos |
+|---|---|---|---|
+| F0 | — (va en la rama de T-002-B202) | — | H-1 (`ui.md` §25): T-002-B202 tiene que nombrar a T-002-F001 |
+| F1 | Fase 2 del backend (contrato de 001 v0.6.0: `002.ts` referencia su `Money`) | Backend de 001 | — |
+| F2 | Fase 4 (rutas de etapas) | Fases 3 y 4 (empresa sembrada y etapas) | — |
+| F3 | Fase 5 (categorías) | Fase 5 | — |
+| F4 | Fase 6 (catálogo) | Fase 6 | — |
+| F5 | Fase 7 (nombres y condiciones) | Fase 7 | H-2 (rutas con punto en `FieldError.field`): no bloquea |
+| F6 | Fase 8 (`pendingOperations` vacía) | Backend de 002 completo | — |
+
+---
+
+### Fase F0 — Contrato de 001 v0.6.0: `name_taken` en el mapa de errores (viaja con T-002-B202)
+
+**Objetivo**: con el contrato de 001 en v0.6.0, el frontend compila y el mapa exhaustivo de errores
+tiene el texto de `name_taken`; `make check-all` sigue verde en la rama de T-002-B202.
+
+**Prueba independiente**: en la rama de T-002-B202, `make check-all` en verde;
+`web/src/api/generated/001.ts` trae `name_taken` en `ErrorCode` y el esquema `Money`.
+
+**T-002-F001 [T] — `name_taken` en el mapa exhaustivo de errores** · plan DD-12, DD-13, §8.2;
+INV-F05 de 001; `ui.md` §12.4, H-1
+- **Rama**: la de T-002-B202, después del commit que sube el contrato de 001 a v0.6.0.
+- **Red**:
+
+  | Caso | Esperado |
+  |---|---|
+  | `npm run gen:api` con el contrato de 001 en v0.6.0 | `generated/001.ts` con `name_taken` en `ErrorCode` y el esquema `Money`; `npm run typecheck` **falla** en `api/errorMessages.ts` porque `Record<ErrorCode, …>` no tiene `name_taken` (el rojo esperado) |
+  | `messageForError(<409 problem+json con code name_taken>, 'generic')` | título "Ese nombre ya está en uso.", descripción "Elegí otro nombre.", `retryable: false`, sin `requestId` |
+  | El mismo error con un contexto de 001 (`'users'`, `'tenant'`) | el mismo texto (las variantes de 002 entran con sus pantallas, T-002-F101) |
+  | `errorMessages.test-d.ts` (exhaustividad del mapa) | sigue pasando con la clave nueva |
+  | Mutación: quitar la entrada `name_taken` | no compila (se ve fallar y se restaura) |
+- **Green**: la entrada `name_taken` en `errorMessages` con ese texto; `generated/001.ts` regenerado y
+  versionado; `npm run check` y `make check-all` en verde. Ningún otro cambio de frontend en esta
+  rama.
+- **Refactor**: nada (cambio mínimo, a propósito).
+
+**Checkpoint Fase F0**: `make check-all` en verde en la rama de T-002-B202.
+
+---
+
+### Fase F1 — Fundacional: contrato de 002 en el cliente, dinero, terminología pura y componentes compartidos
+
+**Objetivo**: los tipos de 002 se generan y se combinan con los de 001; existen las piezas puras
+(dinero, terminología con los nombres por defecto, largos, destino del foco), los textos de error por
+contexto y los componentes de presentación que usan las pantallas nuevas, con las correcciones de
+P-F2. Todavía no se consume ninguna ruta de 002.
+
+**Prueba independiente**: `npm run check` en verde y, en el navegador contra el backend, las
+pantallas de 001 se operan igual que antes, con los radios de Registro e Invitar redondos, "+ Invitar"
+de 44 px de alto, el menú de acciones de Usuarios dentro del viewport a 375 px y las filas de Ajustes
+separadas (P-F2, P-F3).
+
+**T-002-F101 [T] — Contrato de 002 en el cliente y piezas puras** · `ui.md` §9.2, §11.3, §12.2,
+§12.3, §13.1, §13.3, §16.4; INV-F6, INV-F10, NFR-F5, DD-F3, DD-F11, ADR-030
+- **Red**:
+
+  | Pieza | Caso | Esperado |
+  |---|---|---|
+  | `schema.test-d.ts` | rutas de `Paths001` y `Paths002` | disjuntas (`AssertDisjoint`); `paths` tiene `/stages` y `/me` |
+  | `types.test-d.ts` | `CatalogItem['reference_price']` | `Money \| null`, con `Money` de `generated/001` |
+  | `queryKeys` | `settings.stages`, `settings.catalogItem('x')` | `['settings','stages']`, `['settings','catalog-items','x']` |
+  | `countCodePoints` | `"Obra"`, `"ñ"` × 60, `"👷"`, `""` | 4, 60, 1, 0 |
+  | `focusTargetAfterRemoval` | `[a,b,c]` sin `b` / sin `c` / `[a]` sin `a` / id que no está | `c` / `b` / `null` / `null` |
+  | `midSentence` | `"Obra"`, `"Orden de trabajo"`, `"Ñandú"` | `"obra"`, `"orden de trabajo"`, `"ñandú"` |
+  | | `"OT"`, `"PyME"`, `"obra"`, `""` | sin cambios |
+  | `byGender` | `('feminine', { masculine: 'Nuevo', feminine: 'Nueva' })` | `"Nueva"` |
+  | `terminologyFrom(DEFAULT_LABELS).project` | — | `singular` "Proyecto", `plural` "Proyectos", `lower` "proyecto"/"proyectos", artículos `el`, `los`, `un`, `del`, `al` |
+  | `terminologyFrom` con Proyecto = Obra/Obras femenino | — | `lower` "obra"/"obras"; artículos `la`, `las`, `una`, `de la`, `a la` |
+  | `DEFAULT_LABELS` | — | igual a "Comunes a las dos plantillas" de la spec (tres masculinos) |
+  | `useTerminology()` provisorio (sin red hasta T-002-F501) | render dentro del shell de test | devuelve `terminologyFrom(DEFAULT_LABELS)` y **no** hace ningún request |
+  | `messageForError` | `name_taken` con `'stage'` / `'category'` / `'categoryRestore'` | los textos de `ui.md` §13.1 |
+  | | `invalid_state` con `'stage'` / `'category'` | los textos de §13.1 |
+  | | `invalid_state` con `'users'` y con `'generic'` | el texto de 001, sin cambios |
+  | | `not_found` con `'stage'`, `'category'`, `'catalogItem'` / con `'users'` | los textos de §13.1 / el de 001 |
+  | `fieldErrorMessage` | `('name','too_long','stage')` / `('name','too_long','catalogItem')` | "…(máximo 60 caracteres)." / "…(máximo 120 caracteres)." |
+  | | `('name','invalid_value')` sin *scope* | "Tiene que tener entre 1 y 120 caracteres." (001 sin cambios) |
+  | | `('project.singular','too_long','labels')`, `('validity_days','invalid_value','quoteDefaults')`, `('terms','too_long','quoteDefaults')`, `('unit_label','required','catalogItem')`, `('reference_price.amount_cents','invalid_value','catalogItem')` | los textos de §13.3 |
+  | `applyServerFieldErrors` | con *scope* `catalogItem` y `knownFields` que incluye `reference_price.amount_cents` | `setError` en esa ruta, tipo `server`, con el texto del *scope*; devuelve `[]` |
+- **Mutación**: `midSentence` que pasa a minúscula sin mirar el resto de la palabra → falla "OT".
+- **Green (implementación)**: entrada `'002'` en `web/redocly.yaml` y `generated/002.ts`;
+  `schema.ts` con `Paths001 & Paths002`; alias de `types.ts` (§12.2); `queryKeys.settings`;
+  `lib/textLength.ts`, `lib/removalFocus.ts`, `lib/terminology.ts`; `api/labels.ts` con
+  `useTerminology()` provisorio (sin query: la conecta T-002-F501); contextos nuevos de
+  `ErrorContext` y `FieldScope` en `api/errorMessages.ts`.
+- **Refactor**: que los máximos por *scope* salgan de una sola tabla (sin repetir números en cada
+  variante).
+
+**T-002-F102 [T] — Dinero: carga y formato sin punto flotante** · ADR-023, ADR-029, INV-F5, DD-F8,
+S-F2, `ui.md` §17.2
+- **Red**:
+
+  | Caso | Esperado |
+  |---|---|
+  | `parseMoneyInput`: cada fila de `ui.md` §17.2 | el resultado de la tabla, incluido `"90.071.992.547.409,91"` → 9007199254740991 y un centavo más → `too_large` |
+  | `formatMoney(450000, 'USD')` | igual a `new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'USD', currencyDisplay: 'code' }).format('4500.00')`; contiene "USD" y "4.500,00" (S-F2) |
+  | `formatMoney(5, 'ARS')`, `formatMoney(0, 'ARS')` | contienen "0,05" y "0,00" |
+  | `formatMoney(9007199254740991, 'ARS')` | contiene "90.071.992.547.409,91" (exacto) |
+  | `formatMoney(-1, …)`, `formatMoney(1.5, …)`, `formatMoney(9007199254740992, …)` | lanza (error de programación: el contrato no lo admite) |
+  | `formatMoneyInput(450050)` | `"4.500,50"` |
+  | Ida y vuelta: `parseMoneyInput(formatMoneyInput(x))` para 0, 5, 99, 100, 123456, 9007199254740991 | `x` |
+- **Mutación**: convertir con `Math.round(parseFloat(…) * 100)` → debe fallar al menos la fila de
+  2^53 − 1; si no falla ninguna, se agrega una fila que lo haga antes de seguir.
+- **Green (implementación)**: `lib/money.ts` (§16.4). Resultado de S-F2 (formato del código de
+  moneda en Node del CI) anotado en el PR.
+- **Refactor**: la conversión centavos ↔ texto decimal en una sola función interna.
+
+**T-002-F103 [T] — Componentes compartidos y correcciones de P-F2** · P-F2, P-F3, NFR-F3, NFR-F4,
+DD-F12, RF-7, `ui.md` §14.1, §16.1, §18; hallazgos 1, 2, 3 y 5 de T-F705 de 001
+- **Red** (componentes con Testing Library; E2E con Playwright en Chromium):
+
+  | Caso | Esperado |
+  |---|---|
+  | `FormDialog` abierto | `role="dialog"` con nombre = título; foco en el primer campo; Esc cierra y el foco vuelve al disparador |
+  | `FormDialog` con `pending` | "Cancelar" y el envío deshabilitados; Esc no cierra; el botón dice el `pendingLabel` |
+  | `BlockedActionDialog` | `role="alertdialog"` con título y descripción; un solo botón "Entendido", con el foco; al cerrar, el foco vuelve al disparador |
+  | `ArchivedSection` con `count` 2 / 0 | botón "Ver archivadas (2)" con `aria-expanded="false"`; al activarlo, `true` y el contenido visible / nada en el DOM |
+  | `SettingsLinkList` | una lista con un enlace por ítem, por nombre accesible |
+  | `ReadOnlyNotice` | el texto visible, sin `role="status"` ni `role="alert"` |
+  | E2E, 375 px: radios de rol (Invitar) y de moneda (Registro) | el control del radio mide ≤ 24 px de alto; su etiqueta, ≥ 44 px (hallazgo 2) |
+  | E2E, 375 px: "+ Invitar" y "Cancelar" de Invitar (enlaces con aspecto de botón) | alto ≥ 44 px (hallazgo 1) |
+  | E2E, 375 y 320 px: menú de acciones de un usuario con una acción deshabilitada | el menú cabe en el viewport (borde derecho ≤ ancho de la ventana) y su texto no se corta (hallazgo 3) |
+  | E2E, 375 px: Ajustes como Administrador | "Datos de la empresa" y "Usuarios" miden ≥ 44 px y están separados ≥ 8 px (P-F3, hallazgo 5) |
+- **Green (implementación)**: `components/ui/dialog.tsx` y `components/ui/textarea.tsx` con el CLI de
+  shadcn; `FormDialog`, `BlockedActionDialog`, `ArchivedSection`, `SettingsLinkList`,
+  `ReadOnlyNotice` (§16.1); S-08 usa `SettingsLinkList` en "Tu empresa"; P-F2: el radio no hereda el
+  mínimo de 44 px de `globals.css` (su objetivo es la tarjeta), `a[data-slot="button"]` entra en la
+  regla de 44 px, y `DropdownMenuContent` limita su ancho al disponible y deja saltar el texto. Si el
+  usuario elige otra opción de P-F2 o P-F3, esta tarea se reescribe antes de empezar.
+- **Refactor**: que ninguna de las correcciones use clases de la paleta de Tailwind (INV-F23 de 001).
+
+**Checkpoint Fase F1**: `npm run check` y `npm run e2e` en verde + prueba independiente.
+
+---
+
+### Fase F2 — Historia 1: Etapas (P1) — primer slice vertical
+
+**Objetivo**: el Administrador ve el pipeline y agrega, edita (nombre, tipo, color), mueve y elimina
+etapas con teclado y en el celular; las acciones que rompen las reglas se explican antes de enviar;
+el Operador ve la lista en solo lectura. Ajustes muestra la sección "Configuración" con su primer
+enlace.
+
+**Prueba independiente**: con el backend (Fases 3 y 4), registrar una empresa "Genérico" y, solo con
+teclado: Ajustes → "Etapas de los proyectos"; mover "En curso" dos veces hacia arriba (se anuncia la
+posición y el foco sigue en su menú); agregar "Instalación" antes de "Finalizado"; intentar eliminar
+"Finalizado" (aparece la explicación); cambiar "Perdido" a "Cierre ganado" y entonces eliminar
+"Finalizado". Como un Operador invitado, la misma lista sin "+ Agregar etapa" ni menús. A 320 px, sin
+scroll horizontal.
+
+**T-002-F201 [T] — Reglas del pipeline en el cliente** · Historia 1.4 y 1.5, P-6, plan DD-5 y
+T-002-B301, INV-F4, INV-F9, DD-F5, `ui.md` §16.4
+- **Red** (unitarios; tipos abreviados `o`/`w`/`l`):
+
+  | Función | Entrada | Esperado |
+  |---|---|---|
+  | `pipelineViolation` | `[]`, `[o]`, `[o, l]` | `no_won` |
+  | | `[w, o]`, `[l, o, w]`, `[l]` | `first_not_open` (se evalúa primero la primera etapa) |
+  | | `[o, w]`, `[o, w, l]`, `[o, l, w]`, `[o, o, w, w]` | `null` |
+  | `afterDelete` (fixture Genérico) | Finalizado / Aprobado | `no_won` / `null`, con las demás en orden |
+  | | Presupuesto (Aprobado `o` segunda) | `null` |
+  | | la primera de `[o, w, l]` | `first_not_open` |
+  | `afterMove` | Perdido a 1 / En curso de 3 a 1 / Finalizado a 5 | `first_not_open` / `null` con `[En curso, Presupuesto, Aprobado, Finalizado, Perdido]` / `null` |
+  | `afterTypeChange` | Finalizado a `o` / Presupuesto a `w` / En curso a `w` | `no_won` / `first_not_open` / `null` |
+  | `afterCreate` | `w` en 1 / `o` al final / `o` en 4 | `first_not_open` / `null` / `null` con la nueva en 4 |
+  | `moveOptions` (Genérico, En curso) | — | 5 opciones; la 3 marcada `current`; etiquetas "1 (al principio)", "2 (después de «Presupuesto»)", …, "5 (al final)" |
+  | `suggestStageColor` | colores del Genérico (`blue`, `teal`, `yellow`, `green`, `gray`) / los 8 usados | `orange` (el primero libre en el orden del contrato) / `gray` |
+  | `stageChanges` | mismos valores / solo el nombre con espacios en los extremos / nombre y color | `{}` / `{ name }` sin espacios / `{ name, color }` (nunca `null`) |
+  | `stageTypeLabels`, `stageColorNames` | cada valor del enum | su texto (`Record`: un valor nuevo no compila) |
+- **Green (implementación)**: `features/configuration/stages/pipeline.ts` y `labels.ts`; tokens
+  `--stage-*` en `globals.css` (`ui.md` §19.2) incluidos en `colorTokens.test.ts`.
+- **Refactor**: que las cuatro funciones `after*` compartan el reordenamiento a posiciones 1..n.
+
+**T-002-F202 [T] — Pantalla de etapas y entrada en Ajustes** · Historia 1 (1 a 5), FR-001, FR-008,
+BR-F1 a BR-F5, BR-F12, INV-F3, INV-F6, INV-F8, INV-F19 de 001, DD-F1, DD-F4 a DD-F6, DD-F10,
+`ui.md` §14.1, §14.2, §15.1, §15.2
+- **Red** (pantalla con MSW, sesión de Administrador salvo que diga Operador):
+
+  | Interacción | Resultado observable |
+  |---|---|
+  | Ajustes como Administrador / como Operador | sección "Configuración" con el enlace "Etapas de los proyectos"; el Operador la ve también, con "Podés consultarla; solo un administrador la cambia." |
+  | `GET /stages` pendiente | región "Cargando las etapas" con `aria-busy` |
+  | `200` (Genérico) | `<h1>` "Etapas de los proyectos"; lista ordenada de 5; "Presupuesto" con "Abierta · Etapa inicial"; "Finalizado" con "Cierre ganado"; el color no es el único dato |
+  | `500` con `instance` | "No pudimos cargar las etapas." + código + "Reintentar" |
+  | Operador | sin "+ Agregar etapa" ni botones "Acciones para …"; aviso "Solo un administrador puede cambiar las etapas."; nunca "Sin permiso" (INV-F8) |
+  | Menú de la primera / de la última etapa (teclado: Enter, flechas) | sin "Subir" / sin "Bajar"; nombre accesible "Acciones para {nombre}" |
+  | "Subir" en En curso → `200` con la lista nueva | la fila pasa a la posición 2; durante la espera, "Moviendo…" en la fila; la región viva (presente y vacía antes) dice "«En curso» quedó en la posición 2 de 5."; el foco queda en "Acciones para En curso" |
+  | "Subir" en Finalizado hasta la posición 1 (con En curso, Aprobado y Presupuesto arriba, hasta que la regla se rompería) | al intentar dejarla primera: diálogo "No se puede mover «Finalizado» ahí" con "Entendido" (foco); ningún request |
+  | "Mover a otra posición…" → posición 1 para En curso → "Mover" | `POST …/move {position: 1}`; mismo resultado observable |
+  | "Mover a otra posición…" sin cambiar la posición actual → "Mover" | ningún request; el diálogo se cierra |
+  | "Eliminar" en Finalizado | diálogo "No se puede eliminar «Finalizado»" con el texto de `no_won`; ningún `DELETE` |
+  | "Eliminar" en Aprobado → "Eliminar" → `204` | confirmación "¿Eliminar la etapa «Aprobado»?"; toast "Eliminaste la etapa «Aprobado»."; la lista se vuelve a pedir; el foco va a "Acciones para En curso" (la siguiente, INV-F6) |
+  | Eliminar la última etapa de la lista (con otra `won` antes) | el foco va a la anterior |
+  | "+ Agregar etapa" | diálogo "Nueva etapa": foco en "Nombre"; "Abierta" elegida; color "Naranja" (el primero libre); ubicación "Antes de «Finalizado»" |
+  | Agregar "Instalación" → `201` | `POST /stages` con `{name, type: 'open', color: 'orange', position: 4}`; toast "Agregaste la etapa «Instalación»."; lista releída; foco de vuelta en "+ Agregar etapa" |
+  | Agregar con nombre "presupuesto" | error "Ya hay una etapa con ese nombre." en "Nombre", sin request |
+  | Agregar `won` en la posición 1 | error en "Tipo": "La primera etapa tiene que ser abierta…"; sin request |
+  | Agregar → `409 name_taken` (otra persona lo creó) | error en "Nombre" con el texto de `stage`; foco ahí; lista releída |
+  | Agregar con 61 caracteres (emoji cuenta 1) | error "…(máximo 60 caracteres)."; sin request |
+  | "Editar" en Perdido → tipo "Cierre ganado" → `200` | `PATCH` con `{type: 'won'}` solamente; toast "Guardamos la etapa «Perdido»."; la fila dice "Cierre ganado" |
+  | "Editar" sin cambios → "Guardar etapa" | ningún request; el diálogo se cierra |
+  | "Editar" Finalizado (única ganada) → tipo "Abierta" | error en "Tipo": "Tiene que quedar al menos una etapa de cierre ganado."; sin request |
+  | Eliminar → `409 invalid_state` (lista vieja) | diálogo cerrado; toast "No pudimos hacer ese cambio en las etapas." con la descripción de §13.1; lista releída |
+  | Cualquier acción → `404` | toast "Esa etapa ya no existe. Actualizamos la lista."; lista releída |
+  | Agregar → red caída / `503` | `FormAlert` en el diálogo con el texto de 001; lo escrito se conserva |
+  | Agregar → `403 forbidden` (le bajaron el rol) | `/me` pedido de nuevo; con el permiso perdido, la pantalla queda en solo lectura (sin "Sin permiso") |
+  | Doble activación de "Agregar etapa" en el diálogo | un solo `POST` |
+- **Red — cola de etapas** (`StagesOrder.test.tsx`, INV-F3; `test/gate.ts` de 001 retiene respuestas):
+
+  | Caso | Esperado |
+  |---|---|
+  | "Subir" en En curso y, con esa respuesta retenida, "Bajar" en Presupuesto | el segundo `POST` sale recién cuando respondió el primero; la lista final es la de la segunda respuesta |
+  | `GET /stages` en vuelo (foco de la pestaña) que responde después de un `move` | la lista queda con la respuesta del `move` (la lectura se canceló antes de escribir) |
+  | Mutación: quitar el `scope` de `useMoveStage` | falla la primera fila |
+- **Green (implementación)**: `StagesPage`, `StageListItem`, `StageForm`, `StageColorOption`,
+  `features/configuration/stages/api.ts` (cola `STAGE_CHANGES_SCOPE`, §11.3); ruta
+  `settings/stages`; sección "Configuración" de S-08 con su primer enlace. Los textos con
+  "proyectos" usan `useTerminology()` (todavía los nombres por defecto).
+- **Refactor**: que el manejo de foco tras quitar o mover use `focusTargetAfterRemoval` y una sola
+  función de refoco por id; que `StagesPage` no tenga más de un estado de diálogo por tipo.
+
+**Checkpoint Fase F2**: `npm run check` en verde + prueba independiente.
+
+---
+
+### Fase F3 — Historia 3: Categorías (P1)
+
+**Objetivo**: el Administrador agrega, renombra, archiva y restaura categorías de ingreso y egreso;
+las del sistema se renombran y no se archivan; el Operador las consulta.
+
+**Prueba independiente**: con el backend (Fase 5): renombrar "Cobros de clientes" a "Cobranzas" (su
+menú no ofrece "Archivar"), agregar "Combustible" desde la sección Egresos, archivarla y verla en
+"Ver archivadas", restaurarla. Crear otra "Combustible" mientras la primera está archivada y después
+intentar restaurar la archivada: aparece el aviso de nombre repetido.
+
+**T-002-F301 [T] — Reglas de presentación de categorías** · Historia 3, BR-F6, BR-F7, INV-F7,
+DD-F7
+- **Red** (unitarios):
+
+  | Función | Caso | Esperado |
+  |---|---|---|
+  | `categorySections(categories)` | lista del servidor (Genérico con una archivada) | `{ income: [...], expense: [...], archived: [...] }`, cada una en el orden recibido |
+  | `isDuplicateActiveName(categories, name, type, exceptId?)` | "flete" contra "Flete" activa de egreso / de ingreso / archivada / la misma categoría (renombrar sin cambiar) | `true` / `false` / `false` / `false` |
+  | `categoryActions(category)` | propia activa / del sistema / archivada | `['rename','archive']` / `['rename']` / `['restore','rename']` |
+  | `categoryActions` con `system: true` y `system_key` que el cliente no conoce (simulado) | — | `['rename']` (decide por `system`, INV-F7) |
+  | `categoryTypeLabels` | `income`, `expense` | "Ingreso"/"Ingresos", "Egreso"/"Egresos" (`Record`) |
+- **Green (implementación)**: `features/configuration/categories/rules.ts` y `labels.ts`.
+
+**T-002-F302 [T] — Pantalla de categorías** · Historia 3 (1 a 4), FR-003, FR-004, FR-008, BR-F1,
+BR-F6 a BR-F8, BR-F12, INV-F6, INV-F7, INV-F8, DD-F6, DD-F7, DD-F9, `ui.md` §14.3
+- **Red**:
+
+  | Interacción | Resultado observable |
+  |---|---|
+  | Ajustes | enlace "Categorías de ingresos y egresos" en "Configuración" |
+  | `GET /categories?include_archived=true` pendiente / `500` | "Cargando las categorías" / "No pudimos cargar las categorías." + "Reintentar" |
+  | `200` (Genérico, "Alquiler" archivada) | `<h2>` "Ingresos" y "Egresos" con sus listas; "Del sistema" en las 5; "Ver archivadas (1)" cerrado |
+  | Operador | sin "+ Agregar" ni menús; aviso de solo lectura; "Ver archivadas" se puede abrir |
+  | Menú de "Cobros de clientes" | solo "Renombrar" |
+  | "+ Agregar" de Egresos | diálogo "Nueva categoría de egreso" con "El tipo no se puede cambiar después."; sin selector de tipo; nombre accesible del botón "Agregar categoría de egreso" |
+  | Agregar "Combustible" → `201` | `POST /categories {name: 'Combustible', type: 'expense'}`; toast "Agregaste la categoría «Combustible»."; lista releída; foco en "+ Agregar" de Egresos |
+  | Agregar "flete" (existe "Flete" de egreso) | error "Ya hay otra categoría activa del mismo tipo con ese nombre." sin request |
+  | Agregar → `409 name_taken` | el mismo error en el campo; foco ahí; lista releída |
+  | Renombrar "Cobros de clientes" a "Cobranzas" → `200` | `PATCH {name: 'Cobranzas'}`; toast "Cambiaste el nombre a «Cobranzas»."; foco en el menú de esa categoría (por id, aunque cambie de lugar) |
+  | "Archivar" en "Materiales" → `200` | sin confirmación; toast "Archivaste «Materiales». La encontrás en Archivadas."; "Ver archivadas (2)"; el foco va al menú de la categoría siguiente de Egresos (INV-F6) |
+  | "Restaurar" en "Alquiler" (archivadas abiertas) → `200` | toast "Restauraste «Alquiler»."; vuelve a Egresos; con Archivadas vacía, la sección desaparece y el foco va a "+ Agregar" de Egresos |
+  | "Restaurar" → `409 name_taken` | toast "No pudimos restaurarla: ya hay otra categoría activa del mismo tipo con ese nombre." + "Renombrá una de las dos y probá de nuevo."; sigue archivada |
+  | "Archivar" → `409 invalid_state` (caché vieja: era del sistema) | toast "Las categorías del sistema no se pueden archivar."; lista releída |
+  | Acción → `404` | toast "Esa categoría ya no está. Actualizamos la lista." |
+  | Una categoría `system: true` con una clave nueva (006) | se muestra con "Del sistema" y solo "Renombrar"; ningún error (INV-F7) |
+- **Green (implementación)**: `CategoriesPage`, `CategoryListItem`, diálogo de categoría,
+  `features/configuration/categories/api.ts`; ruta `settings/categories`; enlace en S-08.
+- **Refactor**: compartir con etapas el patrón de fila con menú (sin un componente genérico si
+  obliga a más de dos *props* de configuración).
+
+**Checkpoint Fase F3**: `npm run check` en verde + prueba independiente.
+
+---
+
+### Fase F4 — Historia 4: Catálogo (P2)
+
+**Objetivo**: el Administrador crea, edita, archiva y restaura ítems con unidad y precio de
+referencia opcional, sin punto flotante; el Operador consulta el catálogo.
+
+**Prueba independiente**: con el backend (Fase 6): crear "Portón corredizo" (unidad, USD 4.500,00) y
+"Soldadura" (Otra: "jornada", ARS 25.000), ver "USD 4.500,00 por unidad" en la lista, borrar el
+precio de "Portón corredizo" (pasa a "Sin precio de referencia"), archivarlo y restaurarlo desde la
+lista. En un celular con teclado numérico de punto, "4500.50" se guarda como 4.500,50.
+
+**T-002-F401 [T] — Formulario de ítem: esquema, cambios y descripción del precio** · Historia 4.1,
+P-9, BR-F9, BR-F10, INV-F5, INV-F9, INV-F10, DD-F8, DD-F11, `ui.md` §14.5, §16.3
+- **Red** (unitarios):
+
+  | Función | Caso | Esperado |
+  |---|---|---|
+  | `catalogItemSchema` | nombre vacío / 121 *code points* / 120 | `required` / `too_long` / ok |
+  | | "Otra" sin nombre de unidad / con 21 / "Hora" con nombre de unidad | `unit_label` `required` / `too_long` / ok (se ignora) |
+  | | importe `""` / `"4.500,50"` / `"abc"` / `"90.071.992.547.409,92"` | sin precio / 450050 / error de formato / "El importe es demasiado grande." |
+  | `toCatalogItemCreate` | importe vacío / con importe y USD / descripción `"  "` / unidad "Hora" con etiqueta escrita | `reference_price: null` / `{ amount_cents: …, currency: 'USD' }` / `description: null` / sin `unit_label` |
+  | `catalogItemChanges` | sin cambios | `{}` |
+  | | solo el precio, de USD 4.500,00 a USD 5.000,00 | `{ reference_price: { amount_cents: 500000, currency: 'USD' } }` |
+  | | importe borrado | `{ reference_price: null }` |
+  | | de "Otra" (jornada) a "Unidad" | `{ unit: 'unit' }` (el servidor descarta `unit_label`) |
+  | | de "Hora" a "Otra" con "jornada" | `{ unit: 'other', unit_label: 'jornada' }` |
+  | | descripción borrada | `{ description: null }`; nunca `name: null` ni `unit: null` (INV-F9) |
+  | `catalogItemFormValues` | `null` con moneda base USD / un ítem con precio | unidad "Unidad", moneda USD, importe vacío / importe `"4.500,00"` (con `formatMoneyInput`) |
+  | `describeCatalogPrice` | sin precio, `square_meter` / USD 450000, `unit` / ARS 2500000, `other` "jornada" | "Por m² · Sin precio de referencia" / "USD 4.500,00 por unidad" / "ARS 25.000,00 por jornada" (con `formatMoney`) |
+  | `catalogUnitLabels` | cada unidad | su texto (`Record`) |
+- **Green (implementación)**: `features/configuration/catalog/schemas.ts` y `labels.ts`.
+
+**T-002-F402 [T] — Pantallas del catálogo** · Historia 4 (1, 3), FR-005, FR-008, BR-F1, BR-F8 a
+BR-F10, BR-F12, BR-F13, INV-F6, INV-F8, DD-F1, DD-F6, DD-F7, DD-F9, `ui.md` §14.4, §14.5
+- **Red**:
+
+  | Interacción | Resultado observable |
+  |---|---|
+  | Ajustes | enlace "Catálogo" en "Configuración" |
+  | Lista vacía como Administrador / como Operador | "Todavía no hay ítems en el catálogo." con "Nuevo ítem" / sin el botón, con el aviso de solo lectura |
+  | Lista con 3 ítems (uno archivado) | cada tarjeta con nombre y precio descrito; "Ver archivados (1)"; "+ Nuevo ítem" mide ≥ 44 px (aserción de estilo en E2E, T-002-F602) |
+  | Operador | sin enlaces en los nombres; la descripción completa visible; sin "Restaurar" |
+  | "+ Nuevo ítem" → completar → "Guardar ítem" → `201` | `POST` con el cuerpo de `toCatalogItemCreate`; `replace` a la lista (Atrás no vuelve al formulario); toast "Agregaste «Portón corredizo» al catálogo." |
+  | Elegir "Otra" | aparece "Nombre de la unidad" con su ayuda; al volver a "Unidad", desaparece |
+  | Importe "4500.50" | se guarda 450050 |
+  | `422` con `reference_price.amount_cents` `invalid_value` | "El importe es demasiado grande." en "Importe"; foco ahí |
+  | Abrir un ítem desde la lista | S-17 aparece sin *skeleton* (sembrado desde la lista); `<h1>` "Editar ítem" |
+  | Entrar directo a `/settings/catalog/{id}` | *skeleton* "Cargando el ítem" y después el formulario |
+  | `GET` → `404` | "No encontramos ese ítem" + "Volver al catálogo" |
+  | Cambiar solo el precio → `200` | `PATCH` con solo `reference_price`; toast "Guardamos «Portón corredizo»." |
+  | "Guardar ítem" sin cambios | ningún request; toast "No hay cambios para guardar." |
+  | Cambiar el nombre y tocar "← Catálogo" | aviso "Tenés cambios sin guardar. ¿Salir igual?" ("Quedarme" con el foco) |
+  | "Archivar ítem" → `200` | sin confirmación; toast "Archivaste «…». Lo encontrás en Archivados."; aviso "Este ítem está archivado…" con "Restaurar", que recibe el foco; lo escrito en el formulario se conserva |
+  | "Restaurar" en el aviso → `200` | toast "Restauraste «…»."; el aviso desaparece; foco en "Archivar ítem" |
+  | "Restaurar" en la lista de archivados → `200` | el ítem vuelve a la lista activa; foco según INV-F6 |
+  | Operador en `/settings/catalog/new` | "Sin permiso" del guard de 001 |
+  | Guardar → red caída | `FormAlert` "No hay conexión…" con "Reintentar"; lo escrito se conserva |
+- **Green (implementación)**: `CatalogPage`, `CatalogItemNewPage`, `CatalogItemEditPage`,
+  `CatalogListItem`, `CatalogItemForm`, `features/configuration/catalog/api.ts`; rutas de §6.1
+  (las de escritura dentro de `RequirePermission`); enlace en S-08.
+- **Refactor**: una sola `CatalogItemForm` para alta y edición.
+
+**Checkpoint Fase F4**: `npm run check` en verde + prueba independiente.
+
+---
+
+### Fase F5 — Historias 2 y 6: Nombres personalizados (terminología en toda la app) y condiciones (P3, P2)
+
+**Objetivo**: la terminología se lee del servidor y se aplica en toda la interfaz con sesión,
+incluidos los textos de 001; el Administrador edita los nombres (con género) y las condiciones por
+defecto; el Operador los consulta.
+
+**Prueba independiente**: con el backend (Fase 7): cambiar Proyecto por "Obra"/"Obras" femenino y
+Presupuesto por "Cotización"/"Cotizaciones" femenino; sin recargar, Ajustes dice "Etapas de las
+obras" y "Condiciones de las cotizaciones", y Datos de la empresa dice "Se usan en los PDF de tus
+cotizaciones."; recargar `/` no muestra "Proyectos" ni un instante. Definir 30 días y un texto de
+condiciones, y verlos como Operador. Con la red cortada solo para `/settings/labels`, la app arranca
+con los nombres por defecto.
+
+**T-002-F501 [T] — Terminología conectada: carga, espera y textos de 001** · Historia 2, P-3,
+ADR-030, BR-F11, INV-F1, INV-F2, INV-F10, DD-F2, DD-F3, RF-5, `ui.md` §9
+- **Red**:
+
+  | Caso | Resultado observable |
+  |---|---|
+  | `test/msw/handlers.ts` sin handler de `GET /settings/labels` y el shell montado | un test de 001 que monta el shell falla por la petición no interceptada (el rojo de RF-5); con el handler por defecto (nombres de la plantilla), pasa |
+  | Sesión presente, `/settings/labels` retenido | encabezado y navegación visibles; en `<main>`, el indicador de carga (`role="status"`); el contenido de la pantalla todavía no está (INV-F2) |
+  | `/settings/labels` responde con "Obra" | `<main>` pinta la pantalla con "Obra"; nunca aparece "Proyecto" en el DOM antes |
+  | `/settings/labels` → `500` | `<main>` pinta con los nombres por defecto, sin aviso |
+  | `/settings/labels` → `401` | salida de sesión de 001 (`reason=session_expired`) |
+  | Navegar a la app con la sesión ya en caché | `GET /settings/labels` sale una vez por usuario, en paralelo con el chunk del shell (la precarga del guard; no sale durante una salida de sesión, INV-F22 de 001) |
+  | Usuarios (estado vacío) e Invitar (rol Operador) con la variante renombrada | "…para que cargue comitentes y obras." / "Carga comitentes, obras, cotizaciones y cobros. No ve finanzas ni ajustes." |
+  | Datos de la empresa con la variante renombrada | "Se usan en los PDF de tus cotizaciones." |
+  | Los mismos textos con los nombres por defecto | idénticos a los de 001 (los tests existentes de 001 pasan sin cambios) |
+  | `terminologyLiterals.test.ts` (INV-F1) | pasa; con un archivo de *fixture* que tiene "Nuevo proyecto" en un JSX, falla nombrando el archivo |
+  | Esquema de nombres | singular o plural vacío / 41 *code points* / emoji cuenta 1 | `required` / `too_long` / ok |
+- **Green (implementación)**: `api/labels.ts` con `labelsQuery` y `useTerminology()` sobre la caché;
+  precarga en `GuardedSession`; espera de `<main>` en `AppShell`; handler por defecto en
+  `test/msw/handlers.ts`; los textos de §9.4 con `useTerminology()`; `terminologyLiterals.test.ts`;
+  esquema de `features/configuration/labels/schemas.ts`.
+- **Refactor**: que `useTerminology()` memoice por referencia de `Labels`.
+
+**T-002-F502 [T] — Pantallas de nombres y condiciones** · Historias 2 y 6, FR-002, FR-007, FR-008,
+P-10, BR-F1, BR-F13, INV-F8, `ui.md` §14.6, §14.7, §15.3
+- **Red**:
+
+  | Interacción | Resultado observable |
+  |---|---|
+  | Ajustes | enlaces "Nombres personalizados" y "Condiciones de los presupuestos" |
+  | S-18 como Administrador | tres grupos "Proyecto", "Cliente", "Presupuesto" con singular, plural y género; "Así se va a ver: «Nuevo proyecto», «Los proyectos cerrados»." |
+  | Cambiar Proyecto a "Obra", "Obras", Femenino | la vista previa dice "«Nueva obra», «Las obras cerradas»" sin enviar nada |
+  | "Guardar nombres" → `200` | `PUT /settings/labels` con las tres entidades; toast "Guardamos los nombres."; sin recargar, `<h1>` de Etapas dice "Etapas de las obras" al navegar |
+  | `422` con `project.singular` `too_long` | error "…(máximo 40 caracteres)." en el singular de Proyecto; foco ahí |
+  | Salir con cambios | aviso de cambios sin guardar |
+  | S-18 como Operador | "Proyecto: Obra / Obras, femenino" (texto, sin campos) y el aviso de solo lectura |
+  | S-19 con 15 días y sin condiciones | "Validez" 15; "Condiciones comerciales" vacío; ayuda "0 de 2.000." |
+  | Validez "0" / "366" / "abc" / "30" | error "Tiene que ser un número de días entre 1 y 365." en los tres primeros, sin request / ok |
+  | Condiciones con 2.001 *code points* (pegadas) | se ve todo lo pegado; al guardar, error "…(máximo 2.000 caracteres)." sin request |
+  | Condiciones "   " → "Guardar condiciones" → `200` | `PUT` con `terms: null`; toast "Guardamos las condiciones." |
+  | S-19 como Operador | "Validez: 15 días" y "Sin condiciones por defecto." |
+  | Título de S-19 con Presupuesto renombrado a "Cotización" femenino | "Condiciones de las cotizaciones"; bajada "Se proponen al crear una cotización. Cambiarlas no toca las que ya creaste." |
+  | Guardar → `503` | `FormAlert` con "Reintentar"; lo escrito se conserva |
+- **Green (implementación)**: `LabelsPage`, `EntityLabelFieldset`, `QuoteDefaultsPage`,
+  `useReplaceLabels`, `features/configuration/quoteDefaults/api.ts` y su esquema; rutas
+  `settings/labels` y `settings/quote-defaults`; enlaces en S-08.
+- **Refactor**: que la vista previa use `terminologyFrom` y no arme concordancias propias.
+
+**Checkpoint Fase F5**: `npm run check` en verde + prueba independiente.
+
+---
+
+### Fase F6 — Verificación: end-to-end, accesibilidad y performance
+
+**Objetivo**: los flujos de configuración funcionan de punta a punta contra el binario; la
+accesibilidad y los presupuestos de 002 están verificados y reportados; la documentación queda al
+día. No se construye nada nuevo: se cierran huecos.
+
+**Prueba independiente**: los E2E de T-002-F601 y T-002-F602 en verde y los reportes de T-002-F603
+y T-002-F604 adjuntos.
+
+**T-002-F601 [T] — E2E: una herrería configurada desde la interfaz** · SC-001, FR-001 a FR-008
+- **Red** (Playwright, Chromium en cada PR y WebKit antes de liberar, contra el binario; un solo
+  flujo en `company-configuration.spec.ts`):
+
+  | Paso | Esperado |
+  |---|---|
+  | Registro con "Genérico" | panel |
+  | Nombres: Proyecto → "Trabajo"/"Trabajos" masculino | Ajustes dice "Etapas de los trabajos" |
+  | Etapas: renombrar "En curso" → "En taller"; agregar "Colocación" (abierta) antes de "Finalizado"; subir "Colocación" una vez; intentar eliminar "Finalizado" | orden final esperado; explicación de la acción bloqueada |
+  | Categorías: agregar "Hierros", "Pintura" y "Electrodos" de egreso; archivar "Alquiler" | listas esperadas |
+  | Catálogo: "Reja de ventana" (m², sin precio), "Portón corredizo" (unidad, USD 4.500,00), "Soldadura" (Otra "jornada", ARS 25.000) | tarjetas con el precio descrito |
+  | Condiciones: 30 días y un texto | guardadas |
+  | Un Operador invitado (flujo de 001) | ve las cinco pantallas en solo lectura; ninguna muestra "Sin permiso" |
+- **Green**: pasa, sin cambios de código de producción (si hace falta uno, va con su test en esta
+  rama).
+
+**T-002-F602 [T] — E2E de accesibilidad y tamaños** · NFR-F06 de 001, NFR-F3, NFR-F4, `ui.md` §18
+- **Red** (`configuration-accessibility.spec.ts`):
+
+  | Caso | Esperado |
+  |---|---|
+  | axe en S-13 a S-19 y en los diálogos C-03, C-04 y C-05, como Administrador y como Operador | sin violaciones |
+  | 320 y 375 px en cada pantalla, con el menú de acciones abierto en una fila de nombre largo | sin scroll horizontal; el menú dentro del viewport |
+  | Botones, enlaces con aspecto de botón, disparadores de menú y etiquetas de opciones de 002 | ≥ 44×44 px |
+  | Teclado: mover una etapa con el menú | el foco queda en "Acciones para {nombre}" de la misma etapa |
+- **Green**: pasa.
+
+**T-002-F603 — Verificación manual de accesibilidad** · NFR-F3, NFR-F7, `ui.md` §18, §19.2
+- Checklist: S-13 y S-14 de punta a punta solo con teclado; VoiceOver (macOS o iOS) y, si hay, NVDA
+  en mover (anuncio de posición), eliminar y archivar (destino del foco) y en los diálogos; zoom
+  200 %; `prefers-reduced-motion`; contraste de los tokens `--stage-*` con una herramienta; "Moviendo…"
+  inmediato al toque en un celular. Resultado en el reporte de la fase, con cada hallazgo y su
+  corrección (o su decisión). Lo que no se pueda verificar se dice ("no verificado en NVDA").
+
+**T-002-F604 — Performance** · NFR-F1, NFR-F2, NFR-F6, ADR-030, RF-1, RF-8
+- Tamaño gzip de cada chunk de S-13 a S-19 (`vite build`); LCP p75 de `/` con la espera de nombres
+  (como T-F704 de 001); render de la lista del catálogo con un *fixture* de 1.000 ítems en un Android
+  de gama media (o el perfil de CPU de Lighthouse). Si el LCP de `/` pasa de 2,5 s, se aplica la
+  salida de RF-1 y se vuelve al arquitecto.
+
+**T-002-F605 — Documentación viva** (`ui.md` §27): estado de cada fase en esta sección; `ui.md` con
+lo que cambió al implementar (enmiendas con su aprobación); el estado de los hallazgos de T-F705 de
+001 que P-F2 y P-F3 resolvieron, en `tasks.md` de 001; ADR-030 a *Accepted* si el usuario lo aprueba.
+
+**Checkpoint Fase F6**: `npm run check` y `npm run e2e` en verde (Chromium; WebKit reportado);
+reportes de T-002-F603 y T-002-F604 adjuntos.
+
+---
+
+### Trazabilidad (frontend)
+
+| Requisito / criterio / decisión | Tareas |
+|---|---|
+| FR-001 Etapas ordenadas con tipo y color | T-002-F201, T-002-F202, T-002-F601 |
+| FR-002 Nombres personalizados | T-002-F501, T-002-F502, T-002-F601 |
+| FR-003 / FR-004 Categorías y categorías de sistema | T-002-F301, T-002-F302, T-002-F601 |
+| FR-005 Catálogo con precio opcional | T-002-F102, T-002-F401, T-002-F402, T-002-F601 |
+| FR-007 Condiciones y validez | T-002-F502, T-002-F601 |
+| FR-008 Lectura para todos, escritura solo Administrador (UX) | T-002-F202, F302, F402, F502, T-002-F601, T-002-F602 |
+| Historia 1 (1 a 5) | T-002-F201, T-002-F202 |
+| Historia 2 / P-3 (toda la interfaz) | T-002-F101, T-002-F501, T-002-F502 |
+| Historia 3 (1 a 4) | T-002-F301, T-002-F302 |
+| Historia 4 (1, 3) | T-002-F401, T-002-F402 |
+| Historia 6 | T-002-F502 |
+| SC-001 (desde la interfaz) | T-002-F601 |
+| Contrato de 001 v0.6.0 (`name_taken`, `Money`), H-1 | T-002-F001 |
+| Contrato de 002 v0.1.0, *bundle* multi-spec | T-002-F101 |
+| ADR-023 / ADR-029 dinero, INV-F5, DD-F8 | T-002-F102, T-002-F401 |
+| ADR-030 terminología, INV-F1, INV-F2, DD-F2, DD-F3 | T-002-F101, T-002-F501, T-002-F604 |
+| INV-F3 / DD-F10 cola de etapas | T-002-F202 |
+| INV-F4 / DD-F5 reglas del pipeline en el cliente | T-002-F201, T-002-F202 |
+| INV-F6 foco tras quitar o mover | T-002-F101, T-002-F202, T-002-F302, T-002-F402, T-002-F602 |
+| INV-F7 sin ramificar por `system_key` | T-002-F301, T-002-F302 |
+| INV-F8 / DD-F1 solo lectura para el Operador | T-002-F202, F302, F402, F502, T-002-F601 |
+| INV-F9 `PATCH` mínimo | T-002-F201, T-002-F401 |
+| INV-F10 / NFR-F5 largos en *code points* | T-002-F101, T-002-F401, T-002-F501 |
+| DD-F6 diálogos y páginas | T-002-F103, T-002-F202, T-002-F302, T-002-F402 |
+| DD-F7 una lectura con archivados | T-002-F302, T-002-F402 |
+| DD-F9 archivar sin confirmación | T-002-F302, T-002-F402 |
+| DD-F11 / §13 errores por contexto y *scope* | T-002-F101, T-002-F202, T-002-F302, T-002-F402, T-002-F502 |
+| DD-F12 / P-F3 `SettingsLinkList` | T-002-F103 |
+| P-F1 / DD-F4 reordenar sin arrastre | T-002-F202, T-002-F602, T-002-F603 |
+| P-F2 correcciones en componentes compartidos (hallazgos 1 a 3 de T-F705 de 001) | T-002-F103, T-002-F602 |
+| NFR-F1, NFR-F2, NFR-F6 | T-002-F604 |
+| NFR-F3, NFR-F4 | T-002-F103, T-002-F602, T-002-F603 |
+| NFR-F7 | T-002-F603 |
+| RF-5 (handler por defecto de nombres) | T-002-F501 |
+| RF-7 (cambios en pantallas de 001) | T-002-F103 |
