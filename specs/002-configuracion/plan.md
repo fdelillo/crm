@@ -5,6 +5,11 @@
 (§14.2) y decidió que las condiciones comerciales de 002 quedan como texto libre (las condiciones de
 pago estructuradas las define 005). Lo que sigue a verificar al implementar está en §14.1 como
 supuestos (S-3, S-4) y en la compuerta de medición de DD-3 (T-002-B307).
+**Revisión 2026-10-23 (PR #47, revisión de Codex)**: la compuerta del sembrado también falla si la
+retención absoluta llega a 140 ms (DD-3, §13, R-1); la actualización del mapa de errores del frontend
+es la tarea T-002-F001, en la misma rama que T-002-B202 (DD-13, R-2); T-002-B202 es requisito previo
+de cualquier validación o consumidor del contrato 002, y el checkpoint de la Fase 2 demuestra que
+todos sus `$ref` resuelven (DD-13).
 
 Artefactos de esta spec:
 
@@ -79,8 +84,8 @@ los nombres personalizados y las condiciones comerciales por defecto), `stages`,
 `catalog_items`. Las plantillas de rubro dejan de ser solo un código: `catalog.json` pasa a la
 versión 2 con su contenido, y `settings.TemplateSeeder` lo siembra **dentro** de la transacción de
 registro de 001 con cuatro sentencias por conjuntos, sujeto a una compuerta de medición sobre el
-presupuesto del lock de registro (DD-33 R-c de 001). Las reglas del pipeline (la primera etapa es
-abierta y hay al menos una de cierre *ganado*) se evalúan con una sola función pura sobre el
+presupuesto del lock de registro (DD-33 R-b y R-c de 001). Las reglas del pipeline (la primera etapa
+es abierta y hay al menos una de cierre *ganado*) se evalúan con una sola función pura sobre el
 resultado de cada operación, serializada por un lock de la fila de `tenant_settings`. Nada de la
 configuración se borra físicamente: etapas eliminadas, categorías e ítems archivados siguen siendo
 referenciables por las specs 004 a 010 (ADR-028). Leer la configuración puede cualquier usuario de la
@@ -283,7 +288,7 @@ registra qué les queda. Cada plan futuro decide su lado.
 | INV-04 | Toda query filtra por `tenant_id` además de la RLS | Ninguna query de sistema nueva; T-B112 recorre `settings/store/*.sql` sin excepciones | Preserva |
 | INV-12 | Permiso antes de buscar; ajeno → `404` | Escrituras en un grupo con `RequirePermission(settings.manage)`; ids ajenos → `404` | Preserva |
 | INV-14 | El registro es atómico, **incluida la configuración de la plantilla** | El sembrado corre en la misma transacción; su error deshace todo | Preserva (y por primera vez hay configuración real que deshacer) |
-| INV-26 y DD-33 R-b/R-c | Sin E/S de red después de aprovisionar; retención del lock p95 < 140 ms; el `Seeder` solo con SQL por conjuntos y dentro de ese presupuesto | Cuatro sentencias por conjuntos (INV-10) y compuerta medida (T-002-B307) con salida definida si no entra (DD-3) | Preserva, con medición |
+| INV-26 y DD-33 R-b/R-c | Sin E/S de red después de aprovisionar; retención del lock p95 < 140 ms; el `Seeder` solo con SQL por conjuntos y dentro de ese presupuesto | Cuatro sentencias por conjuntos (INV-10) y compuerta medida (T-002-B307) que **falla** si el sembrado se pasa de sus límites o si la retención absoluta llega a 140 ms; salida definida (DD-3) | Preserva, con medición |
 | DD-40 | `tenants` y `users` solo con `FOR NO KEY UPDATE`; nada de `FOR UPDATE` sobre destinos de FK | `settings` nunca bloquea `tenants` ni `users`; las tablas nuevas que serán destino de FK también solo con `FOR NO KEY UPDATE` (la regla de `rowlocks_test` se extiende, T-002-B103) | Preserva y extiende |
 | INV-15, INV-32 | Auditoría append-only; `data` sin credenciales ni texto libre del usuario (DD-37 (5)) | Acciones nuevas con `data` de enumerados y listas de campos (INV-12 de 002) | Preserva |
 | INV-21, INV-22 | `no-store` en toda la API; `/api/` nunca llega a la SPA | Las rutas nuevas viven en el router chi existente | Preserva |
@@ -322,7 +327,7 @@ completas en `research.md`.
 |---|---|---|---|
 | **DD-1** | **Módulo `settings`** dueño de las 4 tablas. Importa `platform/*`, `authz` e `industrytemplate`; no importa `identity` (declara su `RequestMeta{IP, UserAgent}`; el `request_id` de la auditoría ya sale del contexto) ni `tenant`. Sus rutas las monta `internal/app` dentro del grupo con `identity.Authenticate` (`routes_settings.go`, igual que `routes_tenant.go`). `BuildAPIRouter` suma un parámetro `*settings.Service`. | ADR-001 anticipa el nombre. Un módulo que no depende de identidad se prueba solo y no crea ciclos con 004 a 010, que lo van a consumir. | Un `RequestMeta` de dos campos repetido; cambian las llamadas a `BuildAPIRouter` (tests y `serve.go`) y el texto de una mutación del guard de `crm serve` (`serve_router_mutations_test.go`), sin cambiar sus reglas. |
 | **DD-2** | **Plantillas como datos versionados.** `industrytemplate.Template` suma `labels`, `stages`, `categories`, `catalog_items` y `quote_defaults`; las dos plantillas pasan a `version: 2` con el contenido de P-4. Los valores enumerados son *strings* en `industrytemplate` (no conoce los tipos de `settings`); `settings` las valida con sus propias reglas en un test (INV-9). Las **categorías de sistema no son de la plantilla**: las define `settings` (tabla `systemCategories`) y se siembran en toda empresa. `GET /industry-templates` no cambia. | Principio II: un rubro nuevo es una entrada en `catalog.json`. La versión 2 distingue en `tenants.industry_template_version` a las empresas registradas antes de 002 (versión 1, sin contenido). Validar con las reglas reales evita una plantilla que la API rechazaría. | Dos lugares con texto en español semilla (`catalog.json` y la tabla de categorías de sistema de `settings`), más la copia del *backfill* (DD-4). |
-| **DD-3** | **Sembrado dentro de la transacción de registro, por conjuntos**: `settings.TemplateSeeder.Seed` ejecuta exactamente cuatro sentencias (`tenant_settings`, `stages`, `categories`, `catalog_items`), cada una un `INSERT … SELECT FROM unnest(arrays)`; las listas vacías insertan cero filas sin cambiar la cuenta. **Compuerta** (T-002-B307, harness de T-B910 con 10.000 roles): se mantiene si el sembrado tiene p95 ≤ 10 ms **y** la retención p95 con sembrado supera a la sin sembrado en ≤ 10 ms. Si la retención absoluta pasa los 140 ms aunque el delta cumpla, se informa al usuario (R-b de 001 estaría en riesgo con o sin 002). **Si no cumple**, se aplica la salida de R-c: la empresa nace con "configuración pendiente" y el sembrado corre idempotente después del `COMMIT` (diseño de respaldo en `research.md` R-3, que necesita una decisión del usuario). | Cumple INV-14 de 001 sin agregar estados: una empresa nunca existe sin configuración. Cuatro sentencias de costo constante (no dependen de la cantidad de roles, a diferencia del `GRANT`). | La transacción que retiene el lock de `GRANT crm_tenant` crece unos pocos milisegundos (a medir). Supuesto S-3 (sqlc genera los parámetros de arrays). |
+| **DD-3** | **Sembrado dentro de la transacción de registro, por conjuntos**: `settings.TemplateSeeder.Seed` ejecuta exactamente cuatro sentencias (`tenant_settings`, `stages`, `categories`, `catalog_items`), cada una un `INSERT … SELECT FROM unnest(arrays)`; las listas vacías insertan cero filas sin cambiar la cuenta. **Compuerta** (T-002-B307, harness de T-B910 con 10.000 roles): pasa **solo** si se cumplen las tres condiciones: (1) el sembrado tiene p95 ≤ 10 ms; (2) la retención p95 con sembrado supera a la sin sembrado en ≤ 10 ms; (3) la retención p95 con sembrado es **< 140 ms** (target heredado de R-b de 001; R-c exige que el sembrado entre en ese presupuesto). **Si falla cualquiera**, la fase se detiene y no avanza hasta aplicar la salida de R-c (la empresa nace con "configuración pendiente" y el sembrado corre idempotente después del `COMMIT`; diseño de respaldo en `research.md` R-3, que vuelve al arquitecto y necesita aprobación) o hasta que el usuario decida explícitamente otra cosa, con la decisión registrada en este plan. | Cumple INV-14 de 001 sin agregar estados: una empresa nunca existe sin configuración. Cuatro sentencias de costo constante (no dependen de la cantidad de roles, a diferencia del `GRANT`). La condición (3) es necesaria porque la retención ya está cerca del target: con 133 ms sin sembrado, un sembrado de 8 ms cumpliría (1) y (2) y dejaría el registro en 141 ms. | La transacción que retiene el lock de `GRANT crm_tenant` crece unos pocos milisegundos (a medir). Como la retención medida en T-B910 llegó a 133,6 ms, la condición (3) puede fallar por el ruido del entorno aunque el sembrado sea barato: en ese caso decide el usuario. Supuesto S-3 (sqlc genera los parámetros de arrays). |
 | **DD-4** | ***Backfill* en la migración `00010`** para las empresas que ya existen: una fila de `tenant_settings` con los nombres por defecto, validez 15 días y sin condiciones; las 5 categorías de sistema; las 5 etapas de la plantilla "Genérico". Sin categorías propias ni catálogo. `industry_template_version` queda como está (1). Desactiva `FORCE ROW LEVEL SECURITY` solo dentro de la migración (ADR-004 §6). | Sin esto, una empresa previa rompe INV-1, INV-2 e INV-4 (y el primer `GET /settings/labels` sería un `500`). No hay empresas reales en producción (S-2), así que alcanza el mínimo. | El SQL de la migración repite textos del sembrado (una vez, versionado). |
 | **DD-5** | **Reglas del pipeline**: la **etapa inicial es la primera** por posición y debe ser `open`; tiene que haber al menos una `won`; `lost` es opcional (P-6). Una única función pura `validatePipeline([]Stage) error` se evalúa sobre la lista **resultante** de cada operación (crear, cambiar tipo, mover, eliminar). Toda mutación de etapas toma primero `LockTenantSettings` (`FOR NO KEY UPDATE` de la fila de `tenant_settings`) y reescribe las posiciones densas `1..n` de las activas en una sola sentencia. Sin índice único sobre la posición. | Una sola regla, probada una vez, evita la combinatoria de casos por operación. El lock por empresa impide que dos bajas concurrentes de las dos etapas `won` dejen cero. Un índice único no diferible sobre la posición fallaría a mitad de un reordenamiento (PostgreSQL verifica por fila) y uno parcial no puede ser diferible. | Todas las escrituras de etapas (y las de nombres y condiciones, que usan la misma fila) de una empresa se serializan: son acciones raras de un Administrador. La densidad de posiciones la vigila un test, no la base. |
 | **DD-6** | **Eliminar una etapa es lógico** (`deleted_at`) y **no se restaura**. En 002 no hay proyectos, así que no hay nada que mover (P-2); 004 agrega el destino y su `409`. Una etapa eliminada no aparece en `GET /stages` ni se puede modificar (`404`), y su nombre queda libre. | El historial de 004 referencia etapas por id ("renombrar no altera datos históricos", casos borde de la spec): un `DELETE` físico rompería esas FK. Sin restaurar, el usuario ve "eliminar" (spec) y no un concepto nuevo. | 004 tendrá que mostrar "(eliminada)" y desambiguar nombres repetidos en el historial (R-8). |
@@ -332,7 +337,7 @@ completas en `research.md`.
 | **DD-10** | **Nombres personalizados y condiciones comerciales** en `tenant_settings`, con `PUT` completo (`/settings/labels`, `/settings/quote-defaults`). Cada nombre tiene singular, plural y **género gramatical** (`masculine`\|`feminine`) (P-3). Condiciones: **texto libre** opcional ≤ 2.000 caracteres (vacío o solo espacios → `null`, como DD-43 de 001) y validez de 1 a 365 días (P-10); las condiciones de pago estructuradas son de 005. Usan el mismo lock que las etapas. | La pantalla edita todo junto: un `PUT` no necesita la semántica de ausente/`null`. Sin género, la UI escribe "Nuevo Obra" o "Proyectos abiertos" → "Obras abiertos". | Un campo más que el Administrador elige al renombrar. |
 | **DD-11** | **Permisos**: escrituras con `settings.manage` (fila "Configuración y usuarios" de FR-007), aplicado en el grupo de rutas y verificado otra vez en el servicio (como `tenant.Update`); **lecturas** para cualquier usuario autenticado de la empresa (P-5, FR-008). Sin revalidación del actor bajo lock: estas operaciones no conceden ni restauran autoridad (regla de DD-44 de 001). | El Operador necesita leer etapas (004), catálogo y condiciones (005) y nombres (toda la UI). Leer la configuración no expone importes ni saldos. | Un Operador ve los nombres de las categorías de egreso (p. ej. "Retiros de socios"), sin importes. |
 | **DD-12** | **Errores**: un `code` nuevo, `name_taken` (`409`), para un nombre activo repetido (análogo a `email_taken`). Las reglas del pipeline y archivar una categoría de sistema reusan `invalid_state` (`409`) con **un solo significado por endpoint** (tabla en §8.3). Las validaciones reusan los códigos de campo existentes (`required`, `too_long`, `invalid_value`, `invalid_format`). | Un código por endpoint alcanza para que la UI muestre el texto correcto; agregar un valor al enum compartido obliga a tocar el mapa exhaustivo del frontend, así que se agrega uno solo. `name_taken` sí merece código propio: aparece en seis endpoints y la UI lo muestra junto al campo. | El texto de `invalid_state` depende del endpoint en la UI (ya pasa en 001: reactivar vs. cambiar rol). |
-| **DD-13** | **Contratos**: 002 tiene su archivo canónico (`specs/002-configuracion/contracts/openapi.yaml`) con `$ref` externos a los componentes de 001 (DD-17 de 001; `openapi-typescript` ya los resuelve, S-F1 de `ui.md` de 001). `name_taken` y `Money` se agregan al contrato de 001 (**v0.6.0**, *minor*) en T-002-B202, junto con `httpx.CodeNameTaken`. El validador de tests (`internal/testsupport/contract`) carga una **lista explícita** de contratos (001 y 002) y resuelve los `$ref` entre archivos (S-4). El test de rutas contra el contrato (T-B801 de 001) admite una lista `pendingOperations` de `operationId` de 002 todavía no implementados, que cada fase vacía y la Fase 8 deja en cero. | Un archivo por spec mantiene el contrato revisable por spec; los componentes compartidos siguen en un solo lugar. La lista explícita evita que el contrato de una spec en diseño rompa `make check`. | Editar el contrato de 001 desde otra spec; un paso más al agregar una spec (una línea en la lista). Hasta T-002-B202, el `$ref` a `Money` del contrato de 002 apunta a un componente que todavía no existe en 001 (a propósito: no se edita el contrato de 001 antes de cambiar el código que lo verifica). |
+| **DD-13** | **Contratos**: 002 tiene su archivo canónico (`specs/002-configuracion/contracts/openapi.yaml`) con `$ref` externos a los componentes de 001 (DD-17 de 001; `openapi-typescript` ya los resuelve, S-F1 de `ui.md` de 001). `name_taken` y `Money` se agregan al contrato de 001 (**v0.6.0**, *minor*) en T-002-B202, junto con `httpx.CodeNameTaken`. **En la misma rama va la tarea frontend T-002-F001**, que agrega `name_taken` al mapa exhaustivo de mensajes (`Record<ErrorCode, …>`) y deja el typecheck del frontend en verde: sin ella, `make check` falla. **T-002-B202 es requisito previo de cualquier validación o consumidor del contrato 002** (el validador de los tests, la generación de tipos del frontend). El validador de tests (`internal/testsupport/contract`) carga una **lista explícita** de contratos (001 y 002), resuelve los `$ref` entre archivos (S-4) y **falla si alguno queda sin resolver**; el checkpoint de la Fase 2 exige demostrar cero `$ref` sin resolver antes de dar el contrato 002 por validado. El test de rutas contra el contrato (T-B801 de 001) admite una lista `pendingOperations` de `operationId` de 002 todavía no implementados, que cada fase vacía y la Fase 8 deja en cero. | Un archivo por spec mantiene el contrato revisable por spec; los componentes compartidos siguen en un solo lugar. La lista explícita evita que el contrato de una spec en diseño rompa `make check`. Llevar el cambio del enum y el del mapa del frontend en la misma rama evita un `main` en rojo entre ramas. | Editar el contrato de 001 desde otra spec; una rama que toca backend y frontend; un paso más al agregar una spec (una línea en la lista). Hasta T-002-B202, el `$ref` a `Money` del contrato de 002 apunta a un componente que todavía no existe en 001, y el contrato 002 no se puede validar como documento completo (a propósito: no se edita el contrato de 001 antes de cambiar el código que lo verifica). |
 | **DD-14** | **Auditoría de toda escritura de configuración** (catálogo de acciones en `data-model.md` §6), con `data` limitado a enumerados y listas de campos (INV-12). | Varias personas administran; renombrar una categoría cambia cómo se leen los reportes (009). Cuesta un `INSERT` por operación. | Más filas en `audit_log` (volumen despreciable). |
 | **DD-15** | **Sin cambios, sin escritura** (INV-13): `PATCH`/`PUT` con los mismos valores normalizados, archivar lo archivado y restaurar lo activo responden `200` con el recurso, sin `UPDATE` ni auditoría. | Idempotencia útil para reintentos del cliente y sin ruido en la auditoría (mismo criterio que DD-43 (4) de 001). | El intento no deja rastro en la auditoría (sí en el log de request). |
 | **DD-16** | **Listados sin paginación** y con orden estable: etapas por `position`; categorías por `type`, sistema primero, `lower(name)`, `id`; catálogo por `lower(name)`, `id`. Filtros: `include_archived` (default `false`) y, en categorías, `type`. `GET /catalog-items/{id}` existe (la pantalla de edición se puede recargar); etapas y categorías no tienen `GET` por id. | S-1: volúmenes chicos. El orden estable hace deterministas los tests y la UI. | Si un catálogo supera ~1.000 ítems, 005 agrega búsqueda o paginación. |
@@ -362,7 +367,8 @@ Detalle, DDL conceptual, privilegios y ER en [`data-model.md`](data-model.md).
 se derivan de él; los handlers Go se escriben a mano y los tests validan cada request y response
 (ADR-014). Si este plan y el YAML se contradicen, **manda el YAML**. Las reglas globales de 001 valen
 igual (base `/api/v1`, `no-store`, `405` con `Allow`, `403` por CSRF, `413` con body JSON > 64 KiB,
-`5XX`).
+`5XX`). **Requisito previo**: el contrato de 001 en v0.6.0 (T-002-B202); hasta entonces el contrato
+002 no resuelve todos sus `$ref` y no se valida ni se consume (DD-13).
 
 | Método | Ruta | Propósito | Permiso | Éxito | Errores propios |
 |---|---|---|---|---|---|
@@ -426,6 +432,9 @@ components:
 
 `Money.amount_cents` lleva `minimum: 0` porque todos sus usos previstos son importes sin signo (el
 sentido lo da la operación, 006). Una spec que necesite un saldo con signo define su propio esquema.
+
+En la misma rama que este cambio va T-002-F001 (frontend): el mapa de mensajes con `name_taken`
+(DD-13).
 
 ### 8.3 Significado de `invalid_state` por endpoint (DD-12)
 
@@ -541,7 +550,7 @@ internal/
 ├── app/
 │   ├── api.go                   # BuildAPIRouter(+ *settings.Service)
 │   └── routes_settings.go       # grupo con identity.Authenticate → settings.RegisterRoutes
-└── testsupport/contract/        # carga 001 y 002 (DD-13)
+└── testsupport/contract/        # carga 001 y 002 y verifica que todos los $ref resuelven (DD-13)
 db/migrations/00010_company_configuration.sql
 ```
 
@@ -737,7 +746,8 @@ func RegisterSettingsRoutes(r chi.Router, users *identity.Service, configuration
 
 // ---------- internal/testsupport/contract (DD-13) ----------
 // Documents: contratos canónicos que validan los tests, relativos a la raíz del módulo. Agregar una
-// spec = una línea. Load falla si dos contratos declaran la misma ruta y método.
+// spec = una línea. Load falla si dos contratos declaran la misma ruta y método, o si algún $ref
+// (interno o externo) queda sin resolver.
 var Documents = []string{
     "specs/001-empresas-usuarios/contracts/openapi.yaml",
     "specs/002-configuracion/contracts/openapi.yaml",
@@ -771,7 +781,7 @@ Queries con lock (todas con `tenant_id` explícito, INV-04 de 001):
 | Señal | Causa probable | Qué mirar / hacer |
 |---|---|---|
 | `500` en `GET /settings/labels` o en cualquier escritura de etapas de **una** empresa, con `ErrNotFound` envuelto de `LockTenantSettings` en el log | La empresa no tiene fila en `tenant_settings` (INV-1): base sin la migración `00010` o creada con un binario anterior | `crm migrate status`; `/readyz` ya da `503` si la versión no coincide. Si la versión es la correcta, es un bug del sembrado: revisar T-002-B305 |
-| Sube la duración de `POST /auth/signup` o aparece `signup_lock_timeout_total` > 0 después de desplegar 002 | El sembrado alargó la retención del lock de registro (DD-3) | Comparar con el resultado de T-002-B307; si la retención p95 pasa los 140 ms, aplicar la salida de R-c (DD-3) |
+| Sube la duración de `POST /auth/signup` o aparece `signup_lock_timeout_total` > 0 después de desplegar 002 | El sembrado alargó la retención del lock de registro (DD-3) | Comparar con el resultado de T-002-B307; si la retención p95 llega a 140 ms, aplicar la salida de R-c (DD-3) o volver al usuario |
 | Un `500` con `23514` (CHECK) en una escritura de configuración | El servicio dejó pasar algo que la base rechaza (bug): p. ej. archivar una categoría de sistema | Log del request (`err` con el nombre del `CHECK`); test que falta en la fase correspondiente |
 | Un `409 invalid_state` reiterado al eliminar etapas | Comportamiento esperado (INV-2): el usuario intenta dejar el pipeline sin etapa ganada o con una de cierre primera | Nada; la UI lo explica |
 
@@ -789,8 +799,8 @@ de la transacción de goose.
 |---|---|---|
 | Lecturas (`GET` de configuración) | < 50 ms | Una query por índice que empieza por `tenant_id`; tablas chicas por empresa |
 | Escrituras | < 100 ms | Una transacción corta; un lock de fila por empresa (o por ítem) |
-| Sembrado en el registro | p95 ≤ 10 ms y ≤ 10 ms de aumento de la retención del lock de registro (con 10.000 roles) | DD-3; compuerta T-002-B307 |
-| Retención del lock de registro (R-b de 001) | p95 < 140 ms sin contención con 10.000 roles (sin cambios) | Si no se cumple con 002, salida de R-c (DD-3) |
+| Sembrado en el registro | p95 ≤ 10 ms y ≤ 10 ms de aumento de la retención del lock de registro (con 10.000 roles) | DD-3; condiciones (1) y (2) de la compuerta T-002-B307 |
+| Retención del lock de registro con sembrado (R-b de 001) | p95 **< 140 ms** sin contención con 10.000 roles | Condición (3) de la compuerta T-002-B307: si no se cumple, la compuerta **falla** y la fase se detiene (salida de R-c o decisión explícita del usuario, DD-3) |
 
 Los dos primeros targets no se miden con un bench propio (tablas de decenas de filas por empresa);
 los vigila el log de request (`duration_ms`).
@@ -808,14 +818,14 @@ Siguen abiertos hasta implementar: no son decisiones del usuario sino verificaci
 | S-1 | Por empresa: ≤ ~30 etapas, ≤ ~200 categorías, ≤ ~1.000 ítems de catálogo | Agregar búsqueda o paginación al catálogo (lo decidiría 005) |
 | S-2 | No hay empresas reales en producción (P-1 de 001 abierta; nota de DD-43 de 001) | El *backfill* mínimo de DD-4 dejaría a esas empresas con la plantilla "Genérico" aunque hubieran elegido otra; habría que sembrar por código de plantilla |
 | S-3 | sqlc genera parámetros de tipo array para `INSERT … SELECT FROM unnest(@x::text[], …)` con pgx v5 (**a validar** en Red de T-002-B305; no lo verifiqué en la documentación de sqlc) | Respaldo: `:copyfrom` de sqlc (COPY de pgx), que también es por conjuntos; la cuenta de sentencias de INV-10 se ajusta |
-| S-4 | libopenapi resuelve `$ref` a archivos locales con la configuración del documento (`BasePath`, `AllowFileReferences`; la documentación de *rolodex* lo menciona) y libopenapi-validator valida con esas referencias resueltas (**a validar** en T-002-B203) | Respaldo: el helper fusiona en memoria los componentes de 001 en el documento de 002 reescribiendo los `$ref` externos a internos (los nombres no chocan) |
+| S-4 | libopenapi resuelve `$ref` a archivos locales con la configuración del documento (`BasePath`, `AllowFileReferences`; la documentación de *rolodex* lo menciona) y libopenapi-validator valida con esas referencias resueltas (**a validar** en T-002-B203) | Respaldo: el helper fusiona en memoria los componentes de 001 en el documento de 002 reescribiendo los `$ref` externos a internos (los nombres no chocan); la verificación de resolución completa vale igual |
 | S-5 | Comparar nombres con `lower()` de PostgreSQL alcanza: "Instalación" e "Instalacion" son distintos | Normalizar acentos con `unaccent` (extensión) en el índice |
 | S-6 | Los datos sembrados van en español (ADR-023, un solo idioma) | Plantillas por idioma |
 | S-7 | La plantilla se aplica solo al registrarse; no se reaplica ni se cambia de rubro después (spec, casos borde) | Una operación nueva de "reaplicar" (con decisiones sobre qué pisar) |
 | S-8 | 005 trata los textos de la configuración como no confiables al armar el PDF y el mensaje de WhatsApp | Inyección de contenido en el PDF |
 
 La compuerta de medición del sembrado (DD-3, T-002-B307) también se resuelve al implementar, con la
-regla de decisión fijada en `tasks.md`.
+regla de tres condiciones fijada en `tasks.md`.
 
 ### 14.2 Preguntas (resueltas el 2026-10-23)
 
@@ -842,9 +852,9 @@ El usuario aprobó todas con la opción recomendada, sin cambios. Están incorpo
 
 | ID | Riesgo | Prob. | Impacto | Mitigación |
 |---|---|:---:|:---:|---|
-| R-1 | El sembrado alarga la retención del lock de registro por encima del presupuesto de R-b de 001 (la medición de T-B910 ya dio p95 de 96–134 ms contra un target de 140) | Media | Medio | Compuerta T-002-B307 con regla de decisión fija; salida de R-c definida (DD-3, research R-3) |
-| R-2 | El cambio del contrato de 001 (v0.6.0, `name_taken`) rompe la compilación del mapa exhaustivo de mensajes del frontend | Alta (a propósito) | Bajo | Fila de coordinación en `tasks.md`; el `frontend-architect` agrega el texto |
-| R-3 | El validador no resuelve `$ref` entre archivos (S-4) | Media | Bajo | Respaldo de fusión en memoria definido; se resuelve en T-002-B203 antes de cualquier test HTTP de 002 |
+| R-1 | El sembrado lleva la retención del lock de registro al target de R-b de 001 o por encima (la medición de T-B910 ya dio p95 de 96–134 ms contra un target de 140) | Media | Medio | Compuerta T-002-B307 con regla de tres condiciones fijada antes de medir, **incluida la retención absoluta p95 < 140 ms**; si falla, la fase se detiene: salida de R-c (DD-3, research R-3) o decisión explícita del usuario |
+| R-2 | El cambio del contrato de 001 (v0.6.0, `name_taken`) rompe la compilación del mapa exhaustivo de mensajes del frontend | Alta (a propósito) | Bajo | Tarea T-002-F001 en la **misma rama** que T-002-B202; el checkpoint de la Fase 2 exige `make check` en verde, incluido el typecheck del frontend; el `frontend-architect` define el texto y el test |
+| R-3 | El validador no resuelve `$ref` entre archivos (S-4) | Media | Bajo | Respaldo de fusión en memoria definido; se resuelve en T-002-B203 antes de cualquier test HTTP de 002; el checkpoint de la Fase 2 exige cero `$ref` sin resolver |
 | R-4 | sqlc no genera los parámetros de arrays (S-3) | Baja | Bajo | `:copyfrom` |
 | R-5 | El género gramatical no alcanza para todos los textos de la UI | Media | Bajo | El `frontend-architect` arma los textos con singular, plural y género; si un texto no cierra, se redacta sin artículo |
 | R-6 | El *backfill* siembra "Genérico" a una empresa previa que había elegido "Carpintería de aluminio" | Baja (S-2) | Bajo | Solo entornos de desarrollo; el Administrador puede ajustar la configuración |
@@ -861,13 +871,14 @@ La actualización de la documentación va **en el mismo cambio** que el código.
 | Cuando cambies… | También tenés que actualizar… |
 |---|---|
 | Un endpoint de configuración (ruta, payload, código) | `contracts/openapi.yaml` de 002 (versión) + §8 + la fila de aislamiento y de permisos (T-B801/T-B802 de 001) + `ui.md` de 002 |
-| `ErrorCode` o `Money` | Contrato de 001 (versión *minor* si se agrega un valor) + `httpx` (`TestProblemCodesMatchContract`) + §8.2/§9 + mapa de mensajes del frontend + ADR-029 (ADR nuevo si cambia la decisión) |
+| `ErrorCode` o `Money` | Contrato de 001 (versión *minor* si se agrega un valor) + `httpx` (`TestProblemCodesMatchContract`) + §8.2/§9 + el mapa de mensajes del frontend **en la misma rama** (como T-002-F001) + ADR-029 (ADR nuevo si cambia la decisión) |
+| Un componente compartido de 001 que referencia el contrato 002 | El test de resolución completa de `$ref` (T-002-B203) en verde antes de dar el contrato por validado |
 | El significado de `invalid_state` en un endpoint de 002 | §8.3 + descripción en el contrato + `ui.md` |
 | Una regla del pipeline (inicial, ganado, perdido) | Spec (con aprobación) + DD-5 + INV-2 + `validatePipeline` y su tabla (T-002-B301) + plantillas (INV-9) + *backfill* si afecta empresas existentes |
 | La paleta de colores, las unidades, los tipos o las claves de sistema | `CHECK` (migración nueva) + tipos de `settings` + contrato (enum, *minor*) + `data-model.md` + plantillas + ADR-028 si es una clave de sistema |
 | El contenido de una plantilla | `catalog.json` (versión nueva de esa plantilla) + "Plantillas de rubro" en la spec (con aprobación) + T-002-B303 (contenido esperado) |
 | Una plantilla nueva | `catalog.json` + FR-002 de 001 / FR-006 de 002 (con aprobación) + T-002-B303 |
-| Lo que hace el sembrado (tablas, cantidad de sentencias) | DD-3 + INV-10 + T-002-B305 (cuenta) + volver a correr T-002-B307 + DD-33 R-c de 001 |
+| Lo que hace el sembrado (tablas, cantidad de sentencias) | DD-3 + INV-10 + T-002-B305 (cuenta) + volver a correr T-002-B307 con sus tres condiciones + DD-33 R-c de 001 |
 | El modelo de datos de configuración | `data-model.md` + migración nueva + fixture (`fixture.CompanyInserters`) + listas de T-B107/T-B108 de 001 |
 | Un lock nuevo sobre tablas de configuración | INV-8 + DD-5/DD-9 + regla de `rowlocks_test` |
 | El catálogo de acciones de auditoría | `data-model.md` §6 + INV-12 + el test de la operación (claves exactas) |

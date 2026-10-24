@@ -40,8 +40,8 @@ lock de `GRANT crm_tenant`, solo con SQL por conjuntos y dentro del presupuesto 
 
 | Opción | A favor | En contra | Veredicto |
 |---|---|---|---|
-| **Dentro de la transacción de registro, cuatro sentencias por conjuntos, con compuerta de medición** | Atomicidad (INV-14 de 001) sin estados nuevos: una empresa nunca existe sin configuración; costo constante (no crece con la cantidad de roles) | Suma algunos milisegundos a la retención del lock | **Elegida**, condicionada a T-002-B307 |
-| **Respaldo**: estado "configuración pendiente" + sembrado idempotente después del `COMMIT` | No toca la retención del lock | Un estado más: `tenant_settings` puede faltar; toda lectura y escritura tiene que sembrar si falta (bajo `LockTenantSettings`, con `INSERT … ON CONFLICT DO NOTHING` y sin duplicar etapas ni categorías); el primer request de la empresa paga el sembrado; tests de carrera entre el primer `GET` y la primera escritura | Respaldo definido; se aplica solo si la compuerta falla |
+| **Dentro de la transacción de registro, cuatro sentencias por conjuntos, con compuerta de medición** | Atomicidad (INV-14 de 001) sin estados nuevos: una empresa nunca existe sin configuración; costo constante (no crece con la cantidad de roles) | Suma algunos milisegundos a la retención del lock, que ya está cerca del target | **Elegida**, condicionada a T-002-B307: el sembrado tiene que cumplir sus dos límites (p95 ≤ 10 ms y ≤ 10 ms de aumento de la retención) **y** la retención absoluta con sembrado tiene que seguir en p95 < 140 ms (R-b de 001) |
+| **Respaldo**: estado "configuración pendiente" + sembrado idempotente después del `COMMIT` | No toca la retención del lock | Un estado más: `tenant_settings` puede faltar; toda lectura y escritura tiene que sembrar si falta (bajo `LockTenantSettings`, con `INSERT … ON CONFLICT DO NOTHING` y sin duplicar etapas ni categorías); el primer request de la empresa paga el sembrado; tests de carrera entre el primer `GET` y la primera escritura | Respaldo definido; se aplica si la compuerta falla por cualquiera de sus tres condiciones, salvo que el usuario decida explícitamente otra cosa |
 | Sembrar en el *worker* (outbox o `PeriodicTask`) | Fuera del request | La empresa queda sin configuración durante segundos; el worker corre como `crm_worker` y tendría que pasar al rol de cada empresa; un fallo deja una empresa a medias sin señal para el usuario | Descartada |
 | Una sentencia por fila | Simple de escribir | Viola R-c; el costo crece con el tamaño de la plantilla | Descartada |
 
@@ -51,6 +51,10 @@ al comienzo de cada operación, después de `LockTenantSettings`… que no puede
 existe: se reemplaza por `INSERT … ON CONFLICT (tenant_id) DO NOTHING` de la fila con los valores de
 la plantilla (leída de `tenants` por una interfaz del módulo `tenant`), y si insertó, siembra el resto
 en la misma transacción. Exige un ADR o una `DD` nuevos y la aprobación del usuario.
+
+Por qué la retención absoluta también corta la compuerta: R-c pide que el sembrado entre en el
+presupuesto de R-b, no solo que cueste poco. Con la retención sin sembrado ya en 133 ms, un sembrado
+de 8 ms cumpliría el delta y dejaría el registro en 141 ms, fuera del target heredado.
 
 ## R-4 Empresas registradas antes de 002 → DD-4
 

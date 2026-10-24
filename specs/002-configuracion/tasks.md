@@ -35,7 +35,9 @@ comentario de cada `Test*`. Además:
   implementación (Red → Green en la misma rama: un test rojo no se mergea solo); las tareas sin
   `[T]` van solas. Ramas desde `main`, con nombre por funcionalidad (p. ej.
   `feat/002-stage-pipeline`), nunca por fase. Las ramas de una fase se mergean antes de empezar la
-  siguiente.
+  siguiente. **Excepción**: T-002-B201, T-002-B202 y la tarea frontend T-002-F001 van en **una sola
+  rama** (el cambio del enum compartido rompe el mapa exhaustivo del frontend, y `make check` no
+  puede quedar en rojo entre ramas).
 - **Archivos de test por funcionalidad**: `internal/settings/pipeline_test.go`,
   `stages_integration_test.go`, `categories_integration_test.go`, `catalog_integration_test.go`,
   `preferences_integration_test.go`, `seeder_integration_test.go`; en `internal/app`,
@@ -57,8 +59,9 @@ comentario de cada `Test*`. Además:
 ### Comandos de validación
 
 Los de 001: `make generate` (sqlc), `make lint`, `make test`, `make test-int`, **`make check`
-(checkpoint de cada fase)**. La medición de T-002-B307 corre con el build tag `bench`
-(`internal/testsupport/perfbench`), fuera de `make check`, como T-B910 de 001.
+(checkpoint de cada fase)**, que incluye el typecheck y los tests del frontend. La medición de
+T-002-B307 corre con el build tag `bench` (`internal/testsupport/perfbench`), fuera de `make check`,
+como T-B910 de 001.
 
 ### Coordinación con la sección Frontend
 
@@ -67,8 +70,8 @@ backend:
 
 | Necesita | Del backend | Notas |
 |---|---|---|
-| Contrato de 002 en la generación de tipos | `contracts/openapi.yaml` v0.1.0 (y **v0.6.0 de 001**, T-002-B202) | Una entrada nueva en `web/redocly.yaml` y un `& Paths002` en `src/api/schema.ts` (`ui.md` §11.4 de 001). Las rutas de 002 son disjuntas de las de 001 |
-| Mapa de mensajes por `code` (T-F101 de 001) | `name_taken` (409), contrato de 001 v0.6.0 | El mapa exhaustivo deja de compilar hasta tener su texto (a propósito). `invalid_state` tiene un significado por endpoint (plan §8.3) |
+| Contrato de 002 en la generación de tipos | `contracts/openapi.yaml` v0.1.0 y **v0.6.0 de 001** (T-002-B202) | **T-002-B202 es requisito previo**: el contrato 002 no se agrega a `web/redocly.yaml` ni se consume antes de que B202 esté mergeada y el checkpoint de la Fase 2 haya demostrado que todos sus `$ref` resuelven. Después, una entrada nueva en `web/redocly.yaml` y un `& Paths002` en `src/api/schema.ts` (`ui.md` §11.4 de 001). Las rutas de 002 son disjuntas de las de 001 |
+| Mapa de mensajes por `code` (`Record<ErrorCode, …>`, T-F101 de 001) | `name_taken` (409), contrato de 001 v0.6.0 | **T-002-F001**, en la **misma rama** que T-002-B202: regenera los tipos de 001, agrega el mensaje de `name_taken` al mapa y su test, y deja el typecheck del frontend en verde. La detalla el `frontend-architect` en la sección Frontend (el texto del mensaje es una decisión de UI). `invalid_state` tiene un significado por endpoint (plan §8.3) |
 | `Money` | Componente compartido de 001 v0.6.0 (ADR-029) | Primera spec con importes: entran las funciones `formatMoney` y `parseMoneyInput` de ADR-023 |
 | Nombres personalizados en toda la UI | `GET /settings/labels` (cualquier rol) | Singular, plural y **género** (`masculine`/`feminine`) para concordar ("Nueva obra"). Se piden al arrancar, junto con `/me` |
 | Colores de etapa | Tokens `gray`, `blue`, `teal`, `green`, `yellow`, `orange`, `red`, `purple` (DD-7) | La UI decide el color real; el rediseño visual no toca la base |
@@ -156,12 +159,19 @@ base con una empresa previa.
 
 ### Fase 2 — Contratos, error nuevo y esqueleto del módulo (fundacional B)
 
-**Objetivo**: el contrato de 001 está en v0.6.0 (`name_taken`, `Money`) con su código en `httpx`;
-el validador de tests carga 001 y 002 resolviendo los `$ref` entre archivos; el módulo `settings`
-existe y está cableado (todavía sin rutas); todas las operaciones de 002 figuran como pendientes.
+**Objetivo**: el contrato de 001 está en v0.6.0 (`name_taken`, `Money`) con su código en `httpx` y
+el mapa de mensajes del frontend al día (T-002-F001); el validador de tests carga 001 y 002 y **todos
+los `$ref` del contrato 002 resuelven**; el módulo `settings` existe y está cableado (todavía sin
+rutas); todas las operaciones de 002 figuran como pendientes.
 
-**Prueba independiente**: `make check` en verde; el test de rutas contra el contrato lista las 20
-operaciones de 002 como pendientes y ninguna de 001.
+**Orden y dependencias**: T-002-B201 + T-002-B202 + T-002-F001 (una sola rama) → T-002-B203 +
+T-002-B204 → T-002-B205. **T-002-B202 es requisito previo de cualquier validación o consumidor del
+contrato 002** (T-002-B203, la generación de tipos del frontend): hasta que se mergea, el `$ref` a
+`Money` del contrato 002 apunta a un componente que no existe en el contrato de 001 (v0.5.0).
+
+**Prueba independiente**: `make check` en verde (incluido el typecheck del frontend); el test de
+resolución de referencias de T-002-B203 lista cero `$ref` sin resolver en el contrato 002; el test de
+rutas contra el contrato lista las 20 operaciones de 002 como pendientes y ninguna de 001.
 
 **T-002-B201 [T] — `name_taken` y `Money` compartidos** · DD-12, DD-13, ADR-029
 - **Red**:
@@ -173,18 +183,24 @@ operaciones de 002 como pendientes y ninguna de 001.
   | `contract.CheckSchema("Money", …)` con `{amount_cents: 0, currency: ARS}` y `{9007199254740991, USD}` | ok |
   | Ídem con `9007199254740992`, `-1`, `1.5`, `"100"`, sin `currency`, `currency: "EUR"`, una propiedad extra | error en cada caso |
   | Test de `authz` contra el enum `Permission` del contrato | sin cambios |
+  | Typecheck del frontend (`make check`) con los tipos de 001 regenerados | falla hasta T-002-F001 (el mapa `Record<ErrorCode, …>` no tiene `name_taken`) |
 - **Green**: pasa la tabla.
 
 **T-002-B202 — Contrato de 001 v0.6.0 y `httpx.CodeNameTaken`**: el fragmento de plan §8.2
 (versión, línea de historial, `name_taken` en `ErrorCode`, `Money`); `CodeNameTaken` con su status y
-título. Sin otros cambios en 001.
+título. Sin otros cambios en 001. **En la misma rama va T-002-F001** (sección Frontend): sin ella,
+`make check` queda en rojo. Es requisito previo de T-002-B203 y de cualquier consumidor del
+contrato 002.
 
-**T-002-B203 [T] — Validador con varios contratos y operaciones pendientes** · DD-13, S-4, R-3
+**T-002-B203 [T] — Validador con varios contratos, resolución completa de `$ref` y operaciones
+pendientes** · DD-13, S-4, R-3. Depende de T-002-B202 mergeada.
 - **Red** (unitarios del helper, más el test de rutas de `internal/app`):
 
   | Caso | Esperado |
   |---|---|
   | `contract.Load()` | carga los dos documentos de `contract.Documents`; los dos pasan `ValidateDocument` |
+  | **Resolución completa**: un test recorre todas las referencias del contrato 002 cargado (internas y externas a 001: respuestas, `Problem`, `Money`, `securitySchemes`) | cada una resuelve a un nodo; la lista de `$ref` sin resolver está **vacía** |
+  | Ídem con un contrato de 001 de *testdata* sin `Money` (como la v0.5.0) | `Load` falla nombrando la referencia sin resolver (`#/components/schemas/Money`) |
   | `$ref` externos: respuesta `409` de `POST /stages` con `code: "name_taken"` / con `code: "foo"` | ok / error (el enum de 001 se aplica a través del `$ref`) |
   | Respuesta `200` de `GET /catalog-items` con `reference_price.amount_cents: 1.5` | error (`Money` de 001 a través del `$ref`) |
   | `Operations()` | las operaciones de 001 más las 20 de 002 (lista exacta de `operationId`) |
@@ -195,10 +211,12 @@ título. Sin otros cambios en 001.
   | Una operación en `pendingOperations` que sí tiene ruta en el router | falla ("remove it from pendingOperations") |
   | Una operación de 002 sin ruta y fuera de `pendingOperations` | falla ("contract route not implemented") |
 - **Green**: pasa la tabla. Si libopenapi no resuelve los `$ref` entre archivos (S-4), se aplica el
-  respaldo del plan (fusión en memoria de los componentes de 001) y se anota en el PR.
+  respaldo del plan (fusión en memoria de los componentes de 001) y se anota en el PR; la fila de
+  resolución completa vale igual sobre el documento fusionado.
 
-**T-002-B204 — Implementar `contract.Documents`, la carga múltiple y `pendingOperations`** (en el
-test de rutas de `internal/app`, con las 20 operaciones de 002).
+**T-002-B204 — Implementar `contract.Documents`, la carga múltiple, la verificación de resolución de
+`$ref` en `Load` y `pendingOperations`** (en el test de rutas de `internal/app`, con las 20
+operaciones de 002).
 
 **T-002-B205 — Esqueleto del módulo `settings` y cableado** · DD-1. Paquete con `doc.go`,
 `service.go` (`Service`, `NewService` que entra en pánico con una dependencia nil, `RequestMeta`,
@@ -209,7 +227,13 @@ pasan `nil`) y el texto de la mutación de `serve_router_mutations_test.go` que 
 sin cambiar las reglas del guard. Un test chico: `NewService` con cada dependencia nil entra en
 pánico.
 
-**Checkpoint Fase 2**: `make check` en verde.
+**Checkpoint Fase 2**: las tres condiciones, en este orden:
+1. `make check` en verde, **incluido el typecheck y los tests del frontend** con T-002-F001 (el mapa
+   de mensajes tiene `name_taken`).
+2. El test de resolución completa de T-002-B203 en verde: **cero `$ref` sin resolver** en el
+   contrato 002. Recién con esto el contrato 002 se da por validado y puede consumirse (validador de
+   los tests HTTP desde la Fase 4, `web/redocly.yaml`).
+3. El test de rutas contra el contrato lista las 20 operaciones de 002 en `pendingOperations`.
 
 ---
 
@@ -306,16 +330,23 @@ DD-3, R-1, DD-33 R-b/R-c de 001
   |---|---|---|
   | M-7: sembrado con 10.000 roles | 100 registros secuenciales sin otra actividad, alternando `TemplateSeeder` real (plantilla `aluminum_carpentry`, la más grande) y `NoopSeeder`; el *tracer* de T-B910 suma el intervalo `seed` | p50 y p95 de `seed` (solo los reales) y de `hold` por grupo |
 
-- **Regla de decisión** (fijada antes de medir): **se mantiene** si `seed` p95 ≤ 10 ms **y**
-  `hold` p95 (real) − `hold` p95 (noop) ≤ 10 ms. Si además `hold` p95 (real) ≥ 140 ms, se informa al
-  usuario (R-b de 001 en riesgo con o sin 002), sin bloquear la fase. **Si no se cumple**, la fase
-  se detiene y vuelve al arquitecto: salida de R-c (research R-3), que necesita una decisión del
-  usuario.
-- **Green**: resultado y decisión anotados en el plan (estado de la implementación) con los números
-  de las dos corridas.
+- **Regla de decisión** (fijada antes de medir). La compuerta **pasa** solo si se cumplen las tres
+  condiciones:
+  1. `seed` p95 ≤ 10 ms;
+  2. `hold` p95 (real) − `hold` p95 (noop) ≤ 10 ms;
+  3. `hold` p95 (real) **< 140 ms** (target heredado de R-b de 001; R-c exige que el sembrado entre
+     en ese presupuesto).
 
-**Checkpoint Fase 3**: `make check` en verde + T-002-B307 dentro de la regla (o la decisión del
-usuario registrada).
+  **Si cualquiera falla**, la compuerta falla: la fase se detiene y no se avanza a la Fase 4 hasta
+  que (a) se aplique la salida de R-c (research R-3, rediseño que vuelve al arquitecto y necesita
+  aprobación), o (b) el usuario decida explícitamente otra cosa, con la decisión registrada en el
+  plan. Ejemplo que **falla**: `seed` p95 = 8 ms, `hold` p95 (noop) = 133 ms y `hold` p95 (real) =
+  141 ms (el delta cumple, el absoluto no).
+- **Green**: resultado anotado en el plan (estado de la implementación) con los números de las dos
+  corridas y la decisión (pasa, o la salida elegida).
+
+**Checkpoint Fase 3**: `make check` en verde + T-002-B307 cumple las tres condiciones de su regla, o
+la decisión explícita del usuario está registrada en el plan.
 
 ---
 
@@ -637,12 +668,12 @@ procedimiento de `docs/diagramas/README.md`.
 | INV-7 / ADR-029 | T-002-B101, T-002-B201, T-002-B301, T-002-B601, T-002-B603 |
 | INV-8 | T-002-B103, T-002-B401, T-002-B501, T-002-B601 |
 | INV-9 | T-002-B303, T-002-B801 |
-| INV-10 / DD-3 / DD-33 R-c de 001 | T-002-B305, T-002-B307 |
+| INV-10 / DD-3 / DD-33 R-b y R-c de 001 (incluida la retención absoluta p95 < 140 ms) | T-002-B305, T-002-B307 |
 | INV-11 / DD-11 | T-002-B401, B403, B501, B503, B601, B603, B701, B703, T-002-B801 |
 | INV-12 / DD-14 | Filas de auditoría de T-002-B401, B501, B601, B701 |
 | INV-13 / DD-15 | T-002-B401, B501, B601, B701 |
 | DD-4 *backfill* | T-002-B101 |
-| DD-12 / DD-13 contratos y `name_taken` | T-002-B201..B204 |
+| DD-12 / DD-13 contratos, `name_taken` y resolución de `$ref` | T-002-B201..B204, T-002-F001 (frontend, misma rama que T-002-B202) |
 | ADR-028 | T-002-B101, T-002-B401 (borrado lógico), T-002-B501 |
 | DD-1 fronteras | T-002-B103, T-002-B205 |
 
@@ -655,3 +686,11 @@ procedimiento de `docs/diagramas/README.md`.
 incluida la disponibilidad de cada ruta por fase y el cambio de v0.6.0 del contrato de 001
 (`name_taken`, `Money`). No condiciona al backend: el rediseño visual previsto no cambia ninguna
 decisión de este plan (los colores son tokens, DD-7).
+
+Tarea reservada por el backend, que el `frontend-architect` detalla:
+
+- **T-002-F001 — `name_taken` en el mapa de mensajes de error** (`Record<ErrorCode, …>`, T-F101 de
+  001). Va en la **misma rama que T-002-B201/T-002-B202**. Depende de T-002-B202: regenera los tipos
+  del contrato de 001 v0.6.0. Agrega el mensaje de `name_taken` y su test, y deja el typecheck del
+  frontend en verde. La exige el checkpoint de la Fase 2 del backend (`make check`). El texto del
+  mensaje y la forma del test los define el `frontend-architect`, porque son decisiones de UI.

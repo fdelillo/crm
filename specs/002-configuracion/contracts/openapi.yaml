@@ -28,11 +28,14 @@ info:
     - Dinero: objeto `Money` (centavos enteros + moneda), nunca punto flotante (ADR-029).
     - Una escritura sin cambios reales responde `200` con el recurso y no modifica `updated_at`.
 
-    **Dependencia con el contrato de 001**: este archivo referencia componentes compartidos de
-    `specs/001-empresas-usuarios/contracts/openapi.yaml` (DD-17 de 001). Requiere la **v0.6.0** de
-    ese contrato, que agrega `name_taken` a `ErrorCode` y el esquema `Money` (plan de 002 §8.2,
-    tarea T-002-B202). Hasta esa tarea, el `$ref` a `Money` apunta a un componente que todavía no
-    existe en 001.
+    **Dependencia con el contrato de 001 (requisito previo)**: este archivo referencia componentes
+    compartidos de `specs/001-empresas-usuarios/contracts/openapi.yaml` (DD-17 de 001) y requiere la
+    **v0.6.0** de ese contrato, que agrega `name_taken` a `ErrorCode` y el esquema `Money` (plan de
+    002 §8.2). **T-002-B202 es requisito previo de cualquier validación o consumidor de este
+    contrato**: el validador de los tests del backend (T-002-B203) y la generación de tipos del
+    frontend (`web/redocly.yaml`). Mientras el contrato de 001 esté en v0.5.0, el `$ref` a `Money`
+    no resuelve y este documento no se puede validar como completo. El checkpoint de la Fase 2
+    (`tasks.md`) demuestra que todos sus `$ref` resuelven antes de darlo por validado.
 
     Significado de `409 invalid_state` en este contrato (plan DD-12, §8.3):
     - En etapas: el resultado dejaría el pipeline sin una primera etapa abierta o sin ninguna etapa
@@ -769,7 +772,9 @@ components:
             $ref: '#/components/schemas/Problem'
 
   schemas:
-    # Componentes compartidos de 001 (DD-17 de 001). Money existe desde la v0.6.0 de 001.
+    # Componentes compartidos de 001 (DD-17 de 001).
+    # Money existe desde la v0.6.0 de 001: T-002-B202 es requisito previo de cualquier validación o
+    # consumidor de este contrato (hasta entonces este $ref no resuelve).
     Problem:
       $ref: '../../001-empresas-usuarios/contracts/openapi.yaml#/components/schemas/Problem'
     Money:
