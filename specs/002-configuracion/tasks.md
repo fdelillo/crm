@@ -36,7 +36,7 @@ comentario de cada `Test*`. Además:
   `[T]` van solas. Ramas desde `main`, con nombre por funcionalidad (p. ej.
   `feat/002-stage-pipeline`), nunca por fase. Las ramas de una fase se mergean antes de empezar la
   siguiente. **Excepción**: T-002-B201, T-002-B202 y la tarea frontend T-002-F001 van en **una sola
-  rama** (el cambio del enum compartido rompe el mapa exhaustivo del frontend, y `make check` no
+  rama** (el cambio del enum compartido rompe el mapa exhaustivo del frontend, y `make check-all` no
   puede quedar en rojo entre ramas).
 - **Archivos de test por funcionalidad**: `internal/settings/pipeline_test.go`,
   `stages_integration_test.go`, `categories_integration_test.go`, `catalog_integration_test.go`,
@@ -59,7 +59,9 @@ comentario de cada `Test*`. Además:
 ### Comandos de validación
 
 Los de 001: `make generate` (sqlc), `make lint`, `make test`, `make test-int`, **`make check`
-(checkpoint de cada fase)**, que incluye el typecheck y los tests del frontend. La medición de
+(checkpoint de cada fase)**, que corre `lint`, `test` y `test-int` del backend y **no** incluye el
+frontend: el typecheck y los tests del frontend los corre `make web-check`, y `make check-all` corre
+las dos suites. La medición de
 T-002-B307 corre con el build tag `bench` (`internal/testsupport/perfbench`), fuera de `make check`,
 como T-B910 de 001.
 
@@ -169,7 +171,7 @@ T-002-B204 → T-002-B205. **T-002-B202 es requisito previo de cualquier validac
 contrato 002** (T-002-B203, la generación de tipos del frontend): hasta que se mergea, el `$ref` a
 `Money` del contrato 002 apunta a un componente que no existe en el contrato de 001 (v0.5.0).
 
-**Prueba independiente**: `make check` en verde (incluido el typecheck del frontend); el test de
+**Prueba independiente**: `make check-all` en verde (backend y frontend, incluido el typecheck); el test de
 resolución de referencias de T-002-B203 lista cero `$ref` sin resolver en el contrato 002; el test de
 rutas contra el contrato lista las 20 operaciones de 002 como pendientes y ninguna de 001.
 
@@ -183,13 +185,13 @@ rutas contra el contrato lista las 20 operaciones de 002 como pendientes y ningu
   | `contract.CheckSchema("Money", …)` con `{amount_cents: 0, currency: ARS}` y `{9007199254740991, USD}` | ok |
   | Ídem con `9007199254740992`, `-1`, `1.5`, `"100"`, sin `currency`, `currency: "EUR"`, una propiedad extra | error en cada caso |
   | Test de `authz` contra el enum `Permission` del contrato | sin cambios |
-  | Typecheck del frontend (`make check`) con los tipos de 001 regenerados | falla hasta T-002-F001 (el mapa `Record<ErrorCode, …>` no tiene `name_taken`) |
+  | Typecheck del frontend (`make web-check`) con los tipos de 001 regenerados | falla hasta T-002-F001 (el mapa `Record<ErrorCode, …>` no tiene `name_taken`) |
 - **Green**: pasa la tabla.
 
 **T-002-B202 — Contrato de 001 v0.6.0 y `httpx.CodeNameTaken`**: el fragmento de plan §8.2
 (versión, línea de historial, `name_taken` en `ErrorCode`, `Money`); `CodeNameTaken` con su status y
 título. Sin otros cambios en 001. **En la misma rama va T-002-F001** (sección Frontend): sin ella,
-`make check` queda en rojo. Es requisito previo de T-002-B203 y de cualquier consumidor del
+`make web-check` (y por lo tanto `make check-all`) queda en rojo. Es requisito previo de T-002-B203 y de cualquier consumidor del
 contrato 002.
 
 **T-002-B203 [T] — Validador con varios contratos, resolución completa de `$ref` y operaciones
@@ -228,7 +230,8 @@ sin cambiar las reglas del guard. Un test chico: `NewService` con cada dependenc
 pánico.
 
 **Checkpoint Fase 2**: las tres condiciones, en este orden:
-1. `make check` en verde, **incluido el typecheck y los tests del frontend** con T-002-F001 (el mapa
+1. `make check-all` en verde (`make check` del backend y `make web-check`, **incluido el typecheck y
+   los tests del frontend**) con T-002-F001 (el mapa
    de mensajes tiene `name_taken`).
 2. El test de resolución completa de T-002-B203 en verde: **cero `$ref` sin resolver** en el
    contrato 002. Recién con esto el contrato 002 se da por validado y puede consumirse (validador de
@@ -692,5 +695,5 @@ Tarea reservada por el backend, que el `frontend-architect` detalla:
 - **T-002-F001 — `name_taken` en el mapa de mensajes de error** (`Record<ErrorCode, …>`, T-F101 de
   001). Va en la **misma rama que T-002-B201/T-002-B202**. Depende de T-002-B202: regenera los tipos
   del contrato de 001 v0.6.0. Agrega el mensaje de `name_taken` y su test, y deja el typecheck del
-  frontend en verde. La exige el checkpoint de la Fase 2 del backend (`make check`). El texto del
+  frontend en verde. La exige el checkpoint de la Fase 2 del backend (`make check-all`). El texto del
   mensaje y la forma del test los define el `frontend-architect`, porque son decisiones de UI.
