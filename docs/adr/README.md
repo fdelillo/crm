@@ -63,6 +63,7 @@ Reglas:
 | [027](027-vulnerabilidades-dependencias-npm.md) | Vulnerabilidades conocidas en dependencias npm del frontend con `npm audit` (producción desde `low`, árbol completo solo `critical`) | Accepted (decisión del usuario, 2026-10-16) | 001 (frontend, cierre de F0) |
 | [028](028-configuracion-referenciable-sin-borrado-fisico.md) | Configuración por empresa referenciable: sin borrado físico, claves de sistema estables y alta por migración | Accepted (aprobado por el usuario con el plan de 002, 2026-10-23) | 002 |
 | [029](029-representacion-del-dinero.md) | Representación del dinero en la base y en la API: centavos `bigint` + moneda, objeto `Money`, tope 2^53 − 1 | Accepted (aprobado por el usuario con el plan de 002, 2026-10-23) | 002 |
+| [030](030-terminologia-configurable-en-la-interfaz.md) | Terminología configurable en la interfaz: nombres personalizados con género, hook `useTerminology` y espera de la lectura al arrancar | Accepted (aprobado por el usuario con `ui.md` de 002, 2026-10-26) | 002 (frontend) |
 
 Los ADR 001–014 quedaron `Accepted` el 2026-09-29, al aprobarse el plan de la spec 001.
 
@@ -101,3 +102,9 @@ la base y en la API (centavos `bigint` + moneda, `Money` en los componentes comp
 2^53 − 1); complementa del lado del servidor a ADR-023 (frontend, todavía *Proposed*) sin cambiarlo.
 La validación del contrato en los tests pasa a cargar varios contratos (plan de 002, DD-13): es un
 detalle de cómo se aplica ADR-014, que no cambia, y no se registró como nota en ADR-014.
+
+ADR-030 (2026-10-23; `Accepted` el 2026-10-26, aprobado por el usuario junto con `ui.md` de 002)
+fija cómo la interfaz usa los nombres personalizados de Proyecto, Cliente y Presupuesto: se leen de
+la caché (`GET /settings/labels`), el contenido del shell espera esa lectura al arrancar y una
+función pura resuelve género, artículos y minúsculas. Rige para toda pantalla con sesión de 003 a
+010. Se apoya en ADR-023 (sin librería de i18n) sin cambiarlo.
