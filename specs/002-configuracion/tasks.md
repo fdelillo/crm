@@ -765,7 +765,7 @@ del frontend los corre `make web-check`, y `make check-all` corre los dos (secci
 | F2 | Fase 4 (rutas de etapas) | Fases 3 y 4 (empresa sembrada y etapas) | — |
 | F3 | Fase 5 (categorías) | Fase 5 | — |
 | F4 | Fase 6 (catálogo) | Fase 6 | — |
-| F5 | Fase 7 (nombres y condiciones) | Fase 7 | H-2 (rutas con punto en `FieldError.field`): **abierto, no bloquea**, para el `backend-architect` |
+| F5 | Fase 7 (nombres y condiciones) | Fase 7 | H-2 (rutas con punto en `FieldError.field`): **resuelto (2026-10-27)** en el contrato de 002 |
 | F6 | Fase 8 (`pendingOperations` vacía) | Backend de 002 completo | — |
 
 ---

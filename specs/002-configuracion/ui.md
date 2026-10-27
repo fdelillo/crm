@@ -711,8 +711,8 @@ export function applyServerFieldErrors<T extends FieldValues>(
 | `quoteDefaults` | `terms` | — | "Es demasiado largo (máximo 2.000 caracteres)." | "Revisá este dato." |
 
 Los nombres de los campos de los formularios son las rutas del contrato (React Hook Form admite rutas
-con punto), así los `FieldError.field` se aplican directo; el contrato no documenta esas rutas
-(H-2). El cliente valida lo mismo antes de enviar, así que estos `422` solo aparecen si cliente y
+con punto), así los `FieldError.field` se aplican directo; el contrato de 002 documenta esas rutas
+(H-2, resuelto). El cliente valida lo mismo antes de enviar, así que estos `422` solo aparecen si cliente y
 servidor se desalinean.
 
 ---
@@ -1720,7 +1720,7 @@ recomendacion"). Ya están incorporadas al cuerpo del documento.
 | ID | Hallazgo | Opción recomendada | Estado |
 |---|---|---|---|
 | **H-1** | T-002-B202 cambia el contrato de 001 y rompe el mapa exhaustivo de errores del frontend; con `make check-all` verde como checkpoint de la Fase 2, no se podía mergear sin el frontend. | T-002-B202 nombra a **T-002-F001** como tarea de la misma rama y el checkpoint de la Fase 2 exige el typecheck del frontend | **Resuelto (2026-10-26).** Verificado en la sección Backend de `tasks.md`: T-002-B201, T-002-B202 y T-002-F001 van en una sola rama (convenciones y "Orden y dependencias" de la Fase 2); T-002-B202 dice "En la misma rama va T-002-F001"; T-002-B201 suma la fila del typecheck del frontend (`make web-check`); el punto 1 del checkpoint de la Fase 2 exige `make check-all` (`make check` del backend y `make web-check`), "incluido el typecheck y los tests del frontend" con T-002-F001. `make check` solo corre el backend ("Comandos de validación" de la sección Backend); la fila de coordinación y la trazabilidad lo nombran |
-| **H-2** | El contrato no documenta las rutas con punto de `FieldError.field` que el plan sí usa (`reference_price.amount_cents`, `reference_price.currency`, `project.singular`, `customer.gender`…). La descripción de `FieldError.field` en 001 dice "nombre del campo del request (snake_case)". La UI depende de esas rutas para poner el error en su campo (§13.3) | Documentarlas en el contrato de 002 (en la descripción de `PUT /settings/labels` y de los requests del catálogo) o ampliar la descripción de `FieldError.field` en 001 ("ruta con punto para campos anidados"). Sin cambio de esquema | **Abierto, no bloquea** (para el `backend-architect`) |
+| **H-2** | El contrato no documenta las rutas con punto de `FieldError.field` que el plan sí usa (`reference_price.amount_cents`, `reference_price.currency`, `project.singular`, `customer.gender`…). La descripción de `FieldError.field` en 001 dice "nombre del campo del request (snake_case)". La UI depende de esas rutas para poner el error en su campo (§13.3) | Documentarlas en el contrato de 002 (en la descripción de `PUT /settings/labels` y de los requests del catálogo) o ampliar la descripción de `FieldError.field` en 001 ("ruta con punto para campos anidados"). Sin cambio de esquema | **Resuelto (2026-10-27)**: el contrato de 002 documenta en `info.description` la convención (ruta desde la raíz del body, unida con `.`; sin índices porque ningún body tiene arreglos) y los valores exactos de `field` en `createCatalogItem`, `updateCatalogItem` y `replaceLabels`. Sin cambio de esquema ni del contrato de 001 |
 
 No encontré endpoints, campos ni códigos faltantes para estas pantallas. Observaciones sin acción:
 `POST /stages` devuelve solo la etapa creada y `DELETE` responde `204`, así que la UI relee la lista
