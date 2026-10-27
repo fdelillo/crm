@@ -1,6 +1,6 @@
 # ADR-030: Terminología configurable en la interfaz (nombres personalizados con género)
 
-**Status**: Proposed (pendiente de aprobación del usuario con `ui.md` de 002)
+**Status**: Accepted (aprobado por el usuario con `ui.md` de 002, 2026-10-26)
 **Fecha**: 2026-10-23
 **Origen**: spec 002, Historia 2 y P-3 (`specs/002-configuracion/ui.md` §9, DD-F2 y DD-F3 de 002);
 rige para toda pantalla con sesión de las specs 003 a 010
@@ -46,7 +46,7 @@ Fuerzas en tensión:
 4. **Alcance**: todo texto de una pantalla con sesión que nombre a esas entidades. Las pantallas
    públicas (registro, ingreso, enlaces de email) no tienen sesión y no los usan. Los **datos**
    (nombres de etapas y de categorías, aunque digan "Presupuesto" o "Cobros de clientes") no se
-   reescriben: los edita el Administrador.
+   reescriben: los edita el Administrador (P-F4 de 002, aprobada el 2026-10-26).
 5. **Vigilancia**: un test recorre `src/**/*.tsx` (fuera de tests y de las pantallas públicas) y
    falla si encuentra los literales "proyecto(s)", "cliente(s)" o "presupuesto(s)" en un texto
    visible.

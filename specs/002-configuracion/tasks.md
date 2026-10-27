@@ -685,15 +685,24 @@ procedimiento de `docs/diagramas/README.md`.
 ## Frontend
 
 Autor: `frontend-architect`. Implementa: `frontend-developer`, **una fase por invocación**, en modo
-completo (`.claude/dev-mode`). Diseño: [`ui.md`](ui.md) · ADR-030 (*Proposed*) · ADR-015 a ADR-023 y
-ADR-027 de 001.
+completo (`.claude/dev-mode`). Diseño: [`ui.md`](ui.md) · ADR-030 (*Accepted*, 2026-10-26) · ADR-015
+a ADR-023 y ADR-027 de 001.
 
-### Estado (2026-10-23)
+### Estado (2026-10-26)
 
-**Borrador, pendiente de aprobación del usuario** junto con `ui.md` (P-F1 a P-F4 con la opción
-recomendada, `ui.md` §24). Ninguna fase empezada. **T-002-F001 viaja en la rama de T-002-B202**
-(Fase 2 del backend): es lo único que no espera la aprobación del resto, porque sin ella el
-checkpoint de la Fase 2 del backend no queda verde (`ui.md` H-1).
+**Aprobado (2026-10-26)** junto con `ui.md`: el usuario aprobó P-F1 a P-F4 con las opciones
+recomendadas ("ok sigamos con la recomendacion"; `ui.md` §24) y ADR-030 pasó a *Accepted*. Ninguna
+fase empezada. Se empieza por **T-002-F001**, que va en la rama única de T-002-B201 y T-002-B202
+(Fase 2 del backend). H-1 está resuelto del lado del backend (`ui.md` §25).
+
+Registro de lo aprobado:
+
+| Fecha | Aprobado | Efecto en esta sección |
+|---|---|---|
+| 2026-10-26 | P-F1: reordenar etapas sin arrastre ("Subir", "Bajar", "Mover a…") | T-002-F202 tal como está |
+| 2026-10-26 | P-F2: corregir en los componentes compartidos los hallazgos 1, 2 y 3 de T-F705 de 001 | Entran en T-002-F103 (`ui.md` DD-F13) |
+| 2026-10-26 | P-F3: separación ≥ 8 px en las listas nuevas y en Ajustes (NFR-F07 de 001 sin cambios) | T-002-F103 (`SettingsLinkList`) |
+| 2026-10-26 | P-F4: los datos sembrados no se renombran solos | T-002-F502 (aclaración en S-18) |
 
 ### Convenciones de esta sección
 
@@ -710,8 +719,8 @@ dependencias como en 001 (002 no agrega dependencias). Además:
   se citan `002/DD-F5`, `002/INV-F3`; las de 001, sin prefijo.
 - **Una tarea por rama.** Cada tarea `[T]` incluye su implementación: Red → Green → Refactor en la
   misma rama, con nombre por funcionalidad desde `main` (p. ej. `feat/002-stages-screen`). Las ramas
-  de una fase se mergean antes de empezar la siguiente. Excepción: **T-002-F001 va en la rama de
-  T-002-B202**.
+  de una fase se mergean antes de empezar la siguiente. Excepción: **T-002-F001 va en la rama única
+  de T-002-B201 y T-002-B202** (convención de la sección Backend).
 - **Rutas del backend**: una fase que consume una ruta de 002 se puede desarrollar y probar con MSW
   antes, pero se **mergea** después de que su fase del backend está en `main` (tabla de dependencias).
 - **Archivos de test por funcionalidad**: `lib/money.test.ts`, `lib/terminology.test.ts`,
@@ -736,18 +745,19 @@ dependencias como en 001 (002 no agrega dependencias). Además:
 
 Los de 001, sin comandos nuevos: `npm run gen:api`, `npm run lint` (incluye la verificación de los
 generados), `npm run typecheck`, `npm test`, `npm run build`, **`npm run check` (checkpoint de cada
-fase)**, `npm run e2e`, `make web-check` y `make check-all`.
+fase)**, `npm run e2e`, `make web-check` y `make check-all`. Según la sección Backend, `make check`
+también corre el typecheck y los tests del frontend.
 
 ### Dependencias con el backend
 
 | Fase | Para mergear necesita en `main` | La prueba independiente necesita | Hallazgos |
 |---|---|---|---|
-| F0 | — (va en la rama de T-002-B202) | — | H-1 (`ui.md` §25): T-002-B202 tiene que nombrar a T-002-F001 |
-| F1 | Fase 2 del backend (contrato de 001 v0.6.0: `002.ts` referencia su `Money`) | Backend de 001 | — |
+| F0 | — (va en la rama única de T-002-B201 y T-002-B202) | — | H-1 **resuelto (2026-10-26)**: T-002-B202 nombra a T-002-F001 en la misma rama, y el punto 1 del checkpoint de la Fase 2 exige `make check` con el typecheck y los tests del frontend (`ui.md` §25) |
+| F1 | Checkpoint de la Fase 2 del backend completo: contrato de 001 v0.6.0 (`002.ts` referencia su `Money`) y cero `$ref` sin resolver en el contrato de 002 (T-002-B203) | Backend de 001 | — |
 | F2 | Fase 4 (rutas de etapas) | Fases 3 y 4 (empresa sembrada y etapas) | — |
 | F3 | Fase 5 (categorías) | Fase 5 | — |
 | F4 | Fase 6 (catálogo) | Fase 6 | — |
-| F5 | Fase 7 (nombres y condiciones) | Fase 7 | H-2 (rutas con punto en `FieldError.field`): no bloquea |
+| F5 | Fase 7 (nombres y condiciones) | Fase 7 | H-2 (rutas con punto en `FieldError.field`): **abierto, no bloquea**, para el `backend-architect` |
 | F6 | Fase 8 (`pendingOperations` vacía) | Backend de 002 completo | — |
 
 ---
@@ -755,29 +765,32 @@ fase)**, `npm run e2e`, `make web-check` y `make check-all`.
 ### Fase F0 — Contrato de 001 v0.6.0: `name_taken` en el mapa de errores (viaja con T-002-B202)
 
 **Objetivo**: con el contrato de 001 en v0.6.0, el frontend compila y el mapa exhaustivo de errores
-tiene el texto de `name_taken`; `make check-all` sigue verde en la rama de T-002-B202.
+tiene el texto de `name_taken`; `make check` (con el typecheck y los tests del frontend) y
+`make check-all` siguen verdes en la rama única de T-002-B201, T-002-B202 y T-002-F001.
 
-**Prueba independiente**: en la rama de T-002-B202, `make check-all` en verde;
+**Prueba independiente**: en esa rama, `make check` y `make check-all` en verde;
 `web/src/api/generated/001.ts` trae `name_taken` en `ErrorCode` y el esquema `Money`.
 
 **T-002-F001 [T] — `name_taken` en el mapa exhaustivo de errores** · plan DD-12, DD-13, §8.2;
-INV-F05 de 001; `ui.md` §12.4, H-1
-- **Rama**: la de T-002-B202, después del commit que sube el contrato de 001 a v0.6.0.
+INV-F05 de 001; `ui.md` §12.4, H-1 (resuelto)
+- **Rama**: la rama única de T-002-B201 y T-002-B202, después del commit que sube el contrato de 001
+  a v0.6.0.
 - **Red**:
 
   | Caso | Esperado |
   |---|---|
-  | `npm run gen:api` con el contrato de 001 en v0.6.0 | `generated/001.ts` con `name_taken` en `ErrorCode` y el esquema `Money`; `npm run typecheck` **falla** en `api/errorMessages.ts` porque `Record<ErrorCode, …>` no tiene `name_taken` (el rojo esperado) |
+  | `npm run gen:api` con el contrato de 001 en v0.6.0 | `generated/001.ts` con `name_taken` en `ErrorCode` y el esquema `Money`; `npm run typecheck` **falla** en `api/errorMessages.ts` porque `Record<ErrorCode, …>` no tiene `name_taken` (el rojo esperado, el mismo que la última fila de T-002-B201) |
   | `messageForError(<409 problem+json con code name_taken>, 'generic')` | título "Ese nombre ya está en uso.", descripción "Elegí otro nombre.", `retryable: false`, sin `requestId` |
   | El mismo error con un contexto de 001 (`'users'`, `'tenant'`) | el mismo texto (las variantes de 002 entran con sus pantallas, T-002-F101) |
   | `errorMessages.test-d.ts` (exhaustividad del mapa) | sigue pasando con la clave nueva |
   | Mutación: quitar la entrada `name_taken` | no compila (se ve fallar y se restaura) |
 - **Green**: la entrada `name_taken` en `errorMessages` con ese texto; `generated/001.ts` regenerado y
-  versionado; `npm run check` y `make check-all` en verde. Ningún otro cambio de frontend en esta
-  rama.
+  versionado; `npm run check`, `make check` y `make check-all` en verde. Ningún otro cambio de
+  frontend en esta rama.
 - **Refactor**: nada (cambio mínimo, a propósito).
 
-**Checkpoint Fase F0**: `make check-all` en verde en la rama de T-002-B202.
+**Checkpoint Fase F0**: `make check` (punto 1 del checkpoint de la Fase 2 del backend) y
+`make check-all` en verde en la rama única de T-002-B201, T-002-B202 y T-002-F001.
 
 ---
 
@@ -785,8 +798,8 @@ INV-F05 de 001; `ui.md` §12.4, H-1
 
 **Objetivo**: los tipos de 002 se generan y se combinan con los de 001; existen las piezas puras
 (dinero, terminología con los nombres por defecto, largos, destino del foco), los textos de error por
-contexto y los componentes de presentación que usan las pantallas nuevas, con las correcciones de
-P-F2. Todavía no se consume ninguna ruta de 002.
+contexto y los componentes de presentación que usan las pantallas nuevas, con las correcciones
+aprobadas en P-F2 y P-F3. Todavía no se consume ninguna ruta de 002.
 
 **Prueba independiente**: `npm run check` en verde y, en el navegador contra el backend, las
 pantallas de 001 se operan igual que antes, con los radios de Registro e Invitar redondos, "+ Invitar"
@@ -847,8 +860,9 @@ S-F2, `ui.md` §17.2
   moneda en Node del CI) anotado en el PR.
 - **Refactor**: la conversión centavos ↔ texto decimal en una sola función interna.
 
-**T-002-F103 [T] — Componentes compartidos y correcciones de P-F2** · P-F2, P-F3, NFR-F3, NFR-F4,
-DD-F12, RF-7, `ui.md` §14.1, §16.1, §18; hallazgos 1, 2, 3 y 5 de T-F705 de 001
+**T-002-F103 [T] — Componentes compartidos y correcciones aprobadas en P-F2 y P-F3** · P-F2, P-F3
+(aprobadas el 2026-10-26), NFR-F3, NFR-F4, DD-F12, DD-F13, RF-7, `ui.md` §14.1, §16.1, §18;
+hallazgos 1, 2, 3 y 5 de T-F705 de 001
 - **Red** (componentes con Testing Library; E2E con Playwright en Chromium):
 
   | Caso | Esperado |
@@ -865,10 +879,10 @@ DD-F12, RF-7, `ui.md` §14.1, §16.1, §18; hallazgos 1, 2, 3 y 5 de T-F705 de 0
   | E2E, 375 px: Ajustes como Administrador | "Datos de la empresa" y "Usuarios" miden ≥ 44 px y están separados ≥ 8 px (P-F3, hallazgo 5) |
 - **Green (implementación)**: `components/ui/dialog.tsx` y `components/ui/textarea.tsx` con el CLI de
   shadcn; `FormDialog`, `BlockedActionDialog`, `ArchivedSection`, `SettingsLinkList`,
-  `ReadOnlyNotice` (§16.1); S-08 usa `SettingsLinkList` en "Tu empresa"; P-F2: el radio no hereda el
-  mínimo de 44 px de `globals.css` (su objetivo es la tarjeta), `a[data-slot="button"]` entra en la
-  regla de 44 px, y `DropdownMenuContent` limita su ancho al disponible y deja saltar el texto. Si el
-  usuario elige otra opción de P-F2 o P-F3, esta tarea se reescribe antes de empezar.
+  `ReadOnlyNotice` (§16.1); S-08 usa `SettingsLinkList` en "Tu empresa"; P-F2 (DD-F13): el radio no
+  hereda el mínimo de 44 px de `globals.css` (su objetivo es la tarjeta), `a[data-slot="button"]`
+  entra en la regla de 44 px, y `DropdownMenuContent` limita su ancho al disponible y deja saltar el
+  texto.
 - **Refactor**: que ninguna de las correcciones use clases de la paleta de Tailwind (INV-F23 de 001).
 
 **Checkpoint Fase F1**: `npm run check` y `npm run e2e` en verde + prueba independiente.
@@ -1112,7 +1126,7 @@ ADR-030, BR-F11, INV-F1, INV-F2, INV-F10, DD-F2, DD-F3, RF-5, `ui.md` §9
   | Datos de la empresa con la variante renombrada | "Se usan en los PDF de tus cotizaciones." |
   | Los mismos textos con los nombres por defecto | idénticos a los de 001 (los tests existentes de 001 pasan sin cambios) |
   | `terminologyLiterals.test.ts` (INV-F1) | pasa; con un archivo de *fixture* que tiene "Nuevo proyecto" en un JSX, falla nombrando el archivo |
-  | Esquema de nombres | singular o plural vacío / 41 *code points* / emoji cuenta 1 | `required` / `too_long` / ok |
+  | Esquema de nombres: singular o plural vacío / 41 *code points* / emoji cuenta 1 | `required` / `too_long` / ok |
 - **Green (implementación)**: `api/labels.ts` con `labelsQuery` y `useTerminology()` sobre la caché;
   precarga en `GuardedSession`; espera de `<main>` en `AppShell`; handler por defecto en
   `test/msw/handlers.ts`; los textos de §9.4 con `useTerminology()`; `terminologyLiterals.test.ts`;
@@ -1120,15 +1134,15 @@ ADR-030, BR-F11, INV-F1, INV-F2, INV-F10, DD-F2, DD-F3, RF-5, `ui.md` §9
 - **Refactor**: que `useTerminology()` memoice por referencia de `Labels`.
 
 **T-002-F502 [T] — Pantallas de nombres y condiciones** · Historias 2 y 6, FR-002, FR-007, FR-008,
-P-10, BR-F1, BR-F13, INV-F8, `ui.md` §14.6, §14.7, §15.3
+P-10, P-F4 (aprobada), BR-F1, BR-F11, BR-F13, INV-F8, `ui.md` §14.6, §14.7, §15.3
 - **Red**:
 
   | Interacción | Resultado observable |
   |---|---|
   | Ajustes | enlaces "Nombres personalizados" y "Condiciones de los presupuestos" |
-  | S-18 como Administrador | tres grupos "Proyecto", "Cliente", "Presupuesto" con singular, plural y género; "Así se va a ver: «Nuevo proyecto», «Los proyectos cerrados»." |
+  | S-18 como Administrador | tres grupos "Proyecto", "Cliente", "Presupuesto" con singular, plural y género; "Así se va a ver: «Nuevo proyecto», «Los proyectos cerrados»."; la aclaración de que los nombres de etapas y categorías ya cargados no cambian (P-F4) |
   | Cambiar Proyecto a "Obra", "Obras", Femenino | la vista previa dice "«Nueva obra», «Las obras cerradas»" sin enviar nada |
-  | "Guardar nombres" → `200` | `PUT /settings/labels` con las tres entidades; toast "Guardamos los nombres."; sin recargar, `<h1>` de Etapas dice "Etapas de las obras" al navegar |
+  | "Guardar nombres" → `200` | `PUT /settings/labels` con las tres entidades; toast "Guardamos los nombres."; sin recargar, `<h1>` de Etapas dice "Etapas de las obras" al navegar; la etapa sembrada "Presupuesto" conserva su nombre |
   | `422` con `project.singular` `too_long` | error "…(máximo 40 caracteres)." en el singular de Proyecto; foco ahí |
   | Salir con cambios | aviso de cambios sin guardar |
   | S-18 como Operador | "Proyecto: Obra / Obras, femenino" (texto, sin campos) y el aviso de solo lectura |
@@ -1181,6 +1195,7 @@ y T-002-F604 adjuntos.
   | axe en S-13 a S-19 y en los diálogos C-03, C-04 y C-05, como Administrador y como Operador | sin violaciones |
   | 320 y 375 px en cada pantalla, con el menú de acciones abierto en una fila de nombre largo | sin scroll horizontal; el menú dentro del viewport |
   | Botones, enlaces con aspecto de botón, disparadores de menú y etiquetas de opciones de 002 | ≥ 44×44 px |
+  | Listas de enlaces y de tarjetas de 002 | objetivos vecinos separados ≥ 8 px (P-F3) |
   | Teclado: mover una etapa con el menú | el foco queda en "Acciones para {nombre}" de la misma etapa |
 - **Green**: pasa.
 
@@ -1198,8 +1213,8 @@ y T-002-F604 adjuntos.
   salida de RF-1 y se vuelve al arquitecto.
 
 **T-002-F605 — Documentación viva** (`ui.md` §27): estado de cada fase en esta sección; `ui.md` con
-lo que cambió al implementar (enmiendas con su aprobación); el estado de los hallazgos de T-F705 de
-001 que P-F2 y P-F3 resolvieron, en `tasks.md` de 001; ADR-030 a *Accepted* si el usuario lo aprueba.
+lo que cambió al implementar (enmiendas con su aprobación); en `tasks.md` de 001, el estado de los
+hallazgos de T-F705 que corrigió T-002-F103 (1, 2, 3 y 5; P-F2 y P-F3).
 
 **Checkpoint Fase F6**: `npm run check` y `npm run e2e` en verde (Chromium; WebKit reportado);
 reportes de T-002-F603 y T-002-F604 adjuntos.
@@ -1222,7 +1237,7 @@ reportes de T-002-F603 y T-002-F604 adjuntos.
 | Historia 4 (1, 3) | T-002-F401, T-002-F402 |
 | Historia 6 | T-002-F502 |
 | SC-001 (desde la interfaz) | T-002-F601 |
-| Contrato de 001 v0.6.0 (`name_taken`, `Money`), H-1 | T-002-F001 |
+| Contrato de 001 v0.6.0 (`name_taken`, `Money`), H-1 (resuelto) | T-002-F001 |
 | Contrato de 002 v0.1.0, *bundle* multi-spec | T-002-F101 |
 | ADR-023 / ADR-029 dinero, INV-F5, DD-F8 | T-002-F102, T-002-F401 |
 | ADR-030 terminología, INV-F1, INV-F2, DD-F2, DD-F3 | T-002-F101, T-002-F501, T-002-F604 |
@@ -1237,9 +1252,10 @@ reportes de T-002-F603 y T-002-F604 adjuntos.
 | DD-F7 una lectura con archivados | T-002-F302, T-002-F402 |
 | DD-F9 archivar sin confirmación | T-002-F302, T-002-F402 |
 | DD-F11 / §13 errores por contexto y *scope* | T-002-F101, T-002-F202, T-002-F302, T-002-F402, T-002-F502 |
-| DD-F12 / P-F3 `SettingsLinkList` | T-002-F103 |
-| P-F1 / DD-F4 reordenar sin arrastre | T-002-F202, T-002-F602, T-002-F603 |
-| P-F2 correcciones en componentes compartidos (hallazgos 1 a 3 de T-F705 de 001) | T-002-F103, T-002-F602 |
+| P-F1 / DD-F4 reordenar sin arrastre (aprobada) | T-002-F202, T-002-F602, T-002-F603 |
+| P-F2 / DD-F13 correcciones en componentes compartidos (hallazgos 1 a 3 de T-F705 de 001; aprobada) | T-002-F103, T-002-F602, T-002-F605 |
+| P-F3 / DD-F12 `SettingsLinkList` y separación ≥ 8 px (hallazgo 5 de T-F705 de 001; aprobada) | T-002-F103, T-002-F602, T-002-F605 |
+| P-F4 / BR-F11 datos sembrados sin renombrar (aprobada) | T-002-F502 |
 | NFR-F1, NFR-F2, NFR-F6 | T-002-F604 |
 | NFR-F3, NFR-F4 | T-002-F103, T-002-F602, T-002-F603 |
 | NFR-F7 | T-002-F603 |

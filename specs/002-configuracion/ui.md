@@ -2,8 +2,9 @@
 
 **Spec**: [`spec.md`](spec.md) (Aprobada 2026-10-23) · **Plan backend**: [`plan.md`](plan.md) (Aprobado
 2026-10-23) · **Fecha**: 2026-10-23 · **Autor**: `frontend-architect`
-**Estado**: **Borrador, pendiente de aprobación del usuario.** El diseño asume la opción recomendada
-de cada pregunta P-F1 a P-F4 (§24), marcada como pendiente.
+**Estado**: **Aprobado (2026-10-26).** El usuario aprobó el diseño con las opciones recomendadas de
+P-F1 a P-F4 ("ok sigamos con la recomendacion", 2026-10-26; registro en §24). ADR-030 pasó a
+*Accepted* el mismo día. H-1 quedó resuelto del lado del backend (§25).
 **Contrato consumido**: [`contracts/openapi.yaml`](contracts/openapi.yaml) **v0.1.0** (canónico de 002)
 y el de 001 en **v0.6.0** (`name_taken`, `Money`; lo sube T-002-B202). Si este documento y los YAML
 difieren, mandan los YAML.
@@ -17,11 +18,17 @@ difieren, mandan los YAML.
 |---|---|
 | `ui.md` (este) | Pantallas, rutas, terminología, modelo de estado, matriz de estados, errores, componentes, accesibilidad, `DD-F` |
 | [`tasks.md`](tasks.md) §Frontend | Plan TDD del frontend (`T-002-F…`) |
-| [`docs/adr/030`](../../docs/adr/030-terminologia-configurable-en-la-interfaz.md) | Terminología configurable en la interfaz (*Proposed*) |
+| [`docs/adr/030`](../../docs/adr/030-terminologia-configurable-en-la-interfaz.md) | Terminología configurable en la interfaz (*Accepted*, 2026-10-26) |
 | [`ui.md` de 001](../001-empresas-usuarios/ui.md) | Base que este documento no repite: sesión, guards, cliente HTTP, mapa de errores, tokens, PWA, distribución |
 
 Las alternativas de cada decisión están en la columna "Descartado" de §22 (no se abre una sección
 de `research.md` para el frontend de 002).
+
+### Registro de aprobación
+
+| Fecha | Qué se aprobó |
+|---|---|
+| 2026-10-26 | El diseño completo, con P-F1 a P-F4 en la opción recomendada (§24): reordenar sin arrastre (P-F1); corregir en los componentes compartidos, dentro de T-002-F103, los hallazgos 1, 2 y 3 de T-F705 de 001 (P-F2); mantener NFR-F07 de 001 con separación ≥ 8 px en las listas nuevas y en Ajustes (P-F3); los datos sembrados no se renombran solos (P-F4). ADR-030 pasa a *Accepted*. |
 
 ---
 
@@ -197,7 +204,7 @@ navega a S-15 con `replace` (atrás no vuelve al formulario vacío).
 - Las cinco pantallas de lectura van **fuera** de `RequirePermission` (FR-008, P-5): el Operador las
   abre y ve solo lectura. Las dos de escritura del catálogo van dentro, como las de 001.
 - `:catalogItemId` no se valida en el cliente: un id que no es UUID o de otra empresa responde `404`
-  y la pantalla muestra su estado "No encontrado" (§14.6).
+  y la pantalla muestra su estado "No encontrado" (§14.5).
 - Cada pantalla es un chunk propio cargado con `lazy` (grupo 3 de §23 de 001).
 
 ### 6.2 Guards
@@ -209,7 +216,7 @@ interna (`GuardedSession`), que no existe durante una salida de sesión, así qu
 
 > **La autorización real la hace el servidor** (ADR-013, INV-11 del plan). Ocultar "Agregar etapa" a
 > un Operador es UX: si un cliente manipulado lo intenta, el servidor responde `403` y la UI lo
-> maneja (§13.4).
+> maneja (§13.1).
 
 ---
 
@@ -227,7 +234,7 @@ interna (`GuardedSession`), que no existe durante una salida de sesión, así qu
 | BR-F8 | Archivar una categoría o un ítem no pide confirmación (se puede restaurar); el resultado lo confirma un toast que dice dónde quedó ("La encontrás en Archivadas."). | Historia 3.2, 4.3 |
 | BR-F9 | En un ítem, el precio de referencia es opcional: importe vacío = sin precio (`null`), y entonces la moneda no se envía. `0,00` es un precio válido y se muestra como tal. La moneda propuesta es la moneda base de la empresa. | Historia 4.1, P-9, plan DD-9 |
 | BR-F10 | Con la unidad "Otra", aparece "Nombre de la unidad" (obligatorio, hasta 20 caracteres); con otra unidad no se muestra ni se envía. | Historia 4.1, P-9 |
-| BR-F11 | Los textos de toda pantalla con sesión que nombran a Proyecto, Cliente o Presupuesto usan los nombres personalizados con su concordancia (§9). Los **datos** que contienen esas palabras (la etapa "Presupuesto", la categoría "Cobros de clientes") no cambian solos: los renombra el Administrador (P-F4). | Historia 2, P-3, ADR-030 |
+| BR-F11 | Los textos de toda pantalla con sesión que nombran a Proyecto, Cliente o Presupuesto usan los nombres personalizados con su concordancia (§9). Los **datos** que contienen esas palabras (la etapa "Presupuesto", la categoría "Cobros de clientes") no cambian solos: los renombra el Administrador (P-F4, aprobada). | Historia 2, P-3, ADR-030 |
 | BR-F12 | Todo botón de envío queda deshabilitado con texto de progreso mientras la operación está en curso; las acciones de una fila se deshabilitan mientras esa fila tiene una operación pendiente. | BR-F10 de 001 |
 | BR-F13 | Salir de S-16, S-17, S-18 o S-19 con cambios sin guardar pide confirmación (textos del aviso de S-11 de 001). Los diálogos de etapa y categoría no la piden. | DD-F32 de 001, DD-F6 |
 
@@ -241,7 +248,7 @@ Siguen vigentes los NFR-F01 a NFR-F13 de 001. Además:
 |---|---|---|---|
 | NFR-F1 | Presupuesto de JS | Cada chunk de S-13 a S-19 ≤ 40 KB gzip (como las pantallas de Ajustes de 001). **Objetivo** | Reporte de `vite build`, T-002-F604 |
 | NFR-F2 | LCP con la espera de nombres | `/` sigue ≤ 2,5 s p75 (NFR-F03 de 001; hoy 2052 ms) con la precarga y la espera de §9.3 | Lighthouse como T-F704 de 001, T-002-F604 |
-| NFR-F3 | Objetivos táctiles | ≥ 44×44 CSS px en **todo** control, incluidos los enlaces con aspecto de botón ("+ Nuevo ítem") y los enlaces sueltos ("← Ajustes"). En los grupos de opciones (tipo, color, unidad, género) el objetivo es la tarjeta `<label>` entera, no el círculo del radio. Separación entre objetivos vecinos según P-F3 | E2E con aserción de tamaño (T-002-F602) + T-002-F603 |
+| NFR-F3 | Objetivos táctiles | ≥ 44×44 CSS px en **todo** control, incluidos los enlaces con aspecto de botón ("+ Nuevo ítem") y los enlaces sueltos ("← Ajustes"). En los grupos de opciones (tipo, color, unidad, género) el objetivo es la tarjeta `<label>` entera, no el círculo del radio. En las listas de enlaces y de tarjetas (Ajustes y las listas de 002), los objetivos vecinos quedan separados ≥ 8 px (NFR-F07 de 001 sin cambios, P-F3) | E2E con aserción de tamaño (T-002-F602) + T-002-F603 |
 | NFR-F4 | Reflow | Sin scroll horizontal a 320 px; los menús de acciones y los diálogos caben en el viewport y su texto salta de línea (WCAG 1.4.10) | E2E a 320 y 375 px (T-002-F602) |
 | NFR-F5 | Largos | Los máximos del cliente se cuentan en *code points* (`Array.from(texto).length`), como el servidor cuenta runas: un emoji cuenta 1 | Unitarios (T-002-F101) |
 | NFR-F6 | Volumen | Listas sin paginación ni virtualización hasta los volúmenes de S-1 del plan (30 etapas, 200 categorías, 1.000 ítems); con 1.000 ítems, la lista del catálogo se pinta en ≤ 500 ms en un Android de gama media. **Objetivo, no medición** | Prueba manual con un *fixture* de 1.000 ítems (T-002-F604) |
@@ -421,7 +428,7 @@ Propiedades que se rompen **sin que falle la compilación**. Cada una tiene su t
 | ID | Invariante | Test |
 |---|---|---|
 | INV-F1 | Ningún texto visible de una pantalla con sesión escribe "proyecto(s)", "cliente(s)" ni "presupuesto(s)": los arma con `useTerminology()` (§9.4). Se rompe si alguien escribe el literal | `terminologyLiterals.test.ts` (T-002-F501) |
-| INV-F2 | `<main>` del shell no pinta su contenido hasta que la lectura de nombres terminó (con datos o con error), y `useTerminology()` nunca devuelve los nombres por defecto mientras hay una lectura en curso sin datos. Se rompe si el shell deja de esperar o si el hook devuelve el respaldo durante `isPending` | `shell.test.tsx`, `terminology.test.tsx` (T-002-F501) |
+| INV-F2 | `<main>` del shell no pinta su contenido hasta que la lectura de nombres terminó (con datos o con error), y `useTerminology()` nunca devuelve los nombres por defecto mientras hay una lectura en curso sin datos. Se rompe si el shell deja de esperar o si el hook devuelve el respaldo durante `isPending` | `terminologyLoading.test.tsx` (T-002-F501) |
 | INV-F3 | Las mutaciones de etapas (crear, editar, mover, eliminar) comparten la cola `STAGE_CHANGES_SCOPE`: cada una sale cuando terminó la anterior. Toda escritura de una respuesta en `['settings','stages']` cancela antes las lecturas en vuelo de esa clave (como DD-F33 de 001). Se rompe si una mutación de etapas pierde el `scope` o escribe sin cancelar | `StagesOrder.test.tsx` (T-002-F202) |
 | INV-F4 | Las reglas del pipeline del cliente (`pipelineViolation` y las funciones `after*`) dan el mismo resultado que la tabla de T-002-B301 del backend para cada fila de esa tabla. Un cliente más estricto que el servidor impediría cambios válidos; uno más laxo solo produce un `409` explicado | `pipeline.test.ts` (T-002-F201) |
 | INV-F5 | Ningún importe pasa por punto flotante: el texto del usuario se convierte a centavos solo con `parseMoneyInput`, y los centavos se muestran solo con `formatMoney` y `formatMoneyInput` (`lib/money.ts`). Ningún archivo fuera de `lib/money.ts` llama a `parseFloat`, `Number()` ni divide por 100 sobre un importe | `money.test.ts` (2^53 − 1 exacto, T-002-F102) + revisión |
@@ -599,14 +606,17 @@ hasta tener su texto (como `ErrorCode`, INV-F05 de 001). `SystemCategoryKey` **n
 2. `src/api/schema.ts`: `export type paths = Paths001 & Paths002`.
 3. `schema.test-d.ts` afirma que las rutas de 001 y 002 son disjuntas (`AssertDisjoint`) y que
    `components['schemas']['Money']` de 001 es el que usan `CatalogItem` y sus requests.
-4. Requisito de orden: el contrato de 002 referencia `Money` de 001, que existe desde v0.6.0
-   (T-002-B202). La generación de `002.ts` va **después** de T-002-B202 (fase F1 de 002).
+4. Requisito de orden (sección Backend de `tasks.md`, Fase 2): el contrato de 002 referencia `Money`
+   de 001, que existe desde v0.6.0 (T-002-B202), y no se agrega a `web/redocly.yaml` hasta que el
+   checkpoint de la Fase 2 del backend haya demostrado cero `$ref` sin resolver en el contrato de 002
+   (T-002-B203). La generación de `002.ts` es de la fase F1 de 002, que se mergea después de ese
+   checkpoint.
 
 ### 12.4 Cambio del contrato de 001 a v0.6.0 (T-002-B202)
 
 | Cambio | Efecto en el frontend | Dónde |
 |---|---|---|
-| `name_taken` en `ErrorCode` | `errorMessages: Record<ErrorCode, …>` deja de compilar al regenerar `generated/001.ts` (a propósito, INV-F05 de 001) | **T-002-F001**, en la misma rama que T-002-B202 |
+| `name_taken` en `ErrorCode` | `errorMessages: Record<ErrorCode, …>` deja de compilar al regenerar `generated/001.ts` (a propósito, INV-F05 de 001) | **T-002-F001**, en la rama única de T-002-B201, T-002-B202 y T-002-F001 |
 | `Money` en `components.schemas` | Tipo nuevo en `generated/001.ts`; ningún cambio de código hasta F4 | T-002-F001 regenera; T-002-F102 lo usa |
 | Versión `0.6.0` | `npm run lint` compara los generados con el contrato (`scripts/check-generated.mjs`): sin regenerar, falla | T-002-F001 |
 
@@ -636,7 +646,7 @@ no cambia.
 | `invalid_state` | `users`, `userAction` y por defecto | Sin cambios (texto de 001) | |
 | `not_found` | `stage` | "Esa etapa ya no existe. Actualizamos la lista." | Diálogo cerrado, toast, `invalidateQueries(stages)` |
 | `not_found` | `category`, `categoryRestore` | "Esa categoría ya no está. Actualizamos la lista." | Ídem con categorías |
-| `not_found` | `catalogItem` | "Ese ítem ya no está en el catálogo." | S-17: estado "No encontrado" (§14.6); en acciones de lista, toast + invalidación |
+| `not_found` | `catalogItem` | "Ese ítem ya no está en el catálogo." | S-17: estado "No encontrado" (§14.5); en acciones de lista, toast + invalidación |
 | `validation_failed` | todos | "Revisá los datos marcados." | `applyServerFieldErrors` con el *scope* del formulario (§13.3); campos desconocidos (p. ej. `position`) → error general "No pudimos guardar el cambio." / "Actualizamos la lista: probá de nuevo." + invalidación |
 | `forbidden` | todos | Texto de 001 | Manejador global (refresca la sesión); la pantalla pasa a solo lectura si el permiso se perdió (INV-F8). En S-16/S-17, el guard pasa a "Sin permiso" (001) |
 | `malformed_request` | todos | Texto de 001, con `requestId` | Bug del cliente (p. ej. un `null` en `name` o un `PATCH` vacío: INV-F9 lo evita) |
@@ -727,8 +737,9 @@ Los ejemplos usan una empresa que renombró Proyecto a "Obra" (femenino).
 
 - C: `<section>` con `<h2>` "Configuración" y una lista de enlaces (`SettingsLinkList`), visible
   para todos los roles. Cada fase de 002 suma su enlace cuando su pantalla existe.
-- E y C usan el mismo `SettingsLinkList`: cada enlace mide ≥ 44 px de alto y, según P-F3, los
-  enlaces vecinos quedan separados ≥ 8 px (hoy E los dibuja pegados: hallazgo 5 de T-F705 de 001).
+- E y C usan el mismo `SettingsLinkList`: cada enlace mide ≥ 44 px de alto y los enlaces vecinos
+  quedan separados ≥ 8 px (P-F3, aprobada). Hoy E los dibuja pegados: esto corrige el hallazgo 5 de
+  T-F705 de 001 (T-002-F103).
 
 ### 14.2 S-13 Etapas (`/settings/stages`) · Historia 1, FR-001
 
@@ -1072,6 +1083,9 @@ nombre" y "Cancelar".
 
 - Tres `<fieldset>` con `<legend>` fija con el **concepto** ("Proyecto", "Cliente", "Presupuesto") y
   una ayuda que lo describe. Es el único archivo exceptuado de INV-F1.
+- Debajo de la bajada, una línea aclara que los datos ya cargados no cambian solos (P-F4): "Los
+  nombres de etapas y categorías que ya tenés (por ejemplo «Cobros de clientes») no cambian: si
+  querés, renombralos en su pantalla."
 - "Así se va a ver": texto calculado con `terminologyFrom` sobre los valores del formulario (no es
   región viva; se lee con el fieldset). Frases: proyecto «{Nuevo/Nueva} {singular}» y «{Los/Las}
   {plural} {cerrados/cerradas}»; cliente «{Nuevo/Nueva} {singular}» y «{plural} con saldo»; presupuesto
@@ -1161,7 +1175,7 @@ sequenceDiagram
             Q->>Q: invalidateQueries stages
             P-->>A: toast con el texto de stage, lista releída
         else red o 5xx
-            P-->>A: toast con Reintentar implícito (volver a elegir), la fila vuelve a su estado
+            P-->>A: toast con el mensaje de 001, la fila vuelve a su estado
         end
     end
 ```
@@ -1236,7 +1250,7 @@ contenedores (páginas) en cada subcarpeta. Los textos con terminología los arm
 ### 16.1 Presentación compartida (nueva)
 
 ```ts
-// src/components/SettingsLinkList.tsx — S-08 (E y C). <ul> de enlaces; cada uno ≥ 44 px; separación según P-F3
+// src/components/SettingsLinkList.tsx — S-08 (E y C). <ul> de enlaces; cada uno ≥ 44 px; vecinos separados ≥ 8 px (P-F3)
 export interface SettingsLinkListProps {
   items: ReadonlyArray<{ to: string; label: string }>;
 }
@@ -1481,17 +1495,18 @@ Rige §18 de 001. Lo propio de 002:
 
 | Tema | Decisión | Criterio |
 |---|---|---|
-| Reordenar sin arrastre | "Subir", "Bajar" y "Mover a otra posición…" en el menú de cada etapa; operables con Enter, flechas y Esc. No hay gesto obligatorio (DD-F4, P-F1) | 2.1.1, 2.5.7 |
+| Reordenar sin arrastre | "Subir", "Bajar" y "Mover a otra posición…" en el menú de cada etapa; operables con Enter, flechas y Esc. No hay gesto obligatorio (DD-F4, P-F1 aprobada) | 2.1.1, 2.5.7 |
 | Resultado de mover | `LiveRegion` de la pantalla (vacía desde el montaje): "«{nombre}» quedó en la posición {n} de {total}." | 4.1.3 |
 | Foco tras mover o quitar | INV-F6: al disparador de la misma etapa en su lugar nuevo; tras eliminar, archivar o restaurar, al de la fila vecina o al botón de agregar. Mover un nodo del DOM puede quitarle el foco: se vuelve a enfocar por id después de pintar la lista nueva | 2.4.3 |
 | Posición | `<ol>` para etapas: el lector anuncia "1 de 5" | 1.3.1 |
 | Color | Nunca es el único dato: el tipo va en texto; en los selectores, cada color con su nombre | 1.4.1 |
 | Muestras de color | Contraste ≥ 3:1 contra el fondo de la tarjeta (§19.2) aunque sean decorativas | 1.4.11 (buena práctica) |
-| Grupos de opciones | Tipo, color, unidad, moneda y género: `RadioGroup` con `<legend>`/etiqueta; el objetivo táctil es la tarjeta `<label>` completa (≥ 44 px), el círculo conserva su forma (P-F2) | 1.3.1, 2.5.8 |
+| Grupos de opciones | Tipo, color, unidad, moneda y género: `RadioGroup` con `<legend>`/etiqueta; el objetivo táctil es la tarjeta `<label>` completa (≥ 44 px), el círculo conserva su forma (P-F2: corregido en el componente compartido, T-002-F103) | 1.3.1, 2.5.8 |
 | Acciones bloqueadas | No se deshabilitan sin motivo: el ítem del menú sigue activo y abre C-05 con el motivo y qué hacer. Ningún motivo largo dentro de un menú (evita el desborde del hallazgo 3 de T-F705 de 001) | 3.3.3, 1.4.10 |
-| Menús | Ancho máximo = el disponible en el viewport; el texto salta de línea (P-F2) | 1.4.10 |
-| Enlaces con aspecto de botón | "+ Nuevo ítem", "Volver al catálogo": ≥ 44 px como los botones (hallazgo 1 de T-F705 de 001; P-F2) | 2.5.8 |
+| Menús | Ancho máximo = el disponible en el viewport; el texto salta de línea (P-F2: corregido en el componente compartido) | 1.4.10 |
+| Enlaces con aspecto de botón | "+ Nuevo ítem", "Volver al catálogo": ≥ 44 px como los botones (hallazgo 1 de T-F705 de 001; P-F2: corregido en la regla compartida) | 2.5.8 |
 | Enlaces sueltos | "← Ajustes", "← Catálogo" con el patrón `inline-flex min-h-11` de 001 (hallazgo 4); en 002 no hay enlaces dentro de frases | 2.5.8 |
+| Separación | Listas de enlaces y tarjetas con objetivos vecinos separados ≥ 8 px (P-F3, aprobada) | 2.5.8 (supera) |
 | Nombre accesible = texto visible | "+ Agregar" → "Agregar categoría de ingreso" (contiene el visible) | 2.5.3 |
 | Diálogos de formulario | Foco inicial en el primer campo; Esc cierra (salvo mientras envía); el foco vuelve al disparador; errores de campo con `aria-describedby`; error general `role="alert"` | 2.4.3, 3.3.1 |
 | Contador de caracteres | En la ayuda del campo (`aria-describedby`), no en una región viva: no interrumpe al tipear | 3.3.2, 4.1.3 |
@@ -1501,8 +1516,9 @@ Rige §18 de 001. Lo propio de 002:
 
 **Lo que no se garantiza solo**: axe en E2E por pantalla (T-002-F602) y la verificación manual de
 T-002-F603 (teclado de punta a punta en S-13 y S-14, VoiceOver o NVDA en mover, eliminar y archivar,
-320 px y zoom 200 %). Nada de 002 queda por debajo de AA a sabiendas; las vistas en 001 que no
-cumplen NFR-F07 de 001 quedan como estaban salvo lo que P-F2 y P-F3 decidan.
+320 px y zoom 200 %). Nada de 002 queda por debajo de AA a sabiendas. De los hallazgos de T-F705 de
+001, T-002-F103 corrige el 1, el 2 y el 3 (P-F2) y el 5 en Ajustes (P-F3); el 4 (enlaces sueltos de
+17–18 px en pantallas de 001) queda para el rediseño, y las pantallas nuevas no lo repiten.
 
 ---
 
@@ -1515,7 +1531,7 @@ cumplen NFR-F07 de 001 quedan como estaban salvo lo que P-F2 y P-F3 decidan.
 | Estructura de cada pantalla, orden de lectura, jerarquía de encabezados | Disposición visual, densidad, tarjetas vs. filas |
 | Textos, estados y mensajes | Tipografía, pesos, tamaños de texto |
 | Foco, teclado, regiones vivas, roles | Colores reales de cada token (incluidos los de etapa) |
-| Mínimos: objetivos ≥ 44 px, contraste AA (texto 4,5:1; muestras y bordes 3:1) | Íconos, sombras, radios, espaciados por encima de los mínimos |
+| Mínimos: objetivos ≥ 44 px separados ≥ 8 px en listas, contraste AA (texto 4,5:1; muestras y bordes 3:1) | Íconos, sombras, radios, espaciados por encima de los mínimos |
 | Qué componentes se usan (`RadioGroup`, `Dialog`, `DropdownMenu`, `FormAlert`…) | Cómo se ven esos componentes (se cambian en `components/ui/` y en los tokens) |
 
 Ninguna pantalla nueva usa clases de la paleta de Tailwind (`blue-600`): solo tokens (INV-F23 de 001).
@@ -1568,7 +1584,7 @@ web/
     │   └── ui/dialog.tsx, ui/textarea.tsx   # CLI de shadcn
     ├── features/configuration/          # configuración por empresa (spec 002)
     │   ├── stages/                      # StagesPage, pipeline.ts, labels.ts, api.ts, components/
-    │   ├── categories/                  # CategoriesPage, labels.ts, api.ts, components/
+    │   ├── categories/                  # CategoriesPage, rules.ts, labels.ts, api.ts, components/
     │   ├── catalog/                     # CatalogPage, CatalogItemNewPage, CatalogItemEditPage, schemas.ts, labels.ts, api.ts, components/
     │   ├── labels/                      # LabelsPage, schemas.ts, api.ts, components/
     │   └── quoteDefaults/               # QuoteDefaultsPage, schemas.ts, api.ts
@@ -1613,7 +1629,7 @@ fallaría con `onUnhandledRequest: 'error'`.
 | **DD-F1** | Las cinco pantallas de lectura van fuera de `RequirePermission` y muestran solo lectura sin `settings.manage` (BR-F1, INV-F8); S-16 y S-17 van dentro | FR-008: el Operador lee la configuración; "Sin permiso" sería falso | (a) Todo detrás de `RequirePermission` (el Operador no podría consultar el catálogo ni las etapas); (b) campos deshabilitados para el Operador (se ven como un formulario roto y el lector anuncia "atenuado" en cada campo) | Cada pantalla tiene dos vistas (edición y lectura) |
 | **DD-F2** | Nombres personalizados: precarga en `GuardedSession` y `<main>` del shell espera la lectura; si falla, nombres por defecto (ADR-030, §9.3) | Evita el parpadeo "Proyectos → Obras"; la app nunca se bloquea por un dato cosmético | (a) No esperar y usar los nombres por defecto mientras carga (parpadeo); (b) bloquear con error (app inutilizable por un dato cosmético); (c) pedirlos dentro de `/me` (cambio de contrato de 001 para un dato de 002); (d) copiarlos a un Context (INV-F01 de 001) | Una lectura más al arrancar, en paralelo; si el LCP de `/` se pasa, RF-1 |
 | **DD-F3** | Terminología con una función pura y un hook: artículos, contracciones y minúscula de mitad de frase resueltos en `lib/terminology.ts`; los textos siguen en los componentes (ADR-030) | Un solo lugar para concordancia; API chica para 003 a 010 | Librería de i18n con ICU `select`; frases armadas por el servidor; campo extra de minúscula (ver ADR-030) | La regla de minúsculas falla con un nombre propio de una palabra |
-| **DD-F4** | Reordenar etapas con "Subir", "Bajar" y "Mover a otra posición…" del menú de cada fila; sin arrastre en 002 (P-F1) | Accesible con teclado y lector sin trabajo extra; cubre listas de hasta ~30; el contrato mueve de a una (plan DD-18) | (a) Arrastrar con una librería (`@dnd-kit` u otra): dependencia nueva y su accesibilidad hay que verificarla; (b) arrastre nativo HTML5 (no funciona con el tacto en iOS sin código extra); (c) botones "Subir/Bajar" visibles en cada fila (en 375 px dejan poco lugar al nombre: tres objetivos de 44 px por fila) | Reordenar mucho es más lento que arrastrar; un toque más (abrir el menú) |
+| **DD-F4** | Reordenar etapas con "Subir", "Bajar" y "Mover a otra posición…" del menú de cada fila; sin arrastre en 002 (P-F1, aprobada) | Accesible con teclado y lector sin trabajo extra; cubre listas de hasta ~30; el contrato mueve de a una (plan DD-18) | (a) Arrastrar con una librería (`@dnd-kit` u otra): dependencia nueva y su accesibilidad hay que verificarla; (b) arrastre nativo HTML5 (no funciona con el tacto en iOS sin código extra); (c) botones "Subir/Bajar" visibles en cada fila (en 375 px dejan poco lugar al nombre: tres objetivos de 44 px por fila) | Reordenar mucho es más lento que arrastrar; un toque más (abrir el menú). Si se quiere arrastre, lo evalúa el rediseño |
 | **DD-F5** | Las reglas del pipeline se replican en `pipeline.ts` y se evalúan **antes** de enviar; una acción que las rompe abre C-05 o marca el campo (BR-F3) | El usuario entiende el motivo exacto y qué hacer; el contrato no dice qué regla rompió el `409` (§13.2) | (a) Enviar y explicar el `409` (texto genérico, el usuario no sabe qué hacer); (b) deshabilitar las acciones con el motivo en el menú (el motivo largo desborda el menú a 375 px, hallazgo 3 de T-F705 de 001); (c) pedir al backend un código por regla (más códigos para lo que la UI ya sabe) | Dos implementaciones de la regla: INV-F4 las ata a la misma tabla |
 | **DD-F6** | Altas y edición de etapas y categorías en diálogos de la misma pantalla; ítems del catálogo en páginas (S-16, S-17); los diálogos no piden confirmación al descartar | Formularios de 1 a 4 campos: un diálogo mantiene la lista a la vista y no hace falta `GET` por id (el contrato no lo tiene para etapas ni categorías). El ítem tiene 6 campos, se puede recargar (`GET` por id) y merece el aviso de cambios sin guardar | (a) Páginas para todo (como Invitar en 001, DD-F6 de 001: sin `GET` por id habría que leer de la lista y la recarga dependería de ella); (b) edición en línea en la fila (más estados por fila, peor en el celular) | Perder lo escrito en un diálogo con Atrás (≤ 4 campos) |
 | **DD-F7** | Una sola lectura por lista con `include_archived=true`; la pantalla separa activas y archivadas | Una clave de caché, una invalidación, sin un segundo request al abrir "Archivadas" | (a) Dos queries (activas y archivadas): dos invalidaciones por acción; (b) filtrar por tipo en el servidor (`?type=`): dos lecturas para una pantalla | Se trae lo archivado aunque no se mire (volumen chico, S-1) |
@@ -1621,7 +1637,8 @@ fallaría con `onUnhandledRequest: 'error'`.
 | **DD-F9** | Archivar categorías e ítems sin confirmación; el toast dice dónde quedaron. Sin "Deshacer" en el toast | Es reversible (spec); confirmar algo reversible agrega un paso | (a) Confirmación (un toque más sin protección real); (b) "Deshacer" en el toast (los toasts desaparecen: con teclado o lector puede no alcanzarse a tiempo, WCAG 2.2.1) | Un archivado por error se restaura desde "Archivadas" |
 | **DD-F10** | Escrituras de etapas en una cola (`STAGE_CHANGES_SCOPE`) y cancelación de lecturas antes de escribir (INV-F3), como DD-F33 de 001 | Mover y crear cambian posiciones de otras etapas: una respuesta vieja no debe pisar una lista nueva | (a) Sin cola (respuestas fuera de orden); (b) actualización optimista (el servidor puede rechazar por las reglas y habría que revertir) | Un segundo movimiento espera al primero ("Moviendo…" desde el toque) |
 | **DD-F11** | `fieldErrorMessage` con un `scope` opcional (§13.3) y nombres de campo iguales a las rutas del contrato (`reference_price.amount_cents` guarda el texto del importe) | Las llamadas de 001 no cambian; los `422` se aplican directo | (a) Una función de mensajes por formulario (repite las reglas comunes); (b) un mapa de alias de campos (otra pieza para algo que React Hook Form ya resuelve con rutas) | Un campo de formulario que no tiene el tipo del contrato (texto en `amount_cents`), comentado en el esquema |
-| **DD-F12** | `SettingsLinkList` compartido para S-08: todas las secciones de Ajustes con el mismo patrón de enlaces | Un solo lugar para el tamaño y la separación de los objetivos (P-F3) | Agregar la sección nueva con su propio patrón (dos patrones en la misma pantalla) | Toca la sección "Tu empresa" de 001 (solo su estructura de lista) |
+| **DD-F12** | `SettingsLinkList` compartido para S-08: todas las secciones de Ajustes con el mismo patrón de enlaces, ≥ 44 px y separados ≥ 8 px (P-F3, aprobada) | Un solo lugar para el tamaño y la separación de los objetivos | (a) Agregar la sección nueva con su propio patrón (dos patrones en la misma pantalla); (b) relajar NFR-F07 de 001 a lo que pide WCAG 2.5.8 (P-F3, opción descartada) | Toca la sección "Tu empresa" de 001 (solo su estructura de lista) |
+| **DD-F13** | Las correcciones de los hallazgos 1, 2 y 3 de T-F705 de 001 se hacen en los componentes compartidos dentro de T-002-F103 (P-F2, aprobada): el radio no hereda el mínimo de 44 px (su objetivo es la tarjeta), los enlaces con aspecto de botón miden 44 px y el menú de acciones no pasa del ancho disponible | Las pantallas nuevas usan esos mismos componentes; corregirlos en un solo lugar no repite el defecto y arregla también las pantallas de 001 | (a) Variantes propias solo para 002 (dos versiones de cada componente hasta el rediseño); (b) dejarlo para el rediseño (las pantallas nuevas repetirían los defectos) | Cambia pantallas de 001 sin que sea su spec: T-002-F103 suma aserciones E2E sobre ellas (RF-7) |
 
 ---
 
@@ -1637,25 +1654,26 @@ fallaría con `onUnhandledRequest: 'error'`.
 
 ---
 
-## 24. Preguntas para el usuario (`P-F`)
+## 24. Decisiones del usuario (`P-F`)
 
-El diseño asume la opción recomendada de cada una, **pendiente de aprobación**.
+**Aprobadas por el usuario el 2026-10-26** con las opciones recomendadas ("ok sigamos con la
+recomendacion"). Ya están incorporadas al cuerpo del documento.
 
-| ID | Pregunta | Opciones | Recomendada |
-|---|---|---|---|
-| **P-F1** | ¿Reordenar etapas arrastrando? | **A**: no en 002; "Subir", "Bajar" y "Mover a…" desde el menú de la etapa (DD-F4). B: sumar arrastre con una librería (dependencia nueva, más tests de accesibilidad). C: decidirlo en el rediseño | **A** (y si se quiere arrastre, que lo evalúe el rediseño, C) |
-| **P-F2** | Las pantallas nuevas usan radios, menús y enlaces con aspecto de botón compartidos con 001, que tienen tres hallazgos de T-F705 (radios deformados por la regla de 44 px, menú que desborda a 375 px, enlaces-botón de 36 px). ¿Se corrigen en el componente compartido ahora? | **A**: sí, en el componente compartido (tres cambios chicos de comportamiento: el radio no hereda el mínimo de 44 px y su objetivo es la tarjeta; el menú no pasa del ancho disponible; los enlaces con aspecto de botón miden 44 px). Arregla también las pantallas de 001. B: solo en las pantallas nuevas, con variantes propias (dos versiones de cada componente hasta el rediseño). C: dejarlo para el rediseño (las pantallas nuevas repiten los defectos) | **A** |
-| **P-F3** | NFR-F07 de 001 pide objetivos separados ≥ 8 px, pero los enlaces de Ajustes y los ítems de menú están pegados (hallazgo 5 de T-F705). ¿Qué rige para las listas nuevas? | **A**: mantener NFR-F07: las listas de enlaces y tarjetas de 002 separan ≥ 8 px, y S-08 (que 002 modifica) pasa al mismo patrón (`SettingsLinkList`); los menús quedan como están (sus ítems miden 44 px y Radix los separa por foco). B: relajar NFR-F07 a lo que pide WCAG 2.5.8 (24 px, sin separación si cada objetivo mide ≥ 24) | **A** |
-| **P-F4** | La spec dice que el nombre personalizado se usa en "toda la interfaz". Los **datos** sembrados que contienen esas palabras (la etapa "Presupuesto", la categoría "Cobros de clientes") ¿cambian solos al renombrar? | **A**: no: son datos que la empresa edita (BR-F11, ADR-030); la pantalla de nombres lo aclara. B: renombrarlos automáticamente (una regla nueva en el backend sobre datos del usuario) | **A** |
+| ID | Pregunta | Decisión aprobada | Descartado | Dónde se aplica |
+|---|---|---|---|---|
+| **P-F1** | ¿Reordenar etapas arrastrando? | **A**: no en 002; "Subir", "Bajar" y "Mover a otra posición…" desde el menú de la etapa. Si se quiere arrastre, lo evalúa el rediseño | B: arrastre con una librería (dependencia nueva, más tests de accesibilidad); C: decidirlo recién en el rediseño | DD-F4, §14.2, §18 |
+| **P-F2** | ¿Corregir ahora, en los componentes compartidos, los hallazgos 1, 2 y 3 de T-F705 de 001 (enlaces-botón de 36 px, radios deformados por la regla de 44 px, menú que desborda a 375 px)? | **A**: sí, en el componente compartido, dentro de T-002-F103 (también arregla las pantallas de 001) | B: variantes solo para las pantallas nuevas; C: dejarlo para el rediseño | DD-F13, §18, T-002-F103 |
+| **P-F3** | ¿Qué rige para la separación de objetivos en las listas nuevas (NFR-F07 de 001 frente al hallazgo 5 de T-F705)? | **A**: se mantiene NFR-F07: listas de enlaces y tarjetas con objetivos vecinos separados ≥ 8 px, también en Ajustes (`SettingsLinkList`); los menús quedan como están | B: relajar NFR-F07 a lo que pide WCAG 2.5.8 (24 px, sin separación) | NFR-F3, DD-F12, §14.1, T-002-F103 |
+| **P-F4** | ¿Los datos sembrados con esas palabras (la etapa "Presupuesto", la categoría "Cobros de clientes") cambian solos al renombrar? | **A**: no: son datos que la empresa edita; S-18 lo aclara | B: renombrarlos automáticamente (una regla nueva en el backend sobre datos del usuario) | BR-F11, §14.6, ADR-030 |
 
 ---
 
 ## 25. Hallazgos para el `backend-architect`
 
-| ID | Hallazgo | Opción recomendada | Bloquea |
+| ID | Hallazgo | Opción recomendada | Estado |
 |---|---|---|---|
-| **H-1** | La sección Backend de `tasks.md` (en esta rama) todavía dice, en T-002-B202, "Sin otros cambios en 001", y la tabla de coordinación dice que el mapa exhaustivo del frontend "deja de compilar hasta tener su texto (a propósito)". Con `make check` verde como checkpoint de la Fase 2, T-002-B202 no se puede mergear sin el frontend: al cambiar el contrato de 001, `npm run lint` falla (los tipos generados quedan desactualizados) y, al regenerarlos, `npm run typecheck` falla (`Record<ErrorCode, …>` sin `name_taken`). | T-002-B202 referencia a **T-002-F001** como tarea de la misma rama, y su checkpoint corre `make check-all` (o `make web-check`). El coordinador informó que el `backend-architect` ya lo está dejando en otra rama: este hallazgo queda para verificar que llegue | Sí, a T-002-B202 |
-| **H-2** | El contrato no documenta las rutas con punto de `FieldError.field` que el plan sí usa (`reference_price.amount_cents`, `reference_price.currency`, `project.singular`, `customer.gender`…). La descripción de `FieldError.field` en 001 dice "nombre del campo del request (snake_case)". La UI depende de esas rutas para poner el error en su campo (§13.3) | Documentarlas en el contrato de 002 (en la descripción de `PUT /settings/labels` y de los requests del catálogo) o ampliar la descripción de `FieldError.field` en 001 ("ruta con punto para campos anidados"). Sin cambio de esquema | No |
+| **H-1** | T-002-B202 cambia el contrato de 001 y rompe el mapa exhaustivo de errores del frontend; con `make check` verde como checkpoint de la Fase 2, no se podía mergear sin el frontend. | T-002-B202 nombra a **T-002-F001** como tarea de la misma rama y el checkpoint de la Fase 2 exige el typecheck del frontend | **Resuelto (2026-10-26).** Verificado en la sección Backend de `tasks.md`: T-002-B201, T-002-B202 y T-002-F001 van en una sola rama (convenciones y "Orden y dependencias" de la Fase 2); T-002-B202 dice "En la misma rama va T-002-F001"; T-002-B201 suma la fila del typecheck del frontend; el punto 1 del checkpoint de la Fase 2 exige `make check` "incluido el typecheck y los tests del frontend con T-002-F001"; la fila de coordinación y la trazabilidad lo nombran |
+| **H-2** | El contrato no documenta las rutas con punto de `FieldError.field` que el plan sí usa (`reference_price.amount_cents`, `reference_price.currency`, `project.singular`, `customer.gender`…). La descripción de `FieldError.field` en 001 dice "nombre del campo del request (snake_case)". La UI depende de esas rutas para poner el error en su campo (§13.3) | Documentarlas en el contrato de 002 (en la descripción de `PUT /settings/labels` y de los requests del catálogo) o ampliar la descripción de `FieldError.field` en 001 ("ruta con punto para campos anidados"). Sin cambio de esquema | **Abierto, no bloquea** (para el `backend-architect`) |
 
 No encontré endpoints, campos ni códigos faltantes para estas pantallas. Observaciones sin acción:
 `POST /stages` devuelve solo la etapa creada y `DELETE` responde `204`, así que la UI relee la lista
@@ -1664,7 +1682,7 @@ que dos Administradores simultáneos se pisan (RF-3, aceptado por el volumen y l
 
 **Hallazgos de documentación** (no son del backend): el wireframe de S-07 en `ui.md` de 001 dice
 "(para los presupuestos)" y el código no (§9.4); ADR-023 sigue *Proposed* aunque 001 y 002 lo
-aplican (lo confirma la aprobación de este documento, que implementa su parte de dinero).
+aplican.
 
 ---
 
@@ -1678,7 +1696,7 @@ aplican (lo confirma la aprobación de este documento, que implementa su parte d
 | RF-4 | La regla de minúsculas se equivoca con algún nombre ("Fiat" → "fiat") | Baja | Bajo | Ayuda en S-18 y vista previa; salida en ADR-030 (campo de minúscula) |
 | RF-5 | Los tests de 001 que montan el shell fallan por el `GET /settings/labels` no interceptado | Alta (a propósito) | Bajo | Handler por defecto en `test/msw/handlers.ts` en T-002-F501, antes de la espera del shell |
 | RF-6 | Un formato de `Intl` distinto entre Node (CI) y los navegadores rompe tests de `formatMoney` | Media | Bajo | S-F2: tests con `Intl` como oráculo para el símbolo y la parte numérica fijada |
-| RF-7 | Corregir componentes compartidos (P-F2) cambia pantallas de 001 sin que nadie lo note | Media | Bajo | T-002-F103 suma aserciones de tamaño en E2E de 001 (radios, enlaces-botón, menú a 375 px) |
+| RF-7 | Corregir componentes compartidos (P-F2, DD-F13) cambia pantallas de 001 sin que nadie lo note | Media | Bajo | T-002-F103 suma aserciones de tamaño en E2E de 001 (radios, enlaces-botón, menú a 375 px, Ajustes) |
 | RF-8 | La lista del catálogo con 1.000 ítems es lenta en un Android medio | Baja | Medio | NFR-F6 se mide; salida: paginar en el cliente (decisión de 005) |
 
 ---
@@ -1694,7 +1712,7 @@ La actualización va **en el mismo cambio** que el código.
 | La regla del pipeline en el backend (plan DD-5, T-002-B301) | `pipeline.ts` y su tabla (INV-F4) + textos de C-05 (§14.2) |
 | Un largo máximo del contrato | Esquemas Zod + `FieldScope` (§13.3) + INV-F10 |
 | Un texto con Proyecto, Cliente o Presupuesto | Armarlo con `useTerminology()` (INV-F1); si es una frase nueva con concordancia, `byGender` |
-| La forma de `Labels` o la regla de minúsculas | `lib/terminology.ts` y su test + ADR-030 (o uno nuevo que lo reemplace) + §9 |
+| La forma de `Labels` o la regla de minúsculas | `lib/terminology.ts` y su test + un ADR nuevo que reemplace a ADR-030 (*Accepted*: no se edita) + §9 |
 | Una pantalla o ruta de 002 | §4, §5, §6 + `SettingsLinkList` de S-08 |
 | Dónde vive una pieza de estado o una clave de caché | §11 + INV-F3 |
 | La versión de TanStack Query | Revisar DD-F10 e INV-F3 con la nota de DD-F33 de 001 sobre `cancelQueries` |
