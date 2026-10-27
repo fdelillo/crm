@@ -745,14 +745,15 @@ dependencias como en 001 (002 no agrega dependencias). Además:
 
 Los de 001, sin comandos nuevos: `npm run gen:api`, `npm run lint` (incluye la verificación de los
 generados), `npm run typecheck`, `npm test`, `npm run build`, **`npm run check` (checkpoint de cada
-fase)**, `npm run e2e`, `make web-check` y `make check-all`. Según la sección Backend, `make check`
-también corre el typecheck y los tests del frontend.
+fase)**, `npm run e2e`, `make web-check` y `make check-all`. `make check` corre solo el backend; el typecheck y los tests
+del frontend los corre `make web-check`, y `make check-all` corre los dos (sección Backend,
+"Comandos de validación").
 
 ### Dependencias con el backend
 
 | Fase | Para mergear necesita en `main` | La prueba independiente necesita | Hallazgos |
 |---|---|---|---|
-| F0 | — (va en la rama única de T-002-B201 y T-002-B202) | — | H-1 **resuelto (2026-10-26)**: T-002-B202 nombra a T-002-F001 en la misma rama, y el punto 1 del checkpoint de la Fase 2 exige `make check` con el typecheck y los tests del frontend (`ui.md` §25) |
+| F0 | — (va en la rama única de T-002-B201 y T-002-B202) | — | H-1 **resuelto (2026-10-26)**: T-002-B202 nombra a T-002-F001 en la misma rama, y el punto 1 del checkpoint de la Fase 2 exige `make check-all`, con el typecheck y los tests del frontend (`ui.md` §25) |
 | F1 | Checkpoint de la Fase 2 del backend completo: contrato de 001 v0.6.0 (`002.ts` referencia su `Money`) y cero `$ref` sin resolver en el contrato de 002 (T-002-B203) | Backend de 001 | — |
 | F2 | Fase 4 (rutas de etapas) | Fases 3 y 4 (empresa sembrada y etapas) | — |
 | F3 | Fase 5 (categorías) | Fase 5 | — |
@@ -765,10 +766,10 @@ también corre el typecheck y los tests del frontend.
 ### Fase F0 — Contrato de 001 v0.6.0: `name_taken` en el mapa de errores (viaja con T-002-B202)
 
 **Objetivo**: con el contrato de 001 en v0.6.0, el frontend compila y el mapa exhaustivo de errores
-tiene el texto de `name_taken`; `make check` (con el typecheck y los tests del frontend) y
+tiene el texto de `name_taken`; `make web-check` (typecheck y tests del frontend) y
 `make check-all` siguen verdes en la rama única de T-002-B201, T-002-B202 y T-002-F001.
 
-**Prueba independiente**: en esa rama, `make check` y `make check-all` en verde;
+**Prueba independiente**: en esa rama, `make web-check` y `make check-all` en verde;
 `web/src/api/generated/001.ts` trae `name_taken` en `ErrorCode` y el esquema `Money`.
 
 **T-002-F001 [T] — `name_taken` en el mapa exhaustivo de errores** · plan DD-12, DD-13, §8.2;
@@ -785,12 +786,12 @@ INV-F05 de 001; `ui.md` §12.4, H-1 (resuelto)
   | `errorMessages.test-d.ts` (exhaustividad del mapa) | sigue pasando con la clave nueva |
   | Mutación: quitar la entrada `name_taken` | no compila (se ve fallar y se restaura) |
 - **Green**: la entrada `name_taken` en `errorMessages` con ese texto; `generated/001.ts` regenerado y
-  versionado; `npm run check`, `make check` y `make check-all` en verde. Ningún otro cambio de
+  versionado; `npm run check`, `make web-check` y `make check-all` en verde. Ningún otro cambio de
   frontend en esta rama.
 - **Refactor**: nada (cambio mínimo, a propósito).
 
-**Checkpoint Fase F0**: `make check` (punto 1 del checkpoint de la Fase 2 del backend) y
-`make check-all` en verde en la rama única de T-002-B201, T-002-B202 y T-002-F001.
+**Checkpoint Fase F0**: `make check-all` (punto 1 del checkpoint de la Fase 2 del backend), que
+incluye `make web-check`, en verde en la rama única de T-002-B201, T-002-B202 y T-002-F001.
 
 ---
 
