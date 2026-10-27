@@ -30,6 +30,12 @@ de `research.md` para el frontend de 002).
 |---|---|
 | 2026-10-26 | El diseño completo, con P-F1 a P-F4 en la opción recomendada (§24): reordenar sin arrastre (P-F1); corregir en los componentes compartidos, dentro de T-002-F103, los hallazgos 1, 2 y 3 de T-F705 de 001 (P-F2); mantener NFR-F07 de 001 con separación ≥ 8 px en las listas nuevas y en Ajustes (P-F3); los datos sembrados no se renombran solos (P-F4). ADR-030 pasa a *Accepted*. |
 
+**Cambios posteriores a la aprobación** (no cambian lo aprobado):
+
+| Fecha | Origen | Cambio |
+|---|---|---|
+| 2026-10-26 | Revisión 1 de Codex del PR #49 | **DD-F14, BR-F14 e INV-F11**: mientras hay una escritura de etapas pendiente, ninguna acción calcula una posición nueva ("Subir", "Bajar", "Mover a otra posición…" y el envío de "Nueva etapa" quedan deshabilitados hasta la respuesta). Antes, dos movimientos seguidos en filas distintas mandaban el segundo con una posición calculada sobre la lista vieja. Reordenar sigue siendo por menú y sin arrastre (P-F1 sin cambios). Se corrige además el texto de H-1 (§25): el checkpoint de la Fase 2 exige `make check-all`. |
+
 ---
 
 ## 0. Contexto y validación del stack
@@ -67,7 +73,8 @@ Cinco pantallas nuevas debajo de Ajustes (etapas, categorías, catálogo, nombre
 condiciones de los presupuestos), legibles por cualquier rol y editables solo por el Administrador:
 el Operador ve las mismas pantallas en solo lectura, nunca "Sin permiso" (FR-008). Todo dato vive
 en la caché de TanStack Query; los cambios de etapas salen en cola, como los de la empresa en 001,
-porque el servidor reordena posiciones. Las reglas del pipeline se replican en una función pura
+porque el servidor reordena posiciones, y mientras uno está pendiente ninguna acción calcula una
+posición nueva (DD-F14). Las reglas del pipeline se replican en una función pura
 para **explicar antes** por qué un cambio no se puede hacer; el servidor sigue decidiendo. Reordenar
 se hace con acciones de menú ("Subir", "Bajar", "Mover a…"), operables con teclado y lector de
 pantalla, sin arrastre. Los nombres personalizados se aplican en toda la interfaz con un hook de
@@ -237,6 +244,7 @@ interna (`GuardedSession`), que no existe durante una salida de sesión, así qu
 | BR-F11 | Los textos de toda pantalla con sesión que nombran a Proyecto, Cliente o Presupuesto usan los nombres personalizados con su concordancia (§9). Los **datos** que contienen esas palabras (la etapa "Presupuesto", la categoría "Cobros de clientes") no cambian solos: los renombra el Administrador (P-F4, aprobada). | Historia 2, P-3, ADR-030 |
 | BR-F12 | Todo botón de envío queda deshabilitado con texto de progreso mientras la operación está en curso; las acciones de una fila se deshabilitan mientras esa fila tiene una operación pendiente. | BR-F10 de 001 |
 | BR-F13 | Salir de S-16, S-17, S-18 o S-19 con cambios sin guardar pide confirmación (textos del aviso de S-11 de 001). Los diálogos de etapa y categoría no la piden. | DD-F32 de 001, DD-F6 |
+| BR-F14 | Mientras hay una escritura de etapas pendiente (crear, editar, mover o eliminar), "Subir", "Bajar" y "Mover a otra posición…" de **todas** las filas, y el botón de envío del diálogo "Nueva etapa", quedan deshabilitados; vuelven cuando la respuesta se escribió en la lista. "Editar" y "Eliminar" de las demás filas siguen disponibles (identifican la etapa por id y esperan en la cola). La región viva de la pantalla dice qué se está esperando ("Moviendo «{nombre}»…"). | DD-F14, revisión 1 de Codex del PR #49 |
 
 ---
 
@@ -429,14 +437,15 @@ Propiedades que se rompen **sin que falle la compilación**. Cada una tiene su t
 |---|---|---|
 | INV-F1 | Ningún texto visible de una pantalla con sesión escribe "proyecto(s)", "cliente(s)" ni "presupuesto(s)": los arma con `useTerminology()` (§9.4). Se rompe si alguien escribe el literal | `terminologyLiterals.test.ts` (T-002-F501) |
 | INV-F2 | `<main>` del shell no pinta su contenido hasta que la lectura de nombres terminó (con datos o con error), y `useTerminology()` nunca devuelve los nombres por defecto mientras hay una lectura en curso sin datos. Se rompe si el shell deja de esperar o si el hook devuelve el respaldo durante `isPending` | `terminologyLoading.test.tsx` (T-002-F501) |
-| INV-F3 | Las mutaciones de etapas (crear, editar, mover, eliminar) comparten la cola `STAGE_CHANGES_SCOPE`: cada una sale cuando terminó la anterior. Toda escritura de una respuesta en `['settings','stages']` cancela antes las lecturas en vuelo de esa clave (como DD-F33 de 001). Se rompe si una mutación de etapas pierde el `scope` o escribe sin cancelar | `StagesOrder.test.tsx` (T-002-F202) |
+| INV-F3 | Las mutaciones de etapas (crear, editar, mover, eliminar) comparten la cola `STAGE_CHANGES_SCOPE` y la clave de mutación `STAGE_MUTATION_KEY`: cada una sale cuando terminó la anterior. Toda escritura de una respuesta en `['settings','stages']` cancela antes las lecturas en vuelo de esa clave (como DD-F33 de 001). Se rompe si una mutación de etapas pierde el `scope` o la clave, o escribe sin cancelar | `StagesOrder.test.tsx` (T-002-F202) |
 | INV-F4 | Las reglas del pipeline del cliente (`pipelineViolation` y las funciones `after*`) dan el mismo resultado que la tabla de T-002-B301 del backend para cada fila de esa tabla. Un cliente más estricto que el servidor impediría cambios válidos; uno más laxo solo produce un `409` explicado | `pipeline.test.ts` (T-002-F201) |
 | INV-F5 | Ningún importe pasa por punto flotante: el texto del usuario se convierte a centavos solo con `parseMoneyInput`, y los centavos se muestran solo con `formatMoney` y `formatMoneyInput` (`lib/money.ts`). Ningún archivo fuera de `lib/money.ts` llama a `parseFloat`, `Number()` ni divide por 100 sobre un importe | `money.test.ts` (2^53 − 1 exacto, T-002-F102) + revisión |
-| INV-F6 | Cuando el elemento con el foco desaparece por una acción del usuario (eliminar una etapa, archivar o restaurar una categoría o un ítem), el foco va a un destino definido: el disparador de acciones de la fila siguiente de la misma lista, o el de la anterior, o el botón de agregar de la sección (o el `<h1>` si no hay). Nunca queda en `<body>`. Al mover una etapa, el foco vuelve al disparador de esa misma etapa en su lugar nuevo | `removalFocus.test.ts` + tests de pantalla (T-002-F202, T-002-F302) |
+| INV-F6 | Cuando el elemento con el foco desaparece por una acción del usuario (eliminar una etapa, archivar o restaurar una categoría o un ítem), el foco va a un destino definido: el disparador de acciones de la fila siguiente de la misma lista, o el de la anterior, o el botón de agregar de la sección (o el `<h1>` si no hay). Nunca queda en `<body>`. Al mover una etapa, el foco vuelve al disparador de esa misma etapa en su lugar nuevo, salvo que el usuario ya lo haya llevado a otro control mientras esperaba (no se le roba el foco) | `removalFocus.test.ts` + tests de pantalla (T-002-F202, T-002-F302) |
 | INV-F7 | La UI nunca ramifica por el valor de `system_key` ni por el código de plantilla: solo por `category.system`. Una clave de sistema nueva (006) no necesita cambios en el cliente | `CategoriesPage.test.tsx` (fila con una clave desconocida para el cliente) (T-002-F302) |
 | INV-F8 | En las rutas de lectura de 002 el Operador nunca ve "Sin permiso": ve la pantalla en solo lectura. Un `403 forbidden` en una escritura deja la pantalla montada, refresca la sesión (manejador global de 001) y, si el permiso se perdió, la pantalla pasa a solo lectura | Tests de pantalla con sesión de Operador (T-002-F202, F302, F402, F502) |
 | INV-F9 | Un `PATCH` de etapa o de ítem lleva solo las claves que cambiaron, y nunca `null` en `name`, `type`, `color` ni `unit`; si nada cambió, no sale ningún request (el contrato responde `400` a `{}` y a esos `null`) | `stageChanges` y `catalogItemChanges` (T-002-F201, T-002-F401) |
 | INV-F10 | Los largos máximos del cliente se cuentan en *code points* (`countCodePoints`) y coinciden con los del contrato (etapa y categoría 60, ítem 120, descripción 1.000, unidad 20, nombres 40, condiciones 2.000) | `textLength.test.ts`, `schemas.test.ts` (T-002-F101, F401, F501) |
+| INV-F11 | Toda posición que la pantalla de etapas envía (`move` o `position` al crear) se calculó con la lista que dejó la **última escritura confirmada**: mientras `useStageWritePending()` es verdadero, "Subir", "Bajar", "Mover a otra posición…" y el envío de "Nueva etapa" están deshabilitados, así ninguna posición se calcula sobre una lista que la cola todavía va a cambiar (DD-F14). Se rompe sin que falle la compilación si alguna de esas acciones se habilita con una escritura pendiente o si una mutación de etapas deja de llevar `STAGE_MUTATION_KEY` | `StagesOrder.test.tsx` (T-002-F202): dos movimientos seguidos en filas distintas, con su mutación |
 
 ---
 
@@ -454,11 +463,12 @@ Propiedades que se rompen **sin que falle la compilación**. Cada una tiene su t
 | Condiciones por defecto (`QuoteDefaults`) | Server state | `['settings','quote-defaults']` | |
 | Terminología (`Terminology`) | Derivado | `useTerminology()` sobre `['settings','labels']` | No se guarda |
 | ¿La acción rompe el pipeline? | Derivado | `pipelineViolation(after…(stages, …))` | No se guarda |
+| ¿Hay una escritura de etapas pendiente? | Derivado | `useStageWritePending()` = `useIsMutating({ mutationKey: STAGE_MUTATION_KEY }) > 0` | No se guarda; decide BR-F14 (DD-F14) |
 | ¿Puede editar? | Derivado | `useCan('settings.manage')` | |
 | Diálogo abierto (alta, edición, mover, eliminar, explicación) y fila de origen | Client local | `useState` de `StagesPage` / `CategoriesPage` | La fila de origen sirve para devolver el foco (INV-F6) |
 | Sección "Archivadas" abierta | Client local | `ArchivedSection` | Se cierra al salir de la pantalla |
 | Valores de formularios y errores | Client local | React Hook Form | Valores iniciales copiados de la caché (permitido por INV-F01 de 001) |
-| Último resultado de "mover" | Client local | Texto de la `LiveRegion` de S-13 | Se vacía al empezar otro movimiento (INV-F19 de 001) |
+| Texto de la región viva de S-13 ("Moviendo «…»…" y el resultado) | Client local | Texto de la `LiveRegion` de S-13 | Cambia al empezar y al terminar cada movimiento (INV-F19 de 001) |
 
 Sin store ni Context nuevo. Ningún dato de configuración se copia fuera de la caché (INV-F01 de 001).
 
@@ -502,6 +512,10 @@ settings: {
 | Guardar nombres | `PUT /settings/labels` | `cancelQueries(labels)` y `setQueryData(labels, respuesta)`: toda la interfaz cambia |
 | Guardar condiciones | `PUT /settings/quote-defaults` | `cancelQueries(quoteDefaults)` y `setQueryData` |
 
+Las cuatro mutaciones de etapas esperan su `invalidateQueries` o hacen su `setQueryData` dentro de la
+mutación, así `useStageWritePending()` vuelve a falso recién cuando la lista que se ve es la
+confirmada por esa escritura (INV-F11).
+
 ### 11.4 Concurrencia
 
 - **Entre pestañas o Administradores**: el contrato no tiene versión ni `ETag` en la configuración.
@@ -513,8 +527,11 @@ settings: {
 - **Nombres personalizados**: `PUT` completo. Si dos Administradores guardan a la vez, el segundo
   pisa lo que el primero cambió en otra entidad (RF-3; raro, sin `If-Match` en el contrato).
 - **Dentro de la pestaña**: las escrituras de etapas salen en cola (INV-F3), así una respuesta vieja
-  de "mover" no pisa una lista más nueva. Las de categorías y del catálogo no necesitan cola: cada
-  una termina con una invalidación, y la última lectura gana.
+  de "mover" no pisa una lista más nueva. La cola ordena las respuestas, pero no conserva la
+  intención de un movimiento calculado sobre una lista que todavía va a cambiar: por eso, mientras
+  hay una escritura de etapas pendiente, ninguna acción calcula una posición (DD-F14, INV-F11).
+  "Editar" y "Eliminar" usan el id de la etapa y pueden esperar en la cola. Las de categorías y del
+  catálogo no necesitan cola: cada una termina con una invalidación, y la última lectura gana.
 - **Doble toque**: botones deshabilitados mientras la mutación está pendiente (BR-F12).
 
 ---
@@ -769,7 +786,8 @@ Los ejemplos usan una empresa que renombró Proyecto a "Obra" (femenino).
 │      │ ● Perdido             [⋮] ││
 │      │ Cierre perdido · Moviendo…││  ← fila con operación pendiente
 │      └───────────────────────────┘│
-│ V (región viva, vacía)           │
+│ V (región viva: "Moviendo        │
+│    «Perdido»…" mientras espera)  │
 └──────────────────────────────────┘
 ```
 
@@ -778,19 +796,31 @@ Los ejemplos usan una empresa que renombró Proyecto a "Obra" (femenino).
   (`overflow-wrap: anywhere`), sin truncar.
 - `[⋮]`: `DropdownMenu` con nombre accesible "Acciones para {nombre}". Ítems: "Editar", "Subir",
   "Bajar", "Mover a otra posición…", "Eliminar" (BR-F4). Los ítems tienen solo su texto (ningún
-  motivo adentro) y el menú cabe en el viewport (NFR-F4).
-- V: `LiveRegion` montada vacía con la pantalla (INV-F19 de 001) para el resultado de mover:
-  "«{nombre}» quedó en la posición {n} de {total}." (sale de la respuesta del servidor).
+  motivo adentro) y el menú cabe en el viewport (NFR-F4). Los disparadores `[⋮]` nunca se
+  deshabilitan (así el foco nunca se pierde); mientras hay una escritura de etapas pendiente, adentro
+  del menú "Subir", "Bajar" y "Mover a otra posición…" aparecen deshabilitados (BR-F14).
+- V: `LiveRegion` montada vacía con la pantalla (INV-F19 de 001). Al empezar un movimiento dice
+  "Moviendo «{nombre}»…"; al terminar, "«{nombre}» quedó en la posición {n} de {total}." (sale de la
+  respuesta del servidor). Ese primer anuncio es el motivo de que los movimientos estén
+  deshabilitados mientras tanto.
 
 **Acciones** (Administrador):
 
 | Acción | Antes de enviar | Request | Éxito | Foco |
 |---|---|---|---|---|
-| Agregar etapa | Diálogo C-03 "Nueva etapa" | `POST /stages` (con `position` si no es "Al final") | Toast "Agregaste la etapa «{nombre}»."; lista releída | Vuelve a "+ Agregar etapa" (INV-F10 de 001) |
+| Agregar etapa | Diálogo C-03 "Nueva etapa". El envío espera a que no haya una escritura de etapas pendiente (BR-F14) | `POST /stages` (con `position` si no es "Al final"), calculada con la lista confirmada | Toast "Agregaste la etapa «{nombre}»."; lista releída | Vuelve a "+ Agregar etapa" (INV-F10 de 001) |
 | Editar | Diálogo C-03 "Editar etapa" con nombre, tipo y color actuales | `PATCH` con lo que cambió; si nada cambió, cierra sin request (INV-F9) | Toast "Guardamos la etapa «{nombre}»." | Vuelve al `[⋮]` de la fila |
-| Subir / Bajar | `pipelineViolation(afterMove(…))`; si rompe → C-05 | `POST /stages/{id}/move` con `position ± 1` | Lista con la respuesta; "Moviendo…" en la fila mientras espera; anuncio en V | Al `[⋮]` de la misma etapa en su lugar nuevo (INV-F6) |
-| Mover a otra posición… | Diálogo C-03 "Mover «{nombre}»" con un selector de posición | Ídem con la posición elegida; la posición actual no manda nada | Ídem | Ídem |
-| Eliminar | `pipelineViolation(afterDelete(…))`; si rompe → C-05; si no → `ConfirmDialog` | `DELETE /stages/{id}` | Toast "Eliminaste la etapa «{nombre}»."; lista releída | INV-F6: `[⋮]` de la fila siguiente, si no la anterior, si no "+ Agregar etapa" |
+| Subir / Bajar | Solo sin escrituras de etapas pendientes (BR-F14, DD-F14). `pipelineViolation(afterMove(…))`; si rompe → C-05 | `POST /stages/{id}/move` con `position ± 1`, calculada con la lista confirmada | Lista con la respuesta; "Moviendo…" en la fila y "Moviendo «{nombre}»…" en V mientras espera; resultado en V | Al `[⋮]` de la misma etapa en su lugar nuevo, si el foco seguía ahí o se perdió con el reordenamiento (INV-F6) |
+| Mover a otra posición… | Solo sin escrituras de etapas pendientes (BR-F14). Diálogo C-03 "Mover «{nombre}»" con un selector de posición | Ídem con la posición elegida; la posición actual no manda nada | Ídem | Ídem |
+| Eliminar | `pipelineViolation(afterDelete(…))`; si rompe → C-05; si no → `ConfirmDialog` | `DELETE /stages/{id}` (por id: si hay otra escritura pendiente, espera en la cola) | Toast "Eliminaste la etapa «{nombre}»."; lista releída | INV-F6: `[⋮]` de la fila siguiente, si no la anterior, si no "+ Agregar etapa" |
+
+**Dos movimientos seguidos** (DD-F14). Con A, B y C abiertas y D de cierre ganado: "Subir" en D
+manda la posición 3 y la fila de D dice "Moviendo…". Si antes de la respuesta se abre el menú de C,
+"Subir", "Bajar" y "Mover a otra posición…" están deshabilitados y V ya dijo "Moviendo «D»…". Con la
+respuesta, la lista queda A, B, D, C, V dice "«D» quedó en la posición 3 de 4." y los movimientos
+vuelven a estar disponibles. Ahora "Subir" en C manda la posición 3 (calculada con la lista
+confirmada) y el orden final es A, B, C, D. Sin esta regla, el segundo pedido salía con la posición 2,
+calculada sobre la lista vieja, y C terminaba dos lugares más arriba de lo que pidió el usuario.
 
 **C-03 Nueva etapa / Editar etapa** (`FormDialog`, §16.1):
 
@@ -834,6 +864,10 @@ Los ejemplos usan una empresa que renombró Proyecto a "Obra" (femenino).
   defecto, "Antes de «{primera etapa de cierre}»" si hay alguna; si no, "Al final".
 - Botones: "Agregar etapa" / "Guardar etapa" (progreso "Agregando…" / "Guardando…") y "Cancelar".
   Foco inicial en "Nombre". Esc o "Cancelar" cierran sin request.
+- Con una escritura de etapas pendiente (de otra fila), "Agregar etapa" queda deshabilitado y
+  descrito (`aria-describedby`) por la línea "Esperá a que termine el cambio de orden." arriba del
+  botón; lo escrito se conserva y el botón vuelve solo cuando la escritura termina (BR-F14). "Guardar
+  etapa" (editar) no espera: no calcula posiciones.
 
 **C-03 Mover a otra posición**: título "Mover «{nombre}»"; un `Select` "Posición" con "1 (al
 principio)", "2 (después de «A»)", …, "{n} (al final)", con la actual marcada "(lugar actual)" y
@@ -864,8 +898,8 @@ inicial) y "Eliminar" (destructivo, "Eliminando…").
 | Refetch | La lista sigue visible (dato *stale*), sin indicador |
 | Éxito (Administrador) | Como el wireframe, con "+ Agregar etapa" y `[⋮]` |
 | Éxito (Operador) | Sin "+ Agregar etapa" ni `[⋮]`; con el aviso R |
-| Operación pendiente | "Moviendo…", "Guardando…" o "Eliminando…" en la fila; sus acciones deshabilitadas; las demás filas usables (sus escrituras esperan en la cola, INV-F3) |
-| Error de acción | §13.1 (`invalid_state`, `not_found`, `name_taken`, red, `5xx`); en un diálogo, `FormAlert` y lo cargado se conserva; en una acción de fila, toast |
+| Operación pendiente | "Moviendo…", "Guardando…" o "Eliminando…" en la fila; sus acciones deshabilitadas. En **todas** las filas, "Subir", "Bajar" y "Mover a otra posición…" deshabilitados hasta la respuesta (BR-F14); "Editar" y "Eliminar" de las demás filas siguen usables y esperan en la cola (INV-F3). V dice qué se espera |
+| Error de acción | §13.1 (`invalid_state`, `not_found`, `name_taken`, red, `5xx`); en un diálogo, `FormAlert` y lo cargado se conserva; en una acción de fila, toast. Los movimientos vuelven a estar disponibles |
 | Sin permiso | N/A (ruta de lectura, INV-F8). Un `403` en una escritura: toast de 001 y la pantalla pasa a solo lectura |
 | Sesión vencida | §12.4 de 001 |
 
@@ -1163,19 +1197,20 @@ sequenceDiagram
         R-->>P: first_not_open
         P-->>A: C-05 con el motivo, foco en Entendido
     else válida
-        P->>P: fila con Moviendo, región viva vacía
-        P->>Q: mutate move (scope stages)
+        P->>P: fila con Moviendo, región viva dice Moviendo En curso
+        P->>Q: mutate move (scope y mutationKey de etapas)
+        Note over P: mientras tanto Subir, Bajar y Mover a deshabilitados en todas las filas
         Q->>API: POST /stages/{id}/move {position}
         alt 200 StageList
             API-->>Q: lista nueva
             Q->>Q: cancelQueries y setQueryData
-            P-->>A: lista reordenada, foco en Acciones para En curso, anuncio quedó en la posición 2 de 5
+            P-->>A: lista reordenada, foco en Acciones para En curso, anuncio quedó en la posición 2 de 5, movimientos habilitados
         else 409 invalid_state (lista vieja)
             API-->>Q: problem invalid_state
-            Q->>Q: invalidateQueries stages
-            P-->>A: toast con el texto de stage, lista releída
+            Q->>Q: invalidateQueries stages y espera la lectura
+            P-->>A: toast con el texto de stage, lista releída, movimientos habilitados
         else red o 5xx
-            P-->>A: toast con el mensaje de 001, la fila vuelve a su estado
+            P-->>A: toast con el mensaje de 001, la fila vuelve a su estado, movimientos habilitados
         end
     end
 ```
@@ -1264,6 +1299,7 @@ export interface FormDialogProps {
   submitLabel: string;                     // "Agregar etapa"
   pendingLabel: string;                    // "Agregando…"
   pending: boolean;                        // deshabilita enviar y cancelar; Esc no cierra mientras tanto
+  submitBlockedReason?: string;            // con texto, el envío queda deshabilitado y descrito por esta línea; cancelar y Esc siguen (BR-F14)
   onSubmit: React.FormEventHandler<HTMLFormElement>;
   children: React.ReactNode;               // campos + FormAlert de error general
   initialFocusRef?: React.RefObject<HTMLElement | null>;  // por defecto, el primer campo
@@ -1303,7 +1339,8 @@ export interface StageListItemProps {
   canManage: boolean;                      // sin acciones si es false
   isFirst: boolean;                        // sin "Subir"
   isLast: boolean;                         // sin "Bajar"
-  pending: 'update' | 'move' | 'delete' | null;
+  pending: 'update' | 'move' | 'delete' | null;   // operación pendiente de ESTA fila
+  movesBlocked: boolean;                   // BR-F14: hay una escritura de etapas pendiente (de cualquier fila)
   onAction: (action: StageAction, trigger: HTMLButtonElement) => void;
   triggerRef?: React.Ref<HTMLButtonElement>;   // para devolver el foco por id (INV-F6)
 }
@@ -1393,8 +1430,13 @@ export function moveOptions(stages: ReadonlyArray<Pick<Stage, 'id' | 'name'>>, s
 export function stageChanges(initial: Pick<Stage, 'name' | 'type' | 'color'>, values: Pick<StageFormValues, 'name' | 'type' | 'color'>): StageUpdate | Record<string, never>;
 
 // features/configuration/stages/api.ts
+export const STAGE_CHANGES_SCOPE: { id: string };            // cola de las escrituras de etapas (INV-F3)
+export const STAGE_MUTATION_KEY: readonly ['settings', 'stages', 'write'];   // la llevan las cuatro mutaciones (INV-F11)
+/** true mientras alguna de las cuatro mutaciones de etapas está pendiente (en vuelo o esperando en la cola).
+ *  useIsMutating({ mutationKey: STAGE_MUTATION_KEY }) > 0. Decide BR-F14 (DD-F14). */
+export function useStageWritePending(): boolean;
 export function useStages(): UseQueryResult<Stage[], ApiError>;
-export function useCreateStage(): UseMutationResult<Stage, ApiError, StageCreate>;                      // scope STAGE_CHANGES_SCOPE
+export function useCreateStage(): UseMutationResult<Stage, ApiError, StageCreate>;                      // scope STAGE_CHANGES_SCOPE, mutationKey STAGE_MUTATION_KEY
 export function useUpdateStage(): UseMutationResult<Stage, ApiError, { stageId: string; changes: StageUpdate }>;
 export function useMoveStage(): UseMutationResult<Stage[], ApiError, { stageId: string; position: number }>;
 export function useDeleteStage(): UseMutationResult<void, ApiError, { stageId: string }>;
@@ -1496,19 +1538,20 @@ Rige §18 de 001. Lo propio de 002:
 | Tema | Decisión | Criterio |
 |---|---|---|
 | Reordenar sin arrastre | "Subir", "Bajar" y "Mover a otra posición…" en el menú de cada etapa; operables con Enter, flechas y Esc. No hay gesto obligatorio (DD-F4, P-F1 aprobada) | 2.1.1, 2.5.7 |
-| Resultado de mover | `LiveRegion` de la pantalla (vacía desde el montaje): "«{nombre}» quedó en la posición {n} de {total}." | 4.1.3 |
-| Foco tras mover o quitar | INV-F6: al disparador de la misma etapa en su lugar nuevo; tras eliminar, archivar o restaurar, al de la fila vecina o al botón de agregar. Mover un nodo del DOM puede quitarle el foco: se vuelve a enfocar por id después de pintar la lista nueva | 2.4.3 |
+| Resultado de mover | `LiveRegion` de la pantalla (vacía desde el montaje): "Moviendo «{nombre}»…" al empezar y "«{nombre}» quedó en la posición {n} de {total}." al terminar | 4.1.3 |
+| Movimientos seguidos (BR-F14) | Mientras hay una escritura de etapas pendiente, los ítems "Subir", "Bajar" y "Mover a otra posición…" de todos los menús quedan deshabilitados (`disabled` de Radix: `aria-disabled` y sin activación), con su texto de siempre; el motivo lo da el anuncio "Moviendo «{nombre}»…" y el "Moviendo…" visible en la fila. Los disparadores `[⋮]` nunca se deshabilitan, así el foco no se pierde. La espera dura una respuesta del servidor (NFR-F7) | 3.3.2, 4.1.2 |
+| Foco tras mover o quitar | INV-F6: al disparador de la misma etapa en su lugar nuevo (si el foco seguía ahí o se perdió con el reordenamiento; nunca se le quita a otro control que el usuario eligió mientras esperaba); tras eliminar, archivar o restaurar, al de la fila vecina o al botón de agregar. Mover un nodo del DOM puede quitarle el foco: se vuelve a enfocar por id después de pintar la lista nueva | 2.4.3 |
 | Posición | `<ol>` para etapas: el lector anuncia "1 de 5" | 1.3.1 |
 | Color | Nunca es el único dato: el tipo va en texto; en los selectores, cada color con su nombre | 1.4.1 |
 | Muestras de color | Contraste ≥ 3:1 contra el fondo de la tarjeta (§19.2) aunque sean decorativas | 1.4.11 (buena práctica) |
 | Grupos de opciones | Tipo, color, unidad, moneda y género: `RadioGroup` con `<legend>`/etiqueta; el objetivo táctil es la tarjeta `<label>` completa (≥ 44 px), el círculo conserva su forma (P-F2: corregido en el componente compartido, T-002-F103) | 1.3.1, 2.5.8 |
-| Acciones bloqueadas | No se deshabilitan sin motivo: el ítem del menú sigue activo y abre C-05 con el motivo y qué hacer. Ningún motivo largo dentro de un menú (evita el desborde del hallazgo 3 de T-F705 de 001) | 3.3.3, 1.4.10 |
+| Acciones bloqueadas | No se deshabilitan sin motivo: el ítem del menú sigue activo y abre C-05 con el motivo y qué hacer. Ningún motivo largo dentro de un menú (evita el desborde del hallazgo 3 de T-F705 de 001). La única excepción es la espera de BR-F14, que dura una respuesta y se anuncia en la región viva | 3.3.3, 1.4.10 |
 | Menús | Ancho máximo = el disponible en el viewport; el texto salta de línea (P-F2: corregido en el componente compartido) | 1.4.10 |
 | Enlaces con aspecto de botón | "+ Nuevo ítem", "Volver al catálogo": ≥ 44 px como los botones (hallazgo 1 de T-F705 de 001; P-F2: corregido en la regla compartida) | 2.5.8 |
 | Enlaces sueltos | "← Ajustes", "← Catálogo" con el patrón `inline-flex min-h-11` de 001 (hallazgo 4); en 002 no hay enlaces dentro de frases | 2.5.8 |
 | Separación | Listas de enlaces y tarjetas con objetivos vecinos separados ≥ 8 px (P-F3, aprobada) | 2.5.8 (supera) |
 | Nombre accesible = texto visible | "+ Agregar" → "Agregar categoría de ingreso" (contiene el visible) | 2.5.3 |
-| Diálogos de formulario | Foco inicial en el primer campo; Esc cierra (salvo mientras envía); el foco vuelve al disparador; errores de campo con `aria-describedby`; error general `role="alert"` | 2.4.3, 3.3.1 |
+| Diálogos de formulario | Foco inicial en el primer campo; Esc cierra (salvo mientras envía); el foco vuelve al disparador; errores de campo con `aria-describedby`; error general `role="alert"`. Un envío bloqueado por BR-F14 queda descrito por su motivo (`submitBlockedReason`) | 2.4.3, 3.3.1 |
 | Contador de caracteres | En la ayuda del campo (`aria-describedby`), no en una región viva: no interrumpe al tipear | 3.3.2, 4.1.3 |
 | Disclosure de archivadas | `<button aria-expanded aria-controls>`; el contenido se agrega después del botón en el orden de lectura | 4.1.2 |
 | Solo lectura | Las vistas del Operador son texto (listas de definiciones), no campos deshabilitados | 1.3.1 |
@@ -1516,7 +1559,8 @@ Rige §18 de 001. Lo propio de 002:
 
 **Lo que no se garantiza solo**: axe en E2E por pantalla (T-002-F602) y la verificación manual de
 T-002-F603 (teclado de punta a punta en S-13 y S-14, VoiceOver o NVDA en mover, eliminar y archivar,
-320 px y zoom 200 %). Nada de 002 queda por debajo de AA a sabiendas. De los hallazgos de T-F705 de
+incluidos dos movimientos seguidos con los ítems deshabilitados, 320 px y zoom 200 %). Nada de 002
+queda por debajo de AA a sabiendas. De los hallazgos de T-F705 de
 001, T-002-F103 corrige el 1, el 2 y el 3 (P-F2) y el 5 en Ajustes (P-F3); el 4 (enlaces sueltos de
 17–18 px en pantallas de 001) queda para el rediseño, y las pantallas nuevas no lo repiten.
 
@@ -1635,10 +1679,11 @@ fallaría con `onUnhandledRequest: 'error'`.
 | **DD-F7** | Una sola lectura por lista con `include_archived=true`; la pantalla separa activas y archivadas | Una clave de caché, una invalidación, sin un segundo request al abrir "Archivadas" | (a) Dos queries (activas y archivadas): dos invalidaciones por acción; (b) filtrar por tipo en el servidor (`?type=`): dos lecturas para una pantalla | Se trae lo archivado aunque no se mire (volumen chico, S-1) |
 | **DD-F8** | `parseMoneyInput` en formato es-AR con una excepción: un solo punto seguido de 1 o 2 dígitos y sin coma es decimal (§17.2). `formatMoney` con el código ISO ("ARS 4.500,00", "USD 4.500,00") | Teclados numéricos que solo ofrecen punto; el código evita la ambigüedad de "$" entre pesos y dólares en Argentina (constitución: nunca confundir monedas) | (a) Solo coma (rechaza "4500.50" de un teclado sin coma); (b) aceptar punto o coma como decimal según la posición (ambigüedad "1.500"); (c) "$" y "US$" (el "$" se lee como pesos y como dólares) | "1.50" es 1,50 y no 150: documentado y probado |
 | **DD-F9** | Archivar categorías e ítems sin confirmación; el toast dice dónde quedaron. Sin "Deshacer" en el toast | Es reversible (spec); confirmar algo reversible agrega un paso | (a) Confirmación (un toque más sin protección real); (b) "Deshacer" en el toast (los toasts desaparecen: con teclado o lector puede no alcanzarse a tiempo, WCAG 2.2.1) | Un archivado por error se restaura desde "Archivadas" |
-| **DD-F10** | Escrituras de etapas en una cola (`STAGE_CHANGES_SCOPE`) y cancelación de lecturas antes de escribir (INV-F3), como DD-F33 de 001 | Mover y crear cambian posiciones de otras etapas: una respuesta vieja no debe pisar una lista nueva | (a) Sin cola (respuestas fuera de orden); (b) actualización optimista (el servidor puede rechazar por las reglas y habría que revertir) | Un segundo movimiento espera al primero ("Moviendo…" desde el toque) |
+| **DD-F10** | Escrituras de etapas en una cola (`STAGE_CHANGES_SCOPE`) y cancelación de lecturas antes de escribir (INV-F3), como DD-F33 de 001 | Mover y crear cambian posiciones de otras etapas: una respuesta vieja no debe pisar una lista nueva | (a) Sin cola (respuestas fuera de orden); (b) actualización optimista (el servidor puede rechazar por las reglas y habría que revertir) | Un segundo movimiento espera al primero ("Moviendo…" desde el toque). La cola ordena respuestas pero no conserva la intención de un movimiento calculado sobre una lista vieja: eso lo resuelve DD-F14 |
 | **DD-F11** | `fieldErrorMessage` con un `scope` opcional (§13.3) y nombres de campo iguales a las rutas del contrato (`reference_price.amount_cents` guarda el texto del importe) | Las llamadas de 001 no cambian; los `422` se aplican directo | (a) Una función de mensajes por formulario (repite las reglas comunes); (b) un mapa de alias de campos (otra pieza para algo que React Hook Form ya resuelve con rutas) | Un campo de formulario que no tiene el tipo del contrato (texto en `amount_cents`), comentado en el esquema |
 | **DD-F12** | `SettingsLinkList` compartido para S-08: todas las secciones de Ajustes con el mismo patrón de enlaces, ≥ 44 px y separados ≥ 8 px (P-F3, aprobada) | Un solo lugar para el tamaño y la separación de los objetivos | (a) Agregar la sección nueva con su propio patrón (dos patrones en la misma pantalla); (b) relajar NFR-F07 de 001 a lo que pide WCAG 2.5.8 (P-F3, opción descartada) | Toca la sección "Tu empresa" de 001 (solo su estructura de lista) |
 | **DD-F13** | Las correcciones de los hallazgos 1, 2 y 3 de T-F705 de 001 se hacen en los componentes compartidos dentro de T-002-F103 (P-F2, aprobada): el radio no hereda el mínimo de 44 px (su objetivo es la tarjeta), los enlaces con aspecto de botón miden 44 px y el menú de acciones no pasa del ancho disponible | Las pantallas nuevas usan esos mismos componentes; corregirlos en un solo lugar no repite el defecto y arregla también las pantallas de 001 | (a) Variantes propias solo para 002 (dos versiones de cada componente hasta el rediseño); (b) dejarlo para el rediseño (las pantallas nuevas repetirían los defectos) | Cambia pantallas de 001 sin que sea su spec: T-002-F103 suma aserciones E2E sobre ellas (RF-7) |
+| **DD-F14** | *(Revisión 1 de Codex del PR #49, 2026-10-26)* **Ninguna posición se calcula sobre una lista que todavía va a cambiar.** Mientras hay una escritura de etapas pendiente (`useStageWritePending()`, sobre `STAGE_MUTATION_KEY`), "Subir", "Bajar" y "Mover a otra posición…" de todas las filas y el envío de "Nueva etapa" quedan deshabilitados; vuelven cuando la respuesta (o la relectura que la mutación espera) ya está en la lista. "Editar" y "Eliminar" siguen disponibles: usan el id y esperan en la cola. Los disparadores de los menús no se deshabilitan (el foco no se pierde); la región viva dice "Moviendo «{nombre}»…" al empezar y el resultado al terminar (BR-F14, INV-F11) | Con A, B, C y D, "Subir" en D manda la posición 3; si antes de la respuesta se pulsa "Subir" en C, se calculaba la posición 2 con la lista vieja y, en serie, C saltaba dos lugares. La cola (DD-F10) evita que una respuesta vieja pise a una nueva, pero no puede saber qué quiso decir una posición absoluta calculada antes. Deshabilitar es lo más simple y robusto: no hay intenciones guardadas, ni un segundo chequeo de las reglas del pipeline al ejecutar, ni una explicación C-05 que aparezca tarde; la espera dura una respuesta del servidor (NFR-F7: el servidor responde en < 100 ms p95, plan §13) | (b) Encolar acciones relativas ("subir una") y recalcular la posición con la lista confirmada al ejecutarlas: reordenar rápido sería más fluido, pero cada acción encolada necesita volver a evaluar las reglas del pipeline al salir, mostrar C-05 o un error después de que el usuario ya siguió con otra cosa, y anunciar varios resultados seguidos; "Mover a…" con una posición elegida sobre la lista vieja tendría el mismo problema. (c) Actualización optimista de la lista (el servidor puede rechazar por las reglas y habría que revertir varias). (d) Deshabilitar los disparadores de los menús (el foco quedaría sobre un botón deshabilitado y algunos navegadores lo pierden) | Reordenar rápido pide esperar una respuesta entre movimiento y movimiento; dos ítems deshabilitados sin motivo escrito en el menú durante ese lapso (lo dice la región viva; S-F6). No cambia P-F1: el reordenamiento sigue por menú, sin arrastre |
 
 ---
 
@@ -1651,6 +1696,8 @@ fallaría con `onUnhandledRequest: 'error'`.
 | S-F3 | La regla del pipeline del backend es exactamente la de T-002-B301 (plan DD-5) | Si el backend cambia la tabla, INV-F4 obliga a cambiar `pipeline.ts` en el mismo PR (matriz §27) |
 | S-F4 | El servidor cuenta los largos en runas (*code points*), como dice el plan (§10, DD-43 de 001) | El cliente aceptaría un texto que el servidor rechaza: `422` por campo |
 | S-F5 | La regla de minúsculas de §9.2 cubre los nombres que van a usar las empresas (sustantivos comunes y siglas) | Se pide el campo de minúscula al backend (ADR-030, alternativa) |
+| S-F6 | Un ítem `disabled` del `DropdownMenu` de Radix se muestra con su texto, lleva `aria-disabled` y no se activa; si el recorrido con flechas lo incluye o lo saltea depende de la librería (**a validar** en T-002-F603 con un lector de pantalla) | En los dos casos el usuario escucha "Moviendo «{nombre}»…" y los ítems vuelven al terminar; si el lector no anuncia el estado, se agrega el motivo corto "(esperá)" al texto del ítem mientras dura la espera |
+| S-F7 | `useIsMutating` cuenta también las mutaciones que esperan en la cola de un `scope` (están `pending` desde el `mutate`, como en DD-F33 de 001) (**a validar** en T-002-F202) | `useStageWritePending()` se calcula con el estado de las cuatro mutaciones de la pantalla en lugar de `useIsMutating` |
 
 ---
 
@@ -1661,7 +1708,7 @@ recomendacion"). Ya están incorporadas al cuerpo del documento.
 
 | ID | Pregunta | Decisión aprobada | Descartado | Dónde se aplica |
 |---|---|---|---|---|
-| **P-F1** | ¿Reordenar etapas arrastrando? | **A**: no en 002; "Subir", "Bajar" y "Mover a otra posición…" desde el menú de la etapa. Si se quiere arrastre, lo evalúa el rediseño | B: arrastre con una librería (dependencia nueva, más tests de accesibilidad); C: decidirlo recién en el rediseño | DD-F4, §14.2, §18 |
+| **P-F1** | ¿Reordenar etapas arrastrando? | **A**: no en 002; "Subir", "Bajar" y "Mover a otra posición…" desde el menú de la etapa. Si se quiere arrastre, lo evalúa el rediseño | B: arrastre con una librería (dependencia nueva, más tests de accesibilidad); C: decidirlo recién en el rediseño | DD-F4, §14.2, §18. DD-F14 (posterior) no la cambia: solo ordena dos movimientos seguidos |
 | **P-F2** | ¿Corregir ahora, en los componentes compartidos, los hallazgos 1, 2 y 3 de T-F705 de 001 (enlaces-botón de 36 px, radios deformados por la regla de 44 px, menú que desborda a 375 px)? | **A**: sí, en el componente compartido, dentro de T-002-F103 (también arregla las pantallas de 001) | B: variantes solo para las pantallas nuevas; C: dejarlo para el rediseño | DD-F13, §18, T-002-F103 |
 | **P-F3** | ¿Qué rige para la separación de objetivos en las listas nuevas (NFR-F07 de 001 frente al hallazgo 5 de T-F705)? | **A**: se mantiene NFR-F07: listas de enlaces y tarjetas con objetivos vecinos separados ≥ 8 px, también en Ajustes (`SettingsLinkList`); los menús quedan como están | B: relajar NFR-F07 a lo que pide WCAG 2.5.8 (24 px, sin separación) | NFR-F3, DD-F12, §14.1, T-002-F103 |
 | **P-F4** | ¿Los datos sembrados con esas palabras (la etapa "Presupuesto", la categoría "Cobros de clientes") cambian solos al renombrar? | **A**: no: son datos que la empresa edita; S-18 lo aclara | B: renombrarlos automáticamente (una regla nueva en el backend sobre datos del usuario) | BR-F11, §14.6, ADR-030 |
@@ -1672,7 +1719,7 @@ recomendacion"). Ya están incorporadas al cuerpo del documento.
 
 | ID | Hallazgo | Opción recomendada | Estado |
 |---|---|---|---|
-| **H-1** | T-002-B202 cambia el contrato de 001 y rompe el mapa exhaustivo de errores del frontend; con `make check-all` verde como checkpoint de la Fase 2, no se podía mergear sin el frontend. | T-002-B202 nombra a **T-002-F001** como tarea de la misma rama y el checkpoint de la Fase 2 exige el typecheck del frontend | **Resuelto (2026-10-26).** Verificado en la sección Backend de `tasks.md`: T-002-B201, T-002-B202 y T-002-F001 van en una sola rama (convenciones y "Orden y dependencias" de la Fase 2); T-002-B202 dice "En la misma rama va T-002-F001"; T-002-B201 suma la fila del typecheck del frontend; el punto 1 del checkpoint de la Fase 2 exige `make check` "incluido el typecheck y los tests del frontend con T-002-F001"; la fila de coordinación y la trazabilidad lo nombran |
+| **H-1** | T-002-B202 cambia el contrato de 001 y rompe el mapa exhaustivo de errores del frontend; con `make check-all` verde como checkpoint de la Fase 2, no se podía mergear sin el frontend. | T-002-B202 nombra a **T-002-F001** como tarea de la misma rama y el checkpoint de la Fase 2 exige el typecheck del frontend | **Resuelto (2026-10-26).** Verificado en la sección Backend de `tasks.md`: T-002-B201, T-002-B202 y T-002-F001 van en una sola rama (convenciones y "Orden y dependencias" de la Fase 2); T-002-B202 dice "En la misma rama va T-002-F001"; T-002-B201 suma la fila del typecheck del frontend (`make web-check`); el punto 1 del checkpoint de la Fase 2 exige `make check-all` (`make check` del backend y `make web-check`), "incluido el typecheck y los tests del frontend" con T-002-F001. `make check` solo corre el backend ("Comandos de validación" de la sección Backend); la fila de coordinación y la trazabilidad lo nombran |
 | **H-2** | El contrato no documenta las rutas con punto de `FieldError.field` que el plan sí usa (`reference_price.amount_cents`, `reference_price.currency`, `project.singular`, `customer.gender`…). La descripción de `FieldError.field` en 001 dice "nombre del campo del request (snake_case)". La UI depende de esas rutas para poner el error en su campo (§13.3) | Documentarlas en el contrato de 002 (en la descripción de `PUT /settings/labels` y de los requests del catálogo) o ampliar la descripción de `FieldError.field` en 001 ("ruta con punto para campos anidados"). Sin cambio de esquema | **Abierto, no bloquea** (para el `backend-architect`) |
 
 No encontré endpoints, campos ni códigos faltantes para estas pantallas. Observaciones sin acción:
@@ -1698,6 +1745,7 @@ aplican.
 | RF-6 | Un formato de `Intl` distinto entre Node (CI) y los navegadores rompe tests de `formatMoney` | Media | Bajo | S-F2: tests con `Intl` como oráculo para el símbolo y la parte numérica fijada |
 | RF-7 | Corregir componentes compartidos (P-F2, DD-F13) cambia pantallas de 001 sin que nadie lo note | Media | Bajo | T-002-F103 suma aserciones de tamaño en E2E de 001 (radios, enlaces-botón, menú a 375 px, Ajustes) |
 | RF-8 | La lista del catálogo con 1.000 ítems es lenta en un Android medio | Baja | Medio | NFR-F6 se mide; salida: paginar en el cliente (decisión de 005) |
+| RF-9 | Con una red lenta, la espera de BR-F14 entre dos movimientos se nota (cada uno espera su respuesta) | Media | Bajo | "Moviendo…" desde el toque y el anuncio en la región viva; "Mover a otra posición…" resuelve en un solo pedido lo que serían varios "Subir". Si molesta en la práctica, la alternativa (b) de DD-F14 queda documentada |
 
 ---
 
@@ -1715,7 +1763,8 @@ La actualización va **en el mismo cambio** que el código.
 | La forma de `Labels` o la regla de minúsculas | `lib/terminology.ts` y su test + un ADR nuevo que reemplace a ADR-030 (*Accepted*: no se edita) + §9 |
 | Una pantalla o ruta de 002 | §4, §5, §6 + `SettingsLinkList` de S-08 |
 | Dónde vive una pieza de estado o una clave de caché | §11 + INV-F3 |
-| La versión de TanStack Query | Revisar DD-F10 e INV-F3 con la nota de DD-F33 de 001 sobre `cancelQueries` |
+| Una mutación nueva de etapas o una acción que calcula posiciones | `STAGE_CHANGES_SCOPE` y `STAGE_MUTATION_KEY` (INV-F3, INV-F11) + BR-F14 + la cola de T-002-F202 |
+| La versión de TanStack Query | Revisar DD-F10, DD-F14, INV-F3 e INV-F11 con la nota de DD-F33 de 001 sobre `cancelQueries` y S-F7 sobre `useIsMutating` |
 | Un token de color de etapa | §19.2 + `colorTokens.test.ts` |
 | Una feature de 003 a 010 que consume configuración | Mover la query o el componente a `api/` o `components/` (§10.1) y actualizar §20 |
 | Un hallazgo de T-F705 de 001 que se corrige | `tasks.md` de 001 (estado de T-F705) + §18 de este documento |

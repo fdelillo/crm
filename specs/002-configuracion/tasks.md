@@ -704,6 +704,12 @@ Registro de lo aprobado:
 | 2026-10-26 | P-F3: separación ≥ 8 px en las listas nuevas y en Ajustes (NFR-F07 de 001 sin cambios) | T-002-F103 (`SettingsLinkList`) |
 | 2026-10-26 | P-F4: los datos sembrados no se renombran solos | T-002-F502 (aclaración en S-18) |
 
+Cambios posteriores a la aprobación (no cambian lo aprobado):
+
+| Fecha | Origen | Efecto en esta sección |
+|---|---|---|
+| 2026-10-26 | Revisión 1 de Codex del PR #49: dos movimientos seguidos en filas distintas mandaban el segundo con una posición calculada sobre la lista vieja | `ui.md` DD-F14, BR-F14 e INV-F11: mientras hay una escritura de etapas pendiente, "Subir", "Bajar", "Mover a otra posición…" y el envío de "Nueva etapa" quedan deshabilitados. T-002-F202 suma las filas de movimientos seguidos y la cola cambia de caso; T-002-F103 suma `submitBlockedReason` en `FormDialog`; T-002-F603 suma la verificación con lector de pantalla (S-F6). P-F1 sin cambios |
+
 ### Convenciones de esta sección
 
 Rigen las de la sección Frontend de [`tasks.md` de 001](../001-empresas-usuarios/tasks.md)
@@ -725,11 +731,11 @@ dependencias como en 001 (002 no agrega dependencias). Además:
   antes, pero se **mergea** después de que su fase del backend está en `main` (tabla de dependencias).
 - **Archivos de test por funcionalidad**: `lib/money.test.ts`, `lib/terminology.test.ts`,
   `lib/textLength.test.ts`, `lib/removalFocus.test.ts`, `features/configuration/stages/pipeline.test.ts`,
-  `StagesPage.test.tsx`, `StagesOrder.test.tsx` (la cola de etapas), `CategoriesPage.test.tsx`,
-  `catalog/schemas.test.ts`, `CatalogPage.test.tsx`, `CatalogItemPage.test.tsx`,
-  `LabelsPage.test.tsx`, `QuoteDefaultsPage.test.tsx`, `app/terminologyLoading.test.tsx`,
-  `test/terminologyLiterals.test.ts`; E2E en `web/e2e/company-configuration.spec.ts` y
-  `web/e2e/configuration-accessibility.spec.ts`.
+  `StagesPage.test.tsx`, `StagesOrder.test.tsx` (la cola de etapas y los movimientos seguidos),
+  `CategoriesPage.test.tsx`, `catalog/schemas.test.ts`, `CatalogPage.test.tsx`,
+  `CatalogItemPage.test.tsx`, `LabelsPage.test.tsx`, `QuoteDefaultsPage.test.tsx`,
+  `app/terminologyLoading.test.tsx`, `test/terminologyLiterals.test.ts`; E2E en
+  `web/e2e/company-configuration.spec.ts` y `web/e2e/configuration-accessibility.spec.ts`.
 - **Qué se sustituye y qué no**: la tabla de 001 sin cambios. La red con MSW; nunca hooks de datos,
   `QueryClient`, router, React Hook Form, Zod ni Radix. Las funciones puras nuevas
   (`pipeline.ts`, `money.ts`, `terminology.ts`, `removalFocus.ts`) se usan **reales** en los tests de
@@ -739,7 +745,8 @@ dependencias como en 001 (002 no agrega dependencias). Además:
   Perdido (`lost`, `gray`); las 5 categorías de sistema, "Otros ingresos" y 7 de egreso; sin ítems;
   nombres por defecto; validez 15 y sin condiciones. Variante "renombrada": Proyecto → "Obra"/"Obras"
   femenino, Cliente → "Comitente"/"Comitentes" masculino, Presupuesto → "Cotización"/"Cotizaciones"
-  femenino. Sesión de Administrador y de Operador.
+  femenino. Variante "cuatro etapas" (para los movimientos seguidos): Presupuesto, Aprobado y En curso
+  (`open`) y Finalizado (`won`), sin Perdido. Sesión de Administrador y de Operador.
 
 ### Comandos de validación
 
@@ -862,7 +869,7 @@ S-F2, `ui.md` §17.2
 - **Refactor**: la conversión centavos ↔ texto decimal en una sola función interna.
 
 **T-002-F103 [T] — Componentes compartidos y correcciones aprobadas en P-F2 y P-F3** · P-F2, P-F3
-(aprobadas el 2026-10-26), NFR-F3, NFR-F4, DD-F12, DD-F13, RF-7, `ui.md` §14.1, §16.1, §18;
+(aprobadas el 2026-10-26), NFR-F3, NFR-F4, DD-F12, DD-F13, BR-F14, RF-7, `ui.md` §14.1, §16.1, §18;
 hallazgos 1, 2, 3 y 5 de T-F705 de 001
 - **Red** (componentes con Testing Library; E2E con Playwright en Chromium):
 
@@ -870,6 +877,7 @@ hallazgos 1, 2, 3 y 5 de T-F705 de 001
   |---|---|
   | `FormDialog` abierto | `role="dialog"` con nombre = título; foco en el primer campo; Esc cierra y el foco vuelve al disparador |
   | `FormDialog` con `pending` | "Cancelar" y el envío deshabilitados; Esc no cierra; el botón dice el `pendingLabel` |
+  | `FormDialog` con `submitBlockedReason` | el envío deshabilitado y descrito (`aria-describedby`) por la línea del motivo, visible; "Cancelar" y Esc siguen funcionando; lo escrito se conserva; sin el motivo, el envío vuelve a estar habilitado |
   | `BlockedActionDialog` | `role="alertdialog"` con título y descripción; un solo botón "Entendido", con el foco; al cerrar, el foco vuelve al disparador |
   | `ArchivedSection` con `count` 2 / 0 | botón "Ver archivadas (2)" con `aria-expanded="false"`; al activarlo, `true` y el contenido visible / nada en el DOM |
   | `SettingsLinkList` | una lista con un enlace por ítem, por nombre accesible |
@@ -879,11 +887,11 @@ hallazgos 1, 2, 3 y 5 de T-F705 de 001
   | E2E, 375 y 320 px: menú de acciones de un usuario con una acción deshabilitada | el menú cabe en el viewport (borde derecho ≤ ancho de la ventana) y su texto no se corta (hallazgo 3) |
   | E2E, 375 px: Ajustes como Administrador | "Datos de la empresa" y "Usuarios" miden ≥ 44 px y están separados ≥ 8 px (P-F3, hallazgo 5) |
 - **Green (implementación)**: `components/ui/dialog.tsx` y `components/ui/textarea.tsx` con el CLI de
-  shadcn; `FormDialog`, `BlockedActionDialog`, `ArchivedSection`, `SettingsLinkList`,
-  `ReadOnlyNotice` (§16.1); S-08 usa `SettingsLinkList` en "Tu empresa"; P-F2 (DD-F13): el radio no
-  hereda el mínimo de 44 px de `globals.css` (su objetivo es la tarjeta), `a[data-slot="button"]`
-  entra en la regla de 44 px, y `DropdownMenuContent` limita su ancho al disponible y deja saltar el
-  texto.
+  shadcn; `FormDialog` (con `submitBlockedReason`), `BlockedActionDialog`, `ArchivedSection`,
+  `SettingsLinkList`, `ReadOnlyNotice` (§16.1); S-08 usa `SettingsLinkList` en "Tu empresa"; P-F2
+  (DD-F13): el radio no hereda el mínimo de 44 px de `globals.css` (su objetivo es la tarjeta),
+  `a[data-slot="button"]` entra en la regla de 44 px, y `DropdownMenuContent` limita su ancho al
+  disponible y deja saltar el texto.
 - **Refactor**: que ninguna de las correcciones use clases de la paleta de Tailwind (INV-F23 de 001).
 
 **Checkpoint Fase F1**: `npm run check` y `npm run e2e` en verde + prueba independiente.
@@ -894,15 +902,17 @@ hallazgos 1, 2, 3 y 5 de T-F705 de 001
 
 **Objetivo**: el Administrador ve el pipeline y agrega, edita (nombre, tipo, color), mueve y elimina
 etapas con teclado y en el celular; las acciones que rompen las reglas se explican antes de enviar;
-el Operador ve la lista en solo lectura. Ajustes muestra la sección "Configuración" con su primer
-enlace.
+dos movimientos seguidos nunca usan una posición calculada sobre una lista vieja; el Operador ve la
+lista en solo lectura. Ajustes muestra la sección "Configuración" con su primer enlace.
 
 **Prueba independiente**: con el backend (Fases 3 y 4), registrar una empresa "Genérico" y, solo con
-teclado: Ajustes → "Etapas de los proyectos"; mover "En curso" dos veces hacia arriba (se anuncia la
-posición y el foco sigue en su menú); agregar "Instalación" antes de "Finalizado"; intentar eliminar
-"Finalizado" (aparece la explicación); cambiar "Perdido" a "Cierre ganado" y entonces eliminar
-"Finalizado". Como un Operador invitado, la misma lista sin "+ Agregar etapa" ni menús. A 320 px, sin
-scroll horizontal.
+teclado: Ajustes → "Etapas de los proyectos"; mover "En curso" dos veces hacia arriba (se anuncia
+"Moviendo «En curso»…" y después la posición, y el foco sigue en su menú); "Subir" en "Finalizado" y
+enseguida abrir el menú de otra fila: "Subir", "Bajar" y "Mover a otra posición…" aparecen
+deshabilitados hasta que termina el primer movimiento; agregar "Instalación" antes de "Finalizado";
+intentar eliminar "Finalizado" (aparece la explicación); cambiar "Perdido" a "Cierre ganado" y
+entonces eliminar "Finalizado". Como un Operador invitado, la misma lista sin "+ Agregar etapa" ni
+menús. A 320 px, sin scroll horizontal.
 
 **T-002-F201 [T] — Reglas del pipeline en el cliente** · Historia 1.4 y 1.5, P-6, plan DD-5 y
 T-002-B301, INV-F4, INV-F9, DD-F5, `ui.md` §16.4
@@ -928,8 +938,8 @@ T-002-B301, INV-F4, INV-F9, DD-F5, `ui.md` §16.4
 - **Refactor**: que las cuatro funciones `after*` compartan el reordenamiento a posiciones 1..n.
 
 **T-002-F202 [T] — Pantalla de etapas y entrada en Ajustes** · Historia 1 (1 a 5), FR-001, FR-008,
-BR-F1 a BR-F5, BR-F12, INV-F3, INV-F6, INV-F8, INV-F19 de 001, DD-F1, DD-F4 a DD-F6, DD-F10,
-`ui.md` §14.1, §14.2, §15.1, §15.2
+BR-F1 a BR-F5, BR-F12, BR-F14, INV-F3, INV-F6, INV-F8, INV-F11, INV-F19 de 001, DD-F1, DD-F4 a
+DD-F6, DD-F10, DD-F14, S-F7, `ui.md` §14.1, §14.2, §15.1, §15.2
 - **Red** (pantalla con MSW, sesión de Administrador salvo que diga Operador):
 
   | Interacción | Resultado observable |
@@ -940,7 +950,7 @@ BR-F1 a BR-F5, BR-F12, INV-F3, INV-F6, INV-F8, INV-F19 de 001, DD-F1, DD-F4 a DD
   | `500` con `instance` | "No pudimos cargar las etapas." + código + "Reintentar" |
   | Operador | sin "+ Agregar etapa" ni botones "Acciones para …"; aviso "Solo un administrador puede cambiar las etapas."; nunca "Sin permiso" (INV-F8) |
   | Menú de la primera / de la última etapa (teclado: Enter, flechas) | sin "Subir" / sin "Bajar"; nombre accesible "Acciones para {nombre}" |
-  | "Subir" en En curso → `200` con la lista nueva | la fila pasa a la posición 2; durante la espera, "Moviendo…" en la fila; la región viva (presente y vacía antes) dice "«En curso» quedó en la posición 2 de 5."; el foco queda en "Acciones para En curso" |
+  | "Subir" en En curso → `200` con la lista nueva | la fila pasa a la posición 2; durante la espera, "Moviendo…" en la fila y "Moviendo «En curso»…" en la región viva (presente y vacía antes); con la respuesta, la misma región dice "«En curso» quedó en la posición 2 de 5."; el foco queda en "Acciones para En curso" |
   | "Subir" en Finalizado hasta la posición 1 (con En curso, Aprobado y Presupuesto arriba, hasta que la regla se rompería) | al intentar dejarla primera: diálogo "No se puede mover «Finalizado» ahí" con "Entendido" (foco); ningún request |
   | "Mover a otra posición…" → posición 1 para En curso → "Mover" | `POST …/move {position: 1}`; mismo resultado observable |
   | "Mover a otra posición…" sin cambiar la posición actual → "Mover" | ningún request; el diálogo se cierra |
@@ -961,19 +971,31 @@ BR-F1 a BR-F5, BR-F12, INV-F3, INV-F6, INV-F8, INV-F19 de 001, DD-F1, DD-F4 a DD
   | Agregar → red caída / `503` | `FormAlert` en el diálogo con el texto de 001; lo escrito se conserva |
   | Agregar → `403 forbidden` (le bajaron el rol) | `/me` pedido de nuevo; con el permiso perdido, la pantalla queda en solo lectura (sin "Sin permiso") |
   | Doble activación de "Agregar etapa" en el diálogo | un solo `POST` |
-- **Red — cola de etapas** (`StagesOrder.test.tsx`, INV-F3; `test/gate.ts` de 001 retiene respuestas):
+- **Red — cola y movimientos seguidos** (`StagesOrder.test.tsx`, INV-F3, INV-F11, BR-F14;
+  `test/gate.ts` de 001 retiene respuestas; fixture "cuatro etapas": Presupuesto, Aprobado y En curso
+  abiertas, Finalizado ganada):
 
   | Caso | Esperado |
   |---|---|
-  | "Subir" en En curso y, con esa respuesta retenida, "Bajar" en Presupuesto | el segundo `POST` sale recién cuando respondió el primero; la lista final es la de la segunda respuesta |
+  | **Dos movimientos rápidos en filas distintas**: "Subir" en Finalizado (respuesta retenida) y enseguida abrir el menú de En curso | sale un solo `POST /stages/{Finalizado}/move` con `{position: 3}`; en el menú de En curso, "Subir", "Bajar" y "Mover a otra posición…" están deshabilitados (`aria-disabled`) y activarlos no manda nada; "Editar" y "Eliminar" siguen habilitados; la región viva dice "Moviendo «Finalizado»…"; el disparador "Acciones para En curso" sigue habilitado y con el foco |
+  | Se libera la respuesta (`[Presupuesto, Aprobado, Finalizado, En curso]`) | la lista muestra ese orden; la región dice "«Finalizado» quedó en la posición 3 de 4."; los movimientos vuelven a estar habilitados en todas las filas; el foco **no** se mueve a Finalizado (el usuario lo tenía en En curso) |
+  | Ahora "Subir" en En curso → `200` | el segundo `POST` lleva `{position: 3}` (calculada con la lista confirmada); orden final `[Presupuesto, Aprobado, En curso, Finalizado]`; en total salieron exactamente dos `POST …/move`, en ese orden |
+  | Mutación: dejar los movimientos habilitados con una escritura pendiente (`useStageWritePending()` siempre en falso) | el segundo `POST` sale con `{position: 2}` (calculada sobre la lista vieja), el orden final es `[Presupuesto, En curso, Aprobado, Finalizado]` y fallan las dos filas anteriores |
+  | "Subir" en Finalizado (respuesta retenida) y "+ Agregar etapa" con un nombre válido → "Agregar etapa" | el botón del diálogo está deshabilitado y descrito por "Esperá a que termine el cambio de orden."; lo escrito se conserva; ningún `POST /stages`. Con la respuesta del movimiento, el botón se habilita y el `POST /stages` lleva la posición calculada sobre la lista nueva |
+  | "Subir" en Finalizado (respuesta retenida) y "Editar" en Aprobado → cambiar el nombre → "Guardar etapa" | el `PATCH` (por id, sin posición) sale recién cuando respondió el `move` (cola); la lista final tiene el orden del `move` y el nombre nuevo |
   | `GET /stages` en vuelo (foco de la pestaña) que responde después de un `move` | la lista queda con la respuesta del `move` (la lectura se canceló antes de escribir) |
-  | Mutación: quitar el `scope` de `useMoveStage` | falla la primera fila |
-- **Green (implementación)**: `StagesPage`, `StageListItem`, `StageForm`, `StageColorOption`,
-  `features/configuration/stages/api.ts` (cola `STAGE_CHANGES_SCOPE`, §11.3); ruta
-  `settings/stages`; sección "Configuración" de S-08 con su primer enlace. Los textos con
-  "proyectos" usan `useTerminology()` (todavía los nombres por defecto).
+  | Mutación: quitar el `scope` de `useUpdateStage` | falla la fila del `PATCH` en cola (sale antes de que responda el `move`) |
+  | `useIsMutating` con una mutación esperando en la cola del `scope` (S-F7) | la cuenta incluye la que espera: los movimientos siguen deshabilitados hasta que termina la última escritura |
+- **Green (implementación)**: `StagesPage`, `StageListItem` (con `movesBlocked`), `StageForm`,
+  `StageColorOption`, `features/configuration/stages/api.ts` (cola `STAGE_CHANGES_SCOPE`, clave
+  `STAGE_MUTATION_KEY` y `useStageWritePending()`, §11.3, §16.4); ruta `settings/stages`; sección
+  "Configuración" de S-08 con su primer enlace. Los textos con "proyectos" usan `useTerminology()`
+  (todavía los nombres por defecto). Si S-F7 resulta falso, `useStageWritePending()` se calcula con
+  el estado de las cuatro mutaciones y se anota en el PR.
 - **Refactor**: que el manejo de foco tras quitar o mover use `focusTargetAfterRemoval` y una sola
-  función de refoco por id; que `StagesPage` no tenga más de un estado de diálogo por tipo.
+  función de refoco por id (que no mueve el foco si el usuario ya lo llevó a otro control); que
+  `StagesPage` no tenga más de un estado de diálogo por tipo; que la condición de BR-F14 se lea en
+  un solo lugar (`useStageWritePending()`).
 
 **Checkpoint Fase F2**: `npm run check` en verde + prueba independiente.
 
@@ -1200,12 +1222,17 @@ y T-002-F604 adjuntos.
   | Teclado: mover una etapa con el menú | el foco queda en "Acciones para {nombre}" de la misma etapa |
 - **Green**: pasa.
 
-**T-002-F603 — Verificación manual de accesibilidad** · NFR-F3, NFR-F7, `ui.md` §18, §19.2
+**T-002-F603 — Verificación manual de accesibilidad** · NFR-F3, NFR-F7, S-F6, RF-9, `ui.md` §18,
+§19.2
 - Checklist: S-13 y S-14 de punta a punta solo con teclado; VoiceOver (macOS o iOS) y, si hay, NVDA
-  en mover (anuncio de posición), eliminar y archivar (destino del foco) y en los diálogos; zoom
-  200 %; `prefers-reduced-motion`; contraste de los tokens `--stage-*` con una herramienta; "Moviendo…"
-  inmediato al toque en un celular. Resultado en el reporte de la fase, con cada hallazgo y su
-  corrección (o su decisión). Lo que no se pueda verificar se dice ("no verificado en NVDA").
+  en mover (anuncios "Moviendo «…»…" y de posición), eliminar y archivar (destino del foco) y en los
+  diálogos; dos movimientos seguidos en filas distintas: qué anuncia el lector en los ítems
+  deshabilitados y si el recorrido con flechas los incluye (S-F6; si el estado no se anuncia, se
+  aplica el respaldo de S-F6); zoom 200 %; `prefers-reduced-motion`; contraste de los tokens
+  `--stage-*` con una herramienta; "Moviendo…" inmediato al toque en un celular, y cuánto se nota la
+  espera entre dos movimientos con la red del celular (RF-9). Resultado en el reporte de la fase, con
+  cada hallazgo y su corrección (o su decisión). Lo que no se pueda verificar se dice ("no
+  verificado en NVDA").
 
 **T-002-F604 — Performance** · NFR-F1, NFR-F2, NFR-F6, ADR-030, RF-1, RF-8
 - Tamaño gzip de cada chunk de S-13 a S-19 (`vite build`); LCP p75 de `/` con la espera de nombres
@@ -1243,6 +1270,7 @@ reportes de T-002-F603 y T-002-F604 adjuntos.
 | ADR-023 / ADR-029 dinero, INV-F5, DD-F8 | T-002-F102, T-002-F401 |
 | ADR-030 terminología, INV-F1, INV-F2, DD-F2, DD-F3 | T-002-F101, T-002-F501, T-002-F604 |
 | INV-F3 / DD-F10 cola de etapas | T-002-F202 |
+| INV-F11 / DD-F14 / BR-F14 movimientos seguidos (revisión 1 de Codex del PR #49), S-F6, S-F7 | T-002-F103 (`submitBlockedReason`), T-002-F202, T-002-F603 |
 | INV-F4 / DD-F5 reglas del pipeline en el cliente | T-002-F201, T-002-F202 |
 | INV-F6 foco tras quitar o mover | T-002-F101, T-002-F202, T-002-F302, T-002-F402, T-002-F602 |
 | INV-F7 sin ramificar por `system_key` | T-002-F301, T-002-F302 |
@@ -1262,3 +1290,4 @@ reportes de T-002-F603 y T-002-F604 adjuntos.
 | NFR-F7 | T-002-F603 |
 | RF-5 (handler por defecto de nombres) | T-002-F501 |
 | RF-7 (cambios en pantallas de 001) | T-002-F103 |
+| RF-9 (espera entre movimientos con red lenta) | T-002-F603 |
