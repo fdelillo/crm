@@ -1,9 +1,14 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { queryKeys } from '@/api/queryKeys'
-import { buildSessionInfo, buildTenant, problem } from '@/test/fixtures'
+import {
+  beforeInvitationExpiry,
+  buildSessionInfo,
+  buildTenant,
+  problem,
+} from '@/test/fixtures'
 import { server } from '@/test/msw/server'
 import { renderApp } from '@/test/renderApp'
 import { AcceptInvitationPage } from './pages'
@@ -36,6 +41,7 @@ function renderAccept(
 }
 
 describe('AcceptInvitationPage', () => {
+  afterEach(() => vi.useRealTimers())
   it('shows the verification banner after accepting into an unverified session', async () => {
     const unverifiedSession = buildSessionInfo({
       user: {
@@ -81,6 +87,7 @@ describe('AcceptInvitationPage', () => {
   })
 
   it('previews with the fragment token in the body only and shows read only invitation details', async () => {
+    vi.setSystemTime(beforeInvitationExpiry)
     const buenosAiresDateTimeOptions = new Intl.DateTimeFormat('es-AR', {
       timeZone: 'America/Argentina/Buenos_Aires',
     }).resolvedOptions()
