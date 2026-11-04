@@ -28,6 +28,24 @@ info:
     - Dinero: objeto `Money` (centavos enteros + moneda), nunca punto flotante (ADR-029).
     - Una escritura sin cambios reales responde `200` con el recurso y no modifica `updated_at`.
 
+    **Valor de `FieldError.field` en los `422` de este contrato** (precisa, sin cambiar el esquema,
+    la descripción de `FieldError.field` de 001, que solo muestra campos de primer nivel):
+    - Es la **ruta del campo dentro del body JSON del request**, desde la raíz: los nombres de las
+      propiedades del contrato (`snake_case`) unidos con un punto (`.`). Un campo de primer nivel es
+      su nombre solo (`name`, `position`, `validity_days`); uno anidado lleva el nombre del objeto que
+      lo contiene adelante (`reference_price.amount_cents`, `project.singular`).
+    - Se informa la propiedad **hoja** que falla. La ruta de un objeto (`project`, `customer`,
+      `quote`) aparece sola únicamente cuando falta el objeto entero que es obligatorio (`required`).
+      `reference_price` nunca aparece solo: un valor de otro tipo es `400 malformed_request`, `null`
+      es válido, y un objeto incompleto o inválido informa sus hojas.
+    - Ningún request de 002 tiene arreglos en el body, así que ningún `field` de 002 lleva índices.
+      Este contrato no fija cómo se nombran los elementos de un arreglo: lo define la spec que los
+      introduzca, en su contrato.
+    - Los parámetros de query y de ruta nunca generan `422`: un valor inválido de `type` o
+      `include_archived` es `400 malformed_request` sin `errors`, y un id que no es UUID, `404`.
+    - Las operaciones con campos anidados (`createCatalogItem`, `updateCatalogItem`,
+      `replaceLabels`) listan en su descripción los valores exactos de `field` y sus códigos.
+
     **Dependencia con el contrato de 001 (requisito previo)**: este archivo referencia componentes
     compartidos de `specs/001-empresas-usuarios/contracts/openapi.yaml` (DD-17 de 001) y requiere la
     **v0.6.0** de ese contrato, que agrega `name_taken` a `ErrorCode` y el esquema `Money` (plan de
@@ -43,7 +61,8 @@ info:
     - En `POST /categories/{categoryId}/archive`: es una categoría de sistema.
 
     Historial:
-    - 0.1.0: versión inicial (aprobada el 2026-10-23).
+    - 0.1.0: versión inicial (aprobada el 2026-10-23). Precisión del 2026-10-26 (hallazgo H-2 de
+      `ui.md`, solo descripciones): rutas con punto de `FieldError.field` para campos anidados.
 servers:
   - url: /api/v1
 tags:
@@ -431,6 +450,17 @@ paths:
       description: |
         Requiere `settings.manage`. El precio de referencia es opcional; si se informa, lleva importe
         y moneda. Con `unit` = `other`, `unit_label` es obligatorio; con otra unidad se ignora.
+
+        Valores exactos de `field` en el `422` (ruta con punto; convención en la descripción
+        general) y sus códigos:
+        - `name`: `required`, `too_long`, `invalid_value` (contiene `NUL`).
+        - `description`: `too_long`, `invalid_value`.
+        - `unit`: `required` (falta), `invalid_value` (fuera del enum).
+        - `unit_label`: `required` (con `unit` = `other` y sin valor), `too_long`, `invalid_value`.
+        - `reference_price.amount_cents`: `required` (el objeto vino sin importe), `invalid_value`
+          (fuera de 0 a 9007199254740991).
+        - `reference_price.currency`: `required` (el objeto vino sin moneda o con `""`),
+          `invalid_value` (distinta de `ARS` o `USD`).
       security:
         - sessionCookie: []
       requestBody:
@@ -492,6 +522,13 @@ paths:
         `unit_label` o `reference_price`; `name` y `unit` no admiten `null` (`400`). Si la unidad
         resultante no es `other`, `unit_label` se descarta; si es `other` y queda sin `unit_label`,
         `422`. Cambiar el precio no modifica presupuestos ya creados (spec 005 copia los valores).
+
+        Valores exactos de `field` en el `422`: los mismos que en `createCatalogItem` (`name`,
+        `description`, `unit`, `unit_label`, `reference_price.amount_cents`,
+        `reference_price.currency`), con dos diferencias: solo se validan los campos presentes en el
+        body, así que `name` y `unit` nunca dan `required`; y `unit_label` da `required` cuando la
+        unidad **resultante** (la enviada o la guardada) es `other` y el ítem queda sin nombre de
+        unidad, aunque `unit_label` no venga en el body.
       security:
         - sessionCookie: []
       requestBody:
@@ -599,7 +636,19 @@ paths:
       tags: [settings]
       operationId: replaceLabels
       summary: Reemplazar los nombres personalizados (Historia 2)
-      description: Requiere `settings.manage`. Se envían los tres nombres completos.
+      description: |
+        Requiere `settings.manage`. Se envían los tres nombres completos.
+
+        Valores exactos de `field` en el `422` (ruta con punto; convención en la descripción
+        general), donde `{entidad}` es `project`, `customer` o `quote`:
+        - `project`, `customer`, `quote`: `required` (falta el objeto entero).
+        - `{entidad}.singular` y `{entidad}.plural`: `required`, `too_long`, `invalid_value`
+          (contiene `NUL`).
+        - `{entidad}.gender`: `required`, `invalid_value` (distinto de `masculine` o `feminine`).
+
+        Son 15 valores posibles en total: los 3 objetos y `project.singular`, `project.plural`,
+        `project.gender`, `customer.singular`, `customer.plural`, `customer.gender`,
+        `quote.singular`, `quote.plural` y `quote.gender`.
       security:
         - sessionCookie: []
       requestBody:
@@ -744,6 +793,7 @@ components:
       $ref: '../../001-empresas-usuarios/contracts/openapi.yaml#/components/responses/PayloadTooLarge'
     UnsupportedMediaType:
       $ref: '../../001-empresas-usuarios/contracts/openapi.yaml#/components/responses/UnsupportedMediaType'
+    # El `field` de cada error sigue la convención de rutas con punto de la descripción general.
     ValidationFailed:
       $ref: '../../001-empresas-usuarios/contracts/openapi.yaml#/components/responses/ValidationFailed'
     ServerError:
@@ -1016,6 +1066,9 @@ components:
           type: [string, 'null']
           maxLength: 20
         reference_price:
+          description: |
+            Sus errores de validación se informan en `reference_price.amount_cents` y
+            `reference_price.currency`, nunca en `reference_price`.
           oneOf:
             - $ref: '#/components/schemas/Money'
             - type: 'null'
@@ -1041,6 +1094,9 @@ components:
           type: [string, 'null']
           maxLength: 20
         reference_price:
+          description: |
+            Sus errores de validación se informan en `reference_price.amount_cents` y
+            `reference_price.currency`, nunca en `reference_price`.
           oneOf:
             - $ref: '#/components/schemas/Money'
             - type: 'null'
@@ -1052,6 +1108,9 @@ components:
 
     EntityLabel:
       type: object
+      description: |
+        En un `422`, sus campos se informan con el nombre de la entidad adelante:
+        `{entidad}.singular`, `{entidad}.plural`, `{entidad}.gender` (ver `replaceLabels`).
       required: [singular, plural, gender]
       additionalProperties: false
       properties:
