@@ -63,6 +63,7 @@ const knownCodes = {
   email_not_verified: true,
   last_admin: true,
   invalid_state: true,
+  name_taken: true,
   token_invalid: true,
   login_locked: true,
   rate_limited: true,

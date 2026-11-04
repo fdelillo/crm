@@ -224,6 +224,22 @@ describe('user error messages', () => {
   ] satisfies [ErrorCode, string][])('describes logo %s', (code, title) =>
     expect(messageForError(error(code), 'logo').title).toBe(title),
   )
+  // T-002-F001 (INV-F05): name_taken has one text for every context without a variant.
+  it.each(['generic', 'users', 'tenant'] as const)(
+    'describes name_taken in the %s context',
+    (context) => {
+      const message = messageForError(
+        error('name_taken', undefined, 409),
+        context,
+      )
+      expect(message).toEqual({
+        title: 'Ese nombre ya está en uso.',
+        description: 'Elegí otro nombre.',
+        retryable: false,
+      })
+      expect(message).not.toHaveProperty('requestId')
+    },
+  )
   it('keeps reference codes and explains temporary outages and network failures', () => {
     expect(
       messageForError(error('method_not_allowed'), 'generic'),
