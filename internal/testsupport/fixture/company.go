@@ -56,6 +56,34 @@ var CompanyInserters = map[string]Inserter{
 			VALUES ($1, $2, 'tenant.registered', 'tenant', $1) RETURNING id`, tenantID, userID).Scan(&id)
 		return id, err
 	},
+	"tenant_settings": func(ctx context.Context, tx pgx.Tx, tenantID, _ uuid.UUID) (uuid.UUID, error) {
+		var id uuid.UUID
+		err := tx.QueryRow(ctx, `INSERT INTO app.tenant_settings (tenant_id,
+				project_label_singular, project_label_plural, project_label_gender,
+				customer_label_singular, customer_label_plural, customer_label_gender,
+				quote_label_singular, quote_label_plural, quote_label_gender, quote_validity_days)
+			VALUES ($1, 'Proyecto', 'Proyectos', 'masculine', 'Cliente', 'Clientes', 'masculine',
+				'Presupuesto', 'Presupuestos', 'masculine', 15) RETURNING id`, tenantID).Scan(&id)
+		return id, err
+	},
+	"stages": func(ctx context.Context, tx pgx.Tx, tenantID, _ uuid.UUID) (uuid.UUID, error) {
+		var id uuid.UUID
+		err := tx.QueryRow(ctx, `INSERT INTO app.stages (tenant_id, name, type, color, position)
+			VALUES ($1, 'Fixture stage', 'open', 'blue', 1) RETURNING id`, tenantID).Scan(&id)
+		return id, err
+	},
+	"categories": func(ctx context.Context, tx pgx.Tx, tenantID, _ uuid.UUID) (uuid.UUID, error) {
+		var id uuid.UUID
+		err := tx.QueryRow(ctx, `INSERT INTO app.categories (tenant_id, name, type)
+			VALUES ($1, 'Fixture category', 'expense') RETURNING id`, tenantID).Scan(&id)
+		return id, err
+	},
+	"catalog_items": func(ctx context.Context, tx pgx.Tx, tenantID, _ uuid.UUID) (uuid.UUID, error) {
+		var id uuid.UUID
+		err := tx.QueryRow(ctx, `INSERT INTO app.catalog_items (tenant_id, name, unit)
+			VALUES ($1, 'Fixture item', 'unit') RETURNING id`, tenantID).Scan(&id)
+		return id, err
+	},
 }
 
 func randomHash() []byte {

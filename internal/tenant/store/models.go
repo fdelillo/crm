@@ -26,6 +26,31 @@ type AppAuditLog struct {
 	RequestID   pgtype.Text
 }
 
+type AppCatalogItem struct {
+	ID                     uuid.UUID
+	TenantID               uuid.UUID
+	Name                   string
+	Description            pgtype.Text
+	Unit                   string
+	UnitLabel              pgtype.Text
+	ReferencePriceCents    pgtype.Int8
+	ReferencePriceCurrency pgtype.Text
+	ArchivedAt             *time.Time
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+}
+
+type AppCategory struct {
+	ID         uuid.UUID
+	TenantID   uuid.UUID
+	Name       string
+	Type       string
+	SystemKey  pgtype.Text
+	ArchivedAt *time.Time
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
 type AppLoginThrottle struct {
 	EmailHmac     []byte
 	FailedCount   int32
@@ -64,6 +89,18 @@ type AppSession struct {
 	UserAgent     pgtype.Text
 }
 
+type AppStage struct {
+	ID        uuid.UUID
+	TenantID  uuid.UUID
+	Name      string
+	Type      string
+	Color     string
+	Position  int32
+	DeletedAt *time.Time
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 type AppTenant struct {
 	ID                      uuid.UUID
 	Name                    string
@@ -80,6 +117,24 @@ type AppTenant struct {
 	IndustryTemplateVersion int32
 	CreatedAt               time.Time
 	UpdatedAt               time.Time
+}
+
+type AppTenantSetting struct {
+	ID                    uuid.UUID
+	TenantID              uuid.UUID
+	ProjectLabelSingular  string
+	ProjectLabelPlural    string
+	ProjectLabelGender    string
+	CustomerLabelSingular string
+	CustomerLabelPlural   string
+	CustomerLabelGender   string
+	QuoteLabelSingular    string
+	QuoteLabelPlural      string
+	QuoteLabelGender      string
+	QuoteValidityDays     int32
+	QuoteTerms            pgtype.Text
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
 }
 
 type AppUser struct {

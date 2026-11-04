@@ -16,7 +16,10 @@ import (
 
 // expectedTables is the list of tables of schema app. Every spec that adds a table adds it here (and
 // to fixture.CompanyInserters): a table nobody declared makes this test fail (data-model.md §6).
-var expectedTables = []string{"audit_log", "login_throttles", "outbox_messages", "sessions", "tenants", "user_tokens", "users"}
+var expectedTables = []string{
+	"audit_log", "catalog_items", "categories", "login_throttles", "outbox_messages", "sessions", "stages",
+	"tenant_settings", "tenants", "user_tokens", "users",
+}
 
 func queryStrings(t *testing.T, pool *pgxpool.Pool, sql string, args ...any) []string {
 	t.Helper()
