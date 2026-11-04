@@ -9,6 +9,9 @@ import (
 	"testing"
 )
 
+// Tables of the company configuration (spec 002): foreign key targets of later specs.
+var configurationTables = map[string]bool{"stages": true, "categories": true, "catalog_items": true, "tenant_settings": true}
+
 // Analyze each SELECT scope separately: an unqualified lock on a JOIN locks
 // every relation, while OF limits it to the named aliases (DD-40).
 func rowLockErrors(file, name, sql string) []string {
@@ -34,6 +37,9 @@ func rowLockErrors(file, name, sql string) []string {
 			}
 			if !selected {
 				continue
+			}
+			if configurationTables[table] && mode != "NO KEY UPDATE" {
+				errors = append(errors, "DD-40: configuration rows only FOR NO KEY UPDATE")
 			}
 			if table == "users" && mode != "NO KEY UPDATE" {
 				errors = append(errors, "DD-40: users must use FOR NO KEY UPDATE")
@@ -77,6 +83,49 @@ func TestRowLockRuleScopes(t *testing.T) {
 		if (len(errs) > 0) != (mode != "NO KEY UPDATE") {
 			t.Fatalf("tenant mode %s: %v", mode, errs)
 		}
+	}
+}
+
+// T-002-B103 (002/INV-8, DD-40 of 001): stages, categories, catalog_items and tenant_settings are lock
+// targets of foreign keys of later specs (or of the lock that serializes the configuration), so they are
+// only locked FOR NO KEY UPDATE, in any query and any store file.
+func TestConfigurationRowLocks(t *testing.T) {
+	const message = "DD-40: configuration rows only FOR NO KEY UPDATE"
+	for _, table := range []string{"stages", "categories", "catalog_items", "tenant_settings"} {
+		for _, mode := range []string{"UPDATE", "SHARE", "KEY SHARE", "NO KEY UPDATE"} {
+			sql := `SELECT id FROM app.` + table + ` WHERE tenant_id = @tenant_id FOR ` + mode
+			errs := rowLockErrors("internal/settings/store/queries.sql", "LockSomething", sql)
+			if mode == "NO KEY UPDATE" {
+				if len(errs) != 0 {
+					t.Errorf("%s FOR %s: violations %v, want none", table, mode, errs)
+				}
+				continue
+			}
+			if len(errs) != 1 || errs[0] != message {
+				t.Errorf("%s FOR %s: violations %v, want [%q]", table, mode, errs, message)
+			}
+		}
+	}
+	for _, tc := range []struct {
+		name string
+		sql  string
+		fail bool
+	}{
+		{"unqualified table", `SELECT id FROM stages FOR UPDATE`, true},
+		{"alias with AS", `SELECT s.id FROM app.stages AS s FOR SHARE`, true},
+		{"join locks both without OF", `SELECT c.id FROM app.categories c JOIN app.catalog_items i ON i.tenant_id = c.tenant_id FOR UPDATE`, true},
+		{"join locking only another configuration table", `SELECT c.id FROM app.categories c JOIN app.stages s ON s.tenant_id = c.tenant_id FOR UPDATE OF s`, true},
+		{"join with OF on a configuration table", `SELECT c.id FROM app.categories c JOIN app.users u ON u.tenant_id = c.tenant_id FOR NO KEY UPDATE OF c`, false},
+		{"join with NO KEY UPDATE OF one of two configuration tables", `SELECT c.id FROM app.categories c JOIN app.stages s ON s.tenant_id = c.tenant_id FOR NO KEY UPDATE OF c`, false},
+		{"configuration table inside a subquery", `SELECT 1 WHERE EXISTS (SELECT 1 FROM app.catalog_items FOR KEY SHARE)`, true},
+		{"read without lock", `SELECT id FROM app.stages WHERE tenant_id = @tenant_id`, false},
+		{"locking a different table with FOR UPDATE", `SELECT * FROM app.user_tokens WHERE user_id IN (SELECT id FROM app.stages) FOR UPDATE`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := len(rowLockErrors("internal/settings/store/queries.sql", "Example", tc.sql)) > 0; got != tc.fail {
+				t.Fatalf("violations=%v, want %v", got, tc.fail)
+			}
+		})
 	}
 }
 
