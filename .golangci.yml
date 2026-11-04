@@ -47,6 +47,8 @@ linters:
               desc: platform/* must not import authz
             - pkg: github.com/fdelillo/crm/internal/industrytemplate
               desc: platform/* must not import a domain module
+            - pkg: github.com/fdelillo/crm/internal/settings
+              desc: platform/* must not import a domain module
             - pkg: github.com/fdelillo/crm/internal/app
               desc: platform/* must not import the composition root
         # authz and industrytemplate only know platform/*.
@@ -60,6 +62,8 @@ linters:
             - pkg: github.com/fdelillo/crm/internal/tenant
               desc: authz and industrytemplate only import platform/*
             - pkg: github.com/fdelillo/crm/internal/app
+              desc: authz and industrytemplate only import platform/*
+            - pkg: github.com/fdelillo/crm/internal/settings
               desc: authz and industrytemplate only import platform/*
         # identity never imports tenant (tenant -> identity is the only direction in 001).
         identity-does-not-import-tenant:
@@ -76,6 +80,25 @@ linters:
           deny:
             - pkg: github.com/fdelillo/crm/internal/app
               desc: modules must not import the composition root
+        # settings (spec 002, DD-1) knows platform/*, authz and industrytemplate; and nobody above knows settings:
+        # identity and tenant receive the seeding through the port industrytemplate.Seeder, wired in internal/app.
+        settings-imports-only-platform-authz-templates:
+          files:
+            - "**/internal/settings/**"
+          deny:
+            - pkg: github.com/fdelillo/crm/internal/identity
+              desc: settings declares its own RequestMeta and does not import identity (002/DD-1)
+            - pkg: github.com/fdelillo/crm/internal/tenant
+              desc: settings must not import tenant (002/DD-1)
+            - pkg: github.com/fdelillo/crm/internal/app
+              desc: modules must not import the composition root
+        identity-and-tenant-do-not-import-settings:
+          files:
+            - "**/internal/identity/**"
+            - "**/internal/tenant/**"
+          deny:
+            - pkg: github.com/fdelillo/crm/internal/settings
+              desc: identity and tenant do not import settings; internal/app wires the Seeder (002/DD-1)
         # Nobody imports the store (sqlc code) of another module: a module never reads another module's tables.
         # Add one entry per module here when a spec adds a module (matrix in plan §16).
         no-foreign-store-in-identity:
@@ -84,11 +107,27 @@ linters:
           deny:
             - pkg: github.com/fdelillo/crm/internal/tenant/store
               desc: a module must not import the store of another module
+            - pkg: github.com/fdelillo/crm/internal/settings/store
+              desc: a module must not import the store of another module
         no-foreign-store-in-tenant:
           files:
             - "**/internal/tenant/**"
           deny:
             - pkg: github.com/fdelillo/crm/internal/identity/store
+              desc: a module must not import the store of another module
+            - pkg: github.com/fdelillo/crm/internal/settings/store
+              desc: a module must not import the store of another module
+        no-foreign-store-in-settings:
+          files:
+            - "**/internal/settings/**"
+          deny:
+            - pkg: github.com/fdelillo/crm/internal/identity/store
+              desc: a module must not import the store of another module
+            - pkg: github.com/fdelillo/crm/internal/tenant/store
+              desc: a module must not import the store of another module
+            - pkg: github.com/fdelillo/crm/internal/platform/audit/store
+              desc: a module must not import the store of another module
+            - pkg: github.com/fdelillo/crm/internal/platform/outbox/store
               desc: a module must not import the store of another module
         no-store-in-platform:
           files:
@@ -99,6 +138,8 @@ linters:
             - pkg: github.com/fdelillo/crm/internal/identity/store
               desc: only the owning module imports its store
             - pkg: github.com/fdelillo/crm/internal/tenant/store
+              desc: only the owning module imports its store
+            - pkg: github.com/fdelillo/crm/internal/settings/store
               desc: only the owning module imports its store
         # web (the embedded SPA, ADR-019) only imports the standard library and gzhttp.
         web-imports-only-stdlib-and-gzhttp:
