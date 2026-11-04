@@ -23,6 +23,8 @@ func TestCatalog_PoliciesAreExactlyTheDocumentedOnes(t *testing.T) {
 	const tenantIsolationID = "(id = ( SELECT app.current_tenant_id() AS current_tenant_id))"
 	want := []string{
 		"audit_log|tenant_isolation|PERMISSIVE|{public}|ALL|" + tenantIsolationTenant + "|" + tenantIsolationTenant,
+		"catalog_items|tenant_isolation|PERMISSIVE|{public}|ALL|" + tenantIsolationTenant + "|" + tenantIsolationTenant,
+		"categories|tenant_isolation|PERMISSIVE|{public}|ALL|" + tenantIsolationTenant + "|" + tenantIsolationTenant,
 		"login_throttles|auth_all|PERMISSIVE|{crm_auth}|ALL|true|true",
 		"login_throttles|worker_cleanup|PERMISSIVE|{crm_worker}|DELETE|((last_failed_at < (now() - '1 day'::interval)) AND ((locked_until IS NULL) OR (locked_until < now())))|<none>",
 		"login_throttles|worker_read|PERMISSIVE|{crm_worker}|SELECT|true|<none>",
@@ -34,6 +36,8 @@ func TestCatalog_PoliciesAreExactlyTheDocumentedOnes(t *testing.T) {
 		"sessions|tenant_isolation|PERMISSIVE|{public}|ALL|" + tenantIsolationTenant + "|" + tenantIsolationTenant,
 		"sessions|worker_cleanup|PERMISSIVE|{crm_worker}|DELETE|((expires_at < (now() - '30 days'::interval)) OR (revoked_at < (now() - '30 days'::interval)))|<none>",
 		"sessions|worker_read|PERMISSIVE|{crm_worker}|SELECT|true|<none>",
+		"stages|tenant_isolation|PERMISSIVE|{public}|ALL|" + tenantIsolationTenant + "|" + tenantIsolationTenant,
+		"tenant_settings|tenant_isolation|PERMISSIVE|{public}|ALL|" + tenantIsolationTenant + "|" + tenantIsolationTenant,
 		"tenants|tenant_isolation|PERMISSIVE|{public}|ALL|" + tenantIsolationID + "|" + tenantIsolationID,
 		"tenants|worker_read|PERMISSIVE|{crm_worker}|SELECT|true|<none>",
 		"user_tokens|auth_lookup|PERMISSIVE|{crm_auth}|SELECT|true|<none>",

@@ -176,6 +176,7 @@ func TestMigrations_VersionTableInPublic(t *testing.T) {
 }
 
 // The ninth migration is applied and reverted as the actual owner login, without a privileged helper.
+// It goes down to 00008 (not "one step"), so it keeps testing 00009 whatever the latest migration is.
 func TestMigration00009OwnerAndDown(t *testing.T) {
 	ctx := context.Background()
 	pool := pgtest.OwnerPool(t)
@@ -204,7 +205,7 @@ func TestMigration00009OwnerAndDown(t *testing.T) {
 		}
 	}
 	assert(true)
-	if _, err = provider.Down(ctx); err != nil {
+	if _, err = provider.DownTo(ctx, 8); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
