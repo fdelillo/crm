@@ -14,6 +14,10 @@ const userId = '0199bada-0000-7000-8000-000000000001'
 const tenantId = '0199bada-0000-7000-8000-000000000002'
 const timestamp = '2026-10-15T12:00:00Z'
 
+// The invitation fixtures expire on a fixed date. Their expected text depends on "now" (vence/venció, and
+// the year is shown outside the current one), so the tests that read it pin the clock before that date.
+export const beforeInvitationExpiry = new Date('2026-10-20T12:00:00Z')
+
 export function buildCurrentUser(
   overrides: Partial<CurrentUser> = {},
 ): CurrentUser {
