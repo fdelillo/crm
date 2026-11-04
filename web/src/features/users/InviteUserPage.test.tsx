@@ -3,7 +3,12 @@ import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { InviteUserPage, UsersPage } from './pages'
-import { buildSessionInfo, buildUser, problem } from '@/test/fixtures'
+import {
+  beforeInvitationExpiry,
+  buildSessionInfo,
+  buildUser,
+  problem,
+} from '@/test/fixtures'
 import { server } from '@/test/msw/server'
 import { renderApp } from '@/test/renderApp'
 import { queryKeys } from '@/api/queryKeys'
@@ -35,7 +40,10 @@ function renderInvite(
 }
 
 describe('InviteUserPage', () => {
-  afterEach(() => focusManager.setFocused(undefined))
+  afterEach(() => {
+    focusManager.setFocused(undefined)
+    vi.useRealTimers()
+  })
   // T-F504 (US-3.1, BR-F08, BR-F11, BR-F14, DD-F6, DD-F21, DD-F24, DD-F29): invite form.
   it('starts with Operator selected and explains both roles', () => {
     renderInvite()
@@ -71,6 +79,7 @@ describe('InviteUserPage', () => {
   })
 
   it('creates an invitation, returns to users and announces its expiry', async () => {
+    vi.setSystemTime(beforeInvitationExpiry)
     const email = 'operador@example.test'
     let createdUser: ReturnType<typeof buildUser> | null = null
     const request = vi.fn(async ({ request: req }: { request: Request }) => {

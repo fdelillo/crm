@@ -4,7 +4,12 @@ import { http, HttpResponse } from 'msw'
 import { toast } from 'sonner'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { UsersPage } from './pages'
-import { buildSessionInfo, buildUser, problem } from '@/test/fixtures'
+import {
+  beforeInvitationExpiry,
+  buildSessionInfo,
+  buildUser,
+  problem,
+} from '@/test/fixtures'
 import { server } from '@/test/msw/server'
 import { renderApp } from '@/test/renderApp'
 import { queryKeys } from '@/api/queryKeys'
@@ -16,7 +21,10 @@ import { RequirePermission, RequireSession } from '@/app/guards/routeGuards'
 const base = 'https://localhost:5173/api/v1'
 
 describe('UsersPage', () => {
-  afterEach(() => focusManager.setFocused(undefined))
+  afterEach(() => {
+    focusManager.setFocused(undefined)
+    vi.useRealTimers()
+  })
   // T-F502 (US-3, FR-005, FR-007, DD-F25, DD-F29, P-F20): user-visible list and its states.
   it('shows three accessible skeletons while the users request is pending', async () => {
     server.use(http.get(`${base}/users`, () => new Promise(() => {})))
@@ -39,6 +47,7 @@ describe('UsersPage', () => {
   })
 
   it('renders users and invitation expiry in the company time zone without truncating names', async () => {
+    vi.setSystemTime(beforeInvitationExpiry)
     const longName = 'Nombre completo '.repeat(8)
     server.use(
       http.get(`${base}/me`, () =>
@@ -549,6 +558,7 @@ describe('UsersPage', () => {
 
   // T-F503 (US-3.3, US-3.4, DD-F7, DD-F8, INV-F10): actions stay keyboard-operable and confirmed.
   it('opens invited-user actions from the keyboard and updates an invited operator to administrator', async () => {
+    vi.setSystemTime(beforeInvitationExpiry)
     let invitedRole: 'operator' | 'admin' = 'operator'
     const invited = buildUser({
       id: 'invited',
