@@ -536,7 +536,7 @@ export interface components {
          *     pero no con ese método; la respuesta trae la cabecera `Allow`.
          * @enum {string}
          */
-        ErrorCode: "malformed_request" | "validation_failed" | "unsupported_media_type" | "payload_too_large" | "unauthenticated" | "invalid_credentials" | "account_disabled" | "forbidden" | "not_found" | "method_not_allowed" | "email_already_registered" | "email_taken" | "email_not_verified" | "last_admin" | "invalid_state" | "token_invalid" | "login_locked" | "rate_limited" | "service_unavailable" | "internal";
+        ErrorCode: "malformed_request" | "validation_failed" | "unsupported_media_type" | "payload_too_large" | "unauthenticated" | "invalid_credentials" | "account_disabled" | "forbidden" | "not_found" | "method_not_allowed" | "email_already_registered" | "email_taken" | "email_not_verified" | "last_admin" | "invalid_state" | "token_invalid" | "login_locked" | "rate_limited" | "service_unavailable" | "internal" | "name_taken";
         /**
          * @description Acción que la UI puede ofrecer para salir del error. Estable; se amplía con cada spec.
          *     - password_reset: ofrecer "¿Querés recuperar la contraseña?" y llamar a
@@ -598,6 +598,16 @@ export interface components {
          * @enum {string}
          */
         Currency: "ARS" | "USD";
+        /**
+         * @description Importe en la unidad mínima de la moneda (centavos), con su moneda (ADR-029). Nunca punto
+         *     flotante. El máximo es 2^53 − 1 para que el cliente JavaScript lo represente exacto
+         *     (ADR-023).
+         */
+        Money: {
+            /** Format: int64 */
+            amount_cents: number;
+            currency: components["schemas"]["Currency"];
+        };
         /**
          * @description Permisos de la matriz FR-007 (una fila de la tabla = un permiso). Fuente: `internal/authz`.
          *     - customers.manage: clientes (alta, edición, consulta)

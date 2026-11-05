@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: CRM - API 001 Empresas, usuarios y roles
-  version: 0.5.0
+  version: 0.6.0
   summary: Registro de empresas, autenticación, sesiones, invitaciones, usuarios y datos de la empresa.
   description: |
     Contrato **canónico** de la spec 001 (`specs/001-empresas-usuarios/spec.md`).
@@ -73,6 +73,9 @@ info:
       enum (como 0.4.0). Enmienda H-16 (2026-10-13): el reenvío sin cupo por usuario respondía
       `202` sin enviar. El cambio queda dentro de 0.5.0 porque esta versión todavía no se había
       publicado, y no toca esquemas ni enums.
+    - 0.6.0: spec 002. `name_taken` agregado a `ErrorCode` (409: ya existe una etapa activa, o una
+      categoría activa del mismo tipo, con ese nombre). Componente compartido `Money` (ADR-029).
+      Es *minor* porque agrega un valor a un enum.
 servers:
   - url: /api/v1
 tags:
@@ -1127,6 +1130,7 @@ components:
         - rate_limited
         - service_unavailable
         - internal
+        - name_taken
 
     SuggestedAction:
       type: string
@@ -1229,6 +1233,23 @@ components:
       type: string
       description: ISO 4217. Monedas del MVP.
       enum: [ARS, USD]
+
+    Money:
+      type: object
+      description: |
+        Importe en la unidad mínima de la moneda (centavos), con su moneda (ADR-029). Nunca punto
+        flotante. El máximo es 2^53 − 1 para que el cliente JavaScript lo represente exacto
+        (ADR-023).
+      required: [amount_cents, currency]
+      additionalProperties: false
+      properties:
+        amount_cents:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        currency:
+          $ref: '#/components/schemas/Currency'
 
     Permission:
       type: string

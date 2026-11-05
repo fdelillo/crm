@@ -792,9 +792,11 @@ INV-F05 de 001; `ui.md` §12.4, H-1 (resuelto)
   | El mismo error con un contexto de 001 (`'users'`, `'tenant'`) | el mismo texto (las variantes de 002 entran con sus pantallas, T-002-F101) |
   | `errorMessages.test-d.ts` (exhaustividad del mapa) | sigue pasando con la clave nueva |
   | Mutación: quitar la entrada `name_taken` | no compila (se ve fallar y se restaura) |
-- **Green**: la entrada `name_taken` en `errorMessages` con ese texto; `generated/001.ts` regenerado y
-  versionado; `npm run check`, `make web-check` y `make check-all` en verde. Ningún otro cambio de
-  frontend en esta rama.
+- **Green**: la entrada `name_taken` en `errorMessages` con ese texto; `name_taken: true` en
+  `knownCodes` (`api/errors.ts`), el otro mapa exhaustivo frente a `ErrorCode` (`satisfies
+  Record<ErrorCode, true>`): decide si `toApiError` conserva el código recibido o lo trata como
+  desconocido; `generated/001.ts` regenerado y versionado; `npm run check`, `make web-check` y
+  `make check-all` en verde. Ningún otro cambio de frontend en esta rama.
 - **Refactor**: nada (cambio mínimo, a propósito).
 
 **Checkpoint Fase F0**: `make check-all` (punto 1 del checkpoint de la Fase 2 del backend), que

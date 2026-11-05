@@ -311,3 +311,36 @@ func TestTransportValidatesSuccessfulRequestsAndEveryResponse(t *testing.T) {
 func problem(status int, code string) string {
 	return `{"type":"/problems/` + code + `","title":"Error","status":` + strconv.Itoa(status) + `,"code":"` + code + `"}`
 }
+
+// T-002-B201 (002/DD-13, ADR-029): the shared Money component accepts amounts in [0, 2^53-1] with a
+// supported currency and nothing else.
+func TestMoneySchema(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		ok   bool
+	}{
+		{"zero ARS", `{"amount_cents":0,"currency":"ARS"}`, true},
+		{"max safe integer USD", `{"amount_cents":9007199254740991,"currency":"USD"}`, true},
+		{"above max safe integer", `{"amount_cents":9007199254740992,"currency":"ARS"}`, false},
+		{"negative", `{"amount_cents":-1,"currency":"ARS"}`, false},
+		{"fractional", `{"amount_cents":1.5,"currency":"ARS"}`, false},
+		{"string amount", `{"amount_cents":"100","currency":"ARS"}`, false},
+		{"missing currency", `{"amount_cents":100}`, false},
+		{"missing amount", `{"currency":"ARS"}`, false},
+		{"unsupported currency", `{"amount_cents":100,"currency":"EUR"}`, false},
+		{"extra property", `{"amount_cents":100,"currency":"ARS","note":"x"}`, false},
+	}
+	v := Default(t)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := v.CheckSchema("Money", []byte(tc.body))
+			if tc.ok && err != nil {
+				t.Fatalf("valid Money rejected: %v", err)
+			}
+			if !tc.ok && err == nil {
+				t.Fatal("invalid Money accepted")
+			}
+		})
+	}
+}

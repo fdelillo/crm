@@ -49,7 +49,7 @@ export interface components {
          *     pero no con ese método; la respuesta trae la cabecera `Allow`.
          * @enum {string}
          */
-        ErrorCode: "malformed_request" | "validation_failed" | "unsupported_media_type" | "payload_too_large" | "unauthenticated" | "invalid_credentials" | "account_disabled" | "forbidden" | "not_found" | "method_not_allowed" | "email_already_registered" | "email_taken" | "email_not_verified" | "last_admin" | "invalid_state" | "token_invalid" | "login_locked" | "rate_limited" | "service_unavailable" | "internal";
+        ErrorCode: "malformed_request" | "validation_failed" | "unsupported_media_type" | "payload_too_large" | "unauthenticated" | "invalid_credentials" | "account_disabled" | "forbidden" | "not_found" | "method_not_allowed" | "email_already_registered" | "email_taken" | "email_not_verified" | "last_admin" | "invalid_state" | "token_invalid" | "login_locked" | "rate_limited" | "service_unavailable" | "internal" | "name_taken";
         /**
          * @description Acción que la UI puede ofrecer para salir del error. Estable; se amplía con cada spec.
          *     - password_reset: ofrecer "¿Querés recuperar la contraseña?" y llamar a

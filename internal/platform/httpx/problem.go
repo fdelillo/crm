@@ -38,6 +38,7 @@ const (
 	CodeRateLimited            Code = "rate_limited"
 	CodeServiceUnavailable     Code = "service_unavailable"
 	CodeInternal               Code = "internal"
+	CodeNameTaken              Code = "name_taken"
 )
 
 // spec is the status and generic Spanish title (and, for some codes, a longer detail) of a Code.
@@ -46,7 +47,7 @@ type spec struct {
 	title, detail string
 }
 
-// problems holds every Code's spec (ADR-009, contract v0.5.0, plan §9.1).
+// problems holds every Code's spec (ADR-009, contract v0.6.0, plan §9.1).
 var problems = map[Code]spec{
 	CodeMalformedRequest:       {400, "Solicitud incorrecta", ""},
 	CodeValidationFailed:       {422, "Los datos ingresados no son válidos", ""},
@@ -68,6 +69,7 @@ var problems = map[Code]spec{
 	CodeRateLimited:            {429, "Demasiadas solicitudes", ""},
 	CodeServiceUnavailable:     {503, "El servicio no está disponible", ""},
 	CodeInternal:               {500, "Error interno del servidor", ""},
+	CodeNameTaken:              {409, "Ya existe un elemento activo con ese nombre", ""},
 }
 
 // SuggestedAction hints the frontend at a next step for some problems (e.g. offering a password

@@ -132,6 +132,11 @@ export const errorMessages: Record<ErrorCode, ErrorMessageResolver> = {
       'El estado de este usuario cambió mientras tanto. Actualizamos la lista.',
     retryable: false,
   }),
+  name_taken: () => ({
+    title: 'Ese nombre ya está en uso.',
+    description: 'Elegí otro nombre.',
+    retryable: false,
+  }),
   token_invalid: (_error, context) => {
     if (context === 'resetConfirm')
       return {
