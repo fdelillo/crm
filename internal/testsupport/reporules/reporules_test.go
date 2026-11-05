@@ -178,7 +178,7 @@ func TestRule_TemplateCodesOnlyInTheCatalog(t *testing.T) {
 		}
 	}
 	sort.Strings(got)
-	want := []string{"internal/orders/templatecode.go:6", "internal/orders/templatecode.go:8", "internal/orders/templatecode.go:11", "internal/orders/templatecode.go:13"}
+	want := []string{"internal/orders/templatecode.go:6", "internal/orders/templatecode.go:8", "internal/orders/templatecode.go:11", "internal/orders/templatecode.go:13", "internal/orders/templatecode.go:16", "internal/orders/templatecode.go:18"}
 	sort.Strings(want)
 	if !slices.Equal(got, want) {
 		t.Errorf("template-code violations:\n got %v\nwant %v", got, want)

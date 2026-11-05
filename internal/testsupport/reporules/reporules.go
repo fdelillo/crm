@@ -290,7 +290,8 @@ func (c *goChecker) visit(n ast.Node) bool {
 		if c.sqlRules {
 			c.checkConcat(n)
 		}
-		if c.templateRules && n.Op == token.ADD {
+		// An operand that is already a code reports itself: the chain counts once, even across lines.
+		if c.templateRules && n.Op == token.ADD && !isTemplateCode(template(n.X)) && !isTemplateCode(template(n.Y)) {
 			c.checkTemplateCode(n, template(n))
 		}
 	case *ast.CallExpr:
@@ -337,11 +338,13 @@ func (c *goChecker) checkProxyHeader(lit *ast.BasicLit) {
 // templateCodes are the codes of the industry templates (INV-9).
 var templateCodes = []string{"generic", "aluminum_carpentry"}
 
+func isTemplateCode(val string) bool { return slices.Contains(templateCodes, val) }
+
 // checkTemplateCode flags a string literal (interpreted or raw), or a concatenation of literals, that is
 // exactly a template code: production code never names a template, it receives the code from the catalog
 // or from the request. The check is syntactic: it does not follow identifiers.
 func (c *goChecker) checkTemplateCode(n ast.Node, val string) {
-	if slices.Contains(templateCodes, val) {
+	if isTemplateCode(val) {
 		c.add(RuleTemplateCodeLiteral, n.Pos(), fmt.Sprintf("the template code %q is named outside tests: it comes from internal/industrytemplate", val))
 	}
 }

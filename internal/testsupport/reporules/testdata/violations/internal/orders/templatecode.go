@@ -11,3 +11,10 @@ func defaultTemplate(carpentry bool) string {
 const rawCode = `generic`
 
 const splitCode = "gener" + "ic"
+
+const multilineCode = "" +
+	"generic"
+
+const multilineSplitCode = "gener" +
+	"ic" +
+	""
