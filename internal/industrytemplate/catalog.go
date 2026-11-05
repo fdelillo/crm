@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"sync"
 
@@ -94,18 +95,31 @@ func parseCatalog(data []byte) ([]Template, error) {
 		if strings.TrimSpace(item.Code) == "" || strings.TrimSpace(item.Name) == "" || item.Version < 1 || seen[item.Code] {
 			return nil, fmt.Errorf("industrytemplate: invalid or duplicate code %q", item.Code)
 		}
+		// Every template has a pipeline. The other rules (enumerated values, lengths) are checked
+		// against settings' own rules in a settings test (002/INV-9): this package does not know them.
+		if len(item.Stages) == 0 {
+			return nil, fmt.Errorf("industrytemplate: template %q has no stages", item.Code)
+		}
 		seen[item.Code] = true
 	}
 	return templates, nil
 }
 
-// All returns a copy of the embedded catalog. Invalid build-time data panics on first use.
+// All returns a deep copy of the embedded catalog, so a caller cannot alter what the next registration
+// seeds. Invalid build-time data panics on first use.
 func All() []Template {
 	items, err := loadCatalog()
 	if err != nil {
 		panic(err)
 	}
-	return append([]Template(nil), items...)
+	out := make([]Template, len(items))
+	for i, t := range items {
+		t.Stages = slices.Clone(t.Stages)
+		t.Categories = slices.Clone(t.Categories)
+		t.CatalogItems = slices.Clone(t.CatalogItems)
+		out[i] = t
+	}
+	return out
 }
 
 // Lookup finds a template by its stable code.

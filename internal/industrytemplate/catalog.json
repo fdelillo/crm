@@ -1,4 +1,63 @@
 [
-  {"code":"generic","name":"Genérico","version":1},
-  {"code":"aluminum_carpentry","name":"Carpintería de aluminio","version":1}
+  {
+    "code": "generic", "name": "Genérico", "version": 2,
+    "labels": {
+      "project": {"singular": "Proyecto", "plural": "Proyectos", "gender": "masculine"},
+      "customer": {"singular": "Cliente", "plural": "Clientes", "gender": "masculine"},
+      "quote": {"singular": "Presupuesto", "plural": "Presupuestos", "gender": "masculine"}
+    },
+    "stages": [
+      {"name": "Presupuesto", "type": "open", "color": "blue"},
+      {"name": "Aprobado", "type": "open", "color": "teal"},
+      {"name": "En curso", "type": "open", "color": "yellow"},
+      {"name": "Finalizado", "type": "won", "color": "green"},
+      {"name": "Perdido", "type": "lost", "color": "gray"}
+    ],
+    "categories": [
+      {"name": "Materiales", "type": "expense"},
+      {"name": "Mano de obra", "type": "expense"},
+      {"name": "Flete", "type": "expense"},
+      {"name": "Alquiler", "type": "expense"},
+      {"name": "Servicios", "type": "expense"},
+      {"name": "Impuestos", "type": "expense"},
+      {"name": "Otros gastos", "type": "expense"},
+      {"name": "Otros ingresos", "type": "income"}
+    ],
+    "catalog_items": [],
+    "quote_defaults": {"validity_days": 15, "terms": ""}
+  },
+  {
+    "code": "aluminum_carpentry", "name": "Carpintería de aluminio", "version": 2,
+    "labels": {
+      "project": {"singular": "Proyecto", "plural": "Proyectos", "gender": "masculine"},
+      "customer": {"singular": "Cliente", "plural": "Clientes", "gender": "masculine"},
+      "quote": {"singular": "Presupuesto", "plural": "Presupuestos", "gender": "masculine"}
+    },
+    "stages": [
+      {"name": "Presupuesto", "type": "open", "color": "blue"},
+      {"name": "Aprobado", "type": "open", "color": "teal"},
+      {"name": "En producción", "type": "open", "color": "orange"},
+      {"name": "Instalación", "type": "open", "color": "purple"},
+      {"name": "Finalizado", "type": "won", "color": "green"},
+      {"name": "Perdido", "type": "lost", "color": "gray"}
+    ],
+    "categories": [
+      {"name": "Perfiles de aluminio", "type": "expense"},
+      {"name": "Vidrios", "type": "expense"},
+      {"name": "Accesorios", "type": "expense"},
+      {"name": "Flete", "type": "expense"},
+      {"name": "Mano de obra", "type": "expense"},
+      {"name": "Alquiler", "type": "expense"},
+      {"name": "Servicios", "type": "expense"},
+      {"name": "Impuestos", "type": "expense"},
+      {"name": "Otros ingresos", "type": "income"}
+    ],
+    "catalog_items": [
+      {"name": "Ventana corrediza", "description": "", "unit": "square_meter", "unit_label": ""},
+      {"name": "Puerta de abrir", "description": "", "unit": "unit", "unit_label": ""},
+      {"name": "Mampara de baño", "description": "", "unit": "unit", "unit_label": ""},
+      {"name": "Colocación", "description": "", "unit": "unit", "unit_label": ""}
+    ],
+    "quote_defaults": {"validity_days": 15, "terms": "Seña del 50 % al aprobar el presupuesto y saldo contra entrega."}
+  }
 ]

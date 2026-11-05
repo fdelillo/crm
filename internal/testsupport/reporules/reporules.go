@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -193,7 +194,7 @@ func checkGo(path, rel string) ([]Violation, error) {
 		return nil, err
 	}
 	c := &goChecker{fset: fset, rel: rel, sqlRules: !exemptFromSQLRules(rel), ipRules: !strings.HasPrefix(rel, "internal/platform/httpx/") && !strings.HasPrefix(rel, "internal/testsupport/"),
-		consts: consts, seen: map[*ast.BinaryExpr]bool{}}
+		templateRules: !strings.HasPrefix(rel, "internal/testsupport/"), consts: consts, seen: map[*ast.BinaryExpr]bool{}}
 	ast.Inspect(file, c.visit)
 	return dedupe(c.out), nil
 }
@@ -257,13 +258,14 @@ func dedupe(vs []Violation) []Violation {
 }
 
 type goChecker struct {
-	fset     *token.FileSet
-	rel      string
-	sqlRules bool
-	ipRules  bool // false inside internal/platform/httpx (the only reader of the proxy headers) and test support
-	consts   map[string]bool
-	seen     map[*ast.BinaryExpr]bool // concatenation nodes already reported as part of a chain
-	out      []Violation
+	fset          *token.FileSet
+	rel           string
+	sqlRules      bool
+	ipRules       bool // false inside internal/platform/httpx (the only reader of the proxy headers) and test support
+	templateRules bool // false in test support, which may name the codes
+	consts        map[string]bool
+	seen          map[*ast.BinaryExpr]bool // concatenation nodes already reported as part of a chain
+	out           []Violation
 }
 
 func (c *goChecker) add(rule string, pos token.Pos, detail string) {
@@ -278,6 +280,9 @@ func (c *goChecker) visit(n ast.Node) bool {
 		}
 		if c.ipRules && n.Kind == token.STRING {
 			c.checkProxyHeader(n)
+		}
+		if c.templateRules && n.Kind == token.STRING {
+			c.checkTemplateCode(n)
 		}
 	case *ast.BinaryExpr:
 		if c.sqlRules {
@@ -321,6 +326,21 @@ func (c *goChecker) checkProxyHeader(lit *ast.BasicLit) {
 			c.add(RuleClientIPHeaders, lit.Pos(), fmt.Sprintf("%q is read outside internal/platform/httpx: the client IP comes only from httpx.ClientIP", val))
 			return
 		}
+	}
+}
+
+// templateCodes are the codes of the industry templates (INV-9).
+var templateCodes = []string{"generic", "aluminum_carpentry"}
+
+// checkTemplateCode flags a string literal (interpreted or raw) that is exactly a template code: production
+// code never names a template, it receives the code from the catalog or from the request.
+func (c *goChecker) checkTemplateCode(lit *ast.BasicLit) {
+	val, err := strconv.Unquote(lit.Value)
+	if err != nil {
+		return
+	}
+	if slices.Contains(templateCodes, val) {
+		c.add(RuleTemplateCodeLiteral, lit.Pos(), fmt.Sprintf("the template code %q is named outside tests: it comes from internal/industrytemplate", val))
 	}
 }
 
