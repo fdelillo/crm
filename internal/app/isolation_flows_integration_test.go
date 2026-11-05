@@ -25,7 +25,7 @@ func TestIsolationUnknownCompanyFlows(t *testing.T) {
 			ctx := context.Background()
 			before := f.Snapshot(t, f.A.ID)
 			bBefore := f.Snapshot(t, f.B.ID)
-			api := app.BuildAPIRouter(f.Users, f.Companies, f.Clock, f.Logger)
+			api := app.BuildAPIRouter(f.Users, f.Companies, nil, f.Clock, f.Logger)
 			h := isolationRoot(t, f, api)
 			call := func(path string, body []byte, want int) {
 				isolationRequest(t, h, ctx, f.A.Users["admin"].Cookie, "POST", path, "application/json", body, "", want)

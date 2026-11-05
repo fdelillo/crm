@@ -46,7 +46,7 @@ func TestMetricsServer(t *testing.T) {
 	if got := request("POST", "/debug/vars").Code; got != 405 {
 		t.Fatalf("POST vars=%d", got)
 	}
-	api := app.BuildAPIRouter(nil, nil, clock.Real{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	api := app.BuildAPIRouter(nil, nil, nil, clock.Real{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	parameter := regexp.MustCompile(`\{[^}]+\}`)
 	if err := chi.Walk(api, func(method, path string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
 		rec := request(method, parameter.ReplaceAllString(path, "018fdcca-06d0-7b20-8c58-0842a9900239"))

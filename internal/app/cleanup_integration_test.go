@@ -205,7 +205,7 @@ func TestCleanupDeletesOnlyExpiredRowsAsWorker(t *testing.T) {
 			t.Errorf("throttle exists=%v want=%v", exists, row.keep)
 		}
 	}
-	api := app.BuildAPIRouter(f.Users, f.Companies, f.Clock, f.Logger)
+	api := app.BuildAPIRouter(f.Users, f.Companies, nil, f.Clock, f.Logger)
 	for _, company := range []e2e.Company{f.A, f.B} {
 		rec := isolationRequest(t, api, ctx, company.Users["admin"].Cookie, http.MethodGet, "/api/v1/users", "", nil, "", 200)
 		var response struct {

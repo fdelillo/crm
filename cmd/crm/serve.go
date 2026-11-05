@@ -21,6 +21,7 @@ import (
 	"github.com/fdelillo/crm/internal/platform/objectstore"
 	"github.com/fdelillo/crm/internal/platform/outbox"
 	"github.com/fdelillo/crm/internal/platform/password"
+	"github.com/fdelillo/crm/internal/settings"
 	"github.com/fdelillo/crm/internal/tenant"
 	"github.com/fdelillo/crm/web"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -83,9 +84,10 @@ func runServe(ctx context.Context, args []string, e env) error {
 	if err != nil {
 		return err
 	}
+	configuration := settings.NewService(runner, recorder, c, logger)
 	dispatcher := outbox.NewDispatcher(runner, emailHandler, c, logger, app.PeriodicTasks(runner, c, logger)...)
 
-	api := app.BuildAPIRouter(users, companies, c, logger)
+	api := app.BuildAPIRouter(users, companies, configuration, c, logger)
 	root := app.NewRootHandler(app.RootDeps{
 		API:       api,
 		Liveness:  app.LivenessHandler(),

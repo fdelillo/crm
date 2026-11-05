@@ -25,7 +25,7 @@ func TestRequestLogPrincipal(t *testing.T) {
 	// The root of newAPIEnv answers the SPA with the unavailable placeholder; this one serves a
 	// plain page so the SPA row is an ordinary 200.
 	e.root = app.NewRootHandler(app.RootDeps{
-		API: app.BuildAPIRouter(e.users, e.companies, e.clock, logger), Liveness: app.LivenessHandler(),
+		API: app.BuildAPIRouter(e.users, e.companies, nil, e.clock, logger), Liveness: app.LivenessHandler(),
 		Readiness: app.ReadinessPlaceholder(),
 		SPA:       http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("spa")) }),
 	}, app.NewCommonMiddleware(logger, true, nil))

@@ -110,7 +110,7 @@ func newAPIEnvWithLogger(t *testing.T, logger *slog.Logger) *apiEnv {
 	limiterClock := &usersHTTPClock{now: time.Now().UTC()}
 	env := &apiEnv{t: t, users: users, companies: companies, runner: runner, clock: limiterClock}
 	env.twoAdminCompany = env.newCompany()
-	api := app.BuildAPIRouter(users, companies, limiterClock, logger)
+	api := app.BuildAPIRouter(users, companies, nil, limiterClock, logger)
 	env.root = app.NewRootHandler(app.RootDeps{API: api, Liveness: app.LivenessHandler(), Readiness: app.ReadinessPlaceholder(), SPA: app.SPAUnavailableHandler()}, app.NewCommonMiddleware(logger, true, nil))
 	return env
 }

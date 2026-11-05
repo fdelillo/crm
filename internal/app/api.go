@@ -8,6 +8,7 @@ import (
 	"github.com/fdelillo/crm/internal/industrytemplate"
 	"github.com/fdelillo/crm/internal/platform/clock"
 	"github.com/fdelillo/crm/internal/platform/ratelimit"
+	"github.com/fdelillo/crm/internal/settings"
 	"github.com/fdelillo/crm/internal/tenant"
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/time/rate"
@@ -16,7 +17,7 @@ import (
 // BuildAPIRouter is the composition root for the API served by crm serve.
 // Isolation tests walk this exact router (ADR-002, T-B801): new routes belong here.
 // Rate limits, middleware order and registrations are preserved from serve.go.
-func BuildAPIRouter(users *identity.Service, companies *tenant.Service, c clock.Clock, logger *slog.Logger) chi.Router {
+func BuildAPIRouter(users *identity.Service, companies *tenant.Service, configuration *settings.Service, c clock.Clock, logger *slog.Logger) chi.Router {
 	api := NewAPIRouter()
 	industrytemplate.RegisterRoutes(api)
 	// DD-49: besides the quota per IP, signups share a global one (30 + 1 per minute).
@@ -33,5 +34,6 @@ func BuildAPIRouter(users *identity.Service, companies *tenant.Service, c clock.
 		ratelimit.NewLimiter(rate.Every(6*time.Minute), 10, c, time.Hour),
 		ratelimit.NewLimiter(rate.Every(3*time.Minute), 20, c, time.Hour), logger)
 	RegisterTenantRoutes(api, users, companies, logger)
+	RegisterSettingsRoutes(api, users, configuration, logger)
 	return api
 }

@@ -59,7 +59,7 @@ func summarizeSamples(t *testing.T, samples []*sample) map[string]distribution {
 }
 
 func (e *environment) root() http.Handler {
-	return app.NewRootHandler(app.RootDeps{API: app.BuildAPIRouter(e.users, e.real, clock.Real{}, e.logger), Liveness: app.LivenessHandler(), Readiness: app.ReadinessPlaceholder(), SPA: http.NotFoundHandler()}, app.NewCommonMiddleware(e.logger, true, nil))
+	return app.NewRootHandler(app.RootDeps{API: app.BuildAPIRouter(e.users, e.real, nil, clock.Real{}, e.logger), Liveness: app.LivenessHandler(), Readiness: app.ReadinessPlaceholder(), SPA: http.NotFoundHandler()}, app.NewCommonMiddleware(e.logger, true, nil))
 }
 func (e *environment) request(ctx context.Context, root http.Handler, method, path string, input any, etag string, index int) (time.Duration, int) {
 	var body []byte
