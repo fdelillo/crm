@@ -47,28 +47,16 @@ func routeCoverage(t *testing.T, api chi.Router) int {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	declared := map[string]bool{}
-	for _, op := range contract.Default(t).Operations() {
-		if op.Path == "/healthz" || op.Path == "/readyz" {
-			continue
-		}
-		key := op.Method + " /api/v1" + op.Path
-		declared[key] = true
-		if !seen[key] {
-			t.Errorf("contract route not implemented: %s", key)
-		}
-	}
-	for key := range seen {
-		if !declared[key] {
-			t.Errorf("implemented route outside contract: %s", key)
-		}
+	ops := contract.Default(t).Operations()
+	for _, problem := range contractRouteProblems(ops, seen, pendingOperations) {
+		t.Error(problem)
 	}
 	for key := range isolationCases {
 		if !seen[key] {
 			t.Errorf("isolation case without API route: %s", key)
 		}
 	}
-	t.Logf("API routes=%d; contract API operations=%d", len(seen), len(declared))
+	t.Logf("API routes=%d; contract operations=%d; pending=%d", len(seen), len(ops), len(pendingOperations))
 	return len(seen)
 }
 
