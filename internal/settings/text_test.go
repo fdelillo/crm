@@ -22,6 +22,7 @@ func TestNormalizeRequiredText(t *testing.T) {
 		{"limit in runes is not bytes", strings.Repeat("ñ", max), strings.Repeat("ñ", max), ""},
 		{"trailing spaces count", "Obra" + strings.Repeat(" ", max), "", codeTooLong},
 		{"NUL", "Ob\x00ra", "", codeInvalidValue},
+		{"NUL takes precedence over the length", "Ob\x00ra" + strings.Repeat("a", max), "", codeInvalidValue},
 		{"malformed UTF-8", "Ob\xffra", "", codeInvalidValue},
 	}
 	for _, tc := range tests {
@@ -48,6 +49,7 @@ func TestNormalizeOptionalText(t *testing.T) {
 	}
 	for _, tc := range []struct{ input, code string }{
 		{"Obra\x00", codeInvalidValue},
+		{"Obra\x00" + strings.Repeat("a", 10), codeInvalidValue},
 		{strings.Repeat("ñ", 11), codeTooLong},
 		{"Obra" + strings.Repeat(" ", 10), codeTooLong},
 	} {
