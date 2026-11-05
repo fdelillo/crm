@@ -1,0 +1,15 @@
+{
+  "code": "testdata_system_category_income", "name": "Cobros de clientes repetida", "version": 2,
+  "labels": {
+    "project": {"singular": "Proyecto", "plural": "Proyectos", "gender": "masculine"},
+    "customer": {"singular": "Cliente", "plural": "Clientes", "gender": "masculine"},
+    "quote": {"singular": "Presupuesto", "plural": "Presupuestos", "gender": "masculine"}
+  },
+  "stages": [
+    {"name": "Presupuesto", "type": "open", "color": "blue"},
+    {"name": "Finalizado", "type": "won", "color": "green"}
+  ],
+  "categories": [{"name": "Cobros de clientes", "type": "income"}],
+  "catalog_items": [],
+  "quote_defaults": {"validity_days": 15, "terms": ""}
+}

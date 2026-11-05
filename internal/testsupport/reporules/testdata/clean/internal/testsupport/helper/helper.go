@@ -6,3 +6,6 @@ import "fmt"
 func Create(name string) string {
 	return fmt.Sprintf("CREATE TABLE %s (id int)", name) + "; SET ROLE x"
 }
+
+// Test-only helpers may name a template code.
+const Template = "generic"

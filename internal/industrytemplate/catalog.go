@@ -15,11 +15,60 @@ import (
 	"github.com/google/uuid"
 )
 
-// Template is a versioned, business-independent initial company configuration.
+// Template is a versioned, business-independent initial company configuration: the names, pipeline,
+// categories, sample catalog and commercial conditions a company starts with (002/DD-2).
+// Enumerated values are plain strings: settings validates them with its own rules (002/INV-9).
 type Template struct {
-	Code    string `json:"code"`
-	Name    string `json:"name"`
-	Version int    `json:"version"`
+	Code          string                `json:"code"`
+	Name          string                `json:"name"`
+	Version       int                   `json:"version"`
+	Labels        TemplateLabels        `json:"labels"`
+	Stages        []TemplateStage       `json:"stages"`
+	Categories    []TemplateCategory    `json:"categories"` // the company's own; settings adds the system ones
+	CatalogItems  []TemplateCatalogItem `json:"catalog_items"`
+	QuoteDefaults TemplateQuoteDefaults `json:"quote_defaults"`
+}
+
+// TemplateLabel is the singular, plural and gender ("masculine" or "feminine") of one custom name.
+type TemplateLabel struct {
+	Singular string `json:"singular"`
+	Plural   string `json:"plural"`
+	Gender   string `json:"gender"`
+}
+
+// TemplateLabels holds the custom names of the three entities.
+type TemplateLabels struct {
+	Project  TemplateLabel `json:"project"`
+	Customer TemplateLabel `json:"customer"`
+	Quote    TemplateLabel `json:"quote"`
+}
+
+// TemplateStage is a pipeline stage; the template lists them in order. Type is "open", "won" or
+// "lost"; Color is one of the palette names of settings.
+type TemplateStage struct {
+	Name  string `json:"name"`
+	Type  string `json:"type"`
+	Color string `json:"color"`
+}
+
+// TemplateCategory is a category of the company; Type is "income" or "expense".
+type TemplateCategory struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
+// TemplateCatalogItem is a sample catalog item, always without a reference price.
+type TemplateCatalogItem struct {
+	Name        string `json:"name"`
+	Description string `json:"description"` // "" = no description
+	Unit        string `json:"unit"`
+	UnitLabel   string `json:"unit_label"` // only with unit "other"
+}
+
+// TemplateQuoteDefaults are the default validity in days and terms ("" = no terms) of a quote.
+type TemplateQuoteDefaults struct {
+	ValidityDays int    `json:"validity_days"`
+	Terms        string `json:"terms"`
 }
 
 //go:embed catalog.json

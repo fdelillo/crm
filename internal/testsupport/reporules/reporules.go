@@ -34,6 +34,10 @@ const (
 	// internal/platform/httpx (ClientIP), so an untrusted client cannot choose the IP that logs, the rate
 	// limit and the audit trail record (INV-25, DD-32).
 	RuleClientIPHeaders = "client-ip-header"
+	// RuleTemplateCodeLiteral: the codes of the industry templates ("generic", "aluminum_carpentry") are
+	// string literals only in tests, testdata and internal/testsupport; production code takes them from
+	// internal/industrytemplate's catalog, so a new template is one entry in catalog.json (INV-9, DD-2).
+	RuleTemplateCodeLiteral = "template-code-literal"
 )
 
 // Violation is one broken rule at a place in the tree.

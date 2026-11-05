@@ -1,0 +1,15 @@
+{
+  "code": "testdata_first_stage_won", "name": "Primera etapa ganada", "version": 2,
+  "labels": {
+    "project": {"singular": "Proyecto", "plural": "Proyectos", "gender": "masculine"},
+    "customer": {"singular": "Cliente", "plural": "Clientes", "gender": "masculine"},
+    "quote": {"singular": "Presupuesto", "plural": "Presupuestos", "gender": "masculine"}
+  },
+  "stages": [
+    {"name": "Finalizado", "type": "won", "color": "green"},
+    {"name": "Presupuesto", "type": "open", "color": "blue"}
+  ],
+  "categories": [{"name": "Materiales", "type": "expense"}],
+  "catalog_items": [],
+  "quote_defaults": {"validity_days": 15, "terms": ""}
+}
