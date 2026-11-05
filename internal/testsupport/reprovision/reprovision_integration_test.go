@@ -140,7 +140,7 @@ func TestReprovisionTenantRoles(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))
 	runtime := db.NewTxRunner(pool, db.WithLogger(logger))
 	users := identity.NewService(runtime, outbox.NewEnqueuer(f.Clock), f.Clock, 24*time.Hour, 7*24*time.Hour)
-	api := app.BuildAPIRouter(users, f.Companies, f.Clock, logger)
+	api := app.BuildAPIRouter(users, f.Companies, nil, f.Clock, logger)
 	request := func(company e2e.Company, status int) {
 		t.Helper()
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)

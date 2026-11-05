@@ -34,8 +34,8 @@ func TestRouterGuardMutations(t *testing.T) {
 			return strings.Replace(s, "root := app.NewRootHandler", "mutateAPI(api)\nroot := app.NewRootHandler", 1)
 		}, "package main\nimport \"github.com/go-chi/chi/v5\"\nfunc mutateAPI(r chi.Router) { r.Get(\"/api/v1/backdoor\", nil) }\n"},
 		{"wrapped-api", []int{1, 2}, func(s string) string {
-			s = strings.Replace(s, "api := app.BuildAPIRouter(users, companies, c, logger)", "", 1)
-			return wrap(strings.Replace(s, "API:       api,", "API: wrap(app.BuildAPIRouter(users, companies, c, logger)),", 1))
+			s = strings.Replace(s, "api := app.BuildAPIRouter(users, companies, configuration, c, logger)", "", 1)
+			return wrap(strings.Replace(s, "API:       api,", "API: wrap(app.BuildAPIRouter(users, companies, configuration, c, logger)),", 1))
 		}, ""},
 		{"foreign-file-chi", []int{2}, func(s string) string { return s }, "package main\nimport \"github.com/go-chi/chi/v5\"\nvar hiddenAPI = chi.NewRouter()\n"},
 		{"wrapped-root", []int{2, 3}, func(s string) string {

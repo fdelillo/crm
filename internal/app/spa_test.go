@@ -28,7 +28,7 @@ func TestRootEmbeddedSPA(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-			api := app.BuildAPIRouter(nil, nil, clock.Real{}, logger)
+			api := app.BuildAPIRouter(nil, nil, nil, clock.Real{}, logger)
 			var before []string
 			walk := func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
 				before = append(before, method+" "+route)

@@ -85,7 +85,7 @@ func permissionRequest(t *testing.T, f *e2e.Scenario, key string) (path, ct stri
 
 // T-B802 (FR-007): anonymous, operator and administrator outcomes for every endpoint are the literal declared ones.
 func TestIsolationPermissionMatrix(t *testing.T) {
-	api := app.BuildAPIRouter(nil, nil, clock.Real{}, discardLogger())
+	api := app.BuildAPIRouter(nil, nil, nil, clock.Real{}, discardLogger())
 	routeCoverage(t, api)
 	for key := range isolationCases {
 		if _, ok := isolationPermissions[key]; !ok {
@@ -110,7 +110,7 @@ func TestIsolationPermissionMatrix(t *testing.T) {
 		for i, actor := range []string{"anonymous", "operator", "admin"} {
 			t.Run(key+"/"+actor, func(t *testing.T) {
 				f := e2e.New(t, pgtest.AppPool(t))
-				api := app.BuildAPIRouter(f.Users, f.Companies, f.Clock, f.Logger)
+				api := app.BuildAPIRouter(f.Users, f.Companies, nil, f.Clock, f.Logger)
 				h := isolationRoot(t, f, api)
 				if key == "POST /api/v1/users/invitations" {
 					f.VerifyAdmin(t, f.A) // DD-46: only a verified administrator invites

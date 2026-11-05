@@ -62,7 +62,7 @@ func routeCoverage(t *testing.T, api chi.Router) int {
 
 // T-B801: every route of the API router has a declared isolation case and matches the OpenAPI paths.
 func TestIsolationRouteCoverage(t *testing.T) {
-	routeCoverage(t, app.BuildAPIRouter(nil, nil, clock.Real{}, slog.New(slog.NewTextHandler(io.Discard, nil))))
+	routeCoverage(t, app.BuildAPIRouter(nil, nil, nil, clock.Real{}, slog.New(slog.NewTextHandler(io.Discard, nil))))
 }
 
 // Expectations are declared independently of both the router and the contract.
@@ -416,7 +416,7 @@ func TestIsolationHTTPMatrix(t *testing.T) {
 			t.Error("sentinel_checks and state_checks must both be positive")
 		}
 	})
-	total = routeCoverage(t, app.BuildAPIRouter(nil, nil, clock.Real{}, slog.New(slog.NewTextHandler(io.Discard, nil))))
+	total = routeCoverage(t, app.BuildAPIRouter(nil, nil, nil, clock.Real{}, slog.New(slog.NewTextHandler(io.Discard, nil))))
 	keys := make([]string, 0, len(isolationCases))
 	for k := range isolationCases {
 		keys = append(keys, k)
@@ -425,7 +425,7 @@ func TestIsolationHTTPMatrix(t *testing.T) {
 	for _, key := range keys {
 		t.Run(key, func(t *testing.T) {
 			f := e2e.New(t, pgtest.AppPool(t))
-			api := app.BuildAPIRouter(f.Users, f.Companies, f.Clock, f.Logger)
+			api := app.BuildAPIRouter(f.Users, f.Companies, nil, f.Clock, f.Logger)
 			h := isolationRoot(t, f, api)
 			parts := strings.SplitN(key, " ", 2)
 			method, path := parts[0], parts[1]
@@ -628,7 +628,7 @@ func TestIsolationHTTPMatrix(t *testing.T) {
 	for _, key := range operatorReads {
 		t.Run("operator/"+key, func(t *testing.T) {
 			f := e2e.New(t, pgtest.AppPool(t))
-			api := app.BuildAPIRouter(f.Users, f.Companies, f.Clock, f.Logger)
+			api := app.BuildAPIRouter(f.Users, f.Companies, nil, f.Clock, f.Logger)
 			h := isolationRoot(t, f, api)
 			path := strings.SplitN(key, " ", 2)[1]
 			beforeA, beforeB := f.Snapshot(t, f.A.ID), f.Snapshot(t, f.B.ID)
