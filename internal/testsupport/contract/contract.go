@@ -56,7 +56,7 @@ func Load() (*Validator, error) {
 // Adding a spec is one line here (DD-13).
 var Documents = []string{
 	"specs/001-empresas-usuarios/contracts/openapi.yaml",
-	"specs/002-configuracion/contracts/openapi.yaml", //nolint:misspell // Spanish directory name of spec 002
+	"specs/002-configuracion/contracts/openapi.yaml",
 }
 
 // Reference is one $ref found in a contract and whether it resolved to a node.

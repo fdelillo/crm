@@ -23,6 +23,12 @@ linters:
         - fmt.Fprint
         - fmt.Fprintf
         - fmt.Fprintln
+    misspell:
+      # Spanish words that the English dictionary reads as typos (clientes -> clients).
+      ignore-rules:
+        - clientes
+        - configuracion
+        - materiales
     depguard:
       rules:
         openapi-validator-only-in-contract-tests:

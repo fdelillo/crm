@@ -124,13 +124,13 @@ func TestMigration00010_BackfillsExistingCompanies(t *testing.T) {
 			if err != nil {
 				t.Fatalf("company %v: reading tenant_settings: %v", c.ID, err)
 			}
-			wantLabels := [9]string{"Proyecto", "Proyectos", "masculine", "Cliente", "Clientes", "masculine", "Presupuesto", "Presupuestos", "masculine"} //nolint:misspell // Spanish seed text
+			wantLabels := [9]string{"Proyecto", "Proyectos", "masculine", "Cliente", "Clientes", "masculine", "Presupuesto", "Presupuestos", "masculine"}
 			if n != 1 || labels != wantLabels || days != 15 || terms != nil {
 				t.Errorf("tenant_settings: rows=%d labels=%v days=%d terms=%v, want 1 row, %v, 15, NULL", n, labels, days, terms, wantLabels)
 			}
 
 			if got := readRows(t, ctx, tx, `SELECT system_key || '|' || type || '|' || name FROM app.categories ORDER BY system_key`); !slices.Equal(got, []string{
-				"customer_receipts|income|Cobros de clientes", //nolint:misspell // Spanish seed text
+				"customer_receipts|income|Cobros de clientes",
 				"employee_payments|expense|Pagos a empleados",
 				"partner_contributions|income|Aportes de socios",
 				"partner_withdrawals|expense|Retiros de socios",
