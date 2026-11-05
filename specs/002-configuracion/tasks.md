@@ -544,6 +544,7 @@ INV-13, ADR-029
   | `POST /catalog-items` válido con y sin `reference_price` | `201`; `amount_cents` sale como entero JSON (sin decimales ni exponente) |
   | `amount_cents: 1.5` / `"100"` / `9223372036854775808` (no entra en `int64`) | `400 malformed_request` |
   | `amount_cents: 9007199254740992` | `422` (`reference_price.amount_cents`, `invalid_value`) |
+  | `reference_price` sin `amount_cents` / `amount_cents: 0` | `422` (`reference_price.amount_cents`, `required`) / `201` con precio cero (la falta del importe nunca se lee como 0) |
   | `currency: "EUR"` / `reference_price` sin `currency` | `422` (`reference_price.currency`, `invalid_value` / `required`) |
   | `unit: "other"` sin `unit_label` | `422` (`unit_label`, `required`) |
   | `PATCH` con `{"reference_price": null}` / `{"name": null}` / `{}` | `200` sin precio / `400` / `400` |
