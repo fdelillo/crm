@@ -1,0 +1,18 @@
+openapi: 3.1.0
+info: {title: Dependent, version: 0.1.0}
+servers: [{url: /api/v1}]
+paths:
+  /prices:
+    get:
+      operationId: listPrices
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Money'
+components:
+  schemas:
+    Money:
+      $ref: 'base.yaml#/components/schemas/Money'

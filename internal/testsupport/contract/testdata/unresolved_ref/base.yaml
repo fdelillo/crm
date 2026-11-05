@@ -1,0 +1,14 @@
+openapi: 3.1.0
+info: {title: Base without Money, version: 0.5.0}
+servers: [{url: /api/v1}]
+paths:
+  /ping:
+    get:
+      operationId: ping
+      responses:
+        '200':
+          description: ok
+components:
+  schemas:
+    Problem:
+      type: object
