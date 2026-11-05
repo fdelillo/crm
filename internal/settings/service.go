@@ -30,6 +30,7 @@ type RequestMeta struct {
 	UserAgent string
 }
 
+// Service runs the use cases of the company configuration.
 // T-002-B205 (DD-1): skeleton; the use cases arrive with their own tasks.
 type Service struct {
 	runner db.TxRunner

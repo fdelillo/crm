@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// RegisterSettingsRoutes mounts the configuration routes behind Authenticate.
 // T-002-B205 (DD-1): the group exists so each operation only adds its route in settings.RegisterRoutes.
 func RegisterSettingsRoutes(r chi.Router, users *identity.Service, configuration *settings.Service, logger *slog.Logger) {
 	r.Group(func(r chi.Router) {
