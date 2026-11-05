@@ -13,6 +13,7 @@ const validTemplate = `{"code":"generic","name":"Genérico","version":2,
  "stages":[{"name":"Presupuesto","type":"open","color":"blue"},{"name":"Finalizado","type":"won","color":"green"}],
  "categories":[],"catalog_items":[],"quote_defaults":{"validity_days":15,"terms":""}}`
 
+// T-002-B303 (DD-2): the base entry of the rejection cases is itself valid, so each of them fails for its own rule.
 func TestParseCatalogAcceptsAValidEntry(t *testing.T) {
 	got, err := parseCatalog([]byte("[" + validTemplate + "]"))
 	if err != nil || len(got) != 1 || len(got[0].Stages) != 2 {

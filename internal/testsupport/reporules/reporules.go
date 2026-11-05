@@ -282,11 +282,16 @@ func (c *goChecker) visit(n ast.Node) bool {
 			c.checkProxyHeader(n)
 		}
 		if c.templateRules && n.Kind == token.STRING {
-			c.checkTemplateCode(n)
+			if val, err := strconv.Unquote(n.Value); err == nil {
+				c.checkTemplateCode(n, val)
+			}
 		}
 	case *ast.BinaryExpr:
 		if c.sqlRules {
 			c.checkConcat(n)
+		}
+		if c.templateRules && n.Op == token.ADD {
+			c.checkTemplateCode(n, template(n))
 		}
 	case *ast.CallExpr:
 		if c.sqlRules {
@@ -332,15 +337,12 @@ func (c *goChecker) checkProxyHeader(lit *ast.BasicLit) {
 // templateCodes are the codes of the industry templates (INV-9).
 var templateCodes = []string{"generic", "aluminum_carpentry"}
 
-// checkTemplateCode flags a string literal (interpreted or raw) that is exactly a template code: production
-// code never names a template, it receives the code from the catalog or from the request.
-func (c *goChecker) checkTemplateCode(lit *ast.BasicLit) {
-	val, err := strconv.Unquote(lit.Value)
-	if err != nil {
-		return
-	}
+// checkTemplateCode flags a string literal (interpreted or raw), or a concatenation of literals, that is
+// exactly a template code: production code never names a template, it receives the code from the catalog
+// or from the request. The check is syntactic: it does not follow identifiers.
+func (c *goChecker) checkTemplateCode(n ast.Node, val string) {
 	if slices.Contains(templateCodes, val) {
-		c.add(RuleTemplateCodeLiteral, lit.Pos(), fmt.Sprintf("the template code %q is named outside tests: it comes from internal/industrytemplate", val))
+		c.add(RuleTemplateCodeLiteral, n.Pos(), fmt.Sprintf("the template code %q is named outside tests: it comes from internal/industrytemplate", val))
 	}
 }
 
