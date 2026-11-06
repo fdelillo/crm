@@ -93,3 +93,14 @@ sql:
         out: internal/tenant/store
         sql_package: pgx/v5
         overrides: *overrides
+
+  - name: settings
+    engine: postgresql
+    schema: db/migrations
+    queries: internal/settings/store
+    gen:
+      go:
+        package: store
+        out: internal/settings/store
+        sql_package: pgx/v5
+        overrides: *overrides
