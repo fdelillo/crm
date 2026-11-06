@@ -22,6 +22,7 @@ import (
 	"github.com/fdelillo/crm/internal/platform/outbox"
 	"github.com/fdelillo/crm/internal/platform/password"
 	"github.com/fdelillo/crm/internal/platform/ratelimit"
+	"github.com/fdelillo/crm/internal/settings"
 	"github.com/fdelillo/crm/internal/tenant"
 	"github.com/fdelillo/crm/internal/testsupport/apitest"
 	"github.com/fdelillo/crm/internal/testsupport/contract"
@@ -48,7 +49,7 @@ func newAuthServerWithLoginClock(t *testing.T, absolute time.Duration, loginCloc
 	recorder := audit.NewRecorder()
 	users := identity.NewService(runner, outbox.NewEnqueuer(c), c, min(24*time.Hour, absolute), absolute,
 		identity.WithAuthentication(hasher, recorder, []byte("0123456789abcdef0123456789abcdef"), logger))
-	companies := tenant.NewService(runner, users, industrytemplate.NoopSeeder{}, hasher, recorder, logger)
+	companies := tenant.NewService(runner, users, settings.NewTemplateSeeder(c), hasher, recorder, logger)
 	r := app.NewAPIRouter()
 	industrytemplate.RegisterRoutes(r)
 	tenant.RegisterRoutes(r, companies, ratelimit.NewLimiter(rate.Every(12*time.Minute), 5, c, time.Hour),

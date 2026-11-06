@@ -124,10 +124,9 @@ type SeedTenantSettingsParams struct {
 }
 
 // The four statements of the registration seeding (002/DD-3, INV-10), one per table, each by sets: the values
-// travel as parallel arrays and the rows come out of unnest, never one statement per row. An empty array inserts
-// no rows. sqlc does not know the multi-argument unnest(a, b, c), so ROWS FROM (unnest(a), unnest(b), ...) says the
-// same thing in a form its analyzer accepts (S-3).
-// These queries run as the role of the new company, so row level security applies to them as to any other.
+// travel as parallel arrays, never one statement per row. An empty array inserts no rows. sqlc does not know
+// the multi-argument unnest(a, b, c), so ROWS FROM (unnest(a), unnest(b), ...) says the same in a form its
+// analyzer accepts (S-3).
 func (q *Queries) SeedTenantSettings(ctx context.Context, arg SeedTenantSettingsParams) error {
 	_, err := q.db.Exec(ctx, seedTenantSettings,
 		arg.TenantID,
