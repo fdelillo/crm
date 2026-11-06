@@ -12,7 +12,6 @@ import (
 	"github.com/fdelillo/crm/internal/app"
 	"github.com/fdelillo/crm/internal/identity"
 	"github.com/fdelillo/crm/internal/identity/emails"
-	"github.com/fdelillo/crm/internal/industrytemplate"
 	"github.com/fdelillo/crm/internal/platform/audit"
 	"github.com/fdelillo/crm/internal/platform/clock"
 	"github.com/fdelillo/crm/internal/platform/config"
@@ -73,7 +72,7 @@ func runServe(ctx context.Context, args []string, e env) error {
 	if err != nil {
 		return err
 	}
-	companies := tenant.NewService(runner, users, industrytemplate.NoopSeeder{}, hasher, recorder, logger, tenant.WithObjectStorage(storage))
+	companies := tenant.NewService(runner, users, settings.NewTemplateSeeder(c), hasher, recorder, logger, tenant.WithObjectStorage(storage))
 	smtp, err := mailer.NewSMTP(mailer.SMTPConfig{Host: cfg.SMTPHost, Port: cfg.SMTPPort,
 		Username: cfg.SMTPUsername, Password: cfg.SMTPPassword, From: cfg.SMTPFrom})
 	if err != nil {

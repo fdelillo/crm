@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/fdelillo/crm/internal/identity"
+	"github.com/fdelillo/crm/internal/platform/db"
 	"github.com/fdelillo/crm/internal/testsupport/fixture/e2e"
 	"github.com/fdelillo/crm/internal/testsupport/pgtest"
 )
@@ -34,6 +35,26 @@ func TestIsolationFixture(t *testing.T) {
 		preview, err := f.Users.PreviewInvitation(context.Background(), c.Invitation)
 		if err != nil || preview.Email != c.Users["invited"].Email {
 			t.Fatalf("invitation: %+v %v", preview, err)
+		}
+	}
+}
+
+// T-002-B306 (DD-3 of 002): the scenario registers its companies with the real seeder, so company A (generic)
+// and company B (aluminum_carpentry) start with the configuration of their template.
+func TestIsolationFixtureCompaniesStartWithTheirTemplateConfiguration(t *testing.T) {
+	f := e2e.New(t, pgtest.AppPool(t))
+	for _, tc := range []struct {
+		company                   *e2e.Company
+		stages, categories, items int
+	}{{&f.A, 5, 13, 0}, {&f.B, 6, 14, 4}} {
+		var stages, categories, items int
+		err := f.Runner.InTenantTx(context.Background(), tc.company.ID, func(ctx context.Context, tx db.Tx) error {
+			return tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM app.stages), (SELECT count(*) FROM app.categories),
+				(SELECT count(*) FROM app.catalog_items)`).Scan(&stages, &categories, &items)
+		})
+		if err != nil || stages != tc.stages || categories != tc.categories || items != tc.items {
+			t.Fatalf("company %s: stages=%d categories=%d items=%d err=%v, want %d/%d/%d",
+				tc.company.Suffix, stages, categories, items, err, tc.stages, tc.categories, tc.items)
 		}
 	}
 }

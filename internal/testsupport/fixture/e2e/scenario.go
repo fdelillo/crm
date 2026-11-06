@@ -21,13 +21,13 @@ import (
 
 	"github.com/fdelillo/crm/internal/authz"
 	"github.com/fdelillo/crm/internal/identity"
-	"github.com/fdelillo/crm/internal/industrytemplate"
 	"github.com/fdelillo/crm/internal/platform/audit"
 	"github.com/fdelillo/crm/internal/platform/clock"
 	"github.com/fdelillo/crm/internal/platform/db"
 	"github.com/fdelillo/crm/internal/platform/objectstore"
 	"github.com/fdelillo/crm/internal/platform/outbox"
 	"github.com/fdelillo/crm/internal/platform/password"
+	"github.com/fdelillo/crm/internal/settings"
 	"github.com/fdelillo/crm/internal/tenant"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -76,7 +76,7 @@ func New(t testing.TB, pool *pgxpool.Pool) *Scenario {
 	storage := &Storage{objects: map[string][]byte{}}
 	users := identity.NewService(runner, outbox.NewEnqueuer(c), c, 24*time.Hour, 7*24*time.Hour,
 		identity.WithAuthentication(h, recorder, []byte("0123456789abcdef0123456789abcdef"), logger))
-	companies := tenant.NewService(runner, users, industrytemplate.NoopSeeder{}, h, recorder, logger, tenant.WithObjectStorage(storage))
+	companies := tenant.NewService(runner, users, settings.NewTemplateSeeder(c), h, recorder, logger, tenant.WithObjectStorage(storage))
 	f := &Scenario{Users: users, Companies: companies, Runner: runner, Clock: c, Logger: logger, Storage: storage}
 	f.A = f.company(t, "A", color.NRGBA{R: 241, A: 255}, "30123456781", "America/Argentina/Buenos_Aires")
 	f.B = f.company(t, "B", color.NRGBA{B: 239, A: 255}, "20123456786", "America/Montevideo")
