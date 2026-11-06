@@ -11,10 +11,11 @@ import (
 )
 
 const (
-	ruleRole  = reporules.RuleRoleSwitch
-	ruleSQL   = reporules.RuleDynamicSQL
-	ruleRoute = reporules.RuleChiOutsideAPI
-	ruleIP    = reporules.RuleClientIPHeaders
+	ruleRole         = reporules.RuleRoleSwitch
+	ruleSQL          = reporules.RuleDynamicSQL
+	ruleRoute        = reporules.RuleChiOutsideAPI
+	ruleIP           = reporules.RuleClientIPHeaders
+	ruleTemplateCode = reporules.RuleTemplateCodeLiteral
 )
 
 func summarize(vs []reporules.Violation) []string {
@@ -160,5 +161,26 @@ func TestRule_ProxyHeadersOnlyInHTTPX(t *testing.T) {
 	sort.Strings(want)
 	if !slices.Equal(got, want) {
 		t.Errorf("proxy-header violations:\n got %v\nwant %v", got, want)
+	}
+}
+
+// Rule 5 (INV-9): the codes "generic" and "aluminum_carpentry" appear as literals only in tests,
+// testdata and internal/testsupport: production code gets them from the catalog.
+func TestRule_TemplateCodesOnlyInTheCatalog(t *testing.T) {
+	vs, err := reporules.Check("testdata/violations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, v := range vs {
+		if v.Rule == ruleTemplateCode {
+			got = append(got, fmt.Sprintf("%s:%d", filepath.ToSlash(v.File), v.Line))
+		}
+	}
+	sort.Strings(got)
+	want := []string{"internal/orders/templatecode.go:6", "internal/orders/templatecode.go:8", "internal/orders/templatecode.go:11", "internal/orders/templatecode.go:13", "internal/orders/templatecode.go:16", "internal/orders/templatecode.go:18"}
+	sort.Strings(want)
+	if !slices.Equal(got, want) {
+		t.Errorf("template-code violations:\n got %v\nwant %v", got, want)
 	}
 }

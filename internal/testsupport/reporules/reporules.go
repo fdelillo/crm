@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -34,6 +35,10 @@ const (
 	// internal/platform/httpx (ClientIP), so an untrusted client cannot choose the IP that logs, the rate
 	// limit and the audit trail record (INV-25, DD-32).
 	RuleClientIPHeaders = "client-ip-header"
+	// RuleTemplateCodeLiteral: the codes of the industry templates ("generic", "aluminum_carpentry") are
+	// string literals only in tests, testdata and internal/testsupport; production code takes them from
+	// internal/industrytemplate's catalog, so a new template is one entry in catalog.json (INV-9, DD-2).
+	RuleTemplateCodeLiteral = "template-code-literal"
 )
 
 // Violation is one broken rule at a place in the tree.
@@ -189,7 +194,7 @@ func checkGo(path, rel string) ([]Violation, error) {
 		return nil, err
 	}
 	c := &goChecker{fset: fset, rel: rel, sqlRules: !exemptFromSQLRules(rel), ipRules: !strings.HasPrefix(rel, "internal/platform/httpx/") && !strings.HasPrefix(rel, "internal/testsupport/"),
-		consts: consts, seen: map[*ast.BinaryExpr]bool{}}
+		templateRules: !strings.HasPrefix(rel, "internal/testsupport/"), consts: consts, seen: map[*ast.BinaryExpr]bool{}}
 	ast.Inspect(file, c.visit)
 	return dedupe(c.out), nil
 }
@@ -253,13 +258,14 @@ func dedupe(vs []Violation) []Violation {
 }
 
 type goChecker struct {
-	fset     *token.FileSet
-	rel      string
-	sqlRules bool
-	ipRules  bool // false inside internal/platform/httpx (the only reader of the proxy headers) and test support
-	consts   map[string]bool
-	seen     map[*ast.BinaryExpr]bool // concatenation nodes already reported as part of a chain
-	out      []Violation
+	fset          *token.FileSet
+	rel           string
+	sqlRules      bool
+	ipRules       bool // false inside internal/platform/httpx (the only reader of the proxy headers) and test support
+	templateRules bool // false in test support, which may name the codes
+	consts        map[string]bool
+	seen          map[*ast.BinaryExpr]bool // concatenation nodes already reported as part of a chain
+	out           []Violation
 }
 
 func (c *goChecker) add(rule string, pos token.Pos, detail string) {
@@ -275,9 +281,18 @@ func (c *goChecker) visit(n ast.Node) bool {
 		if c.ipRules && n.Kind == token.STRING {
 			c.checkProxyHeader(n)
 		}
+		if c.templateRules && n.Kind == token.STRING {
+			if val, err := strconv.Unquote(n.Value); err == nil {
+				c.checkTemplateCode(n, val)
+			}
+		}
 	case *ast.BinaryExpr:
 		if c.sqlRules {
 			c.checkConcat(n)
+		}
+		// An operand that is already a code reports itself: the chain counts once, even across lines.
+		if c.templateRules && n.Op == token.ADD && !isTemplateCode(template(n.X)) && !isTemplateCode(template(n.Y)) {
+			c.checkTemplateCode(n, template(n))
 		}
 	case *ast.CallExpr:
 		if c.sqlRules {
@@ -317,6 +332,20 @@ func (c *goChecker) checkProxyHeader(lit *ast.BasicLit) {
 			c.add(RuleClientIPHeaders, lit.Pos(), fmt.Sprintf("%q is read outside internal/platform/httpx: the client IP comes only from httpx.ClientIP", val))
 			return
 		}
+	}
+}
+
+// templateCodes are the codes of the industry templates (INV-9).
+var templateCodes = []string{"generic", "aluminum_carpentry"}
+
+func isTemplateCode(val string) bool { return slices.Contains(templateCodes, val) }
+
+// checkTemplateCode flags a string literal (interpreted or raw), or a concatenation of literals, that is
+// exactly a template code: production code never names a template, it receives the code from the catalog
+// or from the request. The check is syntactic: it does not follow identifiers.
+func (c *goChecker) checkTemplateCode(n ast.Node, val string) {
+	if isTemplateCode(val) {
+		c.add(RuleTemplateCodeLiteral, n.Pos(), fmt.Sprintf("the template code %q is named outside tests: it comes from internal/industrytemplate", val))
 	}
 }
 
