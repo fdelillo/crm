@@ -40,8 +40,9 @@ comentario de cada `Test*`. Además:
   puede quedar en rojo entre ramas).
 - **Archivos de test por funcionalidad**: `internal/settings/pipeline_test.go`,
   `stages_integration_test.go`, `categories_integration_test.go`, `catalog_integration_test.go`,
-  `preferences_integration_test.go`, `seeder_integration_test.go`; en `internal/app`,
-  `settings_stages_integration_test.go`, etc.; el escenario de SC-001 en
+  `preferences_integration_test.go`; en `internal/app`, `settings_stages_integration_test.go`,
+  etc., y `registration_seeding_integration_test.go` (usa `tenant` y `settings` a la vez, y DD-1 no
+  deja que uno importe al otro, tampoco en tests); el escenario de SC-001 en
   `internal/app/configuration_scenario_integration_test.go`.
 - **Qué se sustituye y qué no** (ADR-012):
 

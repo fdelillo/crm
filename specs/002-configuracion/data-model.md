@@ -266,8 +266,9 @@ viajan como arrays paralelos; ninguna sentencia por fila):
 | 3 | `SeedCategories` | Las 5 de sistema + las de la plantilla | `tenant_id`, arrays `names`, `types`, `system_keys` (texto vacío = `NULL`); `now` |
 | 4 | `SeedCatalogItems` | Los ítems de ejemplo (sin precio) | `tenant_id`, arrays `names`, `descriptions`, `units`, `unit_labels` (vacío = `NULL`); `now` |
 
-Un array vacío inserta cero filas y no cambia la cuenta de sentencias. Supuesto S-3 (a verificar al
-implementar): sqlc genera los parámetros de arrays; si no, `:copyfrom` (COPY), también por conjuntos.
+Un array vacío inserta cero filas y no cambia la cuenta de sentencias. Supuesto S-3 (verificado en
+T-002-B305): sqlc genera los parámetros de arrays con `ROWS FROM (unnest(a), unnest(b), …)`, porque
+no acepta `unnest` con varios argumentos.
 
 **Categorías de sistema** (iguales para toda plantilla; las define `settings`, DD-2):
 
