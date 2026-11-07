@@ -3,8 +3,9 @@
 **Spec**: [`spec.md`](spec.md) (Aprobada 2026-10-23) · **Fecha**: 2026-10-23 · **Autor**: `backend-architect`
 **Estado**: **Aprobado (2026-10-23).** El usuario aprobó P-1 a P-10 con las opciones recomendadas
 (§14.2) y decidió que las condiciones comerciales de 002 quedan como texto libre (las condiciones de
-pago estructuradas las define 005). Lo que sigue a verificar al implementar está en §14.1 como
-supuestos (S-3, S-4) y en la compuerta de medición de DD-3 (T-002-B307).
+pago estructuradas las define 005). Los supuestos de §14.1 que había que verificar al implementar
+ya están verificados (S-4 en T-002-B203, S-3 en T-002-B305); queda la compuerta de medición de DD-3
+(T-002-B307).
 **Revisión 2026-10-23 (PR #47, revisión de Codex)**: la compuerta del sembrado también falla si la
 retención absoluta llega a 140 ms (DD-3, §13, R-1); la actualización del mapa de errores del frontend
 es la tarea T-002-F001, en la misma rama que T-002-B202 (DD-13, R-2); T-002-B202 es requisito previo
@@ -811,14 +812,15 @@ los vigila el log de request (`duration_ms`).
 
 ### 14.1 Supuestos
 
-Siguen abiertos hasta implementar: no son decisiones del usuario sino verificaciones.
+No son decisiones del usuario sino verificaciones. S-3 y S-4 ya se verificaron al implementar (ver
+cada fila); los demás siguen abiertos.
 
 | ID | Supuesto | Impacto si es falso |
 |---|---|---|
 | S-1 | Por empresa: ≤ ~30 etapas, ≤ ~200 categorías, ≤ ~1.000 ítems de catálogo | Agregar búsqueda o paginación al catálogo (lo decidiría 005) |
 | S-2 | No hay empresas reales en producción (P-1 de 001 abierta; nota de DD-43 de 001) | El *backfill* mínimo de DD-4 dejaría a esas empresas con la plantilla "Genérico" aunque hubieran elegido otra; habría que sembrar por código de plantilla |
 | S-3 | sqlc genera parámetros de tipo array para `INSERT … SELECT` desde arrays con pgx v5. **Verificado en T-002-B305** con sqlc v1.31.1: rechaza `unnest(@a::text[], @b::text[], …)` con varios argumentos y acepta la forma equivalente `ROWS FROM (unnest(@a::text[]), unnest(@b::text[]), …)`, que es la que se usa; INV-10 sigue en cuatro sentencias | Respaldo: `:copyfrom` de sqlc (COPY de pgx), que también es por conjuntos; la cuenta de sentencias de INV-10 se ajusta |
-| S-4 | libopenapi resuelve `$ref` a archivos locales con la configuración del documento (`BasePath`, `AllowFileReferences`; la documentación de *rolodex* lo menciona) y libopenapi-validator valida con esas referencias resueltas (**a validar** en T-002-B203) | Respaldo: el helper fusiona en memoria los componentes de 001 en el documento de 002 reescribiendo los `$ref` externos a internos (los nombres no chocan); la verificación de resolución completa vale igual |
+| S-4 | libopenapi resuelve `$ref` a archivos locales con la configuración del documento (`BasePath`, `AllowFileReferences`; la documentación de *rolodex* lo menciona) y libopenapi-validator valida con esas referencias resueltas. **Verificado en T-002-B203**: el helper de contratos activa las dos opciones y la prueba de resolución completa pasa sin el respaldo | Respaldo: el helper fusiona en memoria los componentes de 001 en el documento de 002 reescribiendo los `$ref` externos a internos (los nombres no chocan); la verificación de resolución completa vale igual |
 | S-5 | Comparar nombres con `lower()` de PostgreSQL alcanza: "Instalación" e "Instalacion" son distintos | Normalizar acentos con `unaccent` (extensión) en el índice |
 | S-6 | Los datos sembrados van en español (ADR-023, un solo idioma) | Plantillas por idioma |
 | S-7 | La plantilla se aplica solo al registrarse; no se reaplica ni se cambia de rubro después (spec, casos borde) | Una operación nueva de "reaplicar" (con decisiones sobre qué pisar) |

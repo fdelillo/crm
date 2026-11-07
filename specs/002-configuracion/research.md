@@ -216,4 +216,4 @@ handlers como esqueletos en la Fase 2 (código que responde algo falso durante v
   confirma por sí sola el comportamiento de libopenapi-validator con esas referencias.
 - Patrón de inserción por conjuntos con `unnest` de arrays paralelos (general, no específico de
   sqlc): <https://forum.djangoproject.com/t/speeding-up-postgres-bulk-create-by-using-unnest/36508>.
-  Base de DD-3; el soporte de sqlc queda como supuesto S-3.
+  Base de DD-3; el soporte de sqlc era el supuesto S-3, verificado en T-002-B305 con `ROWS FROM`.

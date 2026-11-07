@@ -12,11 +12,12 @@ plan.
 Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invocación**, en modo
 completo (`.claude/dev-mode`).
 
-### Estado de la implementación (2026-10-23)
+### Estado de la implementación (2026-11-07)
 
-Ninguna fase empezada. Spec y plan aprobados: se puede empezar por la Fase 1. Quedan por verificar
-al implementar (no son aprobaciones): la compuerta del sembrado (T-002-B307) y los supuestos S-3
-(sqlc con arrays, T-002-B305) y S-4 (`$ref` entre archivos en libopenapi, T-002-B203).
+Fases 1, 2 y F0 implementadas. Fase 3: T-002-B301 a T-002-B306 implementadas; falta la compuerta
+del sembrado (T-002-B307), que queda por verificar (no es una aprobación). Supuestos verificados al
+implementar: S-4 (`$ref` entre archivos en libopenapi, T-002-B203) y S-3 (sqlc con arrays,
+T-002-B305, con `ROWS FROM`).
 
 ### Convenciones de esta sección
 
@@ -317,8 +318,9 @@ de `categories.go`, `catalog.go` y `preferences.go`, sin acceso a datos).
   | Las filas sembradas, vistas como el rol de otra empresa | no se ven (RLS) |
   | `GET /me` justo después de registrarse (otra conexión) | `200` (sin cambios de 001, DD-34 de 001) |
   | Test de rollback del registro de 001 (T-B303, *seeder* que falla) | sigue pasando |
-- **Green**: pasa la tabla. **Supuesto S-3** (sqlc con arrays en `unnest`): se confirma acá; si no
-  se cumple, `:copyfrom` y se ajusta la cuenta de INV-10 en el plan, en el mismo PR.
+- **Green**: pasa la tabla. **Supuesto S-3** (sqlc con arrays en `unnest`): verificado acá. sqlc
+  rechaza `unnest` con varios argumentos y acepta `ROWS FROM (unnest(…), unnest(…), …)`, que es la
+  forma usada; no hizo falta `:copyfrom` y INV-10 sigue en cuatro sentencias (plan §14.1).
 
 **T-002-B306 — Implementar `TemplateSeeder`** (`seeder.go`, `store/seed.sql`) y cablearlo:
 `serve.go` reemplaza `NoopSeeder` por `settings.NewTemplateSeeder(c)`; los entornos de test que
