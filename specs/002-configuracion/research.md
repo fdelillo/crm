@@ -175,7 +175,7 @@ configuración; la SPA puede pedir los dos al arrancar (TanStack Query los cache
 
 | Opción | A favor | En contra | Veredicto |
 |---|---|---|---|
-| **Lista explícita de contratos en el validador + `$ref` externos resueltos** | Agregar una spec es una línea; un contrato en diseño no rompe `make check`; un solo lugar para los componentes compartidos | Depende de que libopenapi resuelva archivos locales (S-4; respaldo: fusión en memoria) | **Elegida** |
+| **Lista explícita de contratos en el validador + `$ref` externos resueltos** | Agregar una spec es una línea; un contrato en diseño no rompe `make check`; un solo lugar para los componentes compartidos | Depende de que libopenapi resuelva archivos locales (S-4, verificado en T-002-B203; el respaldo de fusión en memoria no hizo falta) | **Elegida** |
 | Cargar `specs/*/contracts/openapi.yaml` por patrón | Automático | El contrato de una spec en diseño (sin código) haría fallar el test de rutas contra el contrato | Descartada |
 | Un único archivo de contrato para todo el sistema | Un solo documento | Revisión por spec más difícil; cambia la convención de `ui.md` §11.4 de 001 | Descartada |
 | Copiar los componentes compartidos en cada contrato | Sin referencias entre archivos | Copias que divergen (el enum de errores, sobre todo) | Descartada |
@@ -213,7 +213,8 @@ handlers como esqueletos en la Fase 2 (código que responde algo falso durante v
 
 - Documentación de *rolodex* de libopenapi (resolución de referencias a archivos locales y remotos,
   `BasePath` y `AllowFileReferences`): <https://pb33f.io/libopenapi/rolodex/>. Base de S-4; no
-  confirma por sí sola el comportamiento de libopenapi-validator con esas referencias.
+  confirma por sí sola el comportamiento de libopenapi-validator con esas referencias (lo verificó
+  T-002-B203).
 - Patrón de inserción por conjuntos con `unnest` de arrays paralelos (general, no específico de
   sqlc): <https://forum.djangoproject.com/t/speeding-up-postgres-bulk-create-by-using-unnest/36508>.
   Base de DD-3; el soporte de sqlc era el supuesto S-3, verificado en T-002-B305 con `ROWS FROM`.

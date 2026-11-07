@@ -214,9 +214,9 @@ pendientes** · DD-13, S-4, R-3. Depende de T-002-B202 mergeada.
   | Test de rutas contra el contrato (T-B801 de 001) con las 20 operaciones de 002 en `pendingOperations` | pasa |
   | Una operación en `pendingOperations` que sí tiene ruta en el router | falla ("remove it from pendingOperations") |
   | Una operación de 002 sin ruta y fuera de `pendingOperations` | falla ("contract route not implemented") |
-- **Green**: pasa la tabla. Si libopenapi no resuelve los `$ref` entre archivos (S-4), se aplica el
-  respaldo del plan (fusión en memoria de los componentes de 001) y se anota en el PR; la fila de
-  resolución completa vale igual sobre el documento fusionado.
+- **Green**: pasa la tabla. **Supuesto S-4** (libopenapi resuelve los `$ref` entre archivos):
+  verificado acá. El helper activa `BasePath` y `AllowFileReferences` y la fila de resolución
+  completa pasa sin el respaldo de fusión en memoria, que no hizo falta (plan §14.1, R-3).
 
 **T-002-B204 — Implementar `contract.Documents`, la carga múltiple, la verificación de resolución de
 `$ref` en `Load` y `pendingOperations`** (en el test de rutas de `internal/app`, con las 20
