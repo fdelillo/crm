@@ -27,6 +27,7 @@ import (
 	"github.com/fdelillo/crm/internal/platform/db"
 	"github.com/fdelillo/crm/internal/platform/outbox"
 	"github.com/fdelillo/crm/internal/platform/password"
+	"github.com/fdelillo/crm/internal/settings"
 	"github.com/fdelillo/crm/internal/tenant"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -45,9 +46,11 @@ type environment struct {
 	runner      measuredRunner
 	users       *identity.Service
 	seed, real  *tenant.Service
-	hasher      password.Hasher
-	logger      *slog.Logger
-	first       tenant.Registration
+	// templated registers with the real settings.TemplateSeeder; seed registers with NoopSeeder. Both skip hashing.
+	templated *tenant.Service
+	hasher    password.Hasher
+	logger    *slog.Logger
+	first     tenant.Registration
 }
 
 func newEnvironment(t *testing.T, ctx context.Context) *environment {
@@ -156,6 +159,7 @@ func newEnvironment(t *testing.T, ctx context.Context) *environment {
 		t.Fatal(err)
 	}
 	e.seed = tenant.NewService(e.runner, e.users, industrytemplate.NoopSeeder{}, prehashed{e.hasher, encoded}, recorder, e.logger)
+	e.templated = tenant.NewService(e.runner, e.users, settings.NewTemplateSeeder(c), prehashed{e.hasher, encoded}, recorder, e.logger)
 	e.real = tenant.NewService(e.runner, e.users, industrytemplate.NoopSeeder{}, e.hasher, recorder, e.logger)
 	return e
 }

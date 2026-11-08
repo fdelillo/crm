@@ -27,6 +27,111 @@ func completeRegistrationSample() *sample {
 	return s
 }
 
+// seededRegistrationSample is a successful registration whose trace carries the four seed statements between
+// InsertAudit and COMMIT, one millisecond each.
+func seededRegistrationSample() *sample {
+	base := completeRegistrationSample()
+	base.Seeded = true
+	commit := base.Events[len(base.Events)-1]
+	events := append([]event(nil), base.Events[:len(base.Events)-1]...)
+	at := commit.Start
+	for _, label := range seedLabels {
+		events = append(events, event{ID: base.ID, PID: 42, Label: label, Start: at, End: at.Add(time.Millisecond)})
+		at = at.Add(time.Millisecond)
+	}
+	commit.Start, commit.End = at, at.Add(time.Millisecond)
+	base.Events = append(events, commit)
+	base.End = commit.End.Add(time.Millisecond)
+	base.CallbackEnd = base.End
+	return base
+}
+
+// T-002-B307 (DD-3, R-1): the seed interval spans the four Seed statements, and a seeded trace missing,
+// duplicating, reordering or misplacing any of them is rejected.
+func TestBenchTracerSeedControls(t *testing.T) {
+	good := seededRegistrationSample()
+	intervals, err := sampleIntervals(good)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if intervals["seed"] != 4*time.Millisecond {
+		t.Fatalf("seed=%s, want 4ms", intervals["seed"])
+	}
+	if _, ok := intervals["statement:SeedStages"]; !ok {
+		t.Fatal("seed statements are not counted in the per-label breakdown")
+	}
+	plain, err := sampleIntervals(completeRegistrationSample())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := plain["seed"]; ok {
+		t.Fatal("a registration without the real seeder reports a seed interval")
+	}
+	indexOf := func(s *sample, label string) int {
+		for i, e := range s.Events {
+			if e.Label == label {
+				return i
+			}
+		}
+		t.Fatal("no event " + label)
+		return -1
+	}
+	for _, label := range seedLabels {
+		t.Run("missing/"+label, func(t *testing.T) {
+			bad := seededRegistrationSample()
+			i := indexOf(bad, label)
+			bad.Events = append(bad.Events[:i], bad.Events[i+1:]...)
+			if _, err := sampleIntervals(bad); err == nil {
+				t.Fatal("control accepted missing seed statement: " + label)
+			}
+		})
+		t.Run("duplicate/"+label, func(t *testing.T) {
+			bad := seededRegistrationSample()
+			bad.Events = append(bad.Events, bad.Events[indexOf(bad, label)])
+			if _, err := sampleIntervals(bad); err == nil {
+				t.Fatal("control accepted duplicate seed statement: " + label)
+			}
+		})
+		t.Run("unflagged/"+label, func(t *testing.T) {
+			bad := seededRegistrationSample()
+			bad.Seeded = false
+			if _, err := sampleIntervals(bad); err == nil {
+				t.Fatal("control accepted seed statements in a registration that did not use the real seeder")
+			}
+		})
+	}
+	t.Run("reordered", func(t *testing.T) {
+		bad := seededRegistrationSample()
+		a, b := indexOf(bad, "SeedStages"), indexOf(bad, "SeedCategories")
+		bad.Events[a].Start, bad.Events[b].Start = bad.Events[b].Start, bad.Events[a].Start
+		bad.Events[a].End, bad.Events[b].End = bad.Events[b].End, bad.Events[a].End
+		if _, err := sampleIntervals(bad); err == nil {
+			t.Fatal("control accepted reordered seed statements")
+		}
+	})
+	t.Run("after-commit", func(t *testing.T) {
+		bad := seededRegistrationSample()
+		i, c := indexOf(bad, "SeedCatalogItems"), indexOf(bad, "commit")
+		bad.Events[i].Start, bad.Events[i].End = bad.Events[c].End, bad.Events[c].End.Add(time.Millisecond)
+		if _, err := sampleIntervals(bad); err == nil {
+			t.Fatal("control accepted a seed statement after COMMIT")
+		}
+	})
+	t.Run("before-tenant-role", func(t *testing.T) {
+		bad := seededRegistrationSample()
+		i, r := indexOf(bad, "SeedTenantSettings"), indexOf(bad, "set_role:tenant")
+		bad.Events[i].Start, bad.Events[i].End = bad.Events[r].Start.Add(-2*time.Millisecond), bad.Events[r].Start.Add(-time.Millisecond)
+		if _, err := sampleIntervals(bad); err == nil {
+			t.Fatal("control accepted a seed statement before the tenant role switch")
+		}
+	})
+	for _, tc := range []struct{ sql, label string }{{"-- name: SeedTenantSettings :exec\nINSERT", "SeedTenantSettings"}, {"-- name: SeedStages :exec\nINSERT", "SeedStages"}, {"-- name: SeedCategories :exec\nINSERT", "SeedCategories"}, {"-- name: SeedCatalogItems :exec\nINSERT", "SeedCatalogItems"}, {"-- name: SeedOther :exec\nINSERT", "unknown"}} {
+		if got := labelSQL(tc.sql); got != tc.label {
+			t.Errorf("label=%s want=%s", got, tc.label)
+		}
+	}
+}
+
 func TestBenchTracerFullSetControls(t *testing.T) {
 	s := completeRegistrationSample()
 	if _, err := sampleIntervals(s); err != nil {
@@ -154,7 +259,7 @@ func TestBenchTracerCSVControls(t *testing.T) {
 				}
 				s := samples[row[0]]
 				if s == nil {
-					s = &sample{ID: row[0]}
+					s = &sample{ID: row[0], Seeded: strings.HasPrefix(row[0], "M7/real/")}
 					samples[row[0]] = s
 				}
 				e := event{ID: row[0], PID: uint32(pid), Label: row[2], Start: origin.Add(time.Duration(start)), End: origin.Add(time.Duration(end))}
@@ -186,18 +291,18 @@ func TestBenchTracerCSVControls(t *testing.T) {
 				} else {
 					rejected++
 				}
-				if strings.HasPrefix(id, "M2/") {
+				if strings.HasPrefix(id, "M2/") || strings.HasPrefix(id, "M7/real/") || strings.HasPrefix(id, "M7/noop/") {
 					isolated = append(isolated, s)
 				}
 			}
 			sort.Slice(isolated, func(i, j int) bool { return isolated[i].Start.Before(isolated[j].Start) })
 			if len(samples) == 0 || len(isolated) != 100 {
-				t.Fatalf("incomplete CSV: samples=%d M2=%d", len(samples), len(isolated))
+				t.Fatalf("incomplete CSV: samples=%d isolated=%d", len(samples), len(isolated))
 			}
 			if err := noOverlap(isolated); err != nil {
 				t.Fatal(err)
 			}
-			t.Logf("CSV controls path=%s confirmed=%d rejected=%d events=%d M2=%d: complete labels/IDs/PID and M2 non-overlap", path, confirmed, rejected, events, len(isolated))
+			t.Logf("CSV controls path=%s confirmed=%d rejected=%d events=%d isolated=%d: complete labels/IDs/PID and non-overlap of the 100 isolated registrations", path, confirmed, rejected, events, len(isolated))
 		})
 	}
 }
