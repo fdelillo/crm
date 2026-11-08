@@ -4,8 +4,10 @@
 **Estado**: **Aprobado (2026-10-23).** El usuario aprobó P-1 a P-10 con las opciones recomendadas
 (§14.2) y decidió que las condiciones comerciales de 002 quedan como texto libre (las condiciones de
 pago estructuradas las define 005). Los supuestos de §14.1 que había que verificar al implementar
-ya están verificados (S-4 en T-002-B203, S-3 en T-002-B305); queda la compuerta de medición de DD-3
-(T-002-B307).
+ya están verificados (S-4 en T-002-B203, S-3 en T-002-B305). La compuerta de medición de DD-3
+(T-002-B307) **falló en las dos corridas** (condición 3: `hold` p95 de 166,1 y 164,8 ms; las
+condiciones 1 y 2 cumplen) y queda a la espera de la decisión del usuario; los números están en el
+"Estado de la implementación" de [`tasks.md`](tasks.md).
 **Revisión 2026-10-23 (PR #47, revisión de Codex)**: la compuerta del sembrado también falla si la
 retención absoluta llega a 140 ms (DD-3, §13, R-1); la actualización del mapa de errores del frontend
 es la tarea T-002-F001, en la misma rama que T-002-B202 (DD-13, R-2); T-002-B202 es requisito previo

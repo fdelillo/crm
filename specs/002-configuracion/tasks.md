@@ -14,10 +14,33 @@ completo (`.claude/dev-mode`).
 
 ### Estado de la implementación (2026-11-07)
 
-Fases 1, 2 y F0 implementadas. Fase 3: T-002-B301 a T-002-B306 implementadas; falta la compuerta
-del sembrado (T-002-B307), que queda por verificar (no es una aprobación). Supuestos verificados al
-implementar: S-4 (`$ref` entre archivos en libopenapi, T-002-B203) y S-3 (sqlc con arrays,
-T-002-B305, con `ROWS FROM`).
+Fases 1, 2 y F0 implementadas. Fase 3: T-002-B301 a T-002-B307 implementadas; la compuerta del
+sembrado (T-002-B307) **falló en las dos corridas y espera la decisión del usuario** (abajo). Supuestos
+verificados al implementar: S-4 (`$ref` entre archivos en libopenapi, T-002-B203) y S-3 (sqlc con
+arrays, T-002-B305, con `ROWS FROM`).
+
+**Resultado de T-002-B307 (2026-11-07): la compuerta falla; sin decisión.** M-7 con 10.000 empresas,
+100 registros secuenciales alternados (50 con `TemplateSeeder` real y plantilla `aluminum_carpentry`,
+50 con `NoopSeeder`). Entorno de T-B910: `postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722`,
+servidor 18.6, go1.27.3, darwin/amd64, 8 CPU, 8.322.793.472 bytes de memoria de Docker, un
+contenedor nuevo por corrida. Valores en ms (p50 / p95):
+
+| | Corrida 1 | Corrida 2 | Condición |
+|---|---|---|---|
+| `seed` (real) | 5,56 / **9,62** | 5,11 / **8,54** | (1) p95 ≤ 10: cumple en ambas |
+| `hold` (real) | 124,46 / 166,11 | 120,45 / 164,84 | |
+| `hold` (noop) | 113,50 / 164,50 | 112,05 / 176,97 | |
+| `hold` p95 real − noop | **+1,61** | **−12,13** | (2) ≤ 10: cumple en ambas |
+| `hold` p95 real | **166,11** | **164,84** | (3) < 140: **no cumple en ninguna** |
+
+Por la regla escrita, la compuerta falla en las dos corridas por la condición (3). El `hold` p95 del
+grupo noop (164,5 y 177,0 ms) ya supera 140 ms sin sembrado: en este entorno la retención base está
+por encima de lo medido en T-B910 (p95 de 96 a 134 ms), de modo que la condición (3) no distingue el
+costo del sembrado (que cumple (1) y (2)) del ruido del entorno, tal como anticipa el riesgo de DD-3.
+No se aplicó la salida de R-c, no se tocaron umbrales ni el *harness* y no hubo corridas extra. Falta
+la decisión del usuario (salida de R-c, o decisión explícita registrada acá); la Fase 4 no avanza.
+Evidencia: `/tmp/crm-002-b307-evidence/run{1,2}/` (`log.txt`, `m7.json`, `trace-*.csv`). Se corre con
+`PERFBENCH_ARTIFACT_DIR=<dir> go test -v -tags=bench -run '^TestSeedingCostGate$' -timeout 40m ./internal/testsupport/perfbench/`.
 
 ### Convenciones de esta sección
 
