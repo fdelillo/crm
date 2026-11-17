@@ -39,9 +39,13 @@ grupo noop (164,5 y 177,0 ms) ya supera 140 ms sin sembrado: en este entorno la 
 por encima de lo medido en T-B910 (p95 de 96 a 134 ms), de modo que la condición (3) no distingue el
 costo del sembrado (que cumple (1) y (2)) del ruido del entorno, tal como anticipa el riesgo de DD-3.
 No se aplicó la salida de R-c, no se tocaron umbrales ni el *harness* y no hubo corridas extra.
-Evidencia: `/tmp/crm-002-b307-evidence/run{1,2}/` (`log.txt`, `m7.json`, `trace-*.csv`); el directorio
-temporal no es durable y al 2026-11-17 solo quedaba `run1`, así que la referencia son los números de
-esta tabla. Se corre con
+Estas dos corridas usaron la primera versión del *harness*: real siempre antes que noop en cada pareja,
+sin calentar el camino real (la carga de 10.000 usa `NoopSeeder`) y sin exigir que `seed` empiece
+dentro de `hold`. La revisión de Codex del PR #62 lo corrigió (fila M-7 de T-002-B307). La condición (2)
+solo acota `real − noop` por arriba: un delta negativo (−12,13 en la corrida 2) cumple, pero no es
+evidencia de que el sembrado no cueste. Evidencia: `/tmp/crm-002-b307-evidence/run{1,2}/` (`log.txt`,
+`m7.json`, `trace-*.csv`); el directorio temporal no es durable y al 2026-11-17 ya no quedaba ningún
+archivo, así que la referencia son los números de esta tabla. Se corre con
 `PERFBENCH_ARTIFACT_DIR=<dir> go test -v -tags=bench -run '^TestSeedingCostGate$' -timeout 40m ./internal/testsupport/perfbench/`.
 
 **Decisión del usuario (2026-11-17): la compuerta se acepta por las condiciones (1) y (2)** (opción (b)
@@ -370,7 +374,7 @@ DD-3, R-1, DD-33 R-b/R-c de 001
 
   | Medición | Cómo | Se registra |
   |---|---|---|
-  | M-7: sembrado con 10.000 roles | 100 registros secuenciales sin otra actividad, alternando `TemplateSeeder` real (plantilla `aluminum_carpentry`, la más grande) y `NoopSeeder`; el *tracer* de T-B910 suma el intervalo `seed` | p50 y p95 de `seed` (solo los reales) y de `hold` por grupo |
+  | M-7: sembrado con 10.000 roles | 100 registros secuenciales sin otra actividad, en 50 parejas de `TemplateSeeder` real (plantilla `aluminum_carpentry`, la más grande) y `NoopSeeder`, con el orden dentro de la pareja alternado (real-noop, noop-real, …); antes, 5 registros de cada camino sin medir para calentarlos (revisión de Codex del PR #62); el *tracer* de T-B910 suma el intervalo `seed` y exige que esté dentro de `hold` | p50 y p95 de `seed` (solo los reales) y de `hold` por grupo |
 
 - **Regla de decisión** (fijada antes de medir). La compuerta **pasa** solo si se cumplen las tres
   condiciones:

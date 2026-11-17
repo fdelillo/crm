@@ -34,6 +34,58 @@ func gateVerdict(seedP95, realHoldP95, noopHoldP95 float64) (conditions [3]bool,
 	return conditions, conditions[0] && conditions[1] && conditions[2]
 }
 
+// m7WarmupPerPath is how many unmeasured registrations each path (real seeder and noop) runs before M-7,
+// so neither group carries the first execution of its statements.
+const m7WarmupPerPath = 5
+
+// m7Schedule returns the order of the measured registrations (true = real seeder) for pairs pairs. Each pair
+// holds one of each, and the order inside the pair alternates (real-noop, noop-real, ...), so each group goes
+// first in half of the pairs and neither group always follows the other.
+func m7Schedule(pairs int) []bool {
+	order := make([]bool, 0, 2*pairs)
+	for i := 0; i < pairs; i++ {
+		realFirst := i%2 == 0
+		order = append(order, realFirst, !realFirst)
+	}
+	return order
+}
+
+// T-002-B307 (DD-3, R-1), Codex review of PR #62: M-7 counterbalances the order of real and noop.
+func TestSeedingScheduleIsCounterbalanced(t *testing.T) {
+	order := m7Schedule(50)
+	if len(order) != 100 {
+		t.Fatalf("len=%d, want 100", len(order))
+	}
+	var real, realFirst int
+	follows := map[[2]bool]int{}
+	for i, isReal := range order {
+		if isReal {
+			real++
+		}
+		if i%2 == 0 {
+			if order[i] == order[i+1] {
+				t.Fatalf("pair %d does not hold one of each", i/2)
+			}
+			if isReal {
+				realFirst++
+			}
+		}
+		if i > 0 {
+			follows[[2]bool{order[i-1], isReal}]++
+		}
+	}
+	if real != 50 || realFirst != 25 {
+		t.Fatalf("real=%d (want 50), real first in %d pairs (want 25)", real, realFirst)
+	}
+	// Each group is preceded by itself and by the other about equally often (49 or 50 transitions each).
+	if r, n := follows[[2]bool{true, true}]+follows[[2]bool{false, true}], follows[[2]bool{true, true}]; n < r/2-1 || n > r/2+1 {
+		t.Fatalf("real preceded by real %d of %d times", n, r)
+	}
+	if r, n := follows[[2]bool{false, false}]+follows[[2]bool{true, false}], follows[[2]bool{false, false}]; n < r/2-1 || n > r/2+1 {
+		t.Fatalf("noop preceded by noop %d of %d times", n, r)
+	}
+}
+
 // T-002-B307 (DD-3, R-1): the decision rule is the one fixed in tasks.md, including its documented failing example.
 func TestSeedingGateDecisionRule(t *testing.T) {
 	for _, tc := range []struct {
@@ -70,10 +122,16 @@ func TestSeedingCostGate(t *testing.T) {
 	if err := e.super.QueryRow(ctx, "SELECT count(*) FROM app.tenants").Scan(&count); err != nil || count != 10000 {
 		t.Fatalf("tenants count=%d err=%v", count, err)
 	}
-	// M-7: 100 sequential registrations, alternating the real TemplateSeeder and NoopSeeder, no other activity.
+	// Warm both paths outside the samples: the load above only ran the noop one.
+	for i := 0; i < m7WarmupPerPath; i++ {
+		requireSample(t, e.registerTemplated(ctx, e.templated, fmt.Sprintf("M7/warmup/real/%d", i+1), true))
+		requireSample(t, e.registerTemplated(ctx, e.seed, fmt.Sprintf("M7/warmup/noop/%d", i+1), false))
+	}
+	// M-7: 100 sequential registrations, 50 pairs of real TemplateSeeder and NoopSeeder with the order inside
+	// each pair alternating (m7Schedule), no other activity.
 	var real, noop, all []*sample
-	for i := 0; i < 100; i++ {
-		if i%2 == 0 {
+	for i, isReal := range m7Schedule(50) {
+		if isReal {
 			s := e.registerTemplated(ctx, e.templated, fmt.Sprintf("M7/real/%03d", i+1), true)
 			requireSample(t, s)
 			real = append(real, s)
@@ -96,8 +154,8 @@ func TestSeedingCostGate(t *testing.T) {
 	if err := e.super.QueryRow(ctx, `SELECT count(*) FROM app.tenants t WHERE NOT EXISTS (SELECT 1 FROM app.tenant_settings s WHERE s.tenant_id = t.id)`).Scan(&emptyTenants); err != nil {
 		t.Fatal(err)
 	}
-	if seededRows != len(real) || emptyTenants != 10000+len(noop) {
-		t.Fatalf("seeded tenants=%d (want %d), unseeded=%d (want %d)", seededRows, len(real), emptyTenants, 10000+len(noop))
+	if seededRows != m7WarmupPerPath+len(real) || emptyTenants != 10000+m7WarmupPerPath+len(noop) {
+		t.Fatalf("seeded tenants=%d (want %d), unseeded=%d (want %d)", seededRows, m7WarmupPerPath+len(real), emptyTenants, 10000+m7WarmupPerPath+len(noop))
 	}
 	realStats, noopStats := summarizeSamples(t, real), summarizeSamples(t, noop)
 	if _, ok := noopStats["seed"]; ok {

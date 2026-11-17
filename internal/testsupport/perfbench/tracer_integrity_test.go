@@ -125,6 +125,17 @@ func TestBenchTracerSeedControls(t *testing.T) {
 			t.Fatal("control accepted a seed statement before the tenant role switch")
 		}
 	})
+	t.Run("before-hold", func(t *testing.T) {
+		// The hold starts at ProvisionTenantRole: a seed statement that starts before it would be
+		// measured partly outside the hold.
+		bad := seededRegistrationSample()
+		p, s := indexOf(bad, "ProvisionTenantRole"), indexOf(bad, "SeedTenantSettings")
+		bad.Events[p].Start = bad.Events[s].Start.Add(time.Microsecond)
+		bad.Events[p].End = bad.Events[p].Start.Add(time.Microsecond)
+		if _, err := sampleIntervals(bad); err == nil {
+			t.Fatal("control accepted a seed statement that starts before the hold")
+		}
+	})
 	for _, tc := range []struct{ sql, label string }{{"-- name: SeedTenantSettings :exec\nINSERT", "SeedTenantSettings"}, {"-- name: SeedStages :exec\nINSERT", "SeedStages"}, {"-- name: SeedCategories :exec\nINSERT", "SeedCategories"}, {"-- name: SeedCatalogItems :exec\nINSERT", "SeedCatalogItems"}, {"-- name: SeedOther :exec\nINSERT", "unknown"}} {
 		if got := labelSQL(tc.sql); got != tc.label {
 			t.Errorf("label=%s want=%s", got, tc.label)
@@ -259,7 +270,7 @@ func TestBenchTracerCSVControls(t *testing.T) {
 				}
 				s := samples[row[0]]
 				if s == nil {
-					s = &sample{ID: row[0], Seeded: strings.HasPrefix(row[0], "M7/real/")}
+					s = &sample{ID: row[0], Seeded: strings.HasPrefix(row[0], "M7/real/") || strings.HasPrefix(row[0], "M7/warmup/real/")}
 					samples[row[0]] = s
 				}
 				e := event{ID: row[0], PID: uint32(pid), Label: row[2], Start: origin.Add(time.Duration(start)), End: origin.Add(time.Duration(end))}

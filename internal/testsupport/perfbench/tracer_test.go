@@ -236,7 +236,8 @@ func sampleIntervals(s *sample) (map[string]time.Duration, error) {
 		}
 		result["hold"] = byLabel["commit"][0].End.Sub(byLabel["ProvisionTenantRole"][0].Start)
 		if s.Seeded {
-			// seed: first to last seed statement, inside the tenant-role transaction and before COMMIT.
+			// seed: first to last seed statement, inside the tenant-role transaction, inside the hold
+			// (which starts at ProvisionTenantRole) and before COMMIT.
 			first, last := byLabel[seedLabels[0]][0], byLabel[seedLabels[3]][0]
 			for i := 1; i < len(seedLabels); i++ {
 				if byLabel[seedLabels[i]][0].Start.Before(byLabel[seedLabels[i-1]][0].End) {
@@ -245,6 +246,9 @@ func sampleIntervals(s *sample) (map[string]time.Duration, error) {
 			}
 			if first.Start.Before(byLabel["set_role:tenant"][0].End) || last.End.After(byLabel["commit"][0].Start) {
 				return nil, fmt.Errorf("sample %s: seed statements outside set_role:tenant..commit", s.ID)
+			}
+			if first.Start.Before(byLabel["ProvisionTenantRole"][0].Start) {
+				return nil, fmt.Errorf("sample %s: seed starts before the hold (ProvisionTenantRole)", s.ID)
 			}
 			result["seed"] = last.End.Sub(first.Start)
 		}
