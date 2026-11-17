@@ -15,49 +15,61 @@ completo (`.claude/dev-mode`).
 ### Estado de la implementación (2026-11-17)
 
 Fases 1, 2 y F0 implementadas. Fase 3: T-002-B301 a T-002-B307 implementadas; la compuerta del
-sembrado (T-002-B307) **falló en las dos corridas por la condición (3) y el usuario la aceptó por las
-condiciones (1) y (2) el 2026-11-17** (abajo): la Fase 3 queda cerrada y la Fase 4 puede avanzar. Supuestos
+sembrado (T-002-B307), medida de nuevo con el *harness* corregido, **pasó en una corrida y falló en
+la otra, y el usuario la aceptó el 2026-11-17** (abajo): la Fase 3 queda cerrada y la Fase 4 puede
+avanzar. Supuestos
 verificados al implementar: S-4 (`$ref` entre archivos en libopenapi, T-002-B203) y S-3 (sqlc con
 arrays, T-002-B305, con `ROWS FROM`).
 
-**Resultado de T-002-B307 (2026-11-07): la compuerta falla.** M-7 con 10.000 empresas,
-100 registros secuenciales alternados (50 con `TemplateSeeder` real y plantilla `aluminum_carpentry`,
-50 con `NoopSeeder`). Entorno de T-B910: `postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722`,
-servidor 18.6, go1.27.3, darwin/amd64, 8 CPU, 8.322.793.472 bytes de memoria de Docker, un
-contenedor nuevo por corrida. Valores en ms (p50 / p95):
+**Medición vigente de T-002-B307 (2026-11-17): una corrida pasa y la otra falla.** M-7 con el
+*harness* corregido en la revisión de Codex del PR #62 (`adea360`): 10.000 empresas, 5 registros sin
+medir por camino para calentarlos y 100 registros secuenciales en 50 parejas de `TemplateSeeder` real
+(plantilla `aluminum_carpentry`) y `NoopSeeder`, con el orden alternado dentro de la pareja. Entorno de
+T-B910: `postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722`, servidor
+18.6, go1.27.4, darwin/amd64, 8 CPU, 8.322.793.472 bytes de memoria de Docker, un contenedor nuevo por
+corrida (`317febeb7335` y `8fab38d2e998`). Valores en ms (p50 / p95; p95 por rango más cercano, el
+tercer valor más alto de 50):
 
 | | Corrida 1 | Corrida 2 | Condición |
 |---|---|---|---|
-| `seed` (real) | 5,56 / **9,62** | 5,11 / **8,54** | (1) p95 ≤ 10: cumple en ambas |
-| `hold` (real) | 124,46 / 166,11 | 120,45 / 164,84 | |
-| `hold` (noop) | 113,50 / 164,50 | 112,05 / 176,97 | |
-| `hold` p95 real − noop | **+1,61** | **−12,13** | (2) ≤ 10: cumple en ambas |
-| `hold` p95 real | **166,11** | **164,84** | (3) < 140: **no cumple en ninguna** |
+| `seed` (real) | 4,54 / **7,34** | 4,20 / **6,68** | (1) p95 ≤ 10: cumple en ambas |
+| `hold` (real) | 99,54 / 145,98 | 93,58 / 126,93 | |
+| `hold` (noop) | 91,62 / 130,29 | 89,29 / 126,36 | |
+| `hold` p95 real − noop | **+15,70** | **+0,58** | (2) ≤ 10: falla en la 1, cumple en la 2 |
+| `hold` p95 real | **145,98** | **126,93** | (3) < 140: falla en la 1, cumple en la 2 |
 
-Por la regla escrita, la compuerta falla en las dos corridas por la condición (3). El `hold` p95 del
-grupo noop (164,5 y 177,0 ms) ya supera 140 ms sin sembrado: en este entorno la retención base está
-por encima de lo medido en T-B910 (p95 de 96 a 134 ms), de modo que la condición (3) no distingue el
-costo del sembrado (que cumple (1) y (2)) del ruido del entorno, tal como anticipa el riesgo de DD-3.
-No se aplicó la salida de R-c, no se tocaron umbrales ni el *harness* y no hubo corridas extra.
-Estas dos corridas usaron la primera versión del *harness*: real siempre antes que noop en cada pareja,
-sin calentar el camino real (la carga de 10.000 usa `NoopSeeder`) y sin exigir que `seed` empiece
-dentro de `hold`. La revisión de Codex del PR #62 lo corrigió (fila M-7 de T-002-B307). La condición (2)
-solo acota `real − noop` por arriba: un delta negativo (−12,13 en la corrida 2) cumple, pero no es
-evidencia de que el sembrado no cueste. Evidencia: `/tmp/crm-002-b307-evidence/run{1,2}/` (`log.txt`,
-`m7.json`, `trace-*.csv`); el directorio temporal no es durable y al 2026-11-17 ya no quedaba ningún
-archivo, así que la referencia son los números de esta tabla. Se corre con
+Por la regla escrita, la corrida 1 falla por (2) y (3) y la corrida 2 pasa. Desglose de la corrida 1
+desde su traza (p95): las cuatro sentencias del sembrado suman 7,34 ms y el `commit` dura lo mismo en
+los dos grupos (0,90 y 0,99 ms); la diferencia está en `ProvisionTenantRole`, el `GRANT` que corre
+antes de sembrar (96,76 ms en el grupo real contra 82,99 en noop), y la retención del grupo real sin
+contar el sembrado ya da 140,68 ms. El p95 de la corrida 1 lo fijan pocos valores (los tres más altos
+del grupo real son 268,9, 162,2 y 146,0 ms; el cuarto, 130,6). Lo que este diseño no permite
+descartar: que el sembrado de un registro anterior (más escritura en la base) haya hecho más lento el
+`GRANT` siguiente. En la corrida 2, `ProvisionTenantRole` da 79,82 y 81,83 ms.
+
+Evidencia: `m7.json` y `log.txt` de cada corrida en
+[`evidencia/t-002-b307/`](evidencia/t-002-b307/) (en los logs, las rutas locales se reemplazaron por `<dir>` y `~`); las trazas completas (`trace-*.csv`, 8 MB cada una)
+quedaron fuera del repo, en la máquina del usuario. Se corre con
 `PERFBENCH_ARTIFACT_DIR=<dir> go test -v -tags=bench -run '^TestSeedingCostGate$' -timeout 40m ./internal/testsupport/perfbench/`.
 
-**Decisión del usuario (2026-11-17): la compuerta se acepta por las condiciones (1) y (2)** (opción (b)
-de T-002-B307). DD-3 queda como está: el sembrado sigue dentro de la transacción de registro y no se
-aplica la salida de R-c. Motivo: lo que la compuerta tiene que medir es el costo del sembrado, y ese
-costo cumple en las dos corridas (`seed` p95 ≤ 10 ms; diferencia de `hold` p95 contra noop ≤ 10 ms).
-La condición (3) falla también sin sembrado (noop p95 de 164,5 y 177,0 ms), así que en este entorno
-mide la retención base y no el sembrado; la salida de R-c sacaría el sembrado del lock pero no bajaría
-esa retención por debajo de 140 ms. Alcance: la decisión no cambia los umbrales de la compuerta para
-corridas futuras (§16 del plan: volver a correr T-002-B307 con sus tres condiciones si cambia el
-sembrado) ni el target de R-b de 001; la fila del *runbook* sobre la duración de `POST /auth/signup`
-(plan §12) sigue vigente para producción.
+**Decisión del usuario (2026-11-17): la compuerta se acepta** (opción (b) de T-002-B307). DD-3 queda
+como está: el sembrado sigue dentro de la transacción de registro y no se aplica la salida de R-c.
+Motivo: la corrida 2 cumple las tres condiciones; el costo propio del sembrado cumple la condición (1)
+en las dos corridas (p95 de 7,34 y 6,68 ms); y la falla de la corrida 1 se explica por la variación del
+`GRANT` previo al sembrado en pocos registros, no por las sentencias del sembrado ni por el `commit`.
+Riesgo aceptado: el efecto indirecto del sembrado sobre el `GRANT` siguiente, que esta medición no
+separa. Alcance: la decisión no cambia los umbrales de la compuerta para corridas futuras (§16 del
+plan: volver a correr T-002-B307 con sus tres condiciones si cambia el sembrado) ni el target de R-b de
+001; la fila del *runbook* sobre la duración de `POST /auth/signup` (plan §12) sigue vigente para
+producción. Reemplaza la decisión anterior del mismo día, que aceptaba la compuerta por (1) y (2)
+porque el grupo noop superaba 140 ms; con el *harness* corregido ese motivo dejó de valer.
+
+**Primera medición (2026-11-07), reemplazada.** Las dos corridas con el *harness* original (real
+siempre antes que noop en cada pareja, sin calentar el camino real y sin exigir que `seed` empiece
+dentro de `hold`) fallaron por la condición (3): `seed` p95 de 9,62 y 8,54 ms, `hold` p95 real de
+166,11 y 164,84, noop de 164,50 y 176,97 (delta +1,61 y −12,13), con go1.27.3. Sus archivos estaban en
+`/tmp` y se perdieron; quedan solo estos números. La condición (2) solo acota `real − noop` por arriba:
+un delta negativo cumple, pero no muestra que el sembrado no cueste.
 
 ### Convenciones de esta sección
 

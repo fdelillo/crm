@@ -5,10 +5,11 @@
 (§14.2) y decidió que las condiciones comerciales de 002 quedan como texto libre (las condiciones de
 pago estructuradas las define 005). Los supuestos de §14.1 que había que verificar al implementar
 ya están verificados (S-4 en T-002-B203, S-3 en T-002-B305). La compuerta de medición de DD-3
-(T-002-B307) **falló en las dos corridas** por la condición 3 (`hold` p95 de 166,1 y 164,8 ms; las
-condiciones 1 y 2 cumplen). **Decisión del usuario (2026-11-17): la compuerta se acepta por las
-condiciones 1 y 2** y DD-3 queda como está, sin aplicar la salida de R-c; motivo y alcance en el
-"Estado de la implementación" de [`tasks.md`](tasks.md), donde están también los números.
+(T-002-B307), medida con el *harness* corregido, **pasó en una corrida y falló en la otra** (corrida 1:
+`hold` p95 real de 146,0 ms y delta de +15,7; corrida 2: cumple las tres condiciones). **Decisión del
+usuario (2026-11-17): la compuerta se acepta** y DD-3 queda como está, sin aplicar la salida de R-c;
+motivo, riesgo aceptado y alcance en el "Estado de la implementación" de [`tasks.md`](tasks.md), donde
+están también los números.
 **Revisión 2026-10-23 (PR #47, revisión de Codex)**: la compuerta del sembrado también falla si la
 retención absoluta llega a 140 ms (DD-3, §13, R-1); la actualización del mapa de errores del frontend
 es la tarea T-002-F001, en la misma rama que T-002-B202 (DD-13, R-2); T-002-B202 es requisito previo
@@ -830,8 +831,8 @@ cada fila); los demás siguen abiertos.
 | S-8 | 005 trata los textos de la configuración como no confiables al armar el PDF y el mensaje de WhatsApp | Inyección de contenido en el PDF |
 
 La compuerta de medición del sembrado (DD-3, T-002-B307) también se resuelve al implementar, con la
-regla de tres condiciones fijada en `tasks.md`. Resultado (2026-11-07): falla por la condición (3);
-el usuario la aceptó por las condiciones (1) y (2) el 2026-11-17 (ver `tasks.md`).
+regla de tres condiciones fijada en `tasks.md`. Resultado (2026-11-17, *harness* corregido): una
+corrida pasa y la otra falla por (2) y (3); el usuario la aceptó el 2026-11-17 (ver `tasks.md`).
 
 ### 14.2 Preguntas (resueltas el 2026-10-23)
 
@@ -858,7 +859,7 @@ El usuario aprobó todas con la opción recomendada, sin cambios. Están incorpo
 
 | ID | Riesgo | Prob. | Impacto | Mitigación |
 |---|---|:---:|:---:|---|
-| R-1 | El sembrado lleva la retención del lock de registro al target de R-b de 001 o por encima (la medición de T-B910 ya dio p95 de 96–134 ms contra un target de 140) | Media | Medio | Compuerta T-002-B307 con regla de tres condiciones fijada antes de medir, **incluida la retención absoluta p95 < 140 ms**; si falla, la fase se detiene: salida de R-c (DD-3, research R-3) o decisión explícita del usuario. **Materializado (2026-11-07)**: falló por (3) con la retención base (noop) ya por encima de 140 ms; el usuario aceptó la compuerta por (1) y (2) el 2026-11-17 (`tasks.md`) |
+| R-1 | El sembrado lleva la retención del lock de registro al target de R-b de 001 o por encima (la medición de T-B910 ya dio p95 de 96–134 ms contra un target de 140) | Media | Medio | Compuerta T-002-B307 con regla de tres condiciones fijada antes de medir, **incluida la retención absoluta p95 < 140 ms**; si falla, la fase se detiene: salida de R-c (DD-3, research R-3) o decisión explícita del usuario. **Materializado a medias (2026-11-17)**: con el *harness* corregido, una corrida pasa y la otra falla por (2) y (3), con el exceso en el `GRANT` previo al sembrado; el usuario aceptó la compuerta el 2026-11-17 (`tasks.md`) |
 | R-2 | El cambio del contrato de 001 (v0.6.0, `name_taken`) rompe la compilación del mapa exhaustivo de mensajes del frontend | Alta (a propósito) | Bajo | Tarea T-002-F001 en la **misma rama** que T-002-B202; el checkpoint de la Fase 2 exige `make check-all` en verde, incluido el typecheck del frontend; el `frontend-architect` define el texto y el test |
 | R-3 | El validador no resuelve `$ref` entre archivos (S-4) | Media | Bajo | Cerrado en T-002-B203: libopenapi los resuelve y la prueba de resolución completa pasa; la fusión en memoria no hizo falta |
 | R-4 | sqlc no genera los parámetros de arrays (S-3) | Baja | Bajo | Cerrado en T-002-B305: los genera con `ROWS FROM`; `:copyfrom` no hizo falta |

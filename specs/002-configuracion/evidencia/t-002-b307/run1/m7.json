@@ -1,0 +1,31 @@
+{
+  "conditions": {
+    "hold_delta_le_10ms": false,
+    "hold_real_p95_lt_140ms": false,
+    "seed_p95_le_10ms": true
+  },
+  "hold_noop": {
+    "samples": 50,
+    "p50_ms": 91.624514,
+    "p95_ms": 130.285492,
+    "max_ms": 153.122997
+  },
+  "hold_p95_delta_ms": 15.695827000000008,
+  "hold_real": {
+    "samples": 50,
+    "p50_ms": 99.541808,
+    "p95_ms": 145.981319,
+    "max_ms": 268.865466
+  },
+  "passed": false,
+  "samples": {
+    "noop": 50,
+    "real": 50
+  },
+  "seed": {
+    "samples": 50,
+    "p50_ms": 4.539433,
+    "p95_ms": 7.344409,
+    "max_ms": 23.355894
+  }
+}

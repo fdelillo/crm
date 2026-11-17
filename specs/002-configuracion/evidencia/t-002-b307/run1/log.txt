@@ -1,0 +1,38 @@
+=== RUN   TestSeedingCostGate
+2026/11/17 18:31:20 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 29.7.2
+  API Version: 1.55
+  Operating System: Docker Desktop
+  Total Memory: 7937 MB
+  Labels:
+    com.docker.desktop.address=unix://~/Library/Containers/com.docker.docker/Data/docker-cli.sock
+  Testcontainers for Go Version: v0.44.0
+  Resolved Docker Host: unix://~/.docker/run/docker.sock
+  Resolved Docker Socket Path: /var/run/docker.sock
+  Test SessionID: b5d8944178724b6e6877b647bfa40461f297d80cdea86aeec0b43b101495f257
+  Test ProcessID: 1464c8f3-9d5f-4d67-9514-5f17407c3e19
+2026/11/17 18:31:20 🐳 Creating container for image postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
+2026/11/17 18:31:20 🐳 Creating container for image testcontainers/ryuk:0.14.0
+2026/11/17 18:31:21 ✅ Container created: fb3c0ecfd1b4
+2026/11/17 18:31:21 🐳 Starting container: fb3c0ecfd1b4
+2026/11/17 18:31:21 ✅ Container started: fb3c0ecfd1b4
+2026/11/17 18:31:21 ⏳ Waiting for container id fb3c0ecfd1b4 image: testcontainers/ryuk:0.14.0. Waiting for: all of: [log message "Started", port 8080/tcp to be listening]
+2026/11/17 18:31:21 Shell not found in container
+2026/11/17 18:31:21 🔔 Container is ready: fb3c0ecfd1b4
+2026/11/17 18:31:21 ✅ Container created: 317febeb7335
+2026/11/17 18:31:21 🐳 Starting container: 317febeb7335
+2026/11/17 18:31:21 ✅ Container started: 317febeb7335
+2026/11/17 18:31:21 ⏳ Waiting for container id 317febeb7335 image: postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722. Waiting for: all of: [log message "database system is ready to accept connections" (occurrence: 2), port 5432/tcp to be listening]
+2026/11/17 18:31:23 🔔 Container is ready: 317febeb7335
+    seeding_cost_test.go:116: BENCH environment run= digest=postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722 container=317febeb7335 server_version=18.6 (Debian 18.6-1.pgdg13+2) go=go1.27.4 os=darwin arch=amd64 cpus=8 docker_memory_bytes=8322793472 pool_max_conns=8 trace=<dir>/trace-317febeb7335.csv
+    seeding_cost_test.go:175: BENCH measurement M-7 {"conditions":{"hold_delta_le_10ms":false,"hold_real_p95_lt_140ms":false,"seed_p95_le_10ms":true},"hold_noop":{"samples":50,"p50_ms":91.624514,"p95_ms":130.285492,"max_ms":153.122997},"hold_p95_delta_ms":15.695827000000008,"hold_real":{"samples":50,"p50_ms":99.541808,"p95_ms":145.981319,"max_ms":268.865466},"passed":false,"samples":{"noop":50,"real":50},"seed":{"samples":50,"p50_ms":4.539433,"p95_ms":7.344409,"max_ms":23.355894}}
+    seeding_cost_test.go:185: BENCH gate T-002-B307 passed=false conditions=[true false false]
+    seeding_cost_test.go:187: BENCH gate T-002-B307 failed; report the numbers and stop: the decision is the user's
+2026/11/17 18:42:41 🐳 Stopping container: 317febeb7335
+2026/11/17 18:42:42 ✅ Container stopped: 317febeb7335
+2026/11/17 18:42:42 🐳 Terminating container: 317febeb7335
+2026/11/17 18:42:42 🚫 Container terminated: 317febeb7335
+--- FAIL: TestSeedingCostGate (681.65s)
+FAIL
+FAIL	github.com/fdelillo/crm/internal/testsupport/perfbench	682.823s
+FAIL
