@@ -16,7 +16,8 @@ import (
 // RegisterRoutes expects Authenticate outside the group it receives. Reads need a session; every write sits
 // behind RequirePermission(SettingsManage), so the permission is decided before the body is read or the
 // resource is looked up (001/INV-12).
-// T-002-B404 (002/DD-11, DD-12, DD-18): the stage operations; the other operations add their routes with their tasks.
+// T-002-B404 (002/DD-11, DD-12, DD-18): the stage operations.
+// T-002-B504 (002/DD-11, DD-12, DD-16): the category operations; the other operations add their routes with their tasks.
 func RegisterRoutes(r chi.Router, service *Service, logger *slog.Logger) {
 	r.Get("/api/v1/stages", func(w http.ResponseWriter, req *http.Request) {
 		p, _ := authz.PrincipalFrom(req.Context())
@@ -26,8 +27,76 @@ func RegisterRoutes(r chi.Router, service *Service, logger *slog.Logger) {
 		}
 		writeSettingsJSON(w, http.StatusOK, stageListResponse(stages))
 	})
+	r.Get("/api/v1/categories", func(w http.ResponseWriter, req *http.Request) {
+		filter, ok := categoryFilterFrom(w, req)
+		if !ok {
+			return
+		}
+		p, _ := authz.PrincipalFrom(req.Context())
+		categories, err := service.ListCategories(req.Context(), p, filter)
+		if writeSettingsError(w, req, err, logger) {
+			return
+		}
+		writeSettingsJSON(w, http.StatusOK, categoryListResponse(categories))
+	})
 	r.Group(func(r chi.Router) {
 		r.Use(authz.RequirePermission(authz.SettingsManage))
+		r.Post("/api/v1/categories", func(w http.ResponseWriter, req *http.Request) {
+			var input categoryCreateRequest
+			if err := httpx.DecodeJSON(w, req, &input); err != nil {
+				return
+			}
+			p, _ := authz.PrincipalFrom(req.Context())
+			created, err := service.CreateCategory(req.Context(), p, input.Name.value, input.Type.value, settingsRequestMeta(req))
+			if writeSettingsError(w, req, err, logger) {
+				return
+			}
+			writeSettingsJSON(w, http.StatusCreated, categoryResponseOf(created))
+		})
+		r.Patch("/api/v1/categories/{categoryId}", func(w http.ResponseWriter, req *http.Request) {
+			id, ok := categoryIDParam(w, req)
+			if !ok {
+				return
+			}
+			var input categoryRenameRequest
+			if err := httpx.DecodeJSON(w, req, &input); err != nil {
+				return
+			}
+			if !input.Name.present { // the contract requires name; an empty PATCH is a malformed request, not a field error
+				httpx.WriteProblem(w, req, httpx.CodeMalformedRequest)
+				return
+			}
+			p, _ := authz.PrincipalFrom(req.Context())
+			renamed, err := service.RenameCategory(req.Context(), p, id, input.Name.value, settingsRequestMeta(req))
+			if writeSettingsError(w, req, err, logger) {
+				return
+			}
+			writeSettingsJSON(w, http.StatusOK, categoryResponseOf(renamed))
+		})
+		r.Post("/api/v1/categories/{categoryId}/archive", func(w http.ResponseWriter, req *http.Request) {
+			id, ok := categoryIDParam(w, req)
+			if !ok {
+				return
+			}
+			p, _ := authz.PrincipalFrom(req.Context())
+			archived, err := service.ArchiveCategory(req.Context(), p, id, settingsRequestMeta(req))
+			if writeSettingsError(w, req, err, logger) {
+				return
+			}
+			writeSettingsJSON(w, http.StatusOK, categoryResponseOf(archived))
+		})
+		r.Post("/api/v1/categories/{categoryId}/restore", func(w http.ResponseWriter, req *http.Request) {
+			id, ok := categoryIDParam(w, req)
+			if !ok {
+				return
+			}
+			p, _ := authz.PrincipalFrom(req.Context())
+			restored, err := service.RestoreCategory(req.Context(), p, id, settingsRequestMeta(req))
+			if writeSettingsError(w, req, err, logger) {
+				return
+			}
+			writeSettingsJSON(w, http.StatusOK, categoryResponseOf(restored))
+		})
 		r.Post("/api/v1/stages", func(w http.ResponseWriter, req *http.Request) {
 			var input stageCreateRequest
 			if err := httpx.DecodeJSON(w, req, &input); err != nil {
@@ -181,6 +250,81 @@ func stageIDParam(w http.ResponseWriter, req *http.Request) (uuid.UUID, bool) {
 	return id, true
 }
 
+// categoryCreateRequest is CategoryCreate. A missing field reaches the service as its zero value and comes back
+// as a field error (422).
+type categoryCreateRequest struct {
+	Name optional[string]       `json:"name"`
+	Type optional[CategoryType] `json:"type"`
+}
+
+// categoryRenameRequest is CategoryRename.
+type categoryRenameRequest struct {
+	Name optional[string] `json:"name"`
+}
+
+// categoryResponse is Category. system is derived from system_key, which is null for the company's own.
+type categoryResponse struct {
+	ID        uuid.UUID    `json:"id"`
+	Name      string       `json:"name"`
+	Type      CategoryType `json:"type"`
+	System    bool         `json:"system"`
+	SystemKey *SystemKey   `json:"system_key"`
+	Archived  bool         `json:"archived"`
+}
+
+func categoryResponseOf(c Category) categoryResponse {
+	return categoryResponse{ID: c.ID, Name: c.Name, Type: c.Type, System: c.SystemKey != nil, SystemKey: c.SystemKey, Archived: c.Archived}
+}
+
+// categoryListBody is CategoryList. items is never null, also for an empty list.
+type categoryListBody struct {
+	Items []categoryResponse `json:"items"`
+}
+
+func categoryListResponse(categories []Category) categoryListBody {
+	items := make([]categoryResponse, len(categories))
+	for i, c := range categories {
+		items[i] = categoryResponseOf(c)
+	}
+	return categoryListBody{Items: items}
+}
+
+// categoryFilterFrom reads ?type and ?include_archived; a value outside the contract (type other than
+// income/expense, a boolean other than true/false) is a 400 (plan 9.1).
+func categoryFilterFrom(w http.ResponseWriter, req *http.Request) (CategoryFilter, bool) {
+	query := req.URL.Query()
+	var filter CategoryFilter
+	if query.Has("type") {
+		t := CategoryType(query.Get("type"))
+		if validateCategoryType(t) != "" {
+			httpx.WriteProblem(w, req, httpx.CodeMalformedRequest)
+			return CategoryFilter{}, false
+		}
+		filter.Type = &t
+	}
+	if query.Has("include_archived") {
+		switch query.Get("include_archived") {
+		case "true":
+			filter.IncludeArchived = true
+		case "false":
+		default:
+			httpx.WriteProblem(w, req, httpx.CodeMalformedRequest)
+			return CategoryFilter{}, false
+		}
+	}
+	return filter, true
+}
+
+// categoryIDParam reads {categoryId}; a malformed id is the same 404 as one that does not exist.
+func categoryIDParam(w http.ResponseWriter, req *http.Request) (uuid.UUID, bool) {
+	id, err := uuid.Parse(chi.URLParam(req, "categoryId"))
+	if err != nil {
+		httpx.WriteProblem(w, req, httpx.CodeNotFound)
+		return uuid.Nil, false
+	}
+	return id, true
+}
+
 func settingsRequestMeta(req *http.Request) RequestMeta {
 	return RequestMeta{IP: httpx.ClientIPFrom(req.Context()), UserAgent: req.UserAgent()}
 }
@@ -212,7 +356,7 @@ func writeSettingsError(w http.ResponseWriter, req *http.Request, err error, log
 		httpx.WriteProblem(w, req, httpx.CodeNotFound)
 	case errors.Is(err, ErrNameTaken):
 		httpx.WriteProblem(w, req, httpx.CodeNameTaken)
-	case errors.Is(err, ErrPipelineRule):
+	case errors.Is(err, ErrPipelineRule), errors.Is(err, ErrSystemCategory):
 		httpx.WriteProblem(w, req, httpx.CodeInvalidState)
 	case errors.Is(err, ErrTenantSettingsMissing):
 		// The company lost its tenant_settings row (002/INV-1, DD-19): a bug to investigate, never a 404.

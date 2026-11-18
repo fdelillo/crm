@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -68,7 +69,10 @@ func (a *stagesAPI) categoryID(name, typ string) string {
 // response matches the contract.
 func TestCategoriesHTTPScenario(t *testing.T) {
 	a := newStagesAPI(t)
-	defaults := []string{"income:Aportes de socios", "income:Cobros de clientes", "expense:Pagos a empleados", "expense:Pagos a proveedores", "expense:Retiros de socios"}
+	// The five system categories and then the ones the "generic" template adds, income first.
+	defaults := []string{"income:Aportes de socios", "income:Cobros de clientes", "income:Otros ingresos",
+		"expense:Pagos a empleados", "expense:Pagos a proveedores", "expense:Retiros de socios",
+		"expense:Alquiler", "expense:Flete", "expense:Impuestos", "expense:Mano de obra", "expense:Materiales", "expense:Otros gastos", "expense:Servicios"}
 	for _, who := range []string{"admin", "operator"} {
 		if got := categoryNames(a.categories(who, "")); !reflect.DeepEqual(got, defaults) {
 			t.Fatalf("%s sees %v", who, got)
@@ -101,7 +105,7 @@ func TestCategoriesHTTPScenario(t *testing.T) {
 		}
 	}
 	withArchived := a.categories("operator", "?include_archived=true")
-	if got := categoryNames(withArchived); got[len(got)-2] != "expense:Combustible" && got[len(got)-1] != "expense:Combustible" {
+	if got := categoryNames(withArchived); !slices.Contains(got, "expense:Combustible") || len(got) != len(defaults)+1 {
 		t.Fatalf("with include_archived: %v", got)
 	}
 	for _, c := range withArchived {
@@ -109,7 +113,7 @@ func TestCategoriesHTTPScenario(t *testing.T) {
 			t.Fatalf("archived flag missing: %+v", c)
 		}
 	}
-	if got := categoryNames(a.categories("admin", "?type=income")); !reflect.DeepEqual(got, []string{"income:Aportes de socios", "income:Cobranzas"}) {
+	if got := categoryNames(a.categories("admin", "?type=income")); !reflect.DeepEqual(got, []string{"income:Aportes de socios", "income:Cobranzas", "income:Otros ingresos"}) {
 		t.Fatalf("type=income: %v", got)
 	}
 	for _, c := range a.categories("admin", "?type=expense&include_archived=false") {
