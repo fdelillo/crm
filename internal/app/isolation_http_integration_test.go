@@ -502,14 +502,15 @@ func TestIsolationHTTPMatrix(t *testing.T) {
 					payload, ct = []byte(`{"position":1}`), "application/json"
 				}
 				// Same request context for every call, as in foreign_id: the 404 must match byte for byte.
+				withIP := httpx.ClientIP(nil, f.Logger)(api)
 				httpx.RequestID(http.HandlerFunc(func(_ http.ResponseWriter, req *http.Request) {
-					missing := isolationRequest(t, h, req.Context(), f.A.Users["admin"].Cookie, method, strings.ReplaceAll(path, "{stageId}", uuid.NewString()), ct, payload, "", 404, checkResponse)
+					missing := isolationRequest(t, withIP, req.Context(), f.A.Users["admin"].Cookie, method, strings.ReplaceAll(path, "{stageId}", uuid.NewString()), ct, payload, "", 404, checkResponse)
 					foreign, err := f.Settings.ListStages(context.Background(), f.B.Users["admin"].Principal)
 					if err != nil || len(foreign) == 0 {
 						t.Fatalf("stages of B: %v %v", foreign, err)
 					}
 					for _, stage := range foreign {
-						rec := isolationRequest(t, h, req.Context(), f.A.Users["admin"].Cookie, method, strings.ReplaceAll(path, "{stageId}", stage.ID.String()), ct, payload, "", 404, checkResponse)
+						rec := isolationRequest(t, withIP, req.Context(), f.A.Users["admin"].Cookie, method, strings.ReplaceAll(path, "{stageId}", stage.ID.String()), ct, payload, "", 404, checkResponse)
 						counts.verify(t, bytes.Equal(missing.Body.Bytes(), rec.Body.Bytes()), "foreign stage 404 differs byte for byte from absent id: %s != %s", rec.Body.String(), missing.Body.String())
 						counts.verify(t, reflect.DeepEqual(missing.Header(), rec.Header()), "foreign stage 404 headers differ from absent id: %v != %v", rec.Header(), missing.Header())
 						assertUnchanged(t, f, f.B.ID, bBefore, counts)

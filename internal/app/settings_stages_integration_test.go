@@ -317,7 +317,7 @@ func TestStagesHTTPTransportRules(t *testing.T) {
 // missing stage.
 func TestStagesHTTPMissingSettingsRowIs500(t *testing.T) {
 	a := newStagesAPI(t)
-	if _, err := pgtest.OwnerPool(t).Exec(context.Background(), `DELETE FROM app.tenant_settings WHERE tenant_id=$1`, a.f.A.ID); err != nil {
+	if _, err := pgtest.SuperuserPool(t).Exec(context.Background(), `DELETE FROM app.tenant_settings WHERE tenant_id=$1`, a.f.A.ID); err != nil {
 		t.Fatal(err)
 	}
 	rec := a.json("admin", "POST", "/api/v1/stages", `{"name":"Nueva","type":"open","color":"gray"}`, 500)
