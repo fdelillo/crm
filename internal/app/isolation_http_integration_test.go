@@ -88,6 +88,11 @@ var isolationCases = map[string]string{
 	"PUT /api/v1/users/{userId}/role":              "foreign_id",
 	"POST /api/v1/users/{userId}/deactivate":       "foreign_id",
 	"POST /api/v1/users/{userId}/reactivate":       "foreign_id",
+	"GET /api/v1/stages":                           "read",
+	"POST /api/v1/stages":                          "stage_create",
+	"PATCH /api/v1/stages/{stageId}":               "foreign_stage_id",
+	"DELETE /api/v1/stages/{stageId}":              "foreign_stage_id",
+	"POST /api/v1/stages/{stageId}/move":           "foreign_stage_id",
 }
 
 func isolationRoot(t *testing.T, f *e2e.Scenario, api chi.Router) *apitest.Server {
@@ -425,7 +430,7 @@ func TestIsolationHTTPMatrix(t *testing.T) {
 	for _, key := range keys {
 		t.Run(key, func(t *testing.T) {
 			f := e2e.New(t, pgtest.AppPool(t))
-			api := app.BuildAPIRouter(f.Users, f.Companies, nil, f.Clock, f.Logger)
+			api := app.BuildAPIRouter(f.Users, f.Companies, f.Settings, f.Clock, f.Logger)
 			h := isolationRoot(t, f, api)
 			parts := strings.SplitN(key, " ", 2)
 			method, path := parts[0], parts[1]
@@ -472,6 +477,45 @@ func TestIsolationHTTPMatrix(t *testing.T) {
 					}
 				})).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/", nil))
 				assertUnchanged(t, f, f.A.ID, aBefore, counts)
+			case "stage_create":
+				rec := call(path, "application/json", []byte(`{"name":"Instalación","type":"open","color":"teal"}`), "", 201)
+				var created struct{ ID uuid.UUID }
+				if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+					t.Fatal(err)
+				}
+				own, err := f.Settings.ListStages(context.Background(), f.A.Users["admin"].Principal)
+				if err != nil || len(own) != 6 || own[5].ID != created.ID {
+					t.Fatalf("stage not created in company A: %v %v", own, err)
+				}
+				assertChanged(t, f, f.A.ID, aBefore, "stages", "audit_log")
+				assertUnchanged(t, f, f.B.ID, bBefore, counts)
+			case "foreign_stage_id":
+				if !strings.Contains(path, "{stageId}") {
+					t.Fatalf("%s: stage-id isolation case requires {stageId}", key)
+				}
+				var payload []byte
+				ct := ""
+				switch method {
+				case "PATCH":
+					payload, ct = []byte(`{"name":"Otra"}`), "application/json"
+				case "POST":
+					payload, ct = []byte(`{"position":1}`), "application/json"
+				}
+				// Same request context for every call, as in foreign_id: the 404 must match byte for byte.
+				httpx.RequestID(http.HandlerFunc(func(_ http.ResponseWriter, req *http.Request) {
+					missing := isolationRequest(t, h, req.Context(), f.A.Users["admin"].Cookie, method, strings.ReplaceAll(path, "{stageId}", uuid.NewString()), ct, payload, "", 404, checkResponse)
+					foreign, err := f.Settings.ListStages(context.Background(), f.B.Users["admin"].Principal)
+					if err != nil || len(foreign) == 0 {
+						t.Fatalf("stages of B: %v %v", foreign, err)
+					}
+					for _, stage := range foreign {
+						rec := isolationRequest(t, h, req.Context(), f.A.Users["admin"].Cookie, method, strings.ReplaceAll(path, "{stageId}", stage.ID.String()), ct, payload, "", 404, checkResponse)
+						counts.verify(t, bytes.Equal(missing.Body.Bytes(), rec.Body.Bytes()), "foreign stage 404 differs byte for byte from absent id: %s != %s", rec.Body.String(), missing.Body.String())
+						counts.verify(t, reflect.DeepEqual(missing.Header(), rec.Header()), "foreign stage 404 headers differ from absent id: %v != %v", rec.Header(), missing.Header())
+						assertUnchanged(t, f, f.B.ID, bBefore, counts)
+					}
+				})).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/", nil))
+				assertUnchanged(t, f, f.A.ID, aBefore, counts)
 			case "read", "logo_read", "catalog":
 				etag := ""
 				if isolationCases[key] == "logo_read" {
@@ -491,6 +535,8 @@ func TestIsolationHTTPMatrix(t *testing.T) {
 					}
 				case "/api/v1/tenant/logo":
 					call(path, "", nil, f.A.ETag, 304)
+				case "/api/v1/stages":
+					assertStagesBelongTo(t, rec, f, f.A, f.B, counts)
 				}
 				assertUnchanged(t, f, f.A.ID, aBefore, counts)
 				assertUnchanged(t, f, f.B.ID, bBefore, counts)
@@ -628,7 +674,7 @@ func TestIsolationHTTPMatrix(t *testing.T) {
 	for _, key := range operatorReads {
 		t.Run("operator/"+key, func(t *testing.T) {
 			f := e2e.New(t, pgtest.AppPool(t))
-			api := app.BuildAPIRouter(f.Users, f.Companies, nil, f.Clock, f.Logger)
+			api := app.BuildAPIRouter(f.Users, f.Companies, f.Settings, f.Clock, f.Logger)
 			h := isolationRoot(t, f, api)
 			path := strings.SplitN(key, " ", 2)[1]
 			beforeA, beforeB := f.Snapshot(t, f.A.ID), f.Snapshot(t, f.B.ID)
@@ -648,6 +694,27 @@ func TestIsolationHTTPMatrix(t *testing.T) {
 			assertUnchanged(t, f, f.A.ID, beforeA, counts)
 			assertUnchanged(t, f, f.B.ID, beforeB, counts)
 		})
+	}
+}
+
+// assertStagesBelongTo checks that a GET /stages response lists the stages of own and none of foreign.
+func assertStagesBelongTo(t *testing.T, rec *httptest.ResponseRecorder, f *e2e.Scenario, own, foreign e2e.Company, counters ...*isolationCount) {
+	t.Helper()
+	ownStages, err := f.Settings.ListStages(context.Background(), own.Users["admin"].Principal)
+	if err != nil || len(ownStages) == 0 {
+		t.Fatalf("stages of own company: %v %v", ownStages, err)
+	}
+	for _, s := range ownStages {
+		if !bytes.Contains(rec.Body.Bytes(), []byte(s.ID.String())) {
+			t.Errorf("own stage missing: %s", s.ID)
+		}
+	}
+	foreignStages, err := f.Settings.ListStages(context.Background(), foreign.Users["admin"].Principal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range foreignStages {
+		counterFor(counters).verifySentinel(t, !bytes.Contains(rec.Body.Bytes(), []byte(s.ID.String())), "foreign stage in response: %s", s.ID)
 	}
 }
 

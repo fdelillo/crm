@@ -12,7 +12,6 @@ import (
 // pendingOperations lists the operationIds of spec 002 whose routes are not registered yet.
 // Each phase of 002 removes the operations it implements; the last one leaves it empty (DD-13).
 var pendingOperations = map[string]bool{
-	"listStages": true, "createStage": true, "updateStage": true, "deleteStage": true, "moveStage": true,
 	"listCategories": true, "createCategory": true, "renameCategory": true, "archiveCategory": true, "restoreCategory": true,
 	"listCatalogItems": true, "createCatalogItem": true, "getCatalogItem": true, "updateCatalogItem": true,
 	"archiveCatalogItem": true, "restoreCatalogItem": true,
@@ -55,12 +54,13 @@ func contractRouteProblems(ops []contract.Operation, implemented, pending map[st
 	return problems
 }
 
-// T-002-B203 (DD-13): pendingOperations is exactly the 20 operations of 002 and none of 001.
-func TestPendingOperationsAreExactlyThoseOfTheSecondContract(t *testing.T) {
-	var declared []string
+// T-002-B203 (DD-13): pendingOperations only lists operations of 002 (none of 001) and the contract declares 20;
+// each phase removes the ones it implements.
+func TestPendingOperationsAreOperationsOfTheSecondContract(t *testing.T) {
+	declared := map[string]bool{}
 	for _, op := range contract.Default(t).Operations() {
 		if op.Document == contract.Documents[1] {
-			declared = append(declared, op.ID)
+			declared[op.ID] = true
 		} else if pendingOperations[op.ID] {
 			t.Errorf("pendingOperations lists %s, an operation of %s", op.ID, op.Document)
 		}
@@ -68,14 +68,10 @@ func TestPendingOperationsAreExactlyThoseOfTheSecondContract(t *testing.T) {
 	if len(declared) != 20 {
 		t.Errorf("the 002 contract declares %d operations, want 20", len(declared))
 	}
-	var pending []string
 	for id := range pendingOperations {
-		pending = append(pending, id)
-	}
-	slices.Sort(declared)
-	slices.Sort(pending)
-	if !slices.Equal(declared, pending) {
-		t.Fatalf("pendingOperations differs from the 002 contract\n got: %v\nwant: %v", pending, declared)
+		if !declared[id] {
+			t.Errorf("pendingOperations lists %s, which the 002 contract does not declare", id)
+		}
 	}
 }
 
