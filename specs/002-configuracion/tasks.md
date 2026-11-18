@@ -19,7 +19,13 @@ etapas); checkpoint de la Fase 4 cumplido el 2026-11-18: `make check` en verde y
 con `curl` (servidor local con TLS, empresa "Genérico"): mover "En curso" a 1, crear "Instalación" en la
 posición 4, antes de "Finalizado", `409 invalid_state` al eliminar "Finalizado" y, como Operador
 invitado, `GET /stages` con el orden En curso, Presupuesto, Aprobado, Instalación, Finalizado, Perdido
-y `403` al intentar crear. Fase 3: T-002-B301 a T-002-B307 implementadas; la compuerta del
+y `403` al intentar crear. **Seguimiento de la Fase 4**: T-002-B405 y T-002-B406 implementadas
+(plan DD-19, la fila de configuración que falta como error propio del servicio; hallazgo P3 de la revisión de
+Codex del PR #64, decisión del usuario del 2026-11-18); checkpoint cumplido el 2026-11-18: `make check`
+en verde y la prueba independiente con `curl` (servidor local con TLS; sin la fila de una empresa de
+prueba, `POST /stages`, `DELETE` de una etapa existente y `DELETE` de un id inexistente dan
+`500 internal`, con 3 líneas `ERROR` `settings_row_missing`, una por request, y `GET /stages` da
+`200`; después se restauró la fila). Fase 3: T-002-B301 a T-002-B307 implementadas; la compuerta del
 sembrado (T-002-B307), medida de nuevo con el *harness* corregido, **pasó en una corrida y falló en
 la otra, y el usuario la aceptó el 2026-11-17** (abajo): la Fase 3 queda cerrada y la Fase 4 puede
 avanzar. Supuestos
@@ -100,7 +106,7 @@ comentario de cada `Test*`. Además:
   puede quedar en rojo entre ramas).
 - **Archivos de test por funcionalidad**: `internal/settings/pipeline_test.go`,
   `stages_integration_test.go`, `categories_integration_test.go`, `catalog_integration_test.go`,
-  `preferences_integration_test.go`; en `internal/app`, `settings_stages_integration_test.go`,
+  `preferences_integration_test.go`, `http_test.go` (el mapa de errores, sin base); en `internal/app`, `settings_stages_integration_test.go`,
   etc., y `registration_seeding_integration_test.go` (usa `tenant` y `settings` a la vez, y DD-1 no
   deja que uno importe al otro, tampoco en tests); el escenario de SC-001 en
   `internal/app/configuration_scenario_integration_test.go`.
@@ -494,6 +500,81 @@ las escrituras con `RequirePermission(SettingsManage)`).
 
 **Checkpoint Fase 4**: `make check` en verde + prueba independiente con `curl`.
 
+#### Seguimiento de la Fase 4 — la fila de configuración que falta es un error propio del servicio
+
+Origen: hallazgo P3 de la revisión de Codex del PR #64 y decisión del usuario del 2026-11-18 (plan
+DD-19). El comportamiento visible no cambia (`500 internal` con `settings_row_missing`, como pide el
+*runbook*); cambia quién clasifica el error: el servicio, no el handler mirando `db.ErrNotFound`.
+T-002-B405 y T-002-B406 van en **una rama** con nombre por funcionalidad
+(`fix/002-settings-row-missing-error`) y se mergean antes de empezar la Fase 5 (convención de ramas
+por fase). La Fase 7 reusa el helper y el caso del mapa que deja esta rama.
+
+**Prueba independiente**: en una base local, borrar como superusuario la fila de `tenant_settings`
+de una empresa de prueba; `POST /stages` y `DELETE /stages/{id}` (también con un id inexistente)
+responden `500 internal`, y el log del servidor tiene una línea `ERROR` con
+`"event":"settings_row_missing"` por request; `GET /stages` sigue respondiendo `200`.
+
+**T-002-B405 [T] — La empresa sin fila de configuración es un error propio, no un `db.ErrNotFound`** ·
+DD-19, INV-1, INV-11, plan §9.2, §12.2
+- **Red — servicio** (integración, `internal/settings/stages_integration_test.go`; empresa `generic`;
+  la fila se borra con `pgtest.SuperuserPool`, porque ningún rol de runtime tiene `DELETE`, INV-3).
+  Fija el sentinel en el servicio:
+
+  | Caso | Esperado |
+  |---|---|
+  | Sin fila: `CreateStage`, `UpdateStage` (de una etapa activa), `DeleteStage` y `MoveStage` como admin | en las cuatro, `errors.Is(err, ErrTenantSettingsMissing)` verdadero; `errors.Is(err, ErrNotFound)` y `errors.Is(err, db.ErrNotFound)` **falsos**; las etapas (lista, posiciones y `updated_at`) y `audit_log` sin cambios |
+  | Sin fila: `UpdateStage`, `DeleteStage` y `MoveStage` con un id inexistente | `ErrTenantSettingsMissing`, no `ErrNotFound`: el lock va antes de buscar la etapa |
+  | Sin fila: cualquier escritura como operador | `authz.ErrForbidden` (el permiso se decide antes de tocar la base) |
+  | Con fila (control): `UpdateStage` de un id inexistente | `ErrNotFound`; `errors.Is(err, ErrTenantSettingsMissing)` falso |
+
+- **Red — mapa de errores** (unitario, `internal/settings/http_test.go`, mismo paquete, sin base):
+  `writeSettingsError` con un `httptest.ResponseRecorder` y un logger JSON sobre un buffer. No pasa
+  por el router, así que no valida el contrato: eso lo hace la tabla HTTP.
+
+  | Error recibido | Respuesta | Log |
+  |---|---|---|
+  | `ErrTenantSettingsMissing` envuelto con `fmt.Errorf("…: %w", …)` | `500`, `code` `internal` | exactamente una línea `ERROR` con `"event":"settings_row_missing"` y la clave `request_id` |
+  | `ErrNotFound` envuelto | `404 not_found` | ninguna con `settings_row_missing` |
+  | `db.ErrNotFound` envuelto, sin traducir | `404 not_found` (lo responde `httpx.WriteDBError`, como en 001) | ninguna con `settings_row_missing` |
+  | `db.ErrPrivilege` envuelto (control de que lo no reconocido sigue yendo a `WriteDBError`) | `500 internal` | `"security_event":"rls_violation"`; ninguna con `settings_row_missing` |
+
+- **Red — HTTP** (integración, `internal/app/settings_stages_integration_test.go`): se amplía
+  `TestStagesHTTPMissingSettingsRowIs500`, que hoy cubre solo `POST /stages`, mira solo el `code` y
+  arma el router con `f.Logger` (que descarta). Pasa a armar `BuildAPIRouter` con un logger JSON
+  sobre un buffer (como `ops_integration_test.go`) y a recorrer:
+
+  | Caso (empresa A sin fila) | Esperado |
+  |---|---|
+  | `POST /stages`, `PATCH /stages/{id}`, `DELETE /stages/{id}` y `POST /stages/{id}/move` con el id de una etapa activa y bodies válidos | `500`, `code` `internal`, respuesta validada contra el contrato; una línea `ERROR` `"event":"settings_row_missing"` por request, con `request_id` no vacío; las etapas de A sin cambios |
+  | `PATCH`, `DELETE` y `move` con un id inexistente | `500 internal`, no `404` |
+
+- **Mutaciones** (cada una se aplica, se ve fallar y se restaura):
+
+  | Mutación | La detecta |
+  |---|---|
+  | `lockTenantSettings` devuelve el error de la base sin traducir (`db.MapError` envuelto, como antes de DD-19) | servicio (sentinel falso, `db.ErrNotFound` verdadero) y HTTP (`404` en lugar de `500`) |
+  | El sentinel envuelve también `db.ErrNotFound` (`%w` doble) | servicio (`errors.Is(err, db.ErrNotFound)` verdadero) |
+  | El helper devuelve `ErrNotFound`, o el sentinel lo envuelve | servicio y HTTP (`404`) |
+  | Se quita el caso de `ErrTenantSettingsMissing` del mapa | mapa y HTTP: `500` sin la línea `settings_row_missing` (lo responde el `default`) |
+  | Se deja el caso de `db.ErrNotFound` en el mapa | mapa: el `db.ErrNotFound` sin traducir responde `500` con `settings_row_missing` |
+  | `writeStages` busca la etapa antes de tomar el lock | servicio: con un id inexistente da `ErrNotFound` |
+
+- **Green**: pasan las tres tablas y cada mutación se ve fallar.
+- **Refactor**: que la traducción de la falta de fila quede en un solo lugar (el helper), sin un
+  `errors.Is(…, db.ErrNotFound)` en `stages.go` ni en `http.go`; comentarios que citan `002/DD-19`.
+
+**T-002-B406 — Implementar el error de la fila de configuración que falta** (plan DD-19, §9.3):
+`ErrTenantSettingsMissing` junto a los demás centinelas de `service.go`; el helper
+`lockTenantSettings` en `service.go` (sin fila → el sentinel, sin envolver el error de la base;
+cualquier otro error → `db.MapError` envuelto, como hoy), y `writeStages` lo usa en lugar de llamar
+a la query; en `http.go`, el caso del sentinel (línea `ERROR` `settings_row_missing` con `request_id`
+y `err`, y `500 internal`) y fuera el caso de `db.ErrNotFound` junto con la importación de
+`platform/db`; el comentario de `LockTenantSettings` en `store/queries.sql` pasa a decir que la falta
+de fila la traduce `lockTenantSettings` a `ErrTenantSettingsMissing` (`make generate` lo copia a
+`queries.sql.go`).
+
+**Checkpoint del seguimiento**: `make check` en verde + prueba independiente.
+
 ---
 
 ### Fase 5 — Historia 3: Categorías de ingresos y egresos (P1)
@@ -551,7 +632,9 @@ DD-15, INV-4 a INV-6, INV-13
   | Test de rutas contra el contrato | las 5 operaciones salen de `pendingOperations` |
 - **Green**: pasa la tabla.
 
-**T-002-B504 — Implementar los handlers de categorías.**
+**T-002-B504 — Implementar los handlers de categorías** con `writeSettingsError` (plan §9.2, DD-19):
+sin casos para errores de `platform/db`; la categoría que no existe la traduce el servicio
+(`LockCategory` sin fila → `ErrNotFound`).
 
 **Checkpoint Fase 5**: `make check` en verde + prueba independiente.
 
@@ -618,7 +701,9 @@ INV-13, ADR-029
 - **Green**: pasa la tabla.
 
 **T-002-B604 — Implementar los handlers del catálogo** (DTO de `Money` con campos puntero para
-distinguir faltante de cero; nunca `float64` en la decodificación).
+distinguir faltante de cero; nunca `float64` en la decodificación). Errores con `writeSettingsError`,
+sin casos para errores de `platform/db` (DD-19): `GetCatalogItem` y `LockCatalogItem` sin fila los
+traduce el servicio a `ErrNotFound`.
 
 **Checkpoint Fase 6**: `make check` en verde + prueba independiente.
 
@@ -635,7 +720,7 @@ femenino; `GET /settings/labels` como Operador lo devuelve; `PUT /settings/quote
 30 días y condiciones vacías guarda `terms: null`.
 
 **T-002-B701 [T] — Servicio de nombres y condiciones** · Historias 2 y 6, FR-002, FR-007, P-3,
-P-10, DD-10, DD-15, INV-13
+P-10, DD-10, DD-15, DD-19, INV-1, INV-13
 - **Red** (integración):
 
   | Caso | Esperado |
@@ -649,13 +734,16 @@ P-10, DD-10, DD-15, INV-13
   | `ReplaceQuoteDefaults` con `terms` `"   "` | `terms` nil |
   | `ReplaceQuoteDefaults` con `validity_days` 0 | `FieldErrors{validity_days: invalid_value}` |
   | Escrituras como operador | `authz.ErrForbidden` |
+  | Empresa sin fila de `tenant_settings` (borrada con `pgtest.SuperuserPool`, como T-002-B405): `GetLabels`, `GetQuoteDefaults`, `ReplaceLabels` y `ReplaceQuoteDefaults` | `ErrTenantSettingsMissing` en las cuatro; `errors.Is` con `ErrNotFound` y con `db.ErrNotFound` falsos; sin escritura ni auditoría (DD-19) |
   | **Concurrencia**: `ReplaceLabels` y `DeleteStage` de la misma empresa en paralelo (mismo lock, mecanismo E) | las dos confirman, una después de la otra; sin `40P01` |
 - **Green**: pasa la tabla.
 
 **T-002-B702 — Implementar los casos de uso de nombres y condiciones** (`preferences.go`; queries
-`GetTenantSettings`, `UpdateLabels`, `UpdateQuoteDefaults`, con `LockTenantSettings` primero).
+`GetTenantSettings`, `UpdateLabels`, `UpdateQuoteDefaults`, con el lock primero a través de
+`lockTenantSettings`, nunca con la query directa; la lectura de la fila pasa por un único helper junto
+a `lockTenantSettings` que traduce la falta de fila al mismo `ErrTenantSettingsMissing`, DD-19).
 
-**T-002-B703 [T] — Endpoints de nombres y condiciones** · contrato, FR-008
+**T-002-B703 [T] — Endpoints de nombres y condiciones** · contrato, FR-008, DD-19
 - **Red** (HTTP + contrato):
 
   | Caso | Esperado |
@@ -664,11 +752,13 @@ P-10, DD-10, DD-15, INV-13
   | `PUT /settings/labels` sin `customer` | `422` (`customer`, `required`) |
   | `PUT /settings/labels` con un campo desconocido | `400` |
   | `PUT /settings/quote-defaults` con `terms: null` / `validity_days: "30"` / `validity_days: 400` | `200` / `400` / `422` |
+  | Las 4 rutas con la empresa sin fila de `tenant_settings` | `500 internal` y una línea `ERROR` `"event":"settings_row_missing"` por request (logger sobre un buffer, como T-002-B405) |
   | Barridos de aislamiento y de permisos para las 4 rutas | como en T-002-B403 (no tienen id: el barrido verifica que A nunca lee ni escribe la fila de B) |
   | Test de rutas contra el contrato | las 4 operaciones salen de `pendingOperations` (queda vacía) |
 - **Green**: pasa la tabla.
 
-**T-002-B704 — Implementar los handlers de nombres y condiciones.**
+**T-002-B704 — Implementar los handlers de nombres y condiciones** con `writeSettingsError`: el caso
+de `ErrTenantSettingsMissing` ya existe (DD-19); sin casos nuevos ni para errores de `platform/db`.
 
 **Checkpoint Fase 7**: `make check` en verde + prueba independiente.
 
@@ -726,7 +816,7 @@ procedimiento de `docs/diagramas/README.md`.
 | Historia 1.1 de 001 (precarga de la plantilla) | T-002-B305 |
 | SC-001 | T-002-B801 |
 | SC-002 de 001 (0 accesos cruzados) en las rutas nuevas | T-002-B101 (base), T-002-B403, B503, B603, B703 (HTTP) |
-| INV-1 | T-002-B101, T-002-B305 |
+| INV-1 | T-002-B101, T-002-B305; reacción a su violación (DD-19): T-002-B405, T-002-B701, T-002-B703 |
 | INV-2 | T-002-B301, T-002-B401 |
 | INV-3, INV-5 | T-002-B101 |
 | INV-4 | T-002-B101, T-002-B305, T-002-B501 |
@@ -740,6 +830,7 @@ procedimiento de `docs/diagramas/README.md`.
 | INV-13 / DD-15 | T-002-B401, B501, B601, B701 |
 | DD-4 *backfill* | T-002-B101 |
 | DD-12 / DD-13 contratos, `name_taken` y resolución de `$ref` | T-002-B201..B204, T-002-F001 (frontend, misma rama que T-002-B202) |
+| DD-19 fila de configuración que falta (`ErrTenantSettingsMissing`, `settings_row_missing`; hallazgo P3 de la revisión de Codex del PR #64) | T-002-B405, T-002-B406, T-002-B701, T-002-B702, T-002-B703 |
 | ADR-028 | T-002-B101, T-002-B401 (borrado lógico), T-002-B501 |
 | DD-1 fronteras | T-002-B103, T-002-B205 |
 

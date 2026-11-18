@@ -15,6 +15,11 @@ retención absoluta llega a 140 ms (DD-3, §13, R-1); la actualización del mapa
 es la tarea T-002-F001, en la misma rama que T-002-B202 (DD-13, R-2); T-002-B202 es requisito previo
 de cualquier validación o consumidor del contrato 002, y el checkpoint de la Fase 2 demuestra que
 todos sus `$ref` resuelven (DD-13).
+**Revisión 2026-11-18 (PR #64, revisión de Codex, hallazgo P3; decisión del usuario)**: la falta de
+la fila de `tenant_settings` de una empresa (INV-1 rota) es un error propio del servicio,
+`settings.ErrTenantSettingsMissing`, que el handler traduce a `500` con el evento
+`settings_row_missing`; `settings/http.go` deja de reconocer `db.ErrNotFound` (DD-19, §9, §12.2;
+tareas T-002-B405 y T-002-B406).
 
 Artefactos de esta spec:
 
@@ -191,6 +196,10 @@ sequenceDiagram
     H->>S: DeleteStage(p, id, meta)
     S->>DB: BEGIN y SET LOCAL ROLE crm_t_HEX
     S->>DB: LockTenantSettings (FOR NO KEY UPDATE)
+    opt la empresa no tiene fila de tenant_settings, INV-1 rota (DD-19), y la operación termina acá
+        S-->>H: ErrTenantSettingsMissing
+        H-->>A: 500 internal y log settings_row_missing
+    end
     S->>DB: ListActiveStages (orden por position)
     alt la etapa no está entre las activas (otra empresa, eliminada, inexistente)
         S-->>H: ErrNotFound
@@ -307,7 +316,7 @@ Se rompen sin que falle la compilación; cada una tiene un test que la vigila.
 
 | ID | Invariante | Dónde vive | Test |
 |---|---|---|---|
-| INV-1 | Toda empresa tiene **exactamente una** fila en `tenant_settings`: desde el `COMMIT` de su registro, o desde la migración `00010` para las previas | Sembrado + migración (`UNIQUE (tenant_id)`) | T-002-B101, T-002-B305 |
+| INV-1 | Toda empresa tiene **exactamente una** fila en `tenant_settings`: desde el `COMMIT` de su registro, o desde la migración `00010` para las previas | Sembrado + migración (`UNIQUE (tenant_id)`) | T-002-B101, T-002-B305. La reacción a su violación (`ErrTenantSettingsMissing`, `500` con `settings_row_missing`, DD-19): T-002-B405, T-002-B701, T-002-B703 |
 | INV-2 | Entre transacciones confirmadas, las etapas **activas** de una empresa tienen posiciones `1..n` sin huecos, la de posición 1 es `open` y al menos una es `won`. Toda mutación de etapas corre bajo `LockTenantSettings` y valida la lista resultante con la misma función pura. La base **no** lo impide por sí sola | `settings` (servicio) | T-002-B301 (función), T-002-B401 (incluida concurrencia) |
 | INV-3 | Ninguna fila de `tenant_settings`, `stages`, `categories` ni `catalog_items` se borra físicamente: ningún rol de runtime tiene `DELETE` (ADR-028) | Migración | Barrido de T-B110 de 001 (`tablesWithCompanyDelete` vacía), T-002-B101 |
 | INV-4 | Cada empresa tiene exactamente una categoría por cada `system_key` vigente, nunca archivada, con el tipo que le corresponde | `CHECK` + índice único parcial + sembrado + *backfill* | T-002-B101, T-002-B305 |
@@ -348,6 +357,7 @@ completas en `research.md`.
 | **DD-16** | **Listados sin paginación** y con orden estable: etapas por `position`; categorías por `type`, sistema primero, `lower(name)`, `id`; catálogo por `lower(name)`, `id`. Filtros: `include_archived` (default `false`) y, en categorías, `type`. `GET /catalog-items/{id}` existe (la pantalla de edición se puede recargar); etapas y categorías no tienen `GET` por id. | S-1: volúmenes chicos. El orden estable hace deterministas los tests y la UI. | Si un catálogo supera ~1.000 ítems, 005 agrega búsqueda o paginación. |
 | **DD-17** | **Identificadores con prefijo de spec**: tareas `T-002-Bnnn` (y `T-002-Fnnn` para el frontend); en los comentarios del código, `002/DD-n` y `002/INV-n`. | `T-B101` o `INV-04` ya existen en 001 y aparecen en comentarios del código: sin prefijo, una cita sería ambigua. | Identificadores más largos. |
 | **DD-18** | **Mover una etapa** con `POST /stages/{stageId}/move {position}` (una etapa por pedido) en lugar de reemplazar el orden completo. Crear acepta `position` opcional (default: al final). | Arrastrar una etapa en el celular es un pedido; no hay que comparar conjuntos ni resolver listas viejas de otro cliente; evita una ruta `/stages/order` que comparte prefijo con `/stages/{stageId}`. | Reordenar varias etapas son varios pedidos (raro). |
+| **DD-19** | **La falta de la fila de configuración de la empresa es un error propio del servicio** (decisión del usuario, 2026-11-18; hallazgo P3 de la revisión de Codex del PR #64). Sentinel **`settings.ErrTenantSettingsMissing`**. Lo producen solo los dos puntos de acceso a la fila de `tenant_settings` de la empresa: el helper sin exportar **`lockTenantSettings`** (en `service.go`; toma `LockTenantSettings` y lo usan `writeStages` y las escrituras de nombres y condiciones) y la lectura de la fila de `GetLabels` y `GetQuoteDefaults` (query `GetTenantSettings`, en un único helper junto al anterior). Un `db.ErrNotFound` de esas queries se **reemplaza** por el sentinel, que **no envuelve** `db.ErrNotFound` ni `settings.ErrNotFound` (`errors.Is` con cualquiera de los dos da falso); cualquier otro error sigue envuelto con `db.MapError`, como hoy. Categorías y catálogo no leen ni bloquean esa fila (`LockCategory`, `LockCatalogItem`) y no lo producen; `ListStages` tampoco. `settings/http.go` lo traduce a **`500 internal`** con una línea `ERROR` **`event=settings_row_missing`**, `request_id` y `err` (§12). El `404` del mapa de `settings` sale solo de `settings.ErrNotFound`, y el mapa **no tiene ningún caso para errores de `platform/db`**: lo que no reconoce lo responde `httpx.WriteDBError`, como en 001 (§9.2). | Significan cosas distintas. `ErrNotFound` es un recurso que el cliente nombró (un id) y que no existe para él: rechazo definitivo, `404`. La fila de configuración el cliente nunca la nombra; que falte rompe INV-1: es un bug, y un `404` lo disfrazaría de "no existe la etapa". Con el error en el servicio, la capa HTTP solo conoce errores de `settings` (el dominio traduce y el handler mapea, como §9.2 de 001), y un `db.ErrNotFound` que otro caso de uso deje escapar ya no se clasifica como INV-1 ni lleva al operador a la fila equivocada del *runbook*. Producirlo en el helper del lock lo comparten todas las escrituras que toman ese lock (etapas, nombres y condiciones) sin repetir la traducción. Sin envolver `db.ErrNotFound`, ninguna capa (tampoco `WriteDBError`) puede leerlo como `404`. **Descartadas**: (a) conservar la excepción en el handler (`db.ErrNotFound` → `500 settings_row_missing`): el handler depende de un error de la base y clasifica como INV-1 cualquier fila faltante que otro caso de uso no traduzca (el hallazgo); (b) mapear en el handler el `db.ErrNotFound` sin traducir a un `500` genérico: más estricto, pero mantiene la dependencia de `platform/db` en la capa HTTP y se aparta de la ruta común de 001 que §9.2 ya adopta ("resto como en 001"); (c) traducir en cada caso de uso: repite la misma decisión en cada operación que toca la fila y basta olvidarla en una. El usuario eligió la ruta de 001 (`404` para un `db.ErrNotFound` sin traducir) el 2026-11-18. | Un `db.ErrNotFound` que un caso de uso futuro olvide traducir responde `404` (una respuesta válida del contrato) en lugar de fallar con ruido; lo atajan los tests de servicio, que exigen `settings.ErrNotFound` para cada recurso inexistente, no la capa HTTP. El sentinel no lleva el error original (pgx no aporta más que "no hay fila"); el `tenant_id` sale de la línea del request con el mismo `request_id`. Sin métrica propia (§12.1). |
 
 ---
 
@@ -462,7 +472,7 @@ En la misma rama que este cambio va T-002-F001 (frontend): el mapa de mensajes c
 | `malformed_request` | 400 | Rechazo definitivo | JSON inválido, campo desconocido, tipo equivocado (incluido `null` donde no se admite, un número con decimales en `amount_cents`), `PATCH` vacío, query con valor inválido | No |
 | `not_found` | 404 | Rechazo definitivo | No existe, es de otra empresa o la etapa está eliminada | No |
 | `service_unavailable` | 503 | **Recuperable** | Base no disponible o `lock_timeout`/`statement_timeout` (sin cambios respecto de 001) | Sí, con backoff |
-| `internal` | 500 | Bug | Violación de un `CHECK` que el servicio debió atajar antes (defensa en profundidad), RLS (INV-19 de 001) | No |
+| `internal` | 500 | Bug | Falta la fila de `tenant_settings` de la empresa (INV-1 rota; `ErrTenantSettingsMissing`, log `settings_row_missing`, DD-19); violación de un `CHECK` que el servicio debió atajar antes (defensa en profundidad), RLS (INV-19 de 001) | No |
 
 Ninguna operación de 002 es parcialmente aplicada: cada una es una transacción; un `5xx` deja el
 estado como estaba.
@@ -472,6 +482,10 @@ estado como estaba.
 ```
 store (sqlc/pgx) ──► db.MapError ──────────────► errores de settings ──► settings/http.go ──► httpx
   pgx.ErrNoRows      db.ErrNotFound               settings.ErrNotFound        404 not_found
+   (un recurso que el cliente nombra por id: etapa, categoría, ítem)
+  pgx.ErrNoRows      db.ErrNotFound               settings.ErrTenantSettingsMissing
+   (la fila de tenant_settings de la empresa: LockTenantSettings, GetTenantSettings; DD-19)
+                                                                              500 internal + log settings_row_missing
   23505 + índice     db.ErrUniqueViolation        settings.ErrNameTaken       409 name_taken
    (stages_active_name_key, categories_active_name_key)
   —                  —                            settings.ErrPipelineRule    409 invalid_state
@@ -484,23 +498,36 @@ store (sqlc/pgx) ──► db.MapError ─────────────�
 - El mapeo de `23505` mira el nombre del índice en `db.ConstraintError` (los dos índices de nombre
   activo). Cualquier otro `23505` es un bug (`500`).
 - El servicio verifica las reglas **antes** de escribir; los `CHECK` y los índices son la red.
+- La falta de la fila de `tenant_settings` de la empresa la traduce el servicio en un solo lugar por
+  query (`lockTenantSettings` y la lectura de la fila) a `ErrTenantSettingsMissing`, que no envuelve
+  `db.ErrNotFound` ni `ErrNotFound` (DD-19). `settings/http.go` no reconoce ningún error de
+  `platform/db`: lo que su mapa no reconoce lo responde `httpx.WriteDBError`, como en 001. Un
+  `db.ErrNotFound` que un caso de uso no tradujo daría `404` sin el evento de INV-1; que no ocurra lo
+  vigilan los tests de servicio de cada recurso.
 
 ### 9.3 Errores centinela (firmas)
 
 ```go
 // internal/settings
 var (
-    ErrNotFound         = errors.New("settings: not found")                          // 404 (también de otra empresa o eliminada)
-    ErrNameTaken        = errors.New("settings: name taken")                         // 409 name_taken
-    ErrPipelineRule     = errors.New("settings: pipeline rule violated")             // 409 invalid_state
-    ErrSystemCategory   = errors.New("settings: system category cannot be archived") // 409 invalid_state
-    ErrMalformedChanges = errors.New("settings: malformed changes")                  // 400 malformed_request
+    ErrNotFound              = errors.New("settings: not found")                          // 404 (también de otra empresa o eliminada)
+    ErrNameTaken             = errors.New("settings: name taken")                         // 409 name_taken
+    ErrPipelineRule          = errors.New("settings: pipeline rule violated")             // 409 invalid_state
+    ErrSystemCategory        = errors.New("settings: system category cannot be archived") // 409 invalid_state
+    ErrMalformedChanges      = errors.New("settings: malformed changes")                  // 400 malformed_request
+    ErrTenantSettingsMissing = errors.New("settings: tenant settings row missing")        // 500 internal + log settings_row_missing (INV-1, DD-19); no envuelve db.ErrNotFound ni ErrNotFound
 )
 
 // FieldErrors: campo del request → código de campo del contrato. Nunca incluye el valor.
 type FieldErrors map[string]string
 
 func (FieldErrors) Error() string
+
+// lockTenantSettings (sin exportar, service.go) es el único punto que toma el lock de la fila de la
+// empresa (DD-5, DD-10, DD-19). Sin fila → ErrTenantSettingsMissing; cualquier otro error → envuelto con
+// db.MapError, como hoy. Lo usan writeStages y las escrituras de nombres y condiciones. La lectura de la
+// fila (GetLabels, GetQuoteDefaults) traduce igual, en un helper junto a este (T-002-B702).
+func lockTenantSettings(ctx context.Context, q *store.Queries, tenantID uuid.UUID) error
 
 // internal/platform/httpx (T-002-B202)
 const CodeNameTaken Code = "name_taken" // 409
@@ -545,7 +572,7 @@ internal/
 │   ├── catalog.go               # CatalogItem, Unit, Money, Patch[T] y casos de uso
 │   ├── preferences.go           # Labels, EntityLabel, Gender, QuoteDefaults y casos de uso
 │   ├── seeder.go                # TemplateSeeder (satisface industrytemplate.Seeder)
-│   ├── service.go               # Service, NewService, RequestMeta, errores centinela, FieldErrors
+│   ├── service.go               # Service, NewService, RequestMeta, errores centinela, FieldErrors, acceso a la fila de la empresa (lockTenantSettings, DD-19)
 │   ├── http.go                  # RegisterRoutes, DTOs, decodificación y mapeo de errores
 │   └── store/
 │       ├── queries.sql          # lecturas, locks y escrituras de los casos de uso
@@ -765,7 +792,7 @@ Queries con lock (todas con `tenant_id` explícito, INV-04 de 001):
 
 | Query | Archivo | Modo | Uso |
 |---|---|---|---|
-| `LockTenantSettings` | `settings/store/queries.sql` | `FOR NO KEY UPDATE` sobre `tenant_settings` | Primera sentencia de toda escritura de etapas, nombres y condiciones (DD-5, DD-10) |
+| `LockTenantSettings` | `settings/store/queries.sql` | `FOR NO KEY UPDATE` sobre `tenant_settings` | Primera sentencia de toda escritura de etapas, nombres y condiciones (DD-5, DD-10). Solo se llama desde `lockTenantSettings`, que traduce la falta de fila a `ErrTenantSettingsMissing` (DD-19) |
 | `LockCategory` | ídem | `FOR NO KEY UPDATE` | Renombrar, archivar, restaurar |
 | `LockCatalogItem` | ídem | `FOR NO KEY UPDATE` | `PATCH`, archivar, restaurar |
 
@@ -777,15 +804,20 @@ Queries con lock (todas con `tenant_id` explícito, INV-04 de 001):
 
 - **Logs de request**: los de 001 (`route` con el patrón chi, `status`, `duration_ms`, `tenant_id`,
   `user_id`). No se agregan líneas de log por operación: la traza de negocio es la auditoría.
+  **Única línea propia**: `ERROR` con `event=settings_row_missing`, `request_id` y `err` cuando falta
+  la fila de configuración de la empresa (INV-1 rota, DD-19); el `tenant_id` está en la línea del
+  request con el mismo `request_id`.
 - **Auditoría**: cada escritura (catálogo en `data-model.md` §6).
 - **Métricas**: ninguna nueva. El costo del sembrado se observa en la duración de
-  `POST /auth/signup` y en `signup_lock_timeout_total` (001).
+  `POST /auth/signup` y en `signup_lock_timeout_total` (001). `settings_row_missing` tampoco tiene
+  contador: es un bug que no se espera ver nunca, y la señal es la búsqueda del evento en los logs
+  (§12.2).
 
 ### 12.2 Runbook: señal → qué mirar primero
 
 | Señal | Causa probable | Qué mirar / hacer |
 |---|---|---|
-| `500` en `GET /settings/labels` o en cualquier escritura de etapas de **una** empresa, con `ErrNotFound` envuelto de `LockTenantSettings` en el log | La empresa no tiene fila en `tenant_settings` (INV-1): base sin la migración `00010` o creada con un binario anterior | `crm migrate status`; `/readyz` ya da `503` si la versión no coincide. Si la versión es la correcta, es un bug del sembrado: revisar T-002-B305 |
+| `500` en `GET /settings/labels`, `GET /settings/quote-defaults` o en cualquier escritura de etapas, nombres o condiciones de **una** empresa, con una línea `ERROR` `event=settings_row_missing` del mismo `request_id` | La empresa no tiene fila en `tenant_settings` (INV-1): base sin la migración `00010` o creada con un binario anterior | `crm migrate status`; `/readyz` ya da `503` si la versión no coincide. Si la versión es la correcta, es un bug del sembrado: revisar T-002-B305. `GET /stages`, las categorías y el catálogo de esa empresa siguen respondiendo: no leen esa fila (DD-19) |
 | Sube la duración de `POST /auth/signup` o aparece `signup_lock_timeout_total` > 0 después de desplegar 002 | El sembrado alargó la retención del lock de registro (DD-3) | Comparar con el resultado de T-002-B307; si la retención p95 llega a 140 ms, aplicar la salida de R-c (DD-3) o volver al usuario |
 | Un `500` con `23514` (CHECK) en una escritura de configuración | El servicio dejó pasar algo que la base rechaza (bug): p. ej. archivar una categoría de sistema | Log del request (`err` con el nombre del `CHECK`); test que falta en la fase correspondiente |
 | Un `409 invalid_state` reiterado al eliminar etapas | Comportamiento esperado (INV-2): el usuario intenta dejar el pipeline sin etapa ganada o con una de cierre primera | Nada; la UI lo explica |
@@ -888,6 +920,8 @@ La actualización de la documentación va **en el mismo cambio** que el código.
 | Lo que hace el sembrado (tablas, cantidad de sentencias) | DD-3 + INV-10 + T-002-B305 (cuenta) + volver a correr T-002-B307 con sus tres condiciones + DD-33 R-c de 001 |
 | El modelo de datos de configuración | `data-model.md` + migración nueva + fixture (`fixture.CompanyInserters`) + listas de T-B107/T-B108 de 001 |
 | Un lock nuevo sobre tablas de configuración | INV-8 + DD-5/DD-9 + regla de `rowlocks_test` |
+| Un caso de uso que lee o bloquea la fila de `tenant_settings` | Pasar por `lockTenantSettings` o por la lectura que traduce la falta de fila, nunca por la query directa (DD-19) + la lista de rutas de la fila de `settings_row_missing` en §12.2 + su caso "sin fila" en el test de servicio y en el HTTP (como T-002-B405) |
+| El mapa de errores de `settings/http.go` | §9.1 a §9.3 + el test del mapa (`internal/settings/http_test.go`, T-002-B405) + DD-19 si cambia qué responde un error de `platform/db` |
 | El catálogo de acciones de auditoría | `data-model.md` §6 + INV-12 + el test de la operación (claves exactas) |
 | La lista de contratos que valida el backend | `contract.Documents` + DD-13 + `web/redocly.yaml` (frontend) |
 | Una spec que consume configuración (004 a 010) | §4.6 de este plan (marcar como resuelto) + su propio plan |
@@ -928,3 +962,7 @@ Documentación que no coincidía con el código o con otras specs. Estado al 202
    de pago estructuradas; la redacción de 005 lo anota.
 5. Spec 002, Historia 1, prueba independiente: "verlas reflejadas en el tablero de proyectos" — el
    tablero es de 004. **Resuelto** en la spec aprobada.
+6. (2026-11-18) §12.1 decía que 002 no agrega líneas de log, pero `settings/http.go` ya registraba
+   `settings_row_missing` desde T-002-B404, y la fila del *runbook* lo buscaba como "`ErrNotFound`
+   envuelto de `LockTenantSettings`" y no nombraba las rutas de condiciones. **Resuelto** con DD-19:
+   §12.1 y §12.2 al día.

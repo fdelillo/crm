@@ -13,7 +13,9 @@ import (
 	"time"
 
 	"github.com/fdelillo/crm/internal/authz"
+	"github.com/fdelillo/crm/internal/platform/db"
 	"github.com/fdelillo/crm/internal/settings"
+	"github.com/fdelillo/crm/internal/testsupport/pgtest"
 	"github.com/google/uuid"
 )
 
@@ -563,5 +565,74 @@ func TestStageWritesAreAudited(t *testing.T) {
 			g.IP == nil || *g.IP != ip || g.UserAgent != "stages-test/1.0" {
 			t.Fatalf("row %d = %+v: actor, target, ip or user agent do not match", i, g)
 		}
+	}
+}
+
+// deleteSettingsRow breaks 002/INV-1 for the company: no runtime role has DELETE (INV-3), so it takes the superuser.
+func deleteSettingsRow(t *testing.T, tenantID uuid.UUID) {
+	t.Helper()
+	if _, err := pgtest.SuperuserPool(t).Exec(context.Background(), `DELETE FROM app.tenant_settings WHERE tenant_id = $1`, tenantID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// T-002-B405 (002/DD-19, INV-1, INV-11): a company without its settings row gets ErrTenantSettingsMissing from
+// every stage write, before the stage is looked up, and never an error that reads as "not found". Nothing is written.
+func TestStageWritesWithoutSettingsRow(t *testing.T) {
+	ctx := context.Background()
+	e := newStagesEnv(t)
+	id := e.id("En curso")
+	deleteSettingsRow(t, e.co.ID)
+
+	writes := map[string]func(p authz.Principal, id uuid.UUID) error{
+		"create": func(p authz.Principal, _ uuid.UUID) error {
+			_, err := e.svc.CreateStage(ctx, p, settings.NewStage{Name: "Instalación", Type: "open", Color: "blue"}, e.meta)
+			return err
+		},
+		"update": func(p authz.Principal, id uuid.UUID) error {
+			_, err := e.svc.UpdateStage(ctx, p, id, settings.StageChanges{Name: ptr("Otro")}, e.meta)
+			return err
+		},
+		"delete": func(p authz.Principal, id uuid.UUID) error { return e.svc.DeleteStage(ctx, p, id, e.meta) },
+		"move": func(p authz.Principal, id uuid.UUID) error {
+			_, err := e.svc.MoveStage(ctx, p, id, 1, e.meta)
+			return err
+		},
+	}
+	for name, write := range writes {
+		for _, target := range []struct {
+			name string
+			id   uuid.UUID
+		}{{"active stage", id}, {"unknown stage", uuid.New()}} {
+			if name == "create" && target.name == "unknown stage" {
+				continue // create names no stage
+			}
+			t.Run(name+" "+target.name, func(t *testing.T) {
+				e.assertNothingChanged(func() {
+					err := write(e.co.Admin, target.id)
+					if !errors.Is(err, settings.ErrTenantSettingsMissing) {
+						t.Fatalf("error = %v, want ErrTenantSettingsMissing", err)
+					}
+					if errors.Is(err, settings.ErrNotFound) || errors.Is(err, db.ErrNotFound) {
+						t.Fatalf("error %v reads as not found", err)
+					}
+				})
+			})
+		}
+		t.Run(name+" as operator", func(t *testing.T) {
+			if err := write(e.co.Operator, id); !errors.Is(err, authz.ErrForbidden) {
+				t.Fatalf("error = %v, want authz.ErrForbidden", err)
+			}
+		})
+	}
+}
+
+// T-002-B405 (002/DD-19): with the row in place, an unknown stage is still ErrNotFound and not the settings error.
+func TestStageWriteOfUnknownStageIsNotFoundWithSettingsRow(t *testing.T) {
+	ctx := context.Background()
+	e := newStagesEnv(t)
+	_, err := e.svc.UpdateStage(ctx, e.co.Admin, uuid.New(), settings.StageChanges{Name: ptr("Otro")}, e.meta)
+	if !errors.Is(err, settings.ErrNotFound) || errors.Is(err, settings.ErrTenantSettingsMissing) {
+		t.Fatalf("error = %v, want ErrNotFound only", err)
 	}
 }
