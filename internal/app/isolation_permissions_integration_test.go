@@ -40,6 +40,11 @@ var isolationPermissions = map[string][3]int{
 	"PUT /api/v1/users/{userId}/role":              {401, 403, 200},
 	"POST /api/v1/users/{userId}/deactivate":       {401, 403, 200},
 	"POST /api/v1/users/{userId}/reactivate":       {401, 403, 200},
+	"GET /api/v1/stages":                           {401, 200, 200},
+	"POST /api/v1/stages":                          {401, 403, 201},
+	"PATCH /api/v1/stages/{stageId}":               {401, 403, 200},
+	"DELETE /api/v1/stages/{stageId}":              {401, 403, 204},
+	"POST /api/v1/stages/{stageId}/move":           {401, 403, 200},
 }
 
 func permissionRequest(t *testing.T, f *e2e.Scenario, key string) (path, ct string, body []byte) {
@@ -67,6 +72,21 @@ func permissionRequest(t *testing.T, f *e2e.Scenario, key string) (path, ct stri
 		body, ct = logoMultipart(t, f.A.Logo, "file")
 	case "invite":
 		body = jsonBody(map[string]string{"email": "new-" + uuid.NewString() + "@example.test", "role": "operator"})
+	case "stage_create":
+		body = []byte(`{"name":"Instalación","type":"open","color":"teal"}`)
+	case "foreign_stage_id":
+		stages, err := f.Settings.ListStages(context.Background(), f.A.Users["admin"].Principal)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Aprobado (2nd) can be deleted, renamed or moved without breaking the pipeline.
+		path = strings.ReplaceAll(path, "{stageId}", stages[1].ID.String())
+		switch {
+		case strings.HasSuffix(path, "/move"):
+			body = []byte(`{"position":3}`)
+		case strings.HasPrefix(key, "PATCH "):
+			body = []byte(`{"name":"Renombrada"}`)
+		}
 	case "foreign_id":
 		target := f.A.Users["operator"].ID
 		if strings.HasSuffix(path, "/reactivate") {
@@ -110,7 +130,7 @@ func TestIsolationPermissionMatrix(t *testing.T) {
 		for i, actor := range []string{"anonymous", "operator", "admin"} {
 			t.Run(key+"/"+actor, func(t *testing.T) {
 				f := e2e.New(t, pgtest.AppPool(t))
-				api := app.BuildAPIRouter(f.Users, f.Companies, nil, f.Clock, f.Logger)
+				api := app.BuildAPIRouter(f.Users, f.Companies, f.Settings, f.Clock, f.Logger)
 				h := isolationRoot(t, f, api)
 				if key == "POST /api/v1/users/invitations" {
 					f.VerifyAdmin(t, f.A) // DD-46: only a verified administrator invites
@@ -142,6 +162,13 @@ func TestIsolationPermissionMatrix(t *testing.T) {
 					if strings.Contains(key, "{userId}") {
 						for _, id := range []uuid.UUID{f.B.Users["operator"].ID, uuid.New()} {
 							foreign := strings.ReplaceAll(strings.SplitN(key, " ", 2)[1], "{userId}", id.String())
+							isolationRequest(t, h, context.Background(), cookie, method, foreign, ct, body, "", 403)
+						}
+					}
+					if strings.Contains(key, "{stageId}") {
+						// The permission is also decided before the id is parsed or looked up.
+						for _, id := range []string{uuid.NewString(), "no-uuid"} {
+							foreign := strings.ReplaceAll(strings.SplitN(key, " ", 2)[1], "{stageId}", id)
 							isolationRequest(t, h, context.Background(), cookie, method, foreign, ct, body, "", 403)
 						}
 					}

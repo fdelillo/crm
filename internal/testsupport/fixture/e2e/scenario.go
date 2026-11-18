@@ -57,6 +57,7 @@ type Scenario struct {
 	A, B      Company
 	Users     *identity.Service
 	Companies *tenant.Service
+	Settings  *settings.Service
 	Runner    db.TxRunner
 	Clock     clock.Clock
 	Logger    *slog.Logger
@@ -77,7 +78,7 @@ func New(t testing.TB, pool *pgxpool.Pool) *Scenario {
 	users := identity.NewService(runner, outbox.NewEnqueuer(c), c, 24*time.Hour, 7*24*time.Hour,
 		identity.WithAuthentication(h, recorder, []byte("0123456789abcdef0123456789abcdef"), logger))
 	companies := tenant.NewService(runner, users, settings.NewTemplateSeeder(c), h, recorder, logger, tenant.WithObjectStorage(storage))
-	f := &Scenario{Users: users, Companies: companies, Runner: runner, Clock: c, Logger: logger, Storage: storage}
+	f := &Scenario{Users: users, Companies: companies, Settings: settings.NewService(runner, recorder, c, logger), Runner: runner, Clock: c, Logger: logger, Storage: storage}
 	f.A = f.company(t, "A", color.NRGBA{R: 241, A: 255}, "30123456781", "America/Argentina/Buenos_Aires")
 	f.B = f.company(t, "B", color.NRGBA{B: 239, A: 255}, "20123456786", "America/Montevideo")
 	return f
@@ -251,7 +252,7 @@ func (f *Scenario) Snapshot(t testing.TB, id uuid.UUID) map[string]string {
 	t.Helper()
 	result := map[string]string{}
 	require(t, f.Runner.InTenantTx(context.Background(), id, func(ctx context.Context, tx db.Tx) error {
-		for _, table := range []string{"tenants", "users", "sessions", "user_tokens", "outbox_messages", "audit_log"} {
+		for _, table := range []string{"tenants", "users", "sessions", "user_tokens", "outbox_messages", "audit_log", "stages"} {
 			col := "tenant_id"
 			if table == "tenants" {
 				col = "id"
