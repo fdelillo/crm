@@ -1,13 +1,17 @@
 package settings
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/netip"
 
 	"github.com/fdelillo/crm/internal/platform/audit"
 	"github.com/fdelillo/crm/internal/platform/clock"
 	"github.com/fdelillo/crm/internal/platform/db"
+	"github.com/fdelillo/crm/internal/settings/store"
+	"github.com/google/uuid"
 )
 
 // Sentinels of the use cases. http.go maps each one to its status and code (plan 9.3).
@@ -48,4 +52,19 @@ func NewService(runner db.TxRunner, recorder audit.Recorder, c clock.Clock, logg
 		panic("settings: invalid service dependencies")
 	}
 	return &Service{runner: runner, audit: recorder, clock: c, logger: logger}
+}
+
+// lockTenantSettings takes the lock of the company's settings row, the first statement of every write that
+// serializes on it (002/DD-5, DD-10). It is the one place that turns "no row" into ErrTenantSettingsMissing
+// (002/INV-1, DD-19): the sentinel does not wrap db.ErrNotFound, so no layer reads it as a 404. Any other
+// error is classified by db.MapError.
+func lockTenantSettings(ctx context.Context, q *store.Queries, tenantID uuid.UUID) error {
+	if _, err := q.LockTenantSettings(ctx, tenantID); err != nil {
+		mapped := db.MapError(err)
+		if errors.Is(mapped, db.ErrNotFound) {
+			return ErrTenantSettingsMissing
+		}
+		return fmt.Errorf("settings: lock tenant settings: %w", mapped)
+	}
+	return nil
 }

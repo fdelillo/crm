@@ -19,9 +19,10 @@ etapas); checkpoint de la Fase 4 cumplido el 2026-11-18: `make check` en verde y
 con `curl` (servidor local con TLS, empresa "Genérico"): mover "En curso" a 1, crear "Instalación" en la
 posición 4, antes de "Finalizado", `409 invalid_state` al eliminar "Finalizado" y, como Operador
 invitado, `GET /stages` con el orden En curso, Presupuesto, Aprobado, Instalación, Finalizado, Perdido
-y `403` al intentar crear. **Seguimiento de la Fase 4 pendiente**: T-002-B405 y T-002-B406 (plan
-DD-19, la fila de configuración que falta como error propio del servicio; hallazgo P3 de la revisión de
-Codex del PR #64, decisión del usuario del 2026-11-18). Fase 3: T-002-B301 a T-002-B307 implementadas; la compuerta del
+y `403` al intentar crear. **Seguimiento de la Fase 4**: T-002-B405 y T-002-B406 implementadas
+(plan DD-19, la fila de configuración que falta como error propio del servicio; hallazgo P3 de la revisión de
+Codex del PR #64, decisión del usuario del 2026-11-18); `make check` en verde, falta la prueba
+independiente con `curl` (la hace el usuario). Fase 3: T-002-B301 a T-002-B307 implementadas; la compuerta del
 sembrado (T-002-B307), medida de nuevo con el *harness* corregido, **pasó en una corrida y falló en
 la otra, y el usuario la aceptó el 2026-11-17** (abajo): la Fase 3 queda cerrada y la Fase 4 puede
 avanzar. Supuestos

@@ -231,8 +231,8 @@ func (s *Service) writeStages(ctx context.Context, p authz.Principal, meta Reque
 	decide func(current []Stage, now time.Time) (stageWrite, error)) error {
 	return s.runner.InTenantTx(ctx, p.TenantID, func(ctx context.Context, tx db.Tx) error {
 		q := store.New(tx)
-		if _, err := q.LockTenantSettings(ctx, p.TenantID); err != nil {
-			return fmt.Errorf("settings: lock tenant settings: %w", db.MapError(err))
+		if err := lockTenantSettings(ctx, q, p.TenantID); err != nil {
+			return err
 		}
 		// The instant is read under the lock: a write that waited for it must not stamp an older
 		// updated_at over the change that held it (Codex review of PR #63).

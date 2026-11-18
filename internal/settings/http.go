@@ -8,7 +8,6 @@ import (
 	"net/http"
 
 	"github.com/fdelillo/crm/internal/authz"
-	"github.com/fdelillo/crm/internal/platform/db"
 	"github.com/fdelillo/crm/internal/platform/httpx"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -215,9 +214,8 @@ func writeSettingsError(w http.ResponseWriter, req *http.Request, err error, log
 		httpx.WriteProblem(w, req, httpx.CodeNameTaken)
 	case errors.Is(err, ErrPipelineRule):
 		httpx.WriteProblem(w, req, httpx.CodeInvalidState)
-	case errors.Is(err, db.ErrNotFound):
-		// The use cases turn a missing resource into ErrNotFound. A bare database "no row" is the company
-		// that lost its tenant_settings row (002/INV-1): a bug to investigate, never a 404.
+	case errors.Is(err, ErrTenantSettingsMissing):
+		// The company lost its tenant_settings row (002/INV-1, DD-19): a bug to investigate, never a 404.
 		logger.ErrorContext(req.Context(), "settings row missing", "event", "settings_row_missing",
 			"request_id", httpx.RequestIDFrom(req.Context()), "err", err)
 		httpx.WriteProblem(w, req, httpx.CodeInternal)
