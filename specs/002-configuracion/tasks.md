@@ -14,8 +14,15 @@ completo (`.claude/dev-mode`).
 
 ### Estado de la implementación (2026-11-18)
 
-Fases 1, 2 y F0 implementadas. Fase 5 (en curso): T-002-B501 a T-002-B504 implementadas (servicio y endpoints de
-categorías); falta el checkpoint de la fase: la prueba independiente con `curl`. Fase 4: T-002-B401 a T-002-B404 implementadas (servicio y endpoints de
+Fases 1, 2 y F0 implementadas. Fase 5: T-002-B501 a T-002-B504 implementadas (servicio y endpoints de
+categorías); checkpoint de la Fase 5 cumplido el 2026-11-18: `make check` en verde y la prueba independiente
+con `curl` (servidor local con TLS, empresa "Genérico"): "Cobros de clientes" renombrada a "Cobranzas"
+(sigue siendo de sistema, `customer_receipts`), `409 invalid_state` al archivarla, "Combustible" de egreso
+creada (`201`) y archivada (`200`), ausente de `GET /categories` y presente con `archived: true` en
+`GET /categories?include_archived=true`; además `400 malformed_request` con `type=foo` e
+`include_archived=maybe`, `409 name_taken` con "cobranzas" de ingreso y auditoría `category.renamed`,
+`category.created {type: expense}`, `category.archived`, `category.restored`, sin filas por los intentos
+rechazados. Fase 4: T-002-B401 a T-002-B404 implementadas (servicio y endpoints de
 etapas); checkpoint de la Fase 4 cumplido el 2026-11-18: `make check` en verde y la prueba independiente
 con `curl` (servidor local con TLS, empresa "Genérico"): mover "En curso" a 1, crear "Instalación" en la
 posición 4, antes de "Finalizado", `409 invalid_state` al eliminar "Finalizado" y, como Operador
