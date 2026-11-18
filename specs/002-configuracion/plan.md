@@ -712,9 +712,9 @@ type NewCatalogItem struct {
     ReferencePrice *Money
 }
 type CatalogItemChanges struct {
-    Name           Patch[string]  // null → ErrMalformedChanges
+    Name           Patch[string]  // null: 400 al decodificar (§9.1)
     Description    Patch[*string] // null o "" → sin descripción
-    Unit           Patch[Unit]    // null → ErrMalformedChanges
+    Unit           Patch[Unit]    // null: 400 al decodificar (§9.1)
     UnitLabel      Patch[*string]
     ReferencePrice Patch[*Money]  // null → sin precio
 }

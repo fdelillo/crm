@@ -69,9 +69,9 @@ type NewCatalogItem struct {
 
 // CatalogItemChanges is the PATCH of a catalog item.
 type CatalogItemChanges struct {
-	Name           Patch[string]  // null -> ErrMalformedChanges
+	Name           Patch[string]  // null is a 400 when decoding (plan 9.1)
 	Description    Patch[*string] // null or "" -> no description
-	Unit           Patch[Unit]    // null -> ErrMalformedChanges
+	Unit           Patch[Unit]    // null is a 400 when decoding (plan 9.1)
 	UnitLabel      Patch[*string]
 	ReferencePrice Patch[*Money] // null -> no price
 }

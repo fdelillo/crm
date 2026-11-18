@@ -677,12 +677,16 @@ INV-13, ADR-029
   | `UpdateCatalogItem` `unit` de `other` a `unit` | `unit_label` se borra; `fields: [unit, unit_label]` |
   | `UpdateCatalogItem` `unit` de `hour` a `other` sin `UnitLabel` | `FieldErrors{unit_label: required}` |
   | `UpdateCatalogItem` con los valores actuales | sin `UPDATE`, sin auditoría, `updated_at` igual |
-  | `UpdateCatalogItem` con `Name` o `Unit` presentes y nulos | `ErrMalformedChanges` |
+  | `UpdateCatalogItem` sin ningún campo presente | `ErrMalformedChanges` |
   | **Concurrencia**: dos `UpdateCatalogItem` en paralelo (uno el nombre, otro el precio). Mecanismo E: `T_admin` retiene `LockCatalogItem`; 2 bloqueados; `ROLLBACK` | se guardan **los dos** cambios; dos auditorías. Mutación: leer sin lock y reescribir todas las columnas → uno pisa al otro → falla |
   | `ArchiveCatalogItem` / otra vez / `RestoreCatalogItem` / otra vez | archivado con auditoría / sin auditoría / activo con auditoría / sin auditoría |
   | Ítem archivado | `GetCatalogItem` ok; `UpdateCatalogItem` ok; fuera de la lista por defecto |
   | Id de otra empresa / inexistente | `ErrNotFound` |
   | Escrituras como operador | `authz.ErrForbidden` |
+  Nota (2026-11-18): la fila original pedía `ErrMalformedChanges` con `Name` o `Unit` presentes y nulos,
+  pero `Patch[string]` y `Patch[Unit]` no pueden llevar `null`. Por plan §9.1 un `null` donde no se admite
+  es `400 malformed_request` al decodificar, como en etapas y categorías (`optional[T]`); lo cubre
+  T-002-B603 (`{"name": null}` → `400`) y el servicio prueba en su lugar el `PATCH` sin campos.
 - **Green**: pasa la tabla. (Historia 4.2, "cambiar el precio no modifica presupuestos", se verifica
   en 005: 002 no tiene presupuestos.)
 
