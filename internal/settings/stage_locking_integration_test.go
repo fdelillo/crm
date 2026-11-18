@@ -22,6 +22,13 @@ import (
 // really overlap, with no sleeps. Without the lock in the service no call would block and the wait fails.
 func holdSettingsLock(t *testing.T, tenantID uuid.UUID, calls ...func(context.Context) error) {
 	t.Helper()
+	holdSettingsLockThen(t, tenantID, nil, calls...)
+}
+
+// holdSettingsLockThen is holdSettingsLock with whileBlocked, which runs once every call is blocked behind
+// T_admin and before T_admin releases the lock.
+func holdSettingsLockThen(t *testing.T, tenantID uuid.UUID, whileBlocked func(), calls ...func(context.Context) error) {
+	t.Helper()
 	if maxConns := pgtest.AppPool(t).Config().MaxConns; len(calls)+1 > int(maxConns) {
 		t.Fatalf("app pool has %d connections: not enough for T_admin plus %d calls", maxConns, len(calls))
 	}
@@ -70,6 +77,9 @@ func holdSettingsLock(t *testing.T, tenantID uuid.UUID, calls ...func(context.Co
 					return err
 				}
 				if blocked == len(calls) {
+					if whileBlocked != nil {
+						whileBlocked()
+					}
 					return release
 				}
 			case <-ctx.Done():
@@ -161,4 +171,34 @@ func TestCreateStageConcurrentlyKeepsPositionsDense(t *testing.T) {
 		t.Fatalf("stages = %d, want 7", got)
 	}
 	e.assertDense()
+}
+
+// Codex review of PR #63 (002/DD-5): a write stamps updated_at with the instant it holds the settings lock,
+// not the instant it started waiting for it; otherwise a write that waited could stamp an older time over a
+// newer change. The call blocks behind T_admin, the clock moves an hour and only then the lock is released.
+// Mutation: reading the clock before LockTenantSettings stamps the old instant.
+func TestStageWriteStampsTheInstantItHoldsTheLock(t *testing.T) {
+	e := newStagesEnv(t)
+	stage := e.id("Finalizado")
+	waited := e.clk.Now()
+	var errUpdate error
+	holdSettingsLockThen(t, e.co.ID, func() { e.clk.Advance(time.Hour) },
+		func(ctx context.Context) error {
+			_, errUpdate = e.svc.UpdateStage(ctx, e.co.Admin, stage, settings.StageChanges{Color: ptr(settings.Color("teal"))}, e.meta)
+			return nil
+		},
+	)
+	if errUpdate != nil {
+		t.Fatal(errUpdate)
+	}
+	var updated time.Time
+	err := testRunner(t).InTenantTx(context.Background(), e.co.ID, func(ctx context.Context, tx db.Tx) error {
+		return tx.QueryRow(ctx, `SELECT updated_at FROM app.stages WHERE tenant_id = $1 AND id = $2`, e.co.ID, stage).Scan(&updated)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := waited.Add(time.Hour); !updated.Equal(want) {
+		t.Fatalf("updated_at = %s, want %s (the instant under the lock, not %s)", updated.UTC(), want, waited)
+	}
 }

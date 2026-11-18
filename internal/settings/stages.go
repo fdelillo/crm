@@ -50,7 +50,11 @@ func (s *Service) CreateStage(ctx context.Context, p authz.Principal, in NewStag
 		if in.Position != nil {
 			position = *in.Position
 		}
-		created = Stage{ID: uuid.Must(uuid.NewV7()), Name: name, Type: in.Type, Color: in.Color}
+		id, err := uuid.NewV7()
+		if err != nil {
+			return stageWrite{}, fmt.Errorf("settings: new stage id: %w", err)
+		}
+		created = Stage{ID: id, Name: name, Type: in.Type, Color: in.Color}
 		result, err := insertStage(current, created, position)
 		if err != nil {
 			return stageWrite{}, err
@@ -225,12 +229,14 @@ type stageAudit struct {
 // a rule error before anything is written.
 func (s *Service) writeStages(ctx context.Context, p authz.Principal, meta RequestMeta,
 	decide func(current []Stage, now time.Time) (stageWrite, error)) error {
-	now := s.clock.Now()
 	return s.runner.InTenantTx(ctx, p.TenantID, func(ctx context.Context, tx db.Tx) error {
 		q := store.New(tx)
 		if _, err := q.LockTenantSettings(ctx, p.TenantID); err != nil {
 			return fmt.Errorf("settings: lock tenant settings: %w", db.MapError(err))
 		}
+		// The instant is read under the lock: a write that waited for it must not stamp an older
+		// updated_at over the change that held it (Codex review of PR #63).
+		now := s.clock.Now()
 		current, err := listActiveStages(ctx, q, p.TenantID)
 		if err != nil {
 			return err
