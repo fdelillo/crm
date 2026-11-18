@@ -14,7 +14,8 @@ completo (`.claude/dev-mode`).
 
 ### Estado de la implementación (2026-11-18)
 
-Fases 1, 2 y F0 implementadas. Fase 4: T-002-B401 a T-002-B404 implementadas (servicio y endpoints de
+Fases 1, 2 y F0 implementadas. Fase 5 (en curso): T-002-B501 y T-002-B502 implementadas (servicio de categorías,
+sin HTTP); faltan T-002-B503 y T-002-B504. Fase 4: T-002-B401 a T-002-B404 implementadas (servicio y endpoints de
 etapas); checkpoint de la Fase 4 cumplido el 2026-11-18: `make check` en verde y la prueba independiente
 con `curl` (servidor local con TLS, empresa "Genérico"): mover "En curso" a 1, crear "Instalación" en la
 posición 4, antes de "Finalizado", `409 invalid_state` al eliminar "Finalizado" y, como Operador
