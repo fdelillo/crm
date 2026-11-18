@@ -37,8 +37,10 @@ type sample struct {
 	ID                                     string
 	Start, End, CallbackStart, CallbackEnd time.Time
 	Err                                    error
-	mu                                     sync.Mutex
-	Events                                 []event
+	// Seeded marks a registration made with the real TemplateSeeder: its trace must carry the four seed statements.
+	Seeded bool
+	mu     sync.Mutex
+	Events []event
 }
 
 func currentSample(ctx context.Context) *sample { s, _ := ctx.Value(sampleKey{}).(*sample); return s }
@@ -52,7 +54,11 @@ var knownLabels = map[string]bool{
 	"SetSignupLockTimeout": true, "ProvisionTenantRole": true, "InsertTenant": true,
 	"InsertFirstAdmin": true, "GetUserEmail": true, "InsertVerificationToken": true,
 	"InsertMessage": true, "InsertSession": true, "InsertAudit": true,
+	"SeedTenantSettings": true, "SeedStages": true, "SeedCategories": true, "SeedCatalogItems": true,
 }
+
+// seedLabels are the four statements of TemplateSeeder.Seed (002/INV-10), in execution order.
+var seedLabels = []string{"SeedTenantSettings", "SeedStages", "SeedCategories", "SeedCatalogItems"}
 
 // This is the exact catalog read + SET text of platform/db.setRole, without changing production.
 func roleSQL(role string) string {
@@ -203,6 +209,9 @@ func sampleIntervals(s *sample) (map[string]time.Duration, error) {
 	required := []string{"acquire", "begin", "set_role:crm_signup", "SetSignupLockTimeout", "ProvisionTenantRole"}
 	if s.Err == nil {
 		required = append(required, "set_role:tenant", "GetUserEmail", "InsertTenant", "InsertFirstAdmin", "InsertVerificationToken", "InsertMessage", "InsertSession", "InsertAudit", "commit")
+		if s.Seeded {
+			required = append(required, seedLabels...)
+		}
 	} else {
 		if !errors.Is(s.Err, db.ErrUnavailable) {
 			return nil, fmt.Errorf("sample %s is not a 503 rejection: %w", s.ID, s.Err)
@@ -226,6 +235,23 @@ func sampleIntervals(s *sample) (map[string]time.Duration, error) {
 			return nil, fmt.Errorf("successful sample rolled back")
 		}
 		result["hold"] = byLabel["commit"][0].End.Sub(byLabel["ProvisionTenantRole"][0].Start)
+		if s.Seeded {
+			// seed: first to last seed statement, inside the tenant-role transaction, inside the hold
+			// (which starts at ProvisionTenantRole) and before COMMIT.
+			first, last := byLabel[seedLabels[0]][0], byLabel[seedLabels[3]][0]
+			for i := 1; i < len(seedLabels); i++ {
+				if byLabel[seedLabels[i]][0].Start.Before(byLabel[seedLabels[i-1]][0].End) {
+					return nil, fmt.Errorf("sample %s: %s starts before %s ends", s.ID, seedLabels[i], seedLabels[i-1])
+				}
+			}
+			if first.Start.Before(byLabel["set_role:tenant"][0].End) || last.End.After(byLabel["commit"][0].Start) {
+				return nil, fmt.Errorf("sample %s: seed statements outside set_role:tenant..commit", s.ID)
+			}
+			if first.Start.Before(byLabel["ProvisionTenantRole"][0].Start) {
+				return nil, fmt.Errorf("sample %s: seed starts before the hold (ProvisionTenantRole)", s.ID)
+			}
+			result["seed"] = last.End.Sub(first.Start)
+		}
 	} else {
 		// A rejected registration cannot have a commit/hold. Preserve its other intervals and
 		// the 503 count; do not invent a hold until rollback or discard its end-to-end latency.
