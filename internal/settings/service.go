@@ -17,6 +17,9 @@ var (
 	ErrPipelineRule     = errors.New("settings: pipeline rule violated")             // 409 invalid_state
 	ErrSystemCategory   = errors.New("settings: system category cannot be archived") // 409 invalid_state
 	ErrMalformedChanges = errors.New("settings: malformed changes")                  // 400 malformed_request
+	// ErrTenantSettingsMissing: the company has no tenant_settings row, 002/INV-1 is broken (500 internal and the
+	// settings_row_missing log). It wraps neither db.ErrNotFound nor ErrNotFound (002/DD-19).
+	ErrTenantSettingsMissing = errors.New("settings: tenant settings row missing")
 )
 
 // FieldErrors maps a request field to a stable contract code. It never includes submitted values.

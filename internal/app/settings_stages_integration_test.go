@@ -3,8 +3,10 @@
 package app_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -28,10 +30,19 @@ type stagesAPI struct {
 
 func newStagesAPI(t *testing.T) *stagesAPI {
 	t.Helper()
+	return newStagesAPIWithLogger(t, nil)
+}
+
+// newStagesAPIWithLogger builds the router with logger (the scenario's one, which discards, when nil).
+func newStagesAPIWithLogger(t *testing.T, logger *slog.Logger) *stagesAPI {
+	t.Helper()
 	f := e2e.New(t, pgtest.AppPool(t))
-	root := app.NewRootHandler(app.RootDeps{API: app.BuildAPIRouter(f.Users, f.Companies, f.Settings, f.Clock, f.Logger),
+	if logger == nil {
+		logger = f.Logger
+	}
+	root := app.NewRootHandler(app.RootDeps{API: app.BuildAPIRouter(f.Users, f.Companies, f.Settings, f.Clock, logger),
 		Liveness: app.LivenessHandler(), Readiness: app.ReadinessPlaceholder(), SPA: app.SPAUnavailableHandler()},
-		app.NewCommonMiddleware(f.Logger, true, nil))
+		app.NewCommonMiddleware(logger, true, nil))
 	return &stagesAPI{t: t, f: f, h: root}
 }
 
@@ -313,15 +324,56 @@ func TestStagesHTTPTransportRules(t *testing.T) {
 	}
 }
 
-// T-002-B403 (002/INV-1): a company that lost its settings row is a bug, never a 404 that would look like a
-// missing stage.
+// T-002-B405 (002/DD-19, INV-1, INV-11, plan 12.2): a company that lost its settings row is a bug, never a 404
+// that would look like a missing stage. Every stage write answers 500 internal, also for an unknown id, logs one
+// settings_row_missing line with the request id and leaves the stages as they were; reading still works.
 func TestStagesHTTPMissingSettingsRowIs500(t *testing.T) {
-	a := newStagesAPI(t)
+	var logs bytes.Buffer
+	a := newStagesAPIWithLogger(t, slog.New(slog.NewJSONHandler(&logs, nil)))
+	active, missing := a.id("En curso"), uuid.NewString()
+	before := a.list("admin")
 	if _, err := pgtest.SuperuserPool(t).Exec(context.Background(), `DELETE FROM app.tenant_settings WHERE tenant_id=$1`, a.f.A.ID); err != nil {
 		t.Fatal(err)
 	}
-	rec := a.json("admin", "POST", "/api/v1/stages", `{"name":"Nueva","type":"open","color":"gray"}`, 500)
-	if got := problemCode(t, rec); got != "internal" {
-		t.Fatalf("code=%s", got)
+	for _, tc := range []struct{ name, method, path, body string }{
+		{"create", "POST", "/api/v1/stages", `{"name":"Nueva","type":"open","color":"gray"}`},
+		{"update", "PATCH", "/api/v1/stages/" + active, `{"name":"Otro"}`},
+		{"delete", "DELETE", "/api/v1/stages/" + active, ""},
+		{"move", "POST", "/api/v1/stages/" + active + "/move", `{"position":1}`},
+		{"update of an unknown stage", "PATCH", "/api/v1/stages/" + missing, `{"name":"Otro"}`},
+		{"delete of an unknown stage", "DELETE", "/api/v1/stages/" + missing, ""},
+		{"move of an unknown stage", "POST", "/api/v1/stages/" + missing + "/move", `{"position":1}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			logs.Reset()
+			ct := ""
+			if tc.body != "" {
+				ct = "application/json"
+			}
+			rec := a.do("admin", tc.method, tc.path, ct, tc.body, 500)
+			if got := problemCode(t, rec); got != "internal" {
+				t.Fatalf("code=%s", got)
+			}
+			lines := 0
+			for _, line := range strings.Split(strings.TrimSpace(logs.String()), "\n") {
+				var entry map[string]any
+				if err := json.Unmarshal([]byte(line), &entry); err != nil {
+					t.Fatalf("log line %q: %v", line, err)
+				}
+				if entry["event"] != "settings_row_missing" {
+					continue
+				}
+				lines++
+				if id, _ := entry["request_id"].(string); id == "" || entry["level"] != "ERROR" {
+					t.Fatalf("settings_row_missing line = %s, want ERROR with request_id", line)
+				}
+			}
+			if lines != 1 {
+				t.Fatalf("settings_row_missing lines = %d, want 1; log: %s", lines, logs.String())
+			}
+		})
+	}
+	if after := a.list("admin"); !reflect.DeepEqual(after, before) {
+		t.Fatalf("stages changed: %v, want %v", after, before)
 	}
 }
