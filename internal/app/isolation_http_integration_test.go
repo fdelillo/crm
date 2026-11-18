@@ -23,6 +23,7 @@ import (
 	"github.com/fdelillo/crm/internal/platform/clock"
 	"github.com/fdelillo/crm/internal/platform/db"
 	"github.com/fdelillo/crm/internal/platform/httpx"
+	"github.com/fdelillo/crm/internal/settings"
 	"github.com/fdelillo/crm/internal/testsupport/apitest"
 	"github.com/fdelillo/crm/internal/testsupport/contract"
 	"github.com/fdelillo/crm/internal/testsupport/fixture/e2e"
@@ -93,6 +94,11 @@ var isolationCases = map[string]string{
 	"PATCH /api/v1/stages/{stageId}":               "foreign_stage_id",
 	"DELETE /api/v1/stages/{stageId}":              "foreign_stage_id",
 	"POST /api/v1/stages/{stageId}/move":           "foreign_stage_id",
+	"GET /api/v1/categories":                       "read",
+	"POST /api/v1/categories":                      "category_create",
+	"PATCH /api/v1/categories/{categoryId}":        "foreign_category_id",
+	"POST /api/v1/categories/{categoryId}/archive": "foreign_category_id",
+	"POST /api/v1/categories/{categoryId}/restore": "foreign_category_id",
 }
 
 func isolationRoot(t *testing.T, f *e2e.Scenario, api chi.Router) *apitest.Server {
@@ -517,6 +523,47 @@ func TestIsolationHTTPMatrix(t *testing.T) {
 					}
 				})).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/", nil))
 				assertUnchanged(t, f, f.A.ID, aBefore, counts)
+			case "category_create":
+				rec := call(path, "application/json", []byte(`{"name":"Combustible","type":"expense"}`), "", 201)
+				var created struct{ ID uuid.UUID }
+				if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+					t.Fatal(err)
+				}
+				own, err := f.Settings.ListCategories(context.Background(), f.A.Users["admin"].Principal, settings.CategoryFilter{})
+				found := false
+				for _, c := range own {
+					found = found || c.ID == created.ID
+				}
+				if err != nil || !found {
+					t.Fatalf("category not created in company A: %v %v", own, err)
+				}
+				assertChanged(t, f, f.A.ID, aBefore, "categories", "audit_log")
+				assertUnchanged(t, f, f.B.ID, bBefore, counts)
+			case "foreign_category_id":
+				if !strings.Contains(path, "{categoryId}") {
+					t.Fatalf("%s: category-id isolation case requires {categoryId}", key)
+				}
+				var payload []byte
+				ct := ""
+				if method == "PATCH" {
+					payload, ct = []byte(`{"name":"Otra"}`), "application/json"
+				}
+				// Same request context for every call, as in foreign_id: the 404 must match byte for byte.
+				withIP := httpx.ClientIP(nil, f.Logger)(api)
+				httpx.RequestID(http.HandlerFunc(func(_ http.ResponseWriter, req *http.Request) {
+					missing := isolationRequest(t, withIP, req.Context(), f.A.Users["admin"].Cookie, method, strings.ReplaceAll(path, "{categoryId}", uuid.NewString()), ct, payload, "", 404, checkResponse)
+					foreign, err := f.Settings.ListCategories(context.Background(), f.B.Users["admin"].Principal, settings.CategoryFilter{IncludeArchived: true})
+					if err != nil || len(foreign) == 0 {
+						t.Fatalf("categories of B: %v %v", foreign, err)
+					}
+					for _, category := range foreign {
+						rec := isolationRequest(t, withIP, req.Context(), f.A.Users["admin"].Cookie, method, strings.ReplaceAll(path, "{categoryId}", category.ID.String()), ct, payload, "", 404, checkResponse)
+						counts.verify(t, bytes.Equal(missing.Body.Bytes(), rec.Body.Bytes()), "foreign category 404 differs byte for byte from absent id: %s != %s", rec.Body.String(), missing.Body.String())
+						counts.verify(t, reflect.DeepEqual(missing.Header(), rec.Header()), "foreign category 404 headers differ from absent id: %v != %v", rec.Header(), missing.Header())
+						assertUnchanged(t, f, f.B.ID, bBefore, counts)
+					}
+				})).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/", nil))
+				assertUnchanged(t, f, f.A.ID, aBefore, counts)
 			case "read", "logo_read", "catalog":
 				etag := ""
 				if isolationCases[key] == "logo_read" {
@@ -538,6 +585,8 @@ func TestIsolationHTTPMatrix(t *testing.T) {
 					call(path, "", nil, f.A.ETag, 304)
 				case "/api/v1/stages":
 					assertStagesBelongTo(t, rec, f, f.A, f.B, counts)
+				case "/api/v1/categories":
+					assertCategoriesBelongTo(t, rec, f, f.A, f.B, counts)
 				}
 				assertUnchanged(t, f, f.A.ID, aBefore, counts)
 				assertUnchanged(t, f, f.B.ID, bBefore, counts)
@@ -716,6 +765,28 @@ func assertStagesBelongTo(t *testing.T, rec *httptest.ResponseRecorder, f *e2e.S
 	}
 	for _, s := range foreignStages {
 		counterFor(counters).verifySentinel(t, !bytes.Contains(rec.Body.Bytes(), []byte(s.ID.String())), "foreign stage in response: %s", s.ID)
+	}
+}
+
+// assertCategoriesBelongTo checks that a GET /categories response lists the categories of own and none of foreign.
+func assertCategoriesBelongTo(t *testing.T, rec *httptest.ResponseRecorder, f *e2e.Scenario, own, foreign e2e.Company, counters ...*isolationCount) {
+	t.Helper()
+	filter := settings.CategoryFilter{IncludeArchived: true}
+	ownCategories, err := f.Settings.ListCategories(context.Background(), own.Users["admin"].Principal, filter)
+	if err != nil || len(ownCategories) == 0 {
+		t.Fatalf("categories of own company: %v %v", ownCategories, err)
+	}
+	for _, c := range ownCategories {
+		if !bytes.Contains(rec.Body.Bytes(), []byte(c.ID.String())) {
+			t.Errorf("own category missing: %s", c.ID)
+		}
+	}
+	foreignCategories, err := f.Settings.ListCategories(context.Background(), foreign.Users["admin"].Principal, filter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range foreignCategories {
+		counterFor(counters).verifySentinel(t, !bytes.Contains(rec.Body.Bytes(), []byte(c.ID.String())), "foreign category in response: %s", c.ID)
 	}
 }
 

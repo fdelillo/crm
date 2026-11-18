@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -506,6 +507,21 @@ func TestRestoreCategory(t *testing.T) {
 		e.assertNothingChanged(func() {
 			got, err := e.svc.RestoreCategory(ctx, e.co.Admin, c.ID, e.meta)
 			if err != nil || got != c {
+				t.Fatalf("got %+v, %v; want %+v", got, err, c)
+			}
+		})
+	})
+	// A system category is never archived, so restoring one is the same no-op as restoring any active category:
+	// the archive guard of system categories does not apply here.
+	t.Run("an active system one comes back as it is", func(t *testing.T) {
+		e := newCategoriesEnv(t)
+		c := e.find("Cobros de clientes", "income")
+		if c.SystemKey == nil || c.Archived {
+			t.Fatalf("expected an active system category, got %+v", c)
+		}
+		e.assertNothingChanged(func() {
+			got, err := e.svc.RestoreCategory(ctx, e.co.Admin, c.ID, e.meta)
+			if err != nil || !reflect.DeepEqual(got, c) {
 				t.Fatalf("got %+v, %v; want %+v", got, err, c)
 			}
 		})
