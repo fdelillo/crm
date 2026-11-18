@@ -23,8 +23,9 @@ arrays, T-002-B305, con `ROWS FROM`).
 
 **Medición vigente de T-002-B307 (2026-11-17): una corrida pasa y la otra falla.** M-7 con el
 *harness* corregido en la revisión de Codex del PR #62 (`adea360`): 10.000 empresas, 5 registros sin
-medir por camino para calentarlos y 100 registros secuenciales en 50 parejas de `TemplateSeeder` real
-(plantilla `aluminum_carpentry`) y `NoopSeeder`, con el orden alternado dentro de la pareja. Entorno de
+medir por camino para calentarlos (quedan dados de alta, así que la medición empieza con 10.010 roles)
+y 100 registros secuenciales en 50 parejas de `TemplateSeeder` real (plantilla `aluminum_carpentry`) y
+`NoopSeeder`, con el orden alternado dentro de la pareja. Entorno de
 T-B910: `postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722`, servidor
 18.6, go1.27.4, darwin/amd64, 8 CPU, 8.322.793.472 bytes de memoria de Docker, un contenedor nuevo por
 corrida (`317febeb7335` y `8fab38d2e998`). Valores en ms (p50 / p95; p95 por rango más cercano, el
@@ -39,7 +40,8 @@ tercer valor más alto de 50):
 | `hold` p95 real | **145,98** | **126,93** | (3) < 140: falla en la 1, cumple en la 2 |
 
 Por la regla escrita, la corrida 1 falla por (2) y (3) y la corrida 2 pasa. Desglose de la corrida 1
-desde su traza (p95): las cuatro sentencias del sembrado suman 7,34 ms y el `commit` dura lo mismo en
+desde su traza (p95): el intervalo `seed` (del inicio de la primera sentencia del sembrado al fin de la
+última, con los huecos entre ellas) da 7,34 ms, y la suma de las duraciones SQL, 7,28; el `commit` dura lo mismo en
 los dos grupos (0,90 y 0,99 ms); la diferencia está en `ProvisionTenantRole`, el `GRANT` que corre
 antes de sembrar (96,76 ms en el grupo real contra 82,99 en noop), y la retención del grupo real sin
 contar el sembrado ya da 140,68 ms. El p95 de la corrida 1 lo fijan pocos valores (los tres más altos
@@ -386,7 +388,7 @@ DD-3, R-1, DD-33 R-b/R-c de 001
 
   | Medición | Cómo | Se registra |
   |---|---|---|
-  | M-7: sembrado con 10.000 roles | 100 registros secuenciales sin otra actividad, en 50 parejas de `TemplateSeeder` real (plantilla `aluminum_carpentry`, la más grande) y `NoopSeeder`, con el orden dentro de la pareja alternado (real-noop, noop-real, …); antes, 5 registros de cada camino sin medir para calentarlos (revisión de Codex del PR #62); el *tracer* de T-B910 suma el intervalo `seed` y exige que esté dentro de `hold` | p50 y p95 de `seed` (solo los reales) y de `hold` por grupo |
+  | M-7: sembrado con 10.000 roles | 100 registros secuenciales sin otra actividad, en 50 parejas de `TemplateSeeder` real (plantilla `aluminum_carpentry`, la más grande) y `NoopSeeder`, con el orden dentro de la pareja alternado (real-noop, noop-real, …); antes, 5 registros de cada camino sin medir para calentarlos, que quedan dados de alta (la medición empieza con 10.010 roles; revisión de Codex del PR #62); el *tracer* de T-B910 suma el intervalo `seed` y exige que esté dentro de `hold` | p50 y p95 de `seed` (solo los reales) y de `hold` por grupo |
 
 - **Regla de decisión** (fijada antes de medir). La compuerta **pasa** solo si se cumplen las tres
   condiciones:
