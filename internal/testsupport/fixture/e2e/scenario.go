@@ -252,7 +252,7 @@ func (f *Scenario) Snapshot(t testing.TB, id uuid.UUID) map[string]string {
 	t.Helper()
 	result := map[string]string{}
 	require(t, f.Runner.InTenantTx(context.Background(), id, func(ctx context.Context, tx db.Tx) error {
-		for _, table := range []string{"tenants", "users", "sessions", "user_tokens", "outbox_messages", "audit_log", "stages"} {
+		for _, table := range []string{"tenants", "users", "sessions", "user_tokens", "outbox_messages", "audit_log", "stages", "categories"} {
 			col := "tenant_id"
 			if table == "tenants" {
 				col = "id"

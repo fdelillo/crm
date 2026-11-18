@@ -11,6 +11,7 @@ import (
 
 	"github.com/fdelillo/crm/internal/app"
 	"github.com/fdelillo/crm/internal/platform/clock"
+	"github.com/fdelillo/crm/internal/settings"
 	"github.com/fdelillo/crm/internal/testsupport/fixture/e2e"
 	"github.com/fdelillo/crm/internal/testsupport/pgtest"
 	"github.com/google/uuid"
@@ -45,6 +46,11 @@ var isolationPermissions = map[string][3]int{
 	"PATCH /api/v1/stages/{stageId}":               {401, 403, 200},
 	"DELETE /api/v1/stages/{stageId}":              {401, 403, 204},
 	"POST /api/v1/stages/{stageId}/move":           {401, 403, 200},
+	"GET /api/v1/categories":                       {401, 200, 200},
+	"POST /api/v1/categories":                      {401, 403, 201},
+	"PATCH /api/v1/categories/{categoryId}":        {401, 403, 200},
+	"POST /api/v1/categories/{categoryId}/archive": {401, 403, 200},
+	"POST /api/v1/categories/{categoryId}/restore": {401, 403, 200},
 }
 
 func permissionRequest(t *testing.T, f *e2e.Scenario, key string) (path, ct string, body []byte) {
@@ -85,6 +91,18 @@ func permissionRequest(t *testing.T, f *e2e.Scenario, key string) (path, ct stri
 		case strings.HasSuffix(path, "/move"):
 			body = []byte(`{"position":3}`)
 		case strings.HasPrefix(key, "PATCH "):
+			body = []byte(`{"name":"Renombrada"}`)
+		}
+	case "category_create":
+		body = []byte(`{"name":"Combustible","type":"expense"}`)
+	case "foreign_category_id":
+		// A category of the company, so the administrator gets a 200 from rename, archive and restore alike.
+		own, err := f.Settings.CreateCategory(context.Background(), f.A.Users["admin"].Principal, "Combustible", "expense", settings.RequestMeta{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		path = strings.ReplaceAll(path, "{categoryId}", own.ID.String())
+		if strings.HasPrefix(key, "PATCH ") {
 			body = []byte(`{"name":"Renombrada"}`)
 		}
 	case "foreign_id":
@@ -169,6 +187,13 @@ func TestIsolationPermissionMatrix(t *testing.T) {
 						// The permission is also decided before the id is parsed or looked up.
 						for _, id := range []string{uuid.NewString(), "no-uuid"} {
 							foreign := strings.ReplaceAll(strings.SplitN(key, " ", 2)[1], "{stageId}", id)
+							isolationRequest(t, h, context.Background(), cookie, method, foreign, ct, body, "", 403)
+						}
+					}
+					if strings.Contains(key, "{categoryId}") {
+						// The permission is also decided before the id is parsed or looked up.
+						for _, id := range []string{uuid.NewString(), "no-uuid"} {
+							foreign := strings.ReplaceAll(strings.SplitN(key, " ", 2)[1], "{categoryId}", id)
 							isolationRequest(t, h, context.Background(), cookie, method, foreign, ct, body, "", 403)
 						}
 					}

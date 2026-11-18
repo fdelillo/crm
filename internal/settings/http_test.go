@@ -26,6 +26,9 @@ func TestWriteSettingsErrorMap(t *testing.T) {
 		wantLog    string // other substring that the log must carry
 	}{
 		{"tenant settings missing", fmt.Errorf("settings: lock: %w", ErrTenantSettingsMissing), 500, "internal", true, ""},
+		{"name taken", fmt.Errorf("category: %w", ErrNameTaken), 409, "name_taken", false, ""},
+		{"system category", fmt.Errorf("category: %w", ErrSystemCategory), 409, "invalid_state", false, ""},
+		{"malformed changes", fmt.Errorf("category: %w", ErrMalformedChanges), 400, "malformed_request", false, ""},
 		{"settings not found", fmt.Errorf("stage: %w", ErrNotFound), 404, "not_found", false, ""},
 		{"untranslated db not found", fmt.Errorf("stage: %w", db.ErrNotFound), 404, "not_found", false, ""},
 		{"db privilege", fmt.Errorf("stage: %w", db.ErrPrivilege), 500, "internal", false, `"security_event":"rls_violation"`},
