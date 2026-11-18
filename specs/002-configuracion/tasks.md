@@ -12,9 +12,10 @@ plan.
 Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invocación**, en modo
 completo (`.claude/dev-mode`).
 
-### Estado de la implementación (2026-11-17)
+### Estado de la implementación (2026-11-18)
 
-Fases 1, 2 y F0 implementadas. Fase 3: T-002-B301 a T-002-B307 implementadas; la compuerta del
+Fases 1, 2 y F0 implementadas. Fase 4: T-002-B401 y T-002-B402 implementadas (servicio de etapas, sin
+HTTP); faltan T-002-B403 y T-002-B404. Fase 3: T-002-B301 a T-002-B307 implementadas; la compuerta del
 sembrado (T-002-B307), medida de nuevo con el *harness* corregido, **pasó en una corrida y falló en
 la otra, y el usuario la aceptó el 2026-11-17** (abajo): la Fase 3 queda cerrada y la Fase 4 puede
 avanzar. Supuestos
