@@ -29,6 +29,12 @@ func holdSettingsLock(t *testing.T, tenantID uuid.UUID, calls ...func(context.Co
 // T_admin and before T_admin releases the lock.
 func holdSettingsLockThen(t *testing.T, tenantID uuid.UUID, whileBlocked func(), calls ...func(context.Context) error) {
 	t.Helper()
+	holdRowLockThen(t, tenantID, `SELECT 1 FROM app.tenant_settings WHERE tenant_id = $1 FOR NO KEY UPDATE`, []any{tenantID}, whileBlocked, calls...)
+}
+
+// holdRowLockThen is the same mechanism over any row: lockSQL takes the lock the calls must wait for, with lockArgs.
+func holdRowLockThen(t *testing.T, tenantID uuid.UUID, lockSQL string, lockArgs []any, whileBlocked func(), calls ...func(context.Context) error) {
+	t.Helper()
 	if maxConns := pgtest.AppPool(t).Config().MaxConns; len(calls)+1 > int(maxConns) {
 		t.Fatalf("app pool has %d connections: not enough for T_admin plus %d calls", maxConns, len(calls))
 	}
@@ -50,7 +56,7 @@ func holdSettingsLockThen(t *testing.T, tenantID uuid.UUID, whileBlocked func(),
 	started, returned := 0, 0
 	release := errors.New("test: release the settings lock")
 	err = testRunner(t).InTenantTx(ctx, tenantID, func(ctx context.Context, tx db.Tx) error {
-		if _, err := tx.Exec(ctx, `SELECT 1 FROM app.tenant_settings WHERE tenant_id = $1 FOR NO KEY UPDATE`, tenantID); err != nil {
+		if _, err := tx.Exec(ctx, lockSQL, lockArgs...); err != nil {
 			return err
 		}
 		var pid int32
@@ -67,7 +73,7 @@ func holdSettingsLockThen(t *testing.T, tenantID uuid.UUID, whileBlocked func(),
 			select {
 			case <-done:
 				returned++
-				return errors.New("a call returned before the lock was released: the service does not take LockTenantSettings")
+				return errors.New("a call returned before the lock was released: the service does not take the row lock")
 			case <-ticker.C:
 				var blocked int
 				if err := monitor.QueryRow(ctx, `WITH RECURSIVE waiting(pid) AS (

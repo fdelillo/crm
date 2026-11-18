@@ -11,6 +11,33 @@ import (
 	"github.com/google/uuid"
 )
 
+const lockCategory = `-- name: LockCategory :one
+SELECT id, tenant_id, name, type, system_key, archived_at, created_at, updated_at FROM app.categories WHERE tenant_id = $1 AND id = $2 FOR NO KEY UPDATE
+`
+
+type LockCategoryParams struct {
+	TenantID uuid.UUID
+	ID       uuid.UUID
+}
+
+// First statement of rename, archive and restore (002/DD-8, INV-8). Other company or no row: pgx.ErrNoRows, which the
+// use case turns into ErrNotFound. It does not lock tenant_settings.
+func (q *Queries) LockCategory(ctx context.Context, arg LockCategoryParams) (AppCategory, error) {
+	row := q.db.QueryRow(ctx, lockCategory, arg.TenantID, arg.ID)
+	var i AppCategory
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.Name,
+		&i.Type,
+		&i.SystemKey,
+		&i.ArchivedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const lockTenantSettings = `-- name: LockTenantSettings :one
 
 SELECT id FROM app.tenant_settings WHERE tenant_id = $1 FOR NO KEY UPDATE
