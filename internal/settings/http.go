@@ -22,7 +22,8 @@ import (
 // resource is looked up (001/INV-12).
 // T-002-B404 (002/DD-11, DD-12, DD-18): the stage operations.
 // T-002-B504 (002/DD-11, DD-12, DD-16): the category operations.
-// T-002-B604 (002/DD-9, DD-11, DD-12, ADR-029): the catalog operations; the other operations add their routes with their tasks.
+// T-002-B604 (002/DD-9, DD-11, DD-12, ADR-029): the catalog operations.
+// T-002-B704 (002/DD-10, DD-11, DD-19): the labels and quote defaults operations.
 func RegisterRoutes(r chi.Router, service *Service, logger *slog.Logger) {
 	r.Get("/api/v1/stages", func(w http.ResponseWriter, req *http.Request) {
 		p, _ := authz.PrincipalFrom(req.Context())
@@ -68,8 +69,58 @@ func RegisterRoutes(r chi.Router, service *Service, logger *slog.Logger) {
 		}
 		writeSettingsJSON(w, http.StatusOK, catalogItemResponseOf(item))
 	})
+	r.Get("/api/v1/settings/labels", func(w http.ResponseWriter, req *http.Request) {
+		p, _ := authz.PrincipalFrom(req.Context())
+		labels, err := service.GetLabels(req.Context(), p)
+		if writeSettingsError(w, req, err, logger) {
+			return
+		}
+		writeSettingsJSON(w, http.StatusOK, labelsResponseOf(labels))
+	})
+	r.Get("/api/v1/settings/quote-defaults", func(w http.ResponseWriter, req *http.Request) {
+		p, _ := authz.PrincipalFrom(req.Context())
+		defaults, err := service.GetQuoteDefaults(req.Context(), p)
+		if writeSettingsError(w, req, err, logger) {
+			return
+		}
+		writeSettingsJSON(w, http.StatusOK, quoteDefaultsResponseOf(defaults))
+	})
 	r.Group(func(r chi.Router) {
 		r.Use(authz.RequirePermission(authz.SettingsManage))
+		r.Put("/api/v1/settings/labels", func(w http.ResponseWriter, req *http.Request) {
+			var input labelsRequest
+			if err := httpx.DecodeJSON(w, req, &input); err != nil {
+				return
+			}
+			labels, fields := input.toLabels()
+			if fields != nil {
+				httpx.ValidationError(w, req, fields)
+				return
+			}
+			p, _ := authz.PrincipalFrom(req.Context())
+			saved, err := service.ReplaceLabels(req.Context(), p, labels, settingsRequestMeta(req))
+			if writeSettingsError(w, req, err, logger) {
+				return
+			}
+			writeSettingsJSON(w, http.StatusOK, labelsResponseOf(saved))
+		})
+		r.Put("/api/v1/settings/quote-defaults", func(w http.ResponseWriter, req *http.Request) {
+			var input quoteDefaultsRequest
+			if err := httpx.DecodeJSON(w, req, &input); err != nil {
+				return
+			}
+			defaults, fields := input.toQuoteDefaults()
+			if fields != nil {
+				httpx.ValidationError(w, req, fields)
+				return
+			}
+			p, _ := authz.PrincipalFrom(req.Context())
+			saved, err := service.ReplaceQuoteDefaults(req.Context(), p, defaults, settingsRequestMeta(req))
+			if writeSettingsError(w, req, err, logger) {
+				return
+			}
+			writeSettingsJSON(w, http.StatusOK, quoteDefaultsResponseOf(saved))
+		})
 		r.Post("/api/v1/categories", func(w http.ResponseWriter, req *http.Request) {
 			var input categoryCreateRequest
 			if err := httpx.DecodeJSON(w, req, &input); err != nil {
@@ -252,7 +303,8 @@ func RegisterRoutes(r chi.Router, service *Service, logger *slog.Logger) {
 
 // optional is a JSON field that tells absent from present. It rejects an explicit null, which the contract
 // does not admit in any stage field (plan 9.1: null where it is not admitted is malformed_request): the
-// error makes httpx.DecodeJSON answer 400, like a wrong type.
+// error makes httpx.DecodeJSON answer 400, like a wrong type. The value is decoded strictly (the outer decoder's
+// DisallowUnknownFields does not reach an UnmarshalJSON), so an unknown field inside a nested object is a 400.
 type optional[T any] struct {
 	value   T
 	present bool
@@ -265,7 +317,9 @@ func (o *optional[T]) UnmarshalJSON(data []byte) error {
 		return errNullNotAllowed
 	}
 	o.present = true
-	return json.Unmarshal(data, &o.value)
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	return dec.Decode(&o.value)
 }
 
 // ptr is the value when present and nil when absent.
@@ -302,6 +356,120 @@ func (n *nullable[T]) UnmarshalJSON(data []byte) error {
 
 // patch is the field as the service reads it: Set when it came in the body, null included.
 func (n nullable[T]) patch() Patch[*T] { return Patch[*T]{Set: n.present, Value: n.value} }
+
+// entityLabelRequest is EntityLabel. A missing text or gender reaches the service as its zero value and comes
+// back as a field error (422).
+type entityLabelRequest struct {
+	Singular optional[string] `json:"singular"`
+	Plural   optional[string] `json:"plural"`
+	Gender   optional[Gender] `json:"gender"`
+}
+
+func (r entityLabelRequest) toEntityLabel() EntityLabel {
+	return EntityLabel{Singular: r.Singular.value, Plural: r.Plural.value, Gender: r.Gender.value}
+}
+
+// labelsRequest is Labels: the three names, all required.
+type labelsRequest struct {
+	Project  optional[entityLabelRequest] `json:"project"`
+	Customer optional[entityLabelRequest] `json:"customer"`
+	Quote    optional[entityLabelRequest] `json:"quote"`
+}
+
+// toLabels converts the body. A missing object is reported by its own path with "required", which the service
+// cannot see (a Labels always has the three); the errors of the objects that came are reported in the same answer.
+func (r labelsRequest) toLabels() (Labels, FieldErrors) {
+	labels := Labels{Project: r.Project.value.toEntityLabel(), Customer: r.Customer.value.toEntityLabel(), Quote: r.Quote.value.toEntityLabel()}
+	var missing []string
+	for _, o := range []struct {
+		name    string
+		present bool
+	}{{"project", r.Project.present}, {"customer", r.Customer.present}, {"quote", r.Quote.present}} {
+		if !o.present {
+			missing = append(missing, o.name)
+		}
+	}
+	if len(missing) == 0 {
+		return labels, nil
+	}
+	_, errs := normalizeLabels(labels)
+	return Labels{}, withRequired(errs, missing, true)
+}
+
+// quoteDefaultsRequest is QuoteDefaults: both members are required, and terms may be null.
+type quoteDefaultsRequest struct {
+	ValidityDays optional[int]    `json:"validity_days"`
+	Terms        nullable[string] `json:"terms"`
+}
+
+// toQuoteDefaults converts the body. A missing member is "required" (terms: null is a value, absent is not); the
+// errors of the other member are reported in the same answer.
+func (r quoteDefaultsRequest) toQuoteDefaults() (QuoteDefaults, FieldErrors) {
+	defaults := QuoteDefaults{ValidityDays: r.ValidityDays.value, Terms: r.Terms.value}
+	var missing []string
+	if !r.ValidityDays.present {
+		missing = append(missing, "validity_days")
+	}
+	if !r.Terms.present {
+		missing = append(missing, "terms")
+	}
+	if len(missing) == 0 {
+		return defaults, nil
+	}
+	_, errs := normalizeQuoteDefaults(defaults)
+	return QuoteDefaults{}, withRequired(errs, missing, false)
+}
+
+// withRequired marks the missing members as "required" and drops the errors the service reported for the zero
+// value that stands in for them (the member itself or, for an object, every path under it).
+func withRequired(errs FieldErrors, missing []string, objects bool) FieldErrors {
+	out := FieldErrors{}
+	for field, code := range errs {
+		skip := false
+		for _, m := range missing {
+			skip = skip || field == m || (objects && strings.HasPrefix(field, m+"."))
+		}
+		if !skip {
+			out[field] = code
+		}
+	}
+	for _, m := range missing {
+		out[m] = codeRequired
+	}
+	return out
+}
+
+// entityLabelBody is EntityLabel as the API answers it.
+type entityLabelBody struct {
+	Singular string `json:"singular"`
+	Plural   string `json:"plural"`
+	Gender   Gender `json:"gender"`
+}
+
+// labelsBody is Labels.
+type labelsBody struct {
+	Project  entityLabelBody `json:"project"`
+	Customer entityLabelBody `json:"customer"`
+	Quote    entityLabelBody `json:"quote"`
+}
+
+func labelsResponseOf(l Labels) labelsBody {
+	return labelsBody{
+		Project:  entityLabelBody(l.Project),
+		Customer: entityLabelBody(l.Customer),
+		Quote:    entityLabelBody(l.Quote),
+	}
+}
+
+// quoteDefaultsBody is QuoteDefaults. terms is null when there are none.
+type quoteDefaultsBody struct {
+	ValidityDays int     `json:"validity_days"`
+	Terms        *string `json:"terms"`
+}
+
+func quoteDefaultsResponseOf(q QuoteDefaults) quoteDefaultsBody {
+	return quoteDefaultsBody(q)
+}
 
 // stageCreateRequest is StageCreate. A missing required field reaches the service as its zero value and
 // comes back as a field error (422), the same way signup treats its required fields.
