@@ -14,8 +14,8 @@ completo (`.claude/dev-mode`).
 
 ### Estado de la implementación (2026-11-18)
 
-Fases 1, 2 y F0 implementadas. Fase 7 (en curso): T-002-B701 y T-002-B702 implementadas (servicio de
-nombres y condiciones, `preferences.go`); faltan los endpoints (T-002-B703 y T-002-B704) y el checkpoint.
+Fases 1, 2 y F0 implementadas. Fase 7 (en curso): T-002-B701 a T-002-B704 implementadas (servicio y
+endpoints de nombres y condiciones); falta el checkpoint (`make check` + prueba independiente).
 Fase 6: T-002-B601 a T-002-B604 implementadas (servicio y endpoints del
 catálogo); checkpoint de la Fase 6 cumplido el 2026-11-18: `make check` en verde y la prueba independiente
 con `curl` (servidor local con TLS, empresa "Genérico"): "Portón corredizo" creado (`201`, unidad `unit`,
