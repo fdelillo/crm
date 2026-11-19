@@ -11,6 +11,36 @@ import (
 	"github.com/google/uuid"
 )
 
+const lockCatalogItem = `-- name: LockCatalogItem :one
+SELECT id, tenant_id, name, description, unit, unit_label, reference_price_cents, reference_price_currency, archived_at, created_at, updated_at FROM app.catalog_items WHERE tenant_id = $1 AND id = $2 FOR NO KEY UPDATE
+`
+
+type LockCatalogItemParams struct {
+	TenantID uuid.UUID
+	ID       uuid.UUID
+}
+
+// First statement of update, archive and restore of a catalog item (002/DD-9, INV-8). Other company or no row:
+// pgx.ErrNoRows, which the use case turns into ErrNotFound. It does not lock tenant_settings.
+func (q *Queries) LockCatalogItem(ctx context.Context, arg LockCatalogItemParams) (AppCatalogItem, error) {
+	row := q.db.QueryRow(ctx, lockCatalogItem, arg.TenantID, arg.ID)
+	var i AppCatalogItem
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.Name,
+		&i.Description,
+		&i.Unit,
+		&i.UnitLabel,
+		&i.ReferencePriceCents,
+		&i.ReferencePriceCurrency,
+		&i.ArchivedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const lockCategory = `-- name: LockCategory :one
 SELECT id, tenant_id, name, type, system_key, archived_at, created_at, updated_at FROM app.categories WHERE tenant_id = $1 AND id = $2 FOR NO KEY UPDATE
 `

@@ -10,3 +10,8 @@ SELECT id FROM app.tenant_settings WHERE tenant_id = @tenant_id FOR NO KEY UPDAT
 -- First statement of rename, archive and restore (002/DD-8, INV-8). Other company or no row: pgx.ErrNoRows, which the
 -- use case turns into ErrNotFound. It does not lock tenant_settings.
 SELECT * FROM app.categories WHERE tenant_id = @tenant_id AND id = @id FOR NO KEY UPDATE;
+
+-- name: LockCatalogItem :one
+-- First statement of update, archive and restore of a catalog item (002/DD-9, INV-8). Other company or no row:
+-- pgx.ErrNoRows, which the use case turns into ErrNotFound. It does not lock tenant_settings.
+SELECT * FROM app.catalog_items WHERE tenant_id = @tenant_id AND id = @id FOR NO KEY UPDATE;
