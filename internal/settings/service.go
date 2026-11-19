@@ -68,3 +68,17 @@ func lockTenantSettings(ctx context.Context, q *store.Queries, tenantID uuid.UUI
 	}
 	return nil
 }
+
+// readTenantSettings reads the company's settings row. Like lockTenantSettings it turns "no row" into
+// ErrTenantSettingsMissing and nothing else (T-002-B702, 002/DD-19); the writes call it after the lock.
+func readTenantSettings(ctx context.Context, q *store.Queries, tenantID uuid.UUID) (store.AppTenantSetting, error) {
+	row, err := q.GetTenantSettings(ctx, tenantID)
+	if err != nil {
+		mapped := db.MapError(err)
+		if errors.Is(mapped, db.ErrNotFound) {
+			return store.AppTenantSetting{}, ErrTenantSettingsMissing
+		}
+		return store.AppTenantSetting{}, fmt.Errorf("settings: read tenant settings: %w", mapped)
+	}
+	return row, nil
+}
