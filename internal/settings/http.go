@@ -543,11 +543,11 @@ type catalogItemResponse struct {
 	UpdatedAt      time.Time      `json:"updated_at"`
 }
 
-// catalogItemResponseOf maps an item to the body. Instants leave in UTC and at the precision the column keeps
-// (microseconds), so the answer to a write and the next read of the same item print the same text.
+// catalogItemResponseOf maps an item to the body. The service already returns instants as stored (UTC,
+// microseconds), so the answer to a write and the next read of the same item print the same text.
 func catalogItemResponseOf(c CatalogItem) catalogItemResponse {
 	out := catalogItemResponse{ID: c.ID, Name: c.Name, Description: c.Description, Unit: c.Unit, UnitLabel: c.UnitLabel,
-		Archived: c.Archived, CreatedAt: c.CreatedAt.UTC().Truncate(time.Microsecond), UpdatedAt: c.UpdatedAt.UTC().Truncate(time.Microsecond)}
+		Archived: c.Archived, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt}
 	if c.ReferencePrice != nil {
 		out.ReferencePrice = &moneyResponse{AmountCents: c.ReferencePrice.AmountCents, Currency: c.ReferencePrice.Currency}
 	}

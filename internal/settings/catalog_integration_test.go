@@ -18,8 +18,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// catalogEnv is a company seeded with the "generic" template, which brings its own catalog examples: the tests
-// look items up by id or by their own names, never by position among the seeded ones.
+// catalogEnv is a company seeded with the "generic" template, which brings no catalog items: the tests look
+// items up by id or by their own names, never by position, so they also hold for a template that seeds some.
 type catalogEnv struct {
 	t    *testing.T
 	clk  *testClock
