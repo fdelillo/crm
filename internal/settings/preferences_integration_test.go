@@ -351,3 +351,24 @@ func TestReplaceLabelsAndDeleteStageConfirmInTurn(t *testing.T) {
 	equal(t, "project singular", got.Project.Singular, "Obra")
 	equal(t, "pipeline", e.summary(), []string{"Presupuesto:open", "Aprobado:open", "En curso:open", "Finalizado:won"})
 }
+
+// T-002-B701 (002/DD-10, mechanism E): the two writes take the settings lock before reading the row, even when
+// the values turn out to be the current ones and no UPDATE follows, so what they compare against cannot go stale.
+// Mutation: without the lock they only block when they reach an UPDATE, and these no-op calls return at once.
+func TestPreferenceWritesWaitForTheSettingsLock(t *testing.T) {
+	e := newStagesEnv(t)
+	var errLabels, errDefaults error
+	holdSettingsLock(t, e.co.ID,
+		func(ctx context.Context) error {
+			_, errLabels = e.svc.ReplaceLabels(ctx, e.co.Admin, genericLabels, e.meta)
+			return nil
+		},
+		func(ctx context.Context) error {
+			_, errDefaults = e.svc.ReplaceQuoteDefaults(ctx, e.co.Admin, settings.QuoteDefaults{ValidityDays: 15}, e.meta)
+			return nil
+		},
+	)
+	if errLabels != nil || errDefaults != nil {
+		t.Fatalf("errors: %v, %v", errLabels, errDefaults)
+	}
+}
