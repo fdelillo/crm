@@ -301,9 +301,9 @@ func foreignPreferences(t *testing.T, f *e2e.Scenario) (needles []string, labels
 	if err != nil {
 		t.Fatal(err)
 	}
-	q, err := f.Settings.ReplaceQuoteDefaults(ctx, p, settings.QuoteDefaults{ValidityDays: 77, Terms: termsOf("Condiciones exclusivas de B")}, settings.RequestMeta{})
+	q, err := f.Settings.ReplaceQuoteDefaults(ctx, p, settings.QuoteDefaults{ValidityDays: 77, Terms: termsOf("Terms only company B has")}, settings.RequestMeta{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return []string{"Faena", "Mandante", "Propuesta", "Condiciones exclusivas de B"}, labelsBodyOf(l), quoteDefaultsBodyOf(q)
+	return []string{"Faena", "Mandante", "Propuesta", "Terms only company B has"}, labelsBodyOf(l), quoteDefaultsBodyOf(q)
 }
