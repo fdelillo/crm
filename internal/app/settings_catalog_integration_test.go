@@ -242,6 +242,8 @@ func TestCatalogItemsHTTPErrors(t *testing.T) {
 		{"create repeated amount_cents with an escaped key", "POST", "/api/v1/catalog-items", `{"name":"A","unit":"unit","reference_price":{"amount_cents":1,"amount_c\u0065nts":2,"currency":"ARS"}}`, 400, "malformed_request"},
 		{"update repeated amount_cents with an escaped key", "PATCH", "/api/v1/catalog-items/{plain}", `{"reference_price":{"amount_cents":1,"amount_c\u0065nts":2,"currency":"ARS"}}`, 400, "malformed_request"},
 		{"create repeated name", "POST", "/api/v1/catalog-items", `{"name":"A","name":"B","unit":"unit"}`, 400, "malformed_request"},
+		{"create name repeated in another case", "POST", "/api/v1/catalog-items", `{"name":"A","Name":"B","unit":"unit"}`, 400, "malformed_request"},
+		{"update amount_cents repeated in another case", "PATCH", "/api/v1/catalog-items/{plain}", `{"reference_price":{"amount_cents":1,"AMOUNT_CENTS":2,"currency":"ARS"}}`, 400, "malformed_request"},
 		{"update repeated name", "PATCH", "/api/v1/catalog-items/{plain}", `{"name":"A","name":"B"}`, 400, "malformed_request"},
 		{"update empty", "PATCH", "/api/v1/catalog-items/{plain}", `{}`, 400, "malformed_request"},
 		{"update null name", "PATCH", "/api/v1/catalog-items/{plain}", `{"name":null}`, 400, "malformed_request"},
