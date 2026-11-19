@@ -14,8 +14,8 @@ completo (`.claude/dev-mode`).
 
 ### Estado de la implementación (2026-11-18)
 
-Fases 1, 2 y F0 implementadas. Fase 6 en curso: T-002-B601 y T-002-B602 implementadas (servicio de
-catálogo, sin HTTP); faltan T-002-B603 y T-002-B604 (endpoints) y el checkpoint de la fase. Fase 5: T-002-B501 a T-002-B504 implementadas (servicio y endpoints de
+Fases 1, 2 y F0 implementadas. Fase 6 en curso: T-002-B601 a T-002-B604 implementadas (servicio y
+endpoints del catálogo); falta el checkpoint de la fase (la prueba independiente con `curl`). Fase 5: T-002-B501 a T-002-B504 implementadas (servicio y endpoints de
 categorías); checkpoint de la Fase 5 cumplido el 2026-11-18: `make check` en verde y la prueba independiente
 con `curl` (servidor local con TLS, empresa "Genérico"): "Cobros de clientes" renombrada a "Cobranzas"
 (sigue siendo de sistema, `customer_receipts`), `409 invalid_state` al archivarla, "Combustible" de egreso

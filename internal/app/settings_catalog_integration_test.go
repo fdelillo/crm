@@ -162,7 +162,7 @@ func TestCatalogItemsHTTPCreate(t *testing.T) {
 			}
 		}},
 		{"largest amount", `{"name":"Obra","unit":"linear_meter","reference_price":{"amount_cents":9007199254740991,"currency":"USD"}}`, func(t *testing.T, got catalogItemBody, raw string) {
-			if !strings.Contains(raw, `"amount_cents":9007199254740991`) || strings.ContainsAny(raw[strings.Index(raw, `"amount_cents"`):strings.Index(raw, `"currency"`)], "e.") {
+			if !strings.Contains(raw, `"amount_cents":9007199254740991,`) {
 				t.Fatalf("%s", raw)
 			}
 		}},

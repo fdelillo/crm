@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/fdelillo/crm/internal/authz"
 	"github.com/fdelillo/crm/internal/platform/httpx"
@@ -17,7 +18,8 @@ import (
 // behind RequirePermission(SettingsManage), so the permission is decided before the body is read or the
 // resource is looked up (001/INV-12).
 // T-002-B404 (002/DD-11, DD-12, DD-18): the stage operations.
-// T-002-B504 (002/DD-11, DD-12, DD-16): the category operations; the other operations add their routes with their tasks.
+// T-002-B504 (002/DD-11, DD-12, DD-16): the category operations.
+// T-002-B604 (002/DD-9, DD-11, DD-12, ADR-029): the catalog operations; the other operations add their routes with their tasks.
 func RegisterRoutes(r chi.Router, service *Service, logger *slog.Logger) {
 	r.Get("/api/v1/stages", func(w http.ResponseWriter, req *http.Request) {
 		p, _ := authz.PrincipalFrom(req.Context())
@@ -38,6 +40,30 @@ func RegisterRoutes(r chi.Router, service *Service, logger *slog.Logger) {
 			return
 		}
 		writeSettingsJSON(w, http.StatusOK, categoryListResponse(categories))
+	})
+	r.Get("/api/v1/catalog-items", func(w http.ResponseWriter, req *http.Request) {
+		includeArchived, ok := includeArchivedFrom(w, req)
+		if !ok {
+			return
+		}
+		p, _ := authz.PrincipalFrom(req.Context())
+		items, err := service.ListCatalogItems(req.Context(), p, includeArchived)
+		if writeSettingsError(w, req, err, logger) {
+			return
+		}
+		writeSettingsJSON(w, http.StatusOK, catalogItemListResponse(items))
+	})
+	r.Get("/api/v1/catalog-items/{catalogItemId}", func(w http.ResponseWriter, req *http.Request) {
+		id, ok := catalogItemIDParam(w, req)
+		if !ok {
+			return
+		}
+		p, _ := authz.PrincipalFrom(req.Context())
+		item, err := service.GetCatalogItem(req.Context(), p, id)
+		if writeSettingsError(w, req, err, logger) {
+			return
+		}
+		writeSettingsJSON(w, http.StatusOK, catalogItemResponseOf(item))
 	})
 	r.Group(func(r chi.Router) {
 		r.Use(authz.RequirePermission(authz.SettingsManage))
@@ -96,6 +122,68 @@ func RegisterRoutes(r chi.Router, service *Service, logger *slog.Logger) {
 				return
 			}
 			writeSettingsJSON(w, http.StatusOK, categoryResponseOf(restored))
+		})
+		r.Post("/api/v1/catalog-items", func(w http.ResponseWriter, req *http.Request) {
+			var input catalogItemCreateRequest
+			if err := httpx.DecodeJSON(w, req, &input); err != nil {
+				return
+			}
+			in, fields := input.toNewCatalogItem()
+			if fields != nil {
+				httpx.ValidationError(w, req, fields)
+				return
+			}
+			p, _ := authz.PrincipalFrom(req.Context())
+			created, err := service.CreateCatalogItem(req.Context(), p, in, settingsRequestMeta(req))
+			if writeSettingsError(w, req, err, logger) {
+				return
+			}
+			writeSettingsJSON(w, http.StatusCreated, catalogItemResponseOf(created))
+		})
+		r.Patch("/api/v1/catalog-items/{catalogItemId}", func(w http.ResponseWriter, req *http.Request) {
+			id, ok := catalogItemIDParam(w, req)
+			if !ok {
+				return
+			}
+			var input catalogItemUpdateRequest
+			if err := httpx.DecodeJSON(w, req, &input); err != nil {
+				return
+			}
+			changes, fields := input.toChanges()
+			if fields != nil {
+				httpx.ValidationError(w, req, fields)
+				return
+			}
+			p, _ := authz.PrincipalFrom(req.Context())
+			updated, err := service.UpdateCatalogItem(req.Context(), p, id, changes, settingsRequestMeta(req))
+			if writeSettingsError(w, req, err, logger) {
+				return
+			}
+			writeSettingsJSON(w, http.StatusOK, catalogItemResponseOf(updated))
+		})
+		r.Post("/api/v1/catalog-items/{catalogItemId}/archive", func(w http.ResponseWriter, req *http.Request) {
+			id, ok := catalogItemIDParam(w, req)
+			if !ok {
+				return
+			}
+			p, _ := authz.PrincipalFrom(req.Context())
+			archived, err := service.ArchiveCatalogItem(req.Context(), p, id, settingsRequestMeta(req))
+			if writeSettingsError(w, req, err, logger) {
+				return
+			}
+			writeSettingsJSON(w, http.StatusOK, catalogItemResponseOf(archived))
+		})
+		r.Post("/api/v1/catalog-items/{catalogItemId}/restore", func(w http.ResponseWriter, req *http.Request) {
+			id, ok := catalogItemIDParam(w, req)
+			if !ok {
+				return
+			}
+			p, _ := authz.PrincipalFrom(req.Context())
+			restored, err := service.RestoreCatalogItem(req.Context(), p, id, settingsRequestMeta(req))
+			if writeSettingsError(w, req, err, logger) {
+				return
+			}
+			writeSettingsJSON(w, http.StatusOK, catalogItemResponseOf(restored))
 		})
 		r.Post("/api/v1/stages", func(w http.ResponseWriter, req *http.Request) {
 			var input stageCreateRequest
@@ -184,6 +272,33 @@ func (o optional[T]) ptr() *T {
 	}
 	return &o.value
 }
+
+// nullable is a JSON field that tells absent, null and a value apart: the fields the contract lets a client clear
+// (description, unit_label, reference_price). value is nil for both absent and null; present says which. The
+// value is decoded strictly, so an unknown field inside a nested object is a 400 like it is at the top level.
+type nullable[T any] struct {
+	value   *T
+	present bool
+}
+
+func (n *nullable[T]) UnmarshalJSON(data []byte) error {
+	n.present = true
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		n.value = nil
+		return nil
+	}
+	var v T
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&v); err != nil {
+		return err
+	}
+	n.value = &v
+	return nil
+}
+
+// patch is the field as the service reads it: Set when it came in the body, null included.
+func (n nullable[T]) patch() Patch[*T] { return Patch[*T]{Set: n.present, Value: n.value} }
 
 // stageCreateRequest is StageCreate. A missing required field reaches the service as its zero value and
 // comes back as a field error (422), the same way signup treats its required fields.
@@ -302,22 +417,159 @@ func categoryFilterFrom(w http.ResponseWriter, req *http.Request) (CategoryFilte
 		}
 		filter.Type = &t
 	}
-	if query.Has("include_archived") {
-		switch query.Get("include_archived") {
-		case "true":
-			filter.IncludeArchived = true
-		case "false":
-		default:
-			httpx.WriteProblem(w, req, httpx.CodeMalformedRequest)
-			return CategoryFilter{}, false
-		}
+	includeArchived, ok := includeArchivedFrom(w, req)
+	if !ok {
+		return CategoryFilter{}, false
 	}
+	filter.IncludeArchived = includeArchived
 	return filter, true
+}
+
+// includeArchivedFrom reads ?include_archived; a value other than true or false is a 400 (plan 9.1).
+func includeArchivedFrom(w http.ResponseWriter, req *http.Request) (bool, bool) {
+	query := req.URL.Query()
+	if !query.Has("include_archived") {
+		return false, true
+	}
+	switch query.Get("include_archived") {
+	case "true":
+		return true, true
+	case "false":
+		return false, true
+	}
+	httpx.WriteProblem(w, req, httpx.CodeMalformedRequest)
+	return false, false
 }
 
 // categoryIDParam reads {categoryId}; a malformed id is the same 404 as one that does not exist.
 func categoryIDParam(w http.ResponseWriter, req *http.Request) (uuid.UUID, bool) {
 	id, err := uuid.Parse(chi.URLParam(req, "categoryId"))
+	if err != nil {
+		httpx.WriteProblem(w, req, httpx.CodeNotFound)
+		return uuid.Nil, false
+	}
+	return id, true
+}
+
+// moneyRequest is Money. The fields are pointers underneath (optional) so that a missing amount is not a zero, and
+// amount_cents decodes into an int64, never a float: 1.5, 1e3 and "100" are malformed, and so is anything that
+// does not fit (ADR-029).
+type moneyRequest struct {
+	AmountCents optional[int64]  `json:"amount_cents"`
+	Currency    optional[string] `json:"currency"`
+}
+
+// toMoney converts the price. The second result is non-nil only when the amount is missing, which the service
+// cannot see (a Money always has one): the errors of the whole price, the currency's included. Any other price
+// problem is the service's to report.
+func (m moneyRequest) toMoney() (*Money, FieldErrors) {
+	price := Money{AmountCents: m.AmountCents.value, Currency: m.Currency.value}
+	if m.AmountCents.present {
+		return &price, nil
+	}
+	errs := FieldErrors{}
+	errs.merge(validateReferencePrice(price))
+	errs["reference_price.amount_cents"] = codeRequired
+	return nil, errs
+}
+
+// referencePriceFrom is the price of a body: nil when absent or null.
+func referencePriceFrom(price nullable[moneyRequest]) (*Money, FieldErrors) {
+	if price.value == nil {
+		return nil, nil
+	}
+	return price.value.toMoney()
+}
+
+// catalogItemCreateRequest is CatalogItemCreate. A missing name or unit reaches the service as its zero value and
+// comes back as a field error (422).
+type catalogItemCreateRequest struct {
+	Name           optional[string]       `json:"name"`
+	Description    nullable[string]       `json:"description"`
+	Unit           optional[Unit]         `json:"unit"`
+	UnitLabel      nullable[string]       `json:"unit_label"`
+	ReferencePrice nullable[moneyRequest] `json:"reference_price"`
+}
+
+func (r catalogItemCreateRequest) toNewCatalogItem() (NewCatalogItem, FieldErrors) {
+	price, fields := referencePriceFrom(r.ReferencePrice)
+	if fields != nil {
+		return NewCatalogItem{}, fields
+	}
+	return NewCatalogItem{Name: r.Name.value, Description: r.Description.value, Unit: r.Unit.value, UnitLabel: r.UnitLabel.value, ReferencePrice: price}, nil
+}
+
+// catalogItemUpdateRequest is CatalogItemUpdate: only the present fields change; name and unit do not admit null.
+type catalogItemUpdateRequest struct {
+	Name           optional[string]       `json:"name"`
+	Description    nullable[string]       `json:"description"`
+	Unit           optional[Unit]         `json:"unit"`
+	UnitLabel      nullable[string]       `json:"unit_label"`
+	ReferencePrice nullable[moneyRequest] `json:"reference_price"`
+}
+
+func (r catalogItemUpdateRequest) toChanges() (CatalogItemChanges, FieldErrors) {
+	price, fields := referencePriceFrom(r.ReferencePrice)
+	if fields != nil {
+		return CatalogItemChanges{}, fields
+	}
+	changes := CatalogItemChanges{Description: r.Description.patch(), UnitLabel: r.UnitLabel.patch(),
+		ReferencePrice: Patch[*Money]{Set: r.ReferencePrice.present, Value: price}}
+	if r.Name.present {
+		changes.Name = Patch[string]{Set: true, Value: r.Name.value}
+	}
+	if r.Unit.present {
+		changes.Unit = Patch[Unit]{Set: true, Value: r.Unit.value}
+	}
+	return changes, nil
+}
+
+// moneyResponse is Money. AmountCents is an int64, so it leaves as a JSON integer.
+type moneyResponse struct {
+	AmountCents int64  `json:"amount_cents"`
+	Currency    string `json:"currency"`
+}
+
+// catalogItemResponse is CatalogItem. description, unit_label and reference_price are null when there is none.
+type catalogItemResponse struct {
+	ID             uuid.UUID      `json:"id"`
+	Name           string         `json:"name"`
+	Description    *string        `json:"description"`
+	Unit           Unit           `json:"unit"`
+	UnitLabel      *string        `json:"unit_label"`
+	ReferencePrice *moneyResponse `json:"reference_price"`
+	Archived       bool           `json:"archived"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
+}
+
+// catalogItemResponseOf maps an item to the body. Instants leave in UTC and at the precision the column keeps
+// (microseconds), so the answer to a write and the next read of the same item print the same text.
+func catalogItemResponseOf(c CatalogItem) catalogItemResponse {
+	out := catalogItemResponse{ID: c.ID, Name: c.Name, Description: c.Description, Unit: c.Unit, UnitLabel: c.UnitLabel,
+		Archived: c.Archived, CreatedAt: c.CreatedAt.UTC().Truncate(time.Microsecond), UpdatedAt: c.UpdatedAt.UTC().Truncate(time.Microsecond)}
+	if c.ReferencePrice != nil {
+		out.ReferencePrice = &moneyResponse{AmountCents: c.ReferencePrice.AmountCents, Currency: c.ReferencePrice.Currency}
+	}
+	return out
+}
+
+// catalogItemListBody is CatalogItemList. items is never null, also for an empty list.
+type catalogItemListBody struct {
+	Items []catalogItemResponse `json:"items"`
+}
+
+func catalogItemListResponse(items []CatalogItem) catalogItemListBody {
+	out := make([]catalogItemResponse, len(items))
+	for i, c := range items {
+		out[i] = catalogItemResponseOf(c)
+	}
+	return catalogItemListBody{Items: out}
+}
+
+// catalogItemIDParam reads {catalogItemId}; a malformed id is the same 404 as one that does not exist.
+func catalogItemIDParam(w http.ResponseWriter, req *http.Request) (uuid.UUID, bool) {
+	id, err := uuid.Parse(chi.URLParam(req, "catalogItemId"))
 	if err != nil {
 		httpx.WriteProblem(w, req, httpx.CodeNotFound)
 		return uuid.Nil, false
