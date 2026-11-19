@@ -6,7 +6,10 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/fdelillo/crm/internal/authz"
 	"github.com/fdelillo/crm/internal/platform/httpx"
@@ -465,8 +468,9 @@ func decodeCatalogBody(data []byte, dst any) error {
 }
 
 // rejectRepeatedMembers walks one JSON value and fails when an object, at any depth, has the same key twice.
-// Keys are compared once decoded, so "amount_cents" and "amount_c\u0065nts" are the same key. The body was
-// already validated as JSON by the outer decoder.
+// Keys are compared once decoded, so "amount_cents" and "amount_c\u0065nts" are the same key, and folded the way
+// encoding/json matches a key to a field, so "name" and "Name" are too. The body was already validated as JSON
+// by the outer decoder.
 func rejectRepeatedMembers(dec *json.Decoder) error {
 	tok, err := dec.Token()
 	if err != nil {
@@ -481,6 +485,7 @@ func rejectRepeatedMembers(dec *json.Decoder) error {
 				return err
 			}
 			key, _ := keyTok.(string)
+			key = foldMemberName(key)
 			if _, dup := seen[key]; dup {
 				return errRepeatedMember
 			}
@@ -501,6 +506,33 @@ func rejectRepeatedMembers(dec *json.Decoder) error {
 		return err
 	}
 	return nil
+}
+
+// foldMemberName folds a key the way encoding/json does when it matches a key to a struct field (appendFoldedName
+// and foldRune in its fold.go): ASCII letters to upper case, and any other rune to the smallest rune of its
+// unicode.SimpleFold orbit, so U+017F (long s) folds to S and U+212A (Kelvin sign) to K.
+func foldMemberName(key string) string {
+	var b strings.Builder
+	b.Grow(len(key))
+	for _, r := range key {
+		if r < utf8.RuneSelf {
+			if 'a' <= r && r <= 'z' {
+				r -= 'a' - 'A'
+			}
+			b.WriteRune(r)
+			continue
+		}
+		for {
+			next := unicode.SimpleFold(r)
+			if next <= r {
+				r = next
+				break
+			}
+			r = next
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 // moneyRequest is Money. The fields are pointers underneath (optional) so that a missing amount is not a zero, and
