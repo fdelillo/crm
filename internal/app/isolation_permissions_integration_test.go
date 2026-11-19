@@ -20,37 +20,43 @@ import (
 // T-B802: anonymous/operator/admin outcomes are literal, never inferred from chi/authz.
 // This table must cover the same complete set as T-B801 and the OpenAPI document.
 var isolationPermissions = map[string][3]int{
-	"GET /api/v1/industry-templates":               {200, 200, 200},
-	"POST /api/v1/auth/signup":                     {201, 201, 201},
-	"POST /api/v1/auth/login":                      {200, 200, 200},
-	"POST /api/v1/auth/logout":                     {204, 204, 204},
-	"POST /api/v1/auth/password-reset":             {202, 202, 202},
-	"POST /api/v1/auth/password-reset/confirm":     {204, 204, 204},
-	"POST /api/v1/auth/email-verification/confirm": {204, 204, 204},
-	"POST /api/v1/auth/email-verification/resend":  {401, 202, 202},
-	"POST /api/v1/auth/invitations/preview":        {200, 200, 200},
-	"POST /api/v1/auth/invitations/accept":         {201, 201, 201},
-	"GET /api/v1/me":                               {401, 200, 200},
-	"GET /api/v1/tenant":                           {401, 200, 200},
-	"PATCH /api/v1/tenant":                         {401, 403, 200},
-	"GET /api/v1/tenant/logo":                      {401, 200, 200},
-	"PUT /api/v1/tenant/logo":                      {401, 403, 200},
-	"DELETE /api/v1/tenant/logo":                   {401, 403, 204},
-	"GET /api/v1/users":                            {401, 403, 200},
-	"POST /api/v1/users/invitations":               {401, 403, 201},
-	"PUT /api/v1/users/{userId}/role":              {401, 403, 200},
-	"POST /api/v1/users/{userId}/deactivate":       {401, 403, 200},
-	"POST /api/v1/users/{userId}/reactivate":       {401, 403, 200},
-	"GET /api/v1/stages":                           {401, 200, 200},
-	"POST /api/v1/stages":                          {401, 403, 201},
-	"PATCH /api/v1/stages/{stageId}":               {401, 403, 200},
-	"DELETE /api/v1/stages/{stageId}":              {401, 403, 204},
-	"POST /api/v1/stages/{stageId}/move":           {401, 403, 200},
-	"GET /api/v1/categories":                       {401, 200, 200},
-	"POST /api/v1/categories":                      {401, 403, 201},
-	"PATCH /api/v1/categories/{categoryId}":        {401, 403, 200},
-	"POST /api/v1/categories/{categoryId}/archive": {401, 403, 200},
-	"POST /api/v1/categories/{categoryId}/restore": {401, 403, 200},
+	"GET /api/v1/industry-templates":                     {200, 200, 200},
+	"POST /api/v1/auth/signup":                           {201, 201, 201},
+	"POST /api/v1/auth/login":                            {200, 200, 200},
+	"POST /api/v1/auth/logout":                           {204, 204, 204},
+	"POST /api/v1/auth/password-reset":                   {202, 202, 202},
+	"POST /api/v1/auth/password-reset/confirm":           {204, 204, 204},
+	"POST /api/v1/auth/email-verification/confirm":       {204, 204, 204},
+	"POST /api/v1/auth/email-verification/resend":        {401, 202, 202},
+	"POST /api/v1/auth/invitations/preview":              {200, 200, 200},
+	"POST /api/v1/auth/invitations/accept":               {201, 201, 201},
+	"GET /api/v1/me":                                     {401, 200, 200},
+	"GET /api/v1/tenant":                                 {401, 200, 200},
+	"PATCH /api/v1/tenant":                               {401, 403, 200},
+	"GET /api/v1/tenant/logo":                            {401, 200, 200},
+	"PUT /api/v1/tenant/logo":                            {401, 403, 200},
+	"DELETE /api/v1/tenant/logo":                         {401, 403, 204},
+	"GET /api/v1/users":                                  {401, 403, 200},
+	"POST /api/v1/users/invitations":                     {401, 403, 201},
+	"PUT /api/v1/users/{userId}/role":                    {401, 403, 200},
+	"POST /api/v1/users/{userId}/deactivate":             {401, 403, 200},
+	"POST /api/v1/users/{userId}/reactivate":             {401, 403, 200},
+	"GET /api/v1/stages":                                 {401, 200, 200},
+	"POST /api/v1/stages":                                {401, 403, 201},
+	"PATCH /api/v1/stages/{stageId}":                     {401, 403, 200},
+	"DELETE /api/v1/stages/{stageId}":                    {401, 403, 204},
+	"POST /api/v1/stages/{stageId}/move":                 {401, 403, 200},
+	"GET /api/v1/categories":                             {401, 200, 200},
+	"POST /api/v1/categories":                            {401, 403, 201},
+	"PATCH /api/v1/categories/{categoryId}":              {401, 403, 200},
+	"POST /api/v1/categories/{categoryId}/archive":       {401, 403, 200},
+	"POST /api/v1/categories/{categoryId}/restore":       {401, 403, 200},
+	"GET /api/v1/catalog-items":                          {401, 200, 200},
+	"POST /api/v1/catalog-items":                         {401, 403, 201},
+	"GET /api/v1/catalog-items/{catalogItemId}":          {401, 200, 200},
+	"PATCH /api/v1/catalog-items/{catalogItemId}":        {401, 403, 200},
+	"POST /api/v1/catalog-items/{catalogItemId}/archive": {401, 403, 200},
+	"POST /api/v1/catalog-items/{catalogItemId}/restore": {401, 403, 200},
 }
 
 func permissionRequest(t *testing.T, f *e2e.Scenario, key string) (path, ct string, body []byte) {
@@ -104,6 +110,19 @@ func permissionRequest(t *testing.T, f *e2e.Scenario, key string) (path, ct stri
 		path = strings.ReplaceAll(path, "{categoryId}", own.ID.String())
 		if strings.HasPrefix(key, "PATCH ") {
 			body = []byte(`{"name":"Renombrada"}`)
+		}
+	case "catalog_item_create":
+		body = []byte(`{"name":"Portón corredizo","unit":"unit"}`)
+	case "catalog_item_list":
+	case "foreign_catalog_item_id":
+		// An item of the company, so the administrator gets a 200 from every operation.
+		own, err := f.Settings.CreateCatalogItem(context.Background(), f.A.Users["admin"].Principal, settings.NewCatalogItem{Name: "Portón corredizo", Unit: "unit"}, settings.RequestMeta{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		path = strings.ReplaceAll(path, "{catalogItemId}", own.ID.String())
+		if strings.HasPrefix(key, "PATCH ") {
+			body = []byte(`{"name":"Renombrado"}`)
 		}
 	case "foreign_id":
 		target := f.A.Users["operator"].ID
@@ -194,6 +213,13 @@ func TestIsolationPermissionMatrix(t *testing.T) {
 						// The permission is also decided before the id is parsed or looked up.
 						for _, id := range []string{uuid.NewString(), "no-uuid"} {
 							foreign := strings.ReplaceAll(strings.SplitN(key, " ", 2)[1], "{categoryId}", id)
+							isolationRequest(t, h, context.Background(), cookie, method, foreign, ct, body, "", 403)
+						}
+					}
+					if strings.Contains(key, "{catalogItemId}") {
+						// The permission is also decided before the id is parsed or looked up.
+						for _, id := range []string{uuid.NewString(), "no-uuid"} {
+							foreign := strings.ReplaceAll(strings.SplitN(key, " ", 2)[1], "{catalogItemId}", id)
 							isolationRequest(t, h, context.Background(), cookie, method, foreign, ct, body, "", 403)
 						}
 					}

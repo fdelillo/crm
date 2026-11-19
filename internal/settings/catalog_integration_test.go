@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -687,6 +688,50 @@ func TestUpdateCatalogItemConcurrentlyKeepsBothChanges(t *testing.T) {
 	equal(t, "price", got.ReferencePrice, &settings.Money{AmountCents: 250000, Currency: "USD"})
 	if n := len(readAudit(t, e.co.ID, "catalog_item.updated")); n != 2 {
 		t.Fatalf("catalog_item.updated rows = %d, want 2", n)
+	}
+}
+
+// Codex review of PR #68 (002/DD-9, DD-15, INV-13, mechanism E): the unit_label rule depends on the unit, so two
+// concurrent updates that touch each of them must serialize. From unit "other" with a label, one call changes the
+// unit to "hour" and the other only the label. Whichever goes first, the final item is "hour" without a label (a
+// label on "hour" is the state a lost update would leave) and the audit tells one of two coherent stories: the
+// unit change alone (the label change then found nothing to do on "hour"), or the label change followed by the
+// unit change. Mutation: GetCatalogItem instead of LockCatalogItem in writeCatalogItem.
+func TestUpdateCatalogItemUnitAndLabelConcurrentlyNeverLeaveLabelOnHour(t *testing.T) {
+	e := newCatalogEnv(t)
+	label := "jornal"
+	item := e.create(settings.NewCatalogItem{Name: "Colocación", Unit: "other", UnitLabel: &label})
+	newLabel := "día"
+	changes := []settings.CatalogItemChanges{
+		{Unit: present(settings.Unit("hour"))},
+		{UnitLabel: present(&newLabel)},
+	}
+	errs := make([]error, 2)
+	call := func(i int) func(context.Context) error {
+		return func(ctx context.Context) error {
+			_, errs[i] = e.svc.UpdateCatalogItem(ctx, e.co.Admin, item.ID, changes[i], e.meta)
+			return nil
+		}
+	}
+	holdRowLockThen(t, e.co.ID, lockCatalogItemSQL, []any{e.co.ID, item.ID}, nil, call(0), call(1))
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("call %d: %v", i, err)
+		}
+	}
+	got := e.get(item.ID)
+	if got.Unit != "hour" || got.UnitLabel != nil {
+		t.Fatalf("item = unit %q label %v, want hour without a label", got.Unit, got.UnitLabel)
+	}
+	var stories []string
+	for _, row := range readAudit(t, e.co.ID, "catalog_item.updated") {
+		stories = append(stories, fmt.Sprint(row.Data["fields"]))
+	}
+	slices.Sort(stories)
+	unitFirst := []string{"[unit unit_label]"}
+	labelFirst := []string{"[unit unit_label]", "[unit_label]"}
+	if !slices.Equal(stories, unitFirst) && !slices.Equal(stories, labelFirst) {
+		t.Fatalf("audited fields = %v, want %v (unit first) or %v (label first)", stories, unitFirst, labelFirst)
 	}
 }
 

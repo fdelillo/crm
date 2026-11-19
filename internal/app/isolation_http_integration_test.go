@@ -68,37 +68,43 @@ func TestIsolationRouteCoverage(t *testing.T) {
 
 // Expectations are declared independently of both the router and the contract.
 var isolationCases = map[string]string{
-	"GET /api/v1/industry-templates":               "catalog",
-	"POST /api/v1/auth/signup":                     "duplicate_signup",
-	"POST /api/v1/auth/login":                      "login",
-	"POST /api/v1/auth/logout":                     "logout",
-	"POST /api/v1/auth/password-reset":             "reset_request",
-	"POST /api/v1/auth/password-reset/confirm":     "reset_confirm",
-	"POST /api/v1/auth/email-verification/confirm": "verification_confirm",
-	"POST /api/v1/auth/email-verification/resend":  "verification_resend",
-	"POST /api/v1/auth/invitations/preview":        "invitation_preview",
-	"POST /api/v1/auth/invitations/accept":         "invitation_accept",
-	"GET /api/v1/me":                               "read",
-	"GET /api/v1/tenant":                           "read",
-	"PATCH /api/v1/tenant":                         "patch",
-	"GET /api/v1/tenant/logo":                      "logo_read",
-	"PUT /api/v1/tenant/logo":                      "logo_put",
-	"DELETE /api/v1/tenant/logo":                   "logo_delete",
-	"GET /api/v1/users":                            "read",
-	"POST /api/v1/users/invitations":               "invite",
-	"PUT /api/v1/users/{userId}/role":              "foreign_id",
-	"POST /api/v1/users/{userId}/deactivate":       "foreign_id",
-	"POST /api/v1/users/{userId}/reactivate":       "foreign_id",
-	"GET /api/v1/stages":                           "read",
-	"POST /api/v1/stages":                          "stage_create",
-	"PATCH /api/v1/stages/{stageId}":               "foreign_stage_id",
-	"DELETE /api/v1/stages/{stageId}":              "foreign_stage_id",
-	"POST /api/v1/stages/{stageId}/move":           "foreign_stage_id",
-	"GET /api/v1/categories":                       "read",
-	"POST /api/v1/categories":                      "category_create",
-	"PATCH /api/v1/categories/{categoryId}":        "foreign_category_id",
-	"POST /api/v1/categories/{categoryId}/archive": "foreign_category_id",
-	"POST /api/v1/categories/{categoryId}/restore": "foreign_category_id",
+	"GET /api/v1/industry-templates":                     "catalog",
+	"POST /api/v1/auth/signup":                           "duplicate_signup",
+	"POST /api/v1/auth/login":                            "login",
+	"POST /api/v1/auth/logout":                           "logout",
+	"POST /api/v1/auth/password-reset":                   "reset_request",
+	"POST /api/v1/auth/password-reset/confirm":           "reset_confirm",
+	"POST /api/v1/auth/email-verification/confirm":       "verification_confirm",
+	"POST /api/v1/auth/email-verification/resend":        "verification_resend",
+	"POST /api/v1/auth/invitations/preview":              "invitation_preview",
+	"POST /api/v1/auth/invitations/accept":               "invitation_accept",
+	"GET /api/v1/me":                                     "read",
+	"GET /api/v1/tenant":                                 "read",
+	"PATCH /api/v1/tenant":                               "patch",
+	"GET /api/v1/tenant/logo":                            "logo_read",
+	"PUT /api/v1/tenant/logo":                            "logo_put",
+	"DELETE /api/v1/tenant/logo":                         "logo_delete",
+	"GET /api/v1/users":                                  "read",
+	"POST /api/v1/users/invitations":                     "invite",
+	"PUT /api/v1/users/{userId}/role":                    "foreign_id",
+	"POST /api/v1/users/{userId}/deactivate":             "foreign_id",
+	"POST /api/v1/users/{userId}/reactivate":             "foreign_id",
+	"GET /api/v1/stages":                                 "read",
+	"POST /api/v1/stages":                                "stage_create",
+	"PATCH /api/v1/stages/{stageId}":                     "foreign_stage_id",
+	"DELETE /api/v1/stages/{stageId}":                    "foreign_stage_id",
+	"POST /api/v1/stages/{stageId}/move":                 "foreign_stage_id",
+	"GET /api/v1/categories":                             "read",
+	"POST /api/v1/categories":                            "category_create",
+	"PATCH /api/v1/categories/{categoryId}":              "foreign_category_id",
+	"POST /api/v1/categories/{categoryId}/archive":       "foreign_category_id",
+	"POST /api/v1/categories/{categoryId}/restore":       "foreign_category_id",
+	"GET /api/v1/catalog-items":                          "catalog_item_list",
+	"POST /api/v1/catalog-items":                         "catalog_item_create",
+	"GET /api/v1/catalog-items/{catalogItemId}":          "foreign_catalog_item_id",
+	"PATCH /api/v1/catalog-items/{catalogItemId}":        "foreign_catalog_item_id",
+	"POST /api/v1/catalog-items/{catalogItemId}/archive": "foreign_catalog_item_id",
+	"POST /api/v1/catalog-items/{catalogItemId}/restore": "foreign_catalog_item_id",
 }
 
 func isolationRoot(t *testing.T, f *e2e.Scenario, api chi.Router) *apitest.Server {
@@ -564,6 +570,55 @@ func TestIsolationHTTPMatrix(t *testing.T) {
 					}
 				})).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/", nil))
 				assertUnchanged(t, f, f.A.ID, aBefore, counts)
+			case "catalog_item_list":
+				// Company A brings no catalog of its own ("generic"), B does: A needs an item to be told apart from B's.
+				own, err := f.Settings.CreateCatalogItem(context.Background(), f.A.Users["admin"].Principal, settings.NewCatalogItem{Name: "Portón corredizo", Unit: "unit"}, settings.RequestMeta{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				aBefore = f.Snapshot(t, f.A.ID)
+				rec := call(path, "", nil, "", 200)
+				counts.verifySentinel(t, bytes.Contains(rec.Body.Bytes(), []byte(own.ID.String())), "own catalog item missing")
+				assertCatalogItemsBelongTo(t, rec, f, f.B, counts)
+				assertUnchanged(t, f, f.A.ID, aBefore, counts)
+				assertUnchanged(t, f, f.B.ID, bBefore, counts)
+			case "catalog_item_create":
+				rec := call(path, "application/json", []byte(`{"name":"Portón corredizo","unit":"unit"}`), "", 201)
+				var created struct{ ID uuid.UUID }
+				if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+					t.Fatal(err)
+				}
+				own, err := f.Settings.GetCatalogItem(context.Background(), f.A.Users["admin"].Principal, created.ID)
+				if err != nil || own.Name != "Portón corredizo" {
+					t.Fatalf("catalog item not created in company A: %v %v", own, err)
+				}
+				assertChanged(t, f, f.A.ID, aBefore, "catalog_items", "audit_log")
+				assertUnchanged(t, f, f.B.ID, bBefore, counts)
+			case "foreign_catalog_item_id":
+				if !strings.Contains(path, "{catalogItemId}") {
+					t.Fatalf("%s: catalog-item-id isolation case requires {catalogItemId}", key)
+				}
+				var payload []byte
+				ct := ""
+				if method == "PATCH" {
+					payload, ct = []byte(`{"name":"Otra"}`), "application/json"
+				}
+				// Same request context for every call, as in foreign_id: the 404 must match byte for byte.
+				withIP := httpx.ClientIP(nil, f.Logger)(api)
+				httpx.RequestID(http.HandlerFunc(func(_ http.ResponseWriter, req *http.Request) {
+					missing := isolationRequest(t, withIP, req.Context(), f.A.Users["admin"].Cookie, method, strings.ReplaceAll(path, "{catalogItemId}", uuid.NewString()), ct, payload, "", 404, checkResponse)
+					foreign, err := f.Settings.ListCatalogItems(context.Background(), f.B.Users["admin"].Principal, true)
+					if err != nil || len(foreign) == 0 {
+						t.Fatalf("catalog of B: %v %v", foreign, err)
+					}
+					for _, item := range foreign {
+						rec := isolationRequest(t, withIP, req.Context(), f.A.Users["admin"].Cookie, method, strings.ReplaceAll(path, "{catalogItemId}", item.ID.String()), ct, payload, "", 404, checkResponse)
+						counts.verify(t, bytes.Equal(missing.Body.Bytes(), rec.Body.Bytes()), "foreign catalog item 404 differs byte for byte from absent id: %s != %s", rec.Body.String(), missing.Body.String())
+						counts.verify(t, reflect.DeepEqual(missing.Header(), rec.Header()), "foreign catalog item 404 headers differ from absent id: %v != %v", rec.Header(), missing.Header())
+						assertUnchanged(t, f, f.B.ID, bBefore, counts)
+					}
+				})).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/", nil))
+				assertUnchanged(t, f, f.A.ID, aBefore, counts)
 			case "read", "logo_read", "catalog":
 				etag := ""
 				if isolationCases[key] == "logo_read" {
@@ -727,6 +782,13 @@ func TestIsolationHTTPMatrix(t *testing.T) {
 			api := app.BuildAPIRouter(f.Users, f.Companies, f.Settings, f.Clock, f.Logger)
 			h := isolationRoot(t, f, api)
 			path := strings.SplitN(key, " ", 2)[1]
+			if strings.Contains(path, "{catalogItemId}") {
+				own, err := f.Settings.CreateCatalogItem(context.Background(), f.A.Users["admin"].Principal, settings.NewCatalogItem{Name: "Portón corredizo", Unit: "unit"}, settings.RequestMeta{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				path = strings.ReplaceAll(path, "{catalogItemId}", own.ID.String())
+			}
 			beforeA, beforeB := f.Snapshot(t, f.A.ID), f.Snapshot(t, f.B.ID)
 			etag := ""
 			if path == "/api/v1/tenant/logo" {
@@ -787,6 +849,19 @@ func assertCategoriesBelongTo(t *testing.T, rec *httptest.ResponseRecorder, f *e
 	}
 	for _, c := range foreignCategories {
 		counterFor(counters).verifySentinel(t, !bytes.Contains(rec.Body.Bytes(), []byte(c.ID.String())), "foreign category in response: %s", c.ID)
+	}
+}
+
+// assertCatalogItemsBelongTo checks that a GET /catalog-items response lists no item of foreign, by id and by name.
+func assertCatalogItemsBelongTo(t *testing.T, rec *httptest.ResponseRecorder, f *e2e.Scenario, foreign e2e.Company, counters ...*isolationCount) {
+	t.Helper()
+	foreignItems, err := f.Settings.ListCatalogItems(context.Background(), foreign.Users["admin"].Principal, true)
+	if err != nil || len(foreignItems) == 0 {
+		t.Fatalf("catalog of the foreign company: %v %v", foreignItems, err)
+	}
+	for _, item := range foreignItems {
+		counterFor(counters).verifySentinel(t, !bytes.Contains(rec.Body.Bytes(), []byte(item.ID.String())), "foreign catalog item in response: %s", item.ID)
+		counterFor(counters).verifySentinel(t, !bytes.Contains(rec.Body.Bytes(), []byte(item.Name)), "foreign catalog item name in response: %s", item.Name)
 	}
 }
 

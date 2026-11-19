@@ -12,8 +12,6 @@ import (
 // pendingOperations lists the operationIds of spec 002 whose routes are not registered yet.
 // Each phase of 002 removes the operations it implements; the last one leaves it empty (DD-13).
 var pendingOperations = map[string]bool{
-	"listCatalogItems": true, "createCatalogItem": true, "getCatalogItem": true, "updateCatalogItem": true,
-	"archiveCatalogItem": true, "restoreCatalogItem": true,
 	"getLabels": true, "replaceLabels": true, "getQuoteDefaults": true, "replaceQuoteDefaults": true,
 }
 
