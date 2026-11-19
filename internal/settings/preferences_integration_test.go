@@ -323,8 +323,8 @@ func TestPreferencesWithoutSettingsRow(t *testing.T) {
 }
 
 // T-002-B701 (002/DD-5, DD-10, mechanism E): ReplaceLabels and DeleteStage of one company share the settings lock,
-// so they confirm one after the other and never deadlock (40P01). Mutation: without the lock in ReplaceLabels no
-// call blocks behind T_admin and the helper fails.
+// so they confirm one after the other and never deadlock (40P01). This test does not catch a missing lock: the
+// UPDATE of ReplaceLabels blocks on the held row anyway. TestPreferenceWritesWaitForTheSettingsLock catches it.
 func TestReplaceLabelsAndDeleteStageConfirmInTurn(t *testing.T) {
 	e := newStagesEnv(t)
 	finished := e.id("Perdido")
