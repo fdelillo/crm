@@ -152,3 +152,113 @@ func TestCatalogItemRequestsRejectMalformedInput(t *testing.T) {
 		})
 	}
 }
+
+// preferencesRouter has no service: a request that reaches it panics, so the cases below prove the answer
+// comes from the decoding alone.
+func preferencesRouter() http.Handler {
+	router := chi.NewRouter()
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			admin := authz.Principal{TenantID: uuid.New(), UserID: uuid.New(), Role: authz.RoleAdmin}
+			next.ServeHTTP(w, r.WithContext(authz.WithPrincipal(r.Context(), admin)))
+		})
+	})
+	RegisterRoutes(router, nil, slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)))
+	return router
+}
+
+func servePreferences(router http.Handler, method, path, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	var rec *httptest.ResponseRecorder
+	httpx.RequestID(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec = httptest.NewRecorder()
+		router.ServeHTTP(rec, r)
+	})).ServeHTTP(httptest.NewRecorder(), req)
+	return rec
+}
+
+const (
+	validProject  = `"project":{"singular":"Obra","plural":"Obras","gender":"feminine"}`
+	validCustomer = `"customer":{"singular":"Cliente","plural":"Clientes","gender":"masculine"}`
+	validQuote    = `"quote":{"singular":"Presupuesto","plural":"Presupuestos","gender":"masculine"}`
+)
+
+// T-002-B703 (002/DD-10, plan 9.1): a labels or quote-defaults body the contract does not admit is a 400 before
+// the service is reached: no unknown field at any depth, no null where the contract has none, no wrong type and
+// no integer written with a point or an exponent. Repeated members are not rejected here (only the catalog does).
+func TestPreferencesRequestsRejectMalformedInput(t *testing.T) {
+	router := preferencesRouter()
+	all := validProject + "," + validCustomer + "," + validQuote
+	for _, tc := range []struct{ name, path, body string }{
+		{"labels unknown field", "/api/v1/settings/labels", `{` + all + `,"extra":1}`},
+		{"labels nested unknown field", "/api/v1/settings/labels", `{"project":{"singular":"Obra","plural":"Obras","gender":"feminine","extra":1},` + validCustomer + `,` + validQuote + `}`},
+		{"labels null object", "/api/v1/settings/labels", `{"project":null,` + validCustomer + `,` + validQuote + `}`},
+		{"labels null singular", "/api/v1/settings/labels", `{"project":{"singular":null,"plural":"Obras","gender":"feminine"},` + validCustomer + `,` + validQuote + `}`},
+		{"labels null gender", "/api/v1/settings/labels", `{"project":{"singular":"Obra","plural":"Obras","gender":null},` + validCustomer + `,` + validQuote + `}`},
+		{"labels singular as number", "/api/v1/settings/labels", `{"project":{"singular":1,"plural":"Obras","gender":"feminine"},` + validCustomer + `,` + validQuote + `}`},
+		{"labels object as string", "/api/v1/settings/labels", `{"project":"Obra",` + validCustomer + `,` + validQuote + `}`},
+		{"labels array body", "/api/v1/settings/labels", `[]`},
+		{"labels broken json", "/api/v1/settings/labels", `{"project":`},
+		{"quote defaults unknown field", "/api/v1/settings/quote-defaults", `{"validity_days":30,"terms":null,"extra":1}`},
+		{"quote defaults validity as string", "/api/v1/settings/quote-defaults", `{"validity_days":"30","terms":null}`},
+		{"quote defaults validity null", "/api/v1/settings/quote-defaults", `{"validity_days":null,"terms":null}`},
+		{"quote defaults validity with a zero decimal", "/api/v1/settings/quote-defaults", `{"validity_days":30.0,"terms":null}`},
+		{"quote defaults validity with decimals", "/api/v1/settings/quote-defaults", `{"validity_days":30.5,"terms":null}`},
+		{"quote defaults validity as exponent", "/api/v1/settings/quote-defaults", `{"validity_days":3e1,"terms":null}`},
+		{"quote defaults validity beyond int", "/api/v1/settings/quote-defaults", `{"validity_days":99999999999999999999,"terms":null}`},
+		{"quote defaults terms as number", "/api/v1/settings/quote-defaults", `{"validity_days":30,"terms":5}`},
+		{"quote defaults broken json", "/api/v1/settings/quote-defaults", `{"validity_days":`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := servePreferences(router, "PUT", tc.path, tc.body)
+			var problem struct{ Code string }
+			if err := json.Unmarshal(rec.Body.Bytes(), &problem); rec.Code != 400 || err != nil || problem.Code != "malformed_request" {
+				t.Fatalf("status = %d, body = %s; want 400 malformed_request", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+// T-002-B703 (002/DD-10, contract replaceLabels and replaceQuoteDefaults): a missing required member is a 422
+// with its own path and `required`, answered with the other fields' errors in the same response.
+func TestPreferencesRequestsReportMissingMembers(t *testing.T) {
+	router := preferencesRouter()
+	for _, tc := range []struct {
+		name, path, body string
+		want             map[string]string
+	}{
+		{"labels without customer", "/api/v1/settings/labels", `{` + validProject + `,` + validQuote + `}`, map[string]string{"customer": "required"}},
+		{"labels empty", "/api/v1/settings/labels", `{}`, map[string]string{"project": "required", "customer": "required", "quote": "required"}},
+		{"labels without customer and a bad quote", "/api/v1/settings/labels",
+			`{` + validProject + `,"quote":{"singular":"","plural":"Presupuestos","gender":"neutral"}}`,
+			map[string]string{"customer": "required", "quote.singular": "required", "quote.gender": "invalid_value"}},
+		{"quote defaults without terms", "/api/v1/settings/quote-defaults", `{"validity_days":30}`, map[string]string{"terms": "required"}},
+		{"quote defaults without validity_days", "/api/v1/settings/quote-defaults", `{"terms":null}`, map[string]string{"validity_days": "required"}},
+		{"quote defaults empty", "/api/v1/settings/quote-defaults", `{}`, map[string]string{"validity_days": "required", "terms": "required"}},
+		{"quote defaults without terms and a bad validity", "/api/v1/settings/quote-defaults", `{"validity_days":400}`, map[string]string{"validity_days": "invalid_value", "terms": "required"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := servePreferences(router, "PUT", tc.path, tc.body)
+			var problem struct {
+				Code   string
+				Errors []struct{ Field, Code string }
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &problem); err != nil || rec.Code != 422 || problem.Code != "validation_failed" {
+				t.Fatalf("status = %d, body = %s; want 422 validation_failed", rec.Code, rec.Body.String())
+			}
+			got := map[string]string{}
+			for _, e := range problem.Errors {
+				got[e.Field] = e.Code
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("errors = %v, want %v", got, tc.want)
+			}
+			for field, code := range tc.want {
+				if got[field] != code {
+					t.Fatalf("errors = %v, want %v", got, tc.want)
+				}
+			}
+		})
+	}
+}

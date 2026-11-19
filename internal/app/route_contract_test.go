@@ -11,9 +11,7 @@ import (
 
 // pendingOperations lists the operationIds of spec 002 whose routes are not registered yet.
 // Each phase of 002 removes the operations it implements; the last one leaves it empty (DD-13).
-var pendingOperations = map[string]bool{
-	"getLabels": true, "replaceLabels": true, "getQuoteDefaults": true, "replaceQuoteDefaults": true,
-}
+var pendingOperations = map[string]bool{}
 
 // contractRouteProblems compares the declared operations with the routes the router implements.
 // implemented holds "METHOD /api/v1/path" keys; pending holds operationIds.
