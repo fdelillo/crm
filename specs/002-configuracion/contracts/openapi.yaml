@@ -1068,7 +1068,9 @@ components:
         reference_price:
           description: |
             Sus errores de validación se informan en `reference_price.amount_cents` y
-            `reference_price.currency`, nunca en `reference_price`.
+            `reference_price.currency`, nunca en `reference_price`. `amount_cents` se escribe como
+            token entero de JSON: con punto o exponente (`100.0`, `1e3`) es `400 malformed_request`
+            aunque su valor sea entero. Un miembro repetido en el cuerpo también es `400`.
           oneOf:
             - $ref: '#/components/schemas/Money'
             - type: 'null'
@@ -1096,7 +1098,9 @@ components:
         reference_price:
           description: |
             Sus errores de validación se informan en `reference_price.amount_cents` y
-            `reference_price.currency`, nunca en `reference_price`.
+            `reference_price.currency`, nunca en `reference_price`. `amount_cents` se escribe como
+            token entero de JSON: con punto o exponente (`100.0`, `1e3`) es `400 malformed_request`
+            aunque su valor sea entero. Un miembro repetido en el cuerpo también es `400`.
           oneOf:
             - $ref: '#/components/schemas/Money'
             - type: 'null'

@@ -14,8 +14,17 @@ completo (`.claude/dev-mode`).
 
 ### Estado de la implementación (2026-11-18)
 
-Fases 1, 2 y F0 implementadas. Fase 6 en curso: T-002-B601 y T-002-B602 implementadas (servicio de
-catálogo, sin HTTP); faltan T-002-B603 y T-002-B604 (endpoints) y el checkpoint de la fase. Fase 5: T-002-B501 a T-002-B504 implementadas (servicio y endpoints de
+Fases 1, 2 y F0 implementadas. Fase 6: T-002-B601 a T-002-B604 implementadas (servicio y endpoints del
+catálogo); checkpoint de la Fase 6 cumplido el 2026-11-18: `make check` en verde y la prueba independiente
+con `curl` (servidor local con TLS, empresa "Genérico"): "Portón corredizo" creado (`201`, unidad `unit`,
+`reference_price` `{"amount_cents":450000,"currency":"USD"}` como entero JSON), solo el precio cambiado a
+480000 (`200`; nombre, unidad y `created_at` iguales en la lectura siguiente), archivado (`200`), ausente de
+`GET /catalog-items` y presente con `archived: true` con `include_archived=true`; `amount_cents: 1.5` →
+`400 malformed_request`. Además: 2^53 → `422 reference_price.amount_cents invalid_value`, precio sin importe
+→ `422 required`, precio 0 → `201` con 0, `other` sin etiqueta → `422 unit_label required`,
+`{"name": null}` → `400`, `{"reference_price": null}` → `200` sin precio, `include_archived=maybe` → `400`,
+y auditoría `catalog_item.created {unit}`, `catalog_item.updated {fields: [reference_price]}`,
+`catalog_item.archived`. Fase 5: T-002-B501 a T-002-B504 implementadas (servicio y endpoints de
 categorías); checkpoint de la Fase 5 cumplido el 2026-11-18: `make check` en verde y la prueba independiente
 con `curl` (servidor local con TLS, empresa "Genérico"): "Cobros de clientes" renombrada a "Cobranzas"
 (sigue siendo de sistema, `customer_receipts`), `409 invalid_state` al archivarla, "Combustible" de egreso

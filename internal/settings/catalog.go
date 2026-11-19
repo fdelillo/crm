@@ -206,7 +206,7 @@ func (s *Service) CreateCatalogItem(ctx context.Context, p authz.Principal, in N
 	}
 	var created CatalogItem
 	err = s.runner.InTenantTx(ctx, p.TenantID, func(ctx context.Context, tx db.Tx) error {
-		now := s.clock.Now()
+		now := storedInstant(s.clock.Now())
 		price := moneyColumns(in.ReferencePrice)
 		err := store.New(tx).InsertCatalogItem(ctx, store.InsertCatalogItemParams{ID: id, TenantID: p.TenantID, Name: in.Name,
 			Description: textColumn(in.Description), Unit: string(in.Unit), UnitLabel: textColumn(in.UnitLabel),
@@ -362,7 +362,7 @@ func (s *Service) writeCatalogItem(ctx context.Context, p authz.Principal, id uu
 		if err != nil {
 			return catalogReadError("lock", err)
 		}
-		now := s.clock.Now()
+		now := storedInstant(s.clock.Now())
 		out, err = decide(q, tx, catalogItemFromRow(row), now)
 		return err
 	})
@@ -441,3 +441,7 @@ func copyMoney(m *Money) *Money {
 	c := *m
 	return &c
 }
+
+// storedInstant is t as a timestamptz column keeps it (UTC, microseconds), so the item a write returns prints
+// the same instants as the next read of it.
+func storedInstant(t time.Time) time.Time { return t.UTC().Truncate(time.Microsecond) }
