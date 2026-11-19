@@ -12,10 +12,18 @@ plan.
 Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invocación**, en modo
 completo (`.claude/dev-mode`).
 
-### Estado de la implementación (2026-11-18)
+### Estado de la implementación (2026-11-19)
 
-Fases 1, 2 y F0 implementadas. Fase 7 (en curso): T-002-B701 a T-002-B704 implementadas (servicio y
-endpoints de nombres y condiciones); falta el checkpoint (`make check` + prueba independiente).
+Fases 1, 2 y F0 implementadas. Fase 7: T-002-B701 a T-002-B704 implementadas (servicio y endpoints de
+nombres y condiciones); checkpoint de la Fase 7 cumplido el 2026-11-19: `make check` en verde y la prueba
+independiente con `curl` (servidor local con TLS, empresa "Genérico"): `PUT /settings/labels` con Proyecto
+→ "Obra"/"Obras" femenino (`200`), `GET /settings/labels` como Operador invitado lo devuelve (`200`), y
+`PUT /settings/quote-defaults` con 30 días y condiciones `"   "` guarda `terms: null` (`200`, igual en la
+lectura del Operador). Además: el mismo `PUT` de nombres repetido no audita, sin `customer` →
+`422 customer required`, un campo desconocido → `400`, `validity_days: "30"` → `400`, `validity_days: 400`
+→ `422 invalid_value`, `terms: null` → `200`, los dos `PUT` como Operador → `403`, y auditoría
+`settings.labels_updated {entities: [project]}`, `settings.quote_defaults_updated {fields: [validity_days]}`
+y `{fields: [terms]}` por cada cambio de condiciones.
 Fase 6: T-002-B601 a T-002-B604 implementadas (servicio y endpoints del
 catálogo); checkpoint de la Fase 6 cumplido el 2026-11-18: `make check` en verde y la prueba independiente
 con `curl` (servidor local con TLS, empresa "Genérico"): "Portón corredizo" creado (`201`, unidad `unit`,
