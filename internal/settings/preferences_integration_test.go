@@ -372,3 +372,90 @@ func TestPreferenceWritesWaitForTheSettingsLock(t *testing.T) {
 		t.Fatalf("errors: %v, %v", errLabels, errDefaults)
 	}
 }
+
+// T-002-B701 (002/DD-10, INV-13, mechanism E): two identical writes that wait together for the settings lock change
+// and audit once. The second one compares against the row the first one left, so it is a no-op. Mutation: reading
+// the row before lockTenantSettings gives both calls the old values, and both write and audit.
+func TestIdenticalPreferenceWritesThatWaitTogetherAuditOnce(t *testing.T) {
+	in := genericLabels
+	in.Project = settings.EntityLabel{Singular: "Obra", Plural: "Obras", Gender: "feminine"}
+	defaults := settings.QuoteDefaults{ValidityDays: 30}
+	cases := []struct {
+		name, action string
+		write        func(context.Context, *stagesEnv) error
+	}{
+		{"labels", "settings.labels_updated", func(ctx context.Context, e *stagesEnv) error {
+			_, err := e.svc.ReplaceLabels(ctx, e.co.Admin, in, e.meta)
+			return err
+		}},
+		{"quote defaults", "settings.quote_defaults_updated", func(ctx context.Context, e *stagesEnv) error {
+			_, err := e.svc.ReplaceQuoteDefaults(ctx, e.co.Admin, defaults, e.meta)
+			return err
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			e := newStagesEnv(t)
+			errs := make([]error, 2)
+			holdSettingsLock(t, e.co.ID,
+				func(ctx context.Context) error { errs[0] = c.write(ctx, e); return nil },
+				func(ctx context.Context) error { errs[1] = c.write(ctx, e); return nil },
+			)
+			if errs[0] != nil || errs[1] != nil {
+				t.Fatalf("errors: %v, %v", errs[0], errs[1])
+			}
+			if got := len(readAudit(t, e.co.ID, c.action)); got != 1 {
+				t.Fatalf("%s audit rows = %d, want 1", c.action, got)
+			}
+		})
+	}
+}
+
+// T-002-B701 (002/DD-5, DD-10, mechanism E): a write that waited for the settings lock stamps updated_at with the
+// instant it holds the lock, not the one it started at. Mutation: reading the clock before lockTenantSettings stores
+// the earlier instant.
+func TestPreferenceWritesStampTheInstantTheyHoldTheLock(t *testing.T) {
+	in := genericLabels
+	in.Project.Singular = "Obra"
+	cases := []struct {
+		name  string
+		write func(context.Context, *stagesEnv) error
+	}{
+		{"labels", func(ctx context.Context, e *stagesEnv) error {
+			_, err := e.svc.ReplaceLabels(ctx, e.co.Admin, in, e.meta)
+			return err
+		}},
+		{"quote defaults", func(ctx context.Context, e *stagesEnv) error {
+			_, err := e.svc.ReplaceQuoteDefaults(ctx, e.co.Admin, settings.QuoteDefaults{ValidityDays: 30}, e.meta)
+			return err
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			e := newStagesEnv(t)
+			waited := e.clk.Now()
+			var errWrite error
+			holdSettingsLockThen(t, e.co.ID, func() { e.clk.Advance(time.Hour) },
+				func(ctx context.Context) error { errWrite = c.write(ctx, e); return nil },
+			)
+			if errWrite != nil {
+				t.Fatal(errWrite)
+			}
+			if want, got := waited.Add(time.Hour), settingsUpdatedAt(t, e.co.ID); !got.Equal(want) {
+				t.Fatalf("updated_at = %s, want %s (the instant under the lock, not %s)", got.UTC(), want, waited)
+			}
+		})
+	}
+}
+
+func settingsUpdatedAt(t *testing.T, tenantID uuid.UUID) time.Time {
+	t.Helper()
+	var at time.Time
+	err := testRunner(t).InTenantTx(context.Background(), tenantID, func(ctx context.Context, tx db.Tx) error {
+		return tx.QueryRow(ctx, `SELECT updated_at FROM app.tenant_settings WHERE tenant_id = $1`, tenantID).Scan(&at)
+	})
+	if err != nil {
+		t.Fatalf("read settings updated_at: %v", err)
+	}
+	return at
+}
