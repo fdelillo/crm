@@ -451,6 +451,58 @@ func categoryIDParam(w http.ResponseWriter, req *http.Request) (uuid.UUID, bool)
 	return id, true
 }
 
+var errRepeatedMember = errors.New("settings: repeated member in a JSON object")
+
+// decodeCatalogBody decodes a catalog write body strictly: no unknown field (the outer decoder's setting does not
+// reach an UnmarshalJSON) and no repeated member, which encoding/json would resolve by keeping the last one.
+func decodeCatalogBody(data []byte, dst any) error {
+	if err := rejectRepeatedMembers(json.NewDecoder(bytes.NewReader(data))); err != nil {
+		return err
+	}
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	return dec.Decode(dst)
+}
+
+// rejectRepeatedMembers walks one JSON value and fails when an object, at any depth, has the same key twice.
+// Keys are compared once decoded, so "amount_cents" and "amount_c\u0065nts" are the same key. The body was
+// already validated as JSON by the outer decoder.
+func rejectRepeatedMembers(dec *json.Decoder) error {
+	tok, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	switch tok {
+	case json.Delim('{'):
+		seen := map[string]struct{}{}
+		for dec.More() {
+			keyTok, err := dec.Token()
+			if err != nil {
+				return err
+			}
+			key, _ := keyTok.(string)
+			if _, dup := seen[key]; dup {
+				return errRepeatedMember
+			}
+			seen[key] = struct{}{}
+			if err := rejectRepeatedMembers(dec); err != nil {
+				return err
+			}
+		}
+		_, err = dec.Token()
+		return err
+	case json.Delim('['):
+		for dec.More() {
+			if err := rejectRepeatedMembers(dec); err != nil {
+				return err
+			}
+		}
+		_, err = dec.Token()
+		return err
+	}
+	return nil
+}
+
 // moneyRequest is Money. The fields are pointers underneath (optional) so that a missing amount is not a zero, and
 // amount_cents decodes into an int64, never a float: 1.5, 1e3 and "100" are malformed, and so is anything that
 // does not fit (ADR-029).
@@ -491,6 +543,14 @@ type catalogItemCreateRequest struct {
 	ReferencePrice nullable[moneyRequest] `json:"reference_price"`
 }
 
+// plainCatalogItemCreateRequest has the fields of catalogItemCreateRequest and none of its methods, so decoding
+// into it does not call UnmarshalJSON again.
+type plainCatalogItemCreateRequest catalogItemCreateRequest
+
+func (r *catalogItemCreateRequest) UnmarshalJSON(data []byte) error {
+	return decodeCatalogBody(data, (*plainCatalogItemCreateRequest)(r))
+}
+
 func (r catalogItemCreateRequest) toNewCatalogItem() (NewCatalogItem, FieldErrors) {
 	price, fields := referencePriceFrom(r.ReferencePrice)
 	if fields != nil {
@@ -506,6 +566,12 @@ type catalogItemUpdateRequest struct {
 	Unit           optional[Unit]         `json:"unit"`
 	UnitLabel      nullable[string]       `json:"unit_label"`
 	ReferencePrice nullable[moneyRequest] `json:"reference_price"`
+}
+
+type plainCatalogItemUpdateRequest catalogItemUpdateRequest
+
+func (r *catalogItemUpdateRequest) UnmarshalJSON(data []byte) error {
+	return decodeCatalogBody(data, (*plainCatalogItemUpdateRequest)(r))
 }
 
 func (r catalogItemUpdateRequest) toChanges() (CatalogItemChanges, FieldErrors) {
