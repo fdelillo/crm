@@ -119,6 +119,18 @@ func TestCatalogItemRequestsRejectMalformedInput(t *testing.T) {
 		{"update price unknown field", "PATCH", "/api/v1/catalog-items/" + id, `{"reference_price":{"amount_cents":1,"currency":"ARS","extra":1}}`},
 		{"update unknown field", "PATCH", "/api/v1/catalog-items/" + id, `{"archived":true}`},
 		{"update broken json", "PATCH", "/api/v1/catalog-items/" + id, `{"name":`},
+		{"create repeated amount_cents 100 then 900", "POST", "/api/v1/catalog-items", `{"name":"A","unit":"unit","reference_price":{"amount_cents":100,"amount_cents":900,"currency":"ARS"}}`},
+		{"update repeated amount_cents 100 then 900", "PATCH", "/api/v1/catalog-items/" + id, `{"reference_price":{"amount_cents":100,"amount_cents":900,"currency":"ARS"}}`},
+		{"create repeated amount_cents 900 then 100", "POST", "/api/v1/catalog-items", `{"name":"A","unit":"unit","reference_price":{"amount_cents":900,"amount_cents":100,"currency":"ARS"}}`},
+		{"update repeated amount_cents 900 then 100", "PATCH", "/api/v1/catalog-items/" + id, `{"reference_price":{"amount_cents":900,"amount_cents":100,"currency":"ARS"}}`},
+		{"create repeated currency", "POST", "/api/v1/catalog-items", `{"name":"A","unit":"unit","reference_price":{"amount_cents":1,"currency":"ARS","currency":"USD"}}`},
+		{"update repeated currency", "PATCH", "/api/v1/catalog-items/" + id, `{"reference_price":{"amount_cents":1,"currency":"ARS","currency":"USD"}}`},
+		{"create repeated amount_cents with an escaped key", "POST", "/api/v1/catalog-items", `{"name":"A","unit":"unit","reference_price":{"amount_cents":1,"amount_c\u0065nts":2,"currency":"ARS"}}`},
+		{"update repeated amount_cents with an escaped key", "PATCH", "/api/v1/catalog-items/" + id, `{"reference_price":{"amount_cents":1,"amount_c\u0065nts":2,"currency":"ARS"}}`},
+		{"create repeated name", "POST", "/api/v1/catalog-items", `{"name":"A","name":"B","unit":"unit"}`},
+		{"update repeated name", "PATCH", "/api/v1/catalog-items/" + id, `{"name":"A","name":"B"}`},
+		{"create repeated reference_price", "POST", "/api/v1/catalog-items", `{"name":"A","unit":"unit","reference_price":null,"reference_price":{"amount_cents":1,"currency":"ARS"}}`},
+		{"update repeated reference_price", "PATCH", "/api/v1/catalog-items/" + id, `{"reference_price":null,"reference_price":{"amount_cents":1,"currency":"ARS"}}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))

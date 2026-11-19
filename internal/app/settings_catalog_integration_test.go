@@ -233,6 +233,16 @@ func TestCatalogItemsHTTPErrors(t *testing.T) {
 		{"create unknown field", "POST", "/api/v1/catalog-items", `{"name":"A","unit":"unit","archived":true}`, 400, "malformed_request"},
 		{"create price with unknown field", "POST", "/api/v1/catalog-items", `{"name":"A","unit":"unit","reference_price":{"amount_cents":1,"currency":"ARS","x":1}}`, 400, "malformed_request"},
 		{"create broken json", "POST", "/api/v1/catalog-items", `{"name":`, 400, "malformed_request"},
+		{"create repeated amount_cents 100 then 900", "POST", "/api/v1/catalog-items", `{"name":"A","unit":"unit","reference_price":{"amount_cents":100,"amount_cents":900,"currency":"ARS"}}`, 400, "malformed_request"},
+		{"update repeated amount_cents 100 then 900", "PATCH", "/api/v1/catalog-items/{plain}", `{"reference_price":{"amount_cents":100,"amount_cents":900,"currency":"ARS"}}`, 400, "malformed_request"},
+		{"create repeated amount_cents 900 then 100", "POST", "/api/v1/catalog-items", `{"name":"A","unit":"unit","reference_price":{"amount_cents":900,"amount_cents":100,"currency":"ARS"}}`, 400, "malformed_request"},
+		{"update repeated amount_cents 900 then 100", "PATCH", "/api/v1/catalog-items/{plain}", `{"reference_price":{"amount_cents":900,"amount_cents":100,"currency":"ARS"}}`, 400, "malformed_request"},
+		{"create repeated currency", "POST", "/api/v1/catalog-items", `{"name":"A","unit":"unit","reference_price":{"amount_cents":1,"currency":"ARS","currency":"USD"}}`, 400, "malformed_request"},
+		{"update repeated currency", "PATCH", "/api/v1/catalog-items/{plain}", `{"reference_price":{"amount_cents":1,"currency":"ARS","currency":"USD"}}`, 400, "malformed_request"},
+		{"create repeated amount_cents with an escaped key", "POST", "/api/v1/catalog-items", `{"name":"A","unit":"unit","reference_price":{"amount_cents":1,"amount_c\u0065nts":2,"currency":"ARS"}}`, 400, "malformed_request"},
+		{"update repeated amount_cents with an escaped key", "PATCH", "/api/v1/catalog-items/{plain}", `{"reference_price":{"amount_cents":1,"amount_c\u0065nts":2,"currency":"ARS"}}`, 400, "malformed_request"},
+		{"create repeated name", "POST", "/api/v1/catalog-items", `{"name":"A","name":"B","unit":"unit"}`, 400, "malformed_request"},
+		{"update repeated name", "PATCH", "/api/v1/catalog-items/{plain}", `{"name":"A","name":"B"}`, 400, "malformed_request"},
 		{"update empty", "PATCH", "/api/v1/catalog-items/{plain}", `{}`, 400, "malformed_request"},
 		{"update null name", "PATCH", "/api/v1/catalog-items/{plain}", `{"name":null}`, 400, "malformed_request"},
 		{"update null unit", "PATCH", "/api/v1/catalog-items/{plain}", `{"unit":null}`, 400, "malformed_request"},
@@ -429,4 +439,19 @@ func TestCatalogItemsHTTPTransportRules(t *testing.T) {
 		}
 	}
 	assertUnchanged(t, a.f, a.f.A.ID, before)
+}
+
+// T-002-B603 (plan 9.1): a repeated member is detected by the key it decodes to, and a string or a nested value
+// that only looks like a repeated key is not one.
+func TestCatalogItemsHTTPRepeatedMemberLookalikes(t *testing.T) {
+	a := newStagesAPI(t)
+	created := a.newCatalogItem(`{"name":"A \"amount_cents\"","description":"{\"name\":1,\"name\":2}","unit":"unit","reference_price":{"amount_cents":7,"currency":"ARS"}}`)
+	if created.Name != `A "amount_cents"` || created.ReferencePrice == nil || created.ReferencePrice.AmountCents != 7 {
+		t.Fatalf("created: %+v", created)
+	}
+	// An escaped spelling of a key that is not repeated is that key.
+	got := decodeCatalogItem(t, a.json("admin", "PATCH", "/api/v1/catalog-items/"+created.ID, `{"reference_price":{"amount_c\u0065nts":8,"currency":"ARS"}}`, 200))
+	if got.ReferencePrice == nil || got.ReferencePrice.AmountCents != 8 {
+		t.Fatalf("patched: %+v", got)
+	}
 }
