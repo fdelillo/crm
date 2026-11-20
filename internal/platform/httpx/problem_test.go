@@ -215,6 +215,18 @@ func TestDecodeJSON(t *testing.T) {
 		{"concatenated", `{"name":"Ana"}{"name":"B"}`, "application/json", 400},
 		{"oversize", `{"name":"` + strings.Repeat("a", 65536) + `"}`, "application/json", 413},
 		{"missing type", `{"name":"Ana"}`, "", 415},
+		{"surrounding whitespace", " \n\t{\"name\":\"Ana\"}\n ", "application/json", 0},
+		{"null root", `null`, "application/json", 400},
+		{"null root with whitespace", " \n null", "application/json", 400},
+		{"array root", `[{"name":"Ana"}]`, "application/json", 400},
+		{"empty array root", `[]`, "application/json", 400},
+		{"string root", `"Ana"`, "application/json", 400},
+		{"number root", `5`, "application/json", 400},
+		{"true root", `true`, "application/json", 400},
+		{"false root", `false`, "application/json", 400},
+		{"empty body", ``, "application/json", 400},
+		{"broken object", `{"name":`, "application/json", 400},
+		{"non-object root with the wrong media type", `null`, "text/plain", 415},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(tc.body))
@@ -231,6 +243,12 @@ func TestDecodeJSON(t *testing.T) {
 			}
 			if tc.status != 0 && (err == nil || w.Code != tc.status) {
 				t.Fatalf("err=%v status=%d", err, w.Code)
+			}
+			if tc.status == 400 {
+				var problem struct{ Code string }
+				if err := json.Unmarshal(w.Body.Bytes(), &problem); err != nil || problem.Code != "malformed_request" {
+					t.Fatalf("body = %s, want malformed_request", w.Body.String())
+				}
 			}
 			if tc.status == 413 {
 				if err := contract.Default(t).CheckSchema("Problem", w.Body.Bytes()); err != nil {
