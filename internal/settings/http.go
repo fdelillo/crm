@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -292,7 +294,7 @@ func RegisterRoutes(r chi.Router, service *Service, logger *slog.Logger) {
 				return
 			}
 			p, _ := authz.PrincipalFrom(req.Context())
-			stages, err := service.MoveStage(req.Context(), p, id, input.Position.value, settingsRequestMeta(req))
+			stages, err := service.MoveStage(req.Context(), p, id, input.Position.int(), settingsRequestMeta(req))
 			if writeSettingsError(w, req, err, logger) {
 				return
 			}
@@ -320,6 +322,52 @@ func (o *optional[T]) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	return dec.Decode(&o.value)
+}
+
+// integer is a JSON integer field of the settings bodies (validity_days, position, amount_cents) that tells
+// absent from present. Only a token written as an integer is one: a point or an exponent (30.0, 1e3), a string,
+// null or anything else is an error, which makes httpx.DecodeJSON answer 400. A token that is an integer but does
+// not fit int64 is still a value of the contract's type, only out of any range: it saturates to the limit of its
+// sign, so the field's own range check answers 422 invalid_value like it does for 400 or 0 (plan 9.1).
+type integer struct {
+	value   int64
+	present bool
+}
+
+var errNotAnInteger = errors.New("settings: not a JSON integer")
+
+func (i *integer) UnmarshalJSON(data []byte) error {
+	token := string(bytes.TrimSpace(data))
+	if token == "null" {
+		return errNullNotAllowed
+	}
+	digits := strings.TrimPrefix(token, "-")
+	if digits == "" || strings.Trim(digits, "0123456789") != "" {
+		return errNotAnInteger
+	}
+	v, err := strconv.ParseInt(token, 10, 64)
+	if errors.Is(err, strconv.ErrRange) {
+		v = math.MaxInt64
+		if token[0] == '-' {
+			v = math.MinInt64
+		}
+	} else if err != nil {
+		return err
+	}
+	i.value, i.present = v, true
+	return nil
+}
+
+// int is the value as a Go int, saturated at the limits of int where it is narrower than int64.
+func (i integer) int() int { return int(max(min(i.value, math.MaxInt), math.MinInt)) }
+
+// ptrInt is the value as an int when present and nil when absent.
+func (i integer) ptrInt() *int {
+	if !i.present {
+		return nil
+	}
+	v := i.int()
+	return &v
 }
 
 // ptr is the value when present and nil when absent.
@@ -398,14 +446,14 @@ func (r labelsRequest) toLabels() (Labels, FieldErrors) {
 
 // quoteDefaultsRequest is QuoteDefaults: both members are required, and terms may be null.
 type quoteDefaultsRequest struct {
-	ValidityDays optional[int]    `json:"validity_days"`
+	ValidityDays integer          `json:"validity_days"`
 	Terms        nullable[string] `json:"terms"`
 }
 
 // toQuoteDefaults converts the body. A missing member is "required" (terms: null is a value, absent is not); the
 // errors of the other member are reported in the same answer.
 func (r quoteDefaultsRequest) toQuoteDefaults() (QuoteDefaults, FieldErrors) {
-	defaults := QuoteDefaults{ValidityDays: r.ValidityDays.value, Terms: r.Terms.value}
+	defaults := QuoteDefaults{ValidityDays: r.ValidityDays.int(), Terms: r.Terms.value}
 	var missing []string
 	if !r.ValidityDays.present {
 		missing = append(missing, "validity_days")
@@ -477,11 +525,11 @@ type stageCreateRequest struct {
 	Name     optional[string]    `json:"name"`
 	Type     optional[StageType] `json:"type"`
 	Color    optional[Color]     `json:"color"`
-	Position optional[int]       `json:"position"`
+	Position integer             `json:"position"`
 }
 
 func (r stageCreateRequest) toNewStage() NewStage {
-	return NewStage{Name: r.Name.value, Type: r.Type.value, Color: r.Color.value, Position: r.Position.ptr()}
+	return NewStage{Name: r.Name.value, Type: r.Type.value, Color: r.Color.value, Position: r.Position.ptrInt()}
 }
 
 // stageUpdateRequest is StageUpdate: only the present fields change.
@@ -497,7 +545,7 @@ func (r stageUpdateRequest) toChanges() StageChanges {
 
 // stageMoveRequest is StageMove.
 type stageMoveRequest struct {
-	Position optional[int] `json:"position"`
+	Position integer `json:"position"`
 }
 
 // stageResponse is Stage.
@@ -704,10 +752,10 @@ func foldMemberName(key string) string {
 }
 
 // moneyRequest is Money. The fields are pointers underneath (optional) so that a missing amount is not a zero, and
-// amount_cents decodes into an int64, never a float: 1.5, 1e3 and "100" are malformed, and so is anything that
-// does not fit (ADR-029).
+// amount_cents is an integer, never a float: 1.5, 1e3 and "100" are malformed, while a token that does not fit int64
+// saturates and the amount range check rejects it with 422 (ADR-029, plan 9.1).
 type moneyRequest struct {
-	AmountCents optional[int64]  `json:"amount_cents"`
+	AmountCents integer          `json:"amount_cents"`
 	Currency    optional[string] `json:"currency"`
 }
 

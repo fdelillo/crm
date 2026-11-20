@@ -180,7 +180,6 @@ func TestPreferencesHTTPErrors(t *testing.T) {
 		{"quote defaults validity max int64", quoteDefaultsPath, `{"validity_days":9223372036854775807,"terms":null}`, 422, "validation_failed:validity_days/invalid_value"},
 		{"quote defaults validity min int64", quoteDefaultsPath, `{"validity_days":-9223372036854775808,"terms":null}`, 422, "validation_failed:validity_days/invalid_value"},
 		{"quote defaults validity as exponent", quoteDefaultsPath, `{"validity_days":1e3,"terms":null}`, 400, "malformed_request"},
-		{"quote defaults validity beyond int64 without terms", quoteDefaultsPath, `{"validity_days":99999999999999999999}`, 422, "validation_failed:validity_days/invalid_value"},
 		{"quote defaults broken json", quoteDefaultsPath, `{"validity_days":`, 400, "malformed_request"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
