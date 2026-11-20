@@ -241,9 +241,11 @@ func TestConfigureACompanyOfAnotherIndustryThroughTheAPI(t *testing.T) {
 		{"POST", "/api/v1/categories", `{"name":"Nueva","type":"income"}`},
 		{"PATCH", "/api/v1/categories/" + category, `{"name":"Otra"}`},
 		{"POST", "/api/v1/categories/" + category + "/archive", ""},
+		{"POST", "/api/v1/categories/" + category + "/restore", ""},
 		{"POST", "/api/v1/catalog-items", `{"name":"Nuevo","unit":"unit"}`},
 		{"PATCH", "/api/v1/catalog-items/" + itemID, `{"name":"Otro"}`},
 		{"POST", "/api/v1/catalog-items/" + itemID + "/archive", ""},
+		{"POST", "/api/v1/catalog-items/" + itemID + "/restore", ""},
 		{"PUT", labelsPath, labelsJSON(genericLabels)},
 		{"PUT", quoteDefaultsPath, `{"validity_days":1,"terms":null}`},
 	} {
