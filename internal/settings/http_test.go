@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -102,7 +103,6 @@ func TestCatalogItemRequestsRejectMalformedInput(t *testing.T) {
 		{"create amount with a zero decimal", "POST", "/api/v1/catalog-items", `{"name":"A","unit":"unit","reference_price":{"amount_cents":100.0,"currency":"ARS"}}`},
 		{"create amount as exponent", "POST", "/api/v1/catalog-items", `{"name":"A","unit":"unit","reference_price":{"amount_cents":1e3,"currency":"ARS"}}`},
 		{"create amount as string", "POST", "/api/v1/catalog-items", `{"name":"A","unit":"unit","reference_price":{"amount_cents":"100","currency":"ARS"}}`},
-		{"create amount beyond int64", "POST", "/api/v1/catalog-items", `{"name":"A","unit":"unit","reference_price":{"amount_cents":9223372036854775808,"currency":"ARS"}}`},
 		{"create amount null", "POST", "/api/v1/catalog-items", `{"name":"A","unit":"unit","reference_price":{"amount_cents":null,"currency":"ARS"}}`},
 		{"create currency null", "POST", "/api/v1/catalog-items", `{"name":"A","unit":"unit","reference_price":{"amount_cents":1,"currency":null}}`},
 		{"create currency as number", "POST", "/api/v1/catalog-items", `{"name":"A","unit":"unit","reference_price":{"amount_cents":1,"currency":1}}`},
@@ -112,10 +112,12 @@ func TestCatalogItemRequestsRejectMalformedInput(t *testing.T) {
 		{"create null unit", "POST", "/api/v1/catalog-items", `{"name":"A","unit":null}`},
 		{"create description as number", "POST", "/api/v1/catalog-items", `{"name":"A","unit":"unit","description":1}`},
 		{"create unknown field", "POST", "/api/v1/catalog-items", `{"name":"A","unit":"unit","extra":1}`},
+		{"create null body", "POST", "/api/v1/catalog-items", `null`},
+		{"update null body", "PATCH", "/api/v1/catalog-items/" + id, `null`},
+		{"update array body", "PATCH", "/api/v1/catalog-items/" + id, `[]`},
 		{"update null name", "PATCH", "/api/v1/catalog-items/" + id, `{"name":null}`},
 		{"update null unit", "PATCH", "/api/v1/catalog-items/" + id, `{"unit":null}`},
 		{"update amount with decimals", "PATCH", "/api/v1/catalog-items/" + id, `{"reference_price":{"amount_cents":1.5,"currency":"ARS"}}`},
-		{"update amount beyond int64", "PATCH", "/api/v1/catalog-items/" + id, `{"reference_price":{"amount_cents":9223372036854775808,"currency":"ARS"}}`},
 		{"update price unknown field", "PATCH", "/api/v1/catalog-items/" + id, `{"reference_price":{"amount_cents":1,"currency":"ARS","extra":1}}`},
 		{"update unknown field", "PATCH", "/api/v1/catalog-items/" + id, `{"archived":true}`},
 		{"update broken json", "PATCH", "/api/v1/catalog-items/" + id, `{"name":`},
@@ -150,5 +152,189 @@ func TestCatalogItemRequestsRejectMalformedInput(t *testing.T) {
 				t.Fatalf("status = %d, body = %s; want 400 malformed_request", rec.Code, rec.Body.String())
 			}
 		})
+	}
+}
+
+// preferencesRouter has no service: a request that reaches it panics, so the cases below prove the answer
+// comes from the decoding alone.
+func preferencesRouter() http.Handler {
+	router := chi.NewRouter()
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			admin := authz.Principal{TenantID: uuid.New(), UserID: uuid.New(), Role: authz.RoleAdmin}
+			next.ServeHTTP(w, r.WithContext(authz.WithPrincipal(r.Context(), admin)))
+		})
+	})
+	RegisterRoutes(router, nil, slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)))
+	return router
+}
+
+func servePreferences(router http.Handler, method, path, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	var rec *httptest.ResponseRecorder
+	httpx.RequestID(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec = httptest.NewRecorder()
+		router.ServeHTTP(rec, r)
+	})).ServeHTTP(httptest.NewRecorder(), req)
+	return rec
+}
+
+const (
+	validProject  = `"project":{"singular":"Obra","plural":"Obras","gender":"feminine"}`
+	validCustomer = `"customer":{"singular":"Cliente","plural":"Clientes","gender":"masculine"}`
+	validQuote    = `"quote":{"singular":"Presupuesto","plural":"Presupuestos","gender":"masculine"}`
+)
+
+// T-002-B703 (002/DD-10, plan 9.1): a labels or quote-defaults body the contract does not admit is a 400 before
+// the service is reached: no unknown field at any depth, no null where the contract has none, no wrong type and
+// no integer written with a point or an exponent. Repeated members are not rejected here (only the catalog does).
+func TestPreferencesRequestsRejectMalformedInput(t *testing.T) {
+	router := preferencesRouter()
+	all := validProject + "," + validCustomer + "," + validQuote
+	for _, tc := range []struct{ name, path, body string }{
+		{"labels unknown field", "/api/v1/settings/labels", `{` + all + `,"extra":1}`},
+		{"labels nested unknown field", "/api/v1/settings/labels", `{"project":{"singular":"Obra","plural":"Obras","gender":"feminine","extra":1},` + validCustomer + `,` + validQuote + `}`},
+		{"labels null object", "/api/v1/settings/labels", `{"project":null,` + validCustomer + `,` + validQuote + `}`},
+		{"labels null singular", "/api/v1/settings/labels", `{"project":{"singular":null,"plural":"Obras","gender":"feminine"},` + validCustomer + `,` + validQuote + `}`},
+		{"labels null gender", "/api/v1/settings/labels", `{"project":{"singular":"Obra","plural":"Obras","gender":null},` + validCustomer + `,` + validQuote + `}`},
+		{"labels singular as number", "/api/v1/settings/labels", `{"project":{"singular":1,"plural":"Obras","gender":"feminine"},` + validCustomer + `,` + validQuote + `}`},
+		{"labels object as string", "/api/v1/settings/labels", `{"project":"Obra",` + validCustomer + `,` + validQuote + `}`},
+		{"labels array body", "/api/v1/settings/labels", `[]`},
+		{"labels null body", "/api/v1/settings/labels", `null`},
+		{"labels string body", "/api/v1/settings/labels", `"project"`},
+		{"labels number body", "/api/v1/settings/labels", `5`},
+		{"labels true body", "/api/v1/settings/labels", `true`},
+		{"quote defaults null body", "/api/v1/settings/quote-defaults", `null`},
+		{"quote defaults array body", "/api/v1/settings/quote-defaults", `[]`},
+		{"quote defaults string body", "/api/v1/settings/quote-defaults", `"30"`},
+		{"quote defaults number body", "/api/v1/settings/quote-defaults", `30`},
+		{"quote defaults false body", "/api/v1/settings/quote-defaults", `false`},
+		{"labels broken json", "/api/v1/settings/labels", `{"project":`},
+		{"quote defaults unknown field", "/api/v1/settings/quote-defaults", `{"validity_days":30,"terms":null,"extra":1}`},
+		{"quote defaults validity as string", "/api/v1/settings/quote-defaults", `{"validity_days":"30","terms":null}`},
+		{"quote defaults validity null", "/api/v1/settings/quote-defaults", `{"validity_days":null,"terms":null}`},
+		{"quote defaults validity with a zero decimal", "/api/v1/settings/quote-defaults", `{"validity_days":30.0,"terms":null}`},
+		{"quote defaults validity with decimals", "/api/v1/settings/quote-defaults", `{"validity_days":30.5,"terms":null}`},
+		{"quote defaults validity as exponent", "/api/v1/settings/quote-defaults", `{"validity_days":3e1,"terms":null}`},
+		{"quote defaults terms as number", "/api/v1/settings/quote-defaults", `{"validity_days":30,"terms":5}`},
+		{"quote defaults broken json", "/api/v1/settings/quote-defaults", `{"validity_days":`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := servePreferences(router, "PUT", tc.path, tc.body)
+			var problem struct{ Code string }
+			if err := json.Unmarshal(rec.Body.Bytes(), &problem); rec.Code != 400 || err != nil || problem.Code != "malformed_request" {
+				t.Fatalf("status = %d, body = %s; want 400 malformed_request", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+// T-002-B703 (002/DD-10, contract replaceLabels and replaceQuoteDefaults): a missing required member is a 422
+// with its own path and `required`, answered with the other fields' errors in the same response.
+func TestPreferencesRequestsReportMissingMembers(t *testing.T) {
+	router := preferencesRouter()
+	for _, tc := range []struct {
+		name, path, body string
+		want             map[string]string
+	}{
+		{"labels without customer", "/api/v1/settings/labels", `{` + validProject + `,` + validQuote + `}`, map[string]string{"customer": "required"}},
+		{"labels empty", "/api/v1/settings/labels", `{}`, map[string]string{"project": "required", "customer": "required", "quote": "required"}},
+		{"labels without customer and a bad quote", "/api/v1/settings/labels",
+			`{` + validProject + `,"quote":{"singular":"","plural":"Presupuestos","gender":"neutral"}}`,
+			map[string]string{"customer": "required", "quote.singular": "required", "quote.gender": "invalid_value"}},
+		{"quote defaults without terms", "/api/v1/settings/quote-defaults", `{"validity_days":30}`, map[string]string{"terms": "required"}},
+		{"quote defaults without validity_days", "/api/v1/settings/quote-defaults", `{"terms":null}`, map[string]string{"validity_days": "required"}},
+		{"quote defaults empty", "/api/v1/settings/quote-defaults", `{}`, map[string]string{"validity_days": "required", "terms": "required"}},
+		{"quote defaults without terms and a bad validity", "/api/v1/settings/quote-defaults", `{"validity_days":400}`, map[string]string{"validity_days": "invalid_value", "terms": "required"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := servePreferences(router, "PUT", tc.path, tc.body)
+			var problem struct {
+				Code   string
+				Errors []struct{ Field, Code string }
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &problem); err != nil || rec.Code != 422 || problem.Code != "validation_failed" {
+				t.Fatalf("status = %d, body = %s; want 422 validation_failed", rec.Code, rec.Body.String())
+			}
+			got := map[string]string{}
+			for _, e := range problem.Errors {
+				got[e.Field] = e.Code
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("errors = %v, want %v", got, tc.want)
+			}
+			for field, code := range tc.want {
+				if got[field] != code {
+					t.Fatalf("errors = %v, want %v", got, tc.want)
+				}
+			}
+		})
+	}
+}
+
+// T-002-B703 (plan 9.1): integer is the one integer type of the settings bodies. A token written as an integer
+// is always a number, however large: one that does not fit int64 saturates to the limit of its sign, so the
+// field's own range check answers 422 invalid_value. A token that is not an integer (a point, an exponent, a
+// string, null, anything else) is an error, which httpx.DecodeJSON answers 400.
+func TestIntegerDecoding(t *testing.T) {
+	type body struct {
+		N integer `json:"n"`
+	}
+	for _, tc := range []struct {
+		name, token string
+		want        int64
+	}{
+		{"zero", `0`, 0},
+		{"negative zero", `-0`, 0},
+		{"positive", `30`, 30},
+		{"negative", `-30`, -30},
+		{"max int64", `9223372036854775807`, math.MaxInt64},
+		{"min int64", `-9223372036854775808`, math.MinInt64},
+		{"one above int64", `9223372036854775808`, math.MaxInt64},
+		{"one below int64", `-9223372036854775809`, math.MinInt64},
+		{"twenty digits", `99999999999999999999`, math.MaxInt64},
+		{"negative twenty digits", `-99999999999999999999`, math.MinInt64},
+		{"very long", strings.Repeat("9", 400), math.MaxInt64},
+		{"negative very long", "-" + strings.Repeat("9", 400), math.MinInt64},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var b body
+			if err := json.Unmarshal([]byte(`{"n":`+tc.token+`}`), &b); err != nil {
+				t.Fatal(err)
+			}
+			if !b.N.present || b.N.value != tc.want {
+				t.Fatalf("got %+v, want present %d", b.N, tc.want)
+			}
+		})
+	}
+	for _, token := range []string{`30.0`, `30.5`, `1e3`, `3E1`, `1e400`, `-1e3`, `99999999999999999999.0`, `"30"`, `null`, `true`, `[]`, `{}`} {
+		t.Run("rejects "+token, func(t *testing.T) {
+			var b body
+			if err := json.Unmarshal([]byte(`{"n":`+token+`}`), &b); err == nil {
+				t.Fatalf("accepted %s as %+v", token, b.N)
+			}
+		})
+	}
+	var b body
+	if err := json.Unmarshal([]byte(`{}`), &b); err != nil || b.N.present {
+		t.Fatalf("absent: err=%v present=%v", err, b.N.present)
+	}
+}
+
+// T-002-B703 (plan 9.1): the integer bodies keep a token that overflows as a value, so the fields reach the
+// validation of their range instead of failing the decode.
+func TestIntegerBodiesKeepOverflowAsValue(t *testing.T) {
+	var q quoteDefaultsRequest
+	if err := json.Unmarshal([]byte(`{"validity_days":-99999999999999999999,"terms":null}`), &q); err != nil || q.ValidityDays.int() != math.MinInt {
+		t.Fatalf("validity_days: err=%v value=%d", err, q.ValidityDays.int())
+	}
+	var s stageCreateRequest
+	if err := json.Unmarshal([]byte(`{"position":99999999999999999999}`), &s); err != nil || *s.Position.ptrInt() != math.MaxInt {
+		t.Fatalf("position: err=%v", err)
+	}
+	var m moneyRequest
+	if err := json.Unmarshal([]byte(`{"amount_cents":-99999999999999999999,"currency":"ARS"}`), &m); err != nil || m.AmountCents.value != math.MinInt64 {
+		t.Fatalf("amount_cents: err=%v value=%d", err, m.AmountCents.value)
 	}
 }

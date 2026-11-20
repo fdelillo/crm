@@ -57,6 +57,10 @@ var isolationPermissions = map[string][3]int{
 	"PATCH /api/v1/catalog-items/{catalogItemId}":        {401, 403, 200},
 	"POST /api/v1/catalog-items/{catalogItemId}/archive": {401, 403, 200},
 	"POST /api/v1/catalog-items/{catalogItemId}/restore": {401, 403, 200},
+	"GET /api/v1/settings/labels":                        {401, 200, 200},
+	"PUT /api/v1/settings/labels":                        {401, 403, 200},
+	"GET /api/v1/settings/quote-defaults":                {401, 200, 200},
+	"PUT /api/v1/settings/quote-defaults":                {401, 403, 200},
 }
 
 func permissionRequest(t *testing.T, f *e2e.Scenario, key string) (path, ct string, body []byte) {
@@ -113,7 +117,11 @@ func permissionRequest(t *testing.T, f *e2e.Scenario, key string) (path, ct stri
 		}
 	case "catalog_item_create":
 		body = []byte(`{"name":"Portón corredizo","unit":"unit"}`)
-	case "catalog_item_list":
+	case "catalog_item_list", "labels_read", "quote_defaults_read":
+	case "labels_replace":
+		body = []byte(`{"project":{"singular":"Obra","plural":"Obras","gender":"feminine"},"customer":{"singular":"Comitente","plural":"Comitentes","gender":"masculine"},"quote":{"singular":"Cotización","plural":"Cotizaciones","gender":"feminine"}}`)
+	case "quote_defaults_replace":
+		body = []byte(`{"validity_days":30,"terms":"Pago a 30 días"}`)
 	case "foreign_catalog_item_id":
 		// An item of the company, so the administrator gets a 200 from every operation.
 		own, err := f.Settings.CreateCatalogItem(context.Background(), f.A.Users["admin"].Principal, settings.NewCatalogItem{Name: "Portón corredizo", Unit: "unit"}, settings.RequestMeta{})

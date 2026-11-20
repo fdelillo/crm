@@ -105,6 +105,10 @@ var isolationCases = map[string]string{
 	"PATCH /api/v1/catalog-items/{catalogItemId}":        "foreign_catalog_item_id",
 	"POST /api/v1/catalog-items/{catalogItemId}/archive": "foreign_catalog_item_id",
 	"POST /api/v1/catalog-items/{catalogItemId}/restore": "foreign_catalog_item_id",
+	"GET /api/v1/settings/labels":                        "labels_read",
+	"PUT /api/v1/settings/labels":                        "labels_replace",
+	"GET /api/v1/settings/quote-defaults":                "quote_defaults_read",
+	"PUT /api/v1/settings/quote-defaults":                "quote_defaults_replace",
 }
 
 func isolationRoot(t *testing.T, f *e2e.Scenario, api chi.Router) *apitest.Server {
@@ -619,6 +623,46 @@ func TestIsolationHTTPMatrix(t *testing.T) {
 					}
 				})).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/", nil))
 				assertUnchanged(t, f, f.A.ID, aBefore, counts)
+			case "labels_read", "quote_defaults_read":
+				// These resources have no id: the sweep proves the answer is the company's own row and carries nothing of B's.
+				needles, foreignLabels, foreignDefaults := foreignPreferences(t, f)
+				aBefore, bBefore = f.Snapshot(t, f.A.ID), f.Snapshot(t, f.B.ID)
+				rec := call(path, "", nil, "", 200)
+				if isolationCases[key] == "labels_read" {
+					own, err := f.Settings.GetLabels(context.Background(), f.A.Users["admin"].Principal)
+					got := decodeLabels(t, rec)
+					counts.verify(t, err == nil && got == labelsBodyOf(own) && got != foreignLabels, "labels read %+v, want company A's %+v", got, own)
+				} else {
+					own, err := f.Settings.GetQuoteDefaults(context.Background(), f.A.Users["admin"].Principal)
+					got := decodeQuoteDefaults(t, rec)
+					counts.verify(t, err == nil && reflect.DeepEqual(got, quoteDefaultsBodyOf(own)) && !reflect.DeepEqual(got, foreignDefaults), "quote defaults read %+v, want company A's %+v", got, own)
+				}
+				for _, needle := range needles {
+					counts.verifySentinel(t, !bytes.Contains(rec.Body.Bytes(), []byte(needle)), "company B's %q in the answer", needle)
+				}
+				assertUnchanged(t, f, f.A.ID, aBefore, counts)
+				assertUnchanged(t, f, f.B.ID, bBefore, counts)
+			case "labels_replace", "quote_defaults_replace":
+				// No id to forge: whatever the body says, only company A's row is written and B's stays as it was.
+				_, foreignLabels, foreignDefaults := foreignPreferences(t, f)
+				aBefore, bBefore = f.Snapshot(t, f.A.ID), f.Snapshot(t, f.B.ID)
+				if isolationCases[key] == "labels_replace" {
+					sent := labelsBody{Project: entityLabelBody{"Obra", "Obras", "feminine"}, Customer: entityLabelBody{"Comitente", "Comitentes", "masculine"}, Quote: entityLabelBody{"Cotización", "Cotizaciones", "feminine"}}
+					call(path, "application/json", []byte(labelsJSON(sent)), "", 200)
+					own, err := f.Settings.GetLabels(context.Background(), f.A.Users["admin"].Principal)
+					counts.verify(t, err == nil && labelsBodyOf(own) == sent, "company A labels %+v, want %+v", own, sent)
+					other, err := f.Settings.GetLabels(context.Background(), f.B.Users["admin"].Principal)
+					counts.verify(t, err == nil && labelsBodyOf(other) == foreignLabels, "company B labels %+v changed from %+v", other, foreignLabels)
+				} else {
+					sent := quoteDefaultsBody{ValidityDays: 30, Terms: termsOf("Pago a 30 días")}
+					call(path, "application/json", []byte(`{"validity_days":30,"terms":"Pago a 30 días"}`), "", 200)
+					own, err := f.Settings.GetQuoteDefaults(context.Background(), f.A.Users["admin"].Principal)
+					counts.verify(t, err == nil && reflect.DeepEqual(quoteDefaultsBodyOf(own), sent), "company A quote defaults %+v, want %+v", own, sent)
+					other, err := f.Settings.GetQuoteDefaults(context.Background(), f.B.Users["admin"].Principal)
+					counts.verify(t, err == nil && reflect.DeepEqual(quoteDefaultsBodyOf(other), foreignDefaults), "company B quote defaults %+v changed from %+v", other, foreignDefaults)
+				}
+				assertChanged(t, f, f.A.ID, aBefore, "tenant_settings", "audit_log")
+				assertUnchanged(t, f, f.B.ID, bBefore, counts)
 			case "read", "logo_read", "catalog":
 				etag := ""
 				if isolationCases[key] == "logo_read" {

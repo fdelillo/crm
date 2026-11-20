@@ -947,7 +947,7 @@ salida, **`suggested_action`** (enum estable; en 001 solo `password_reset`).
 
 | `code` | HTTP | Tipo | Cuándo | ¿Reintentar? |
 |---|---|---|---|---|
-| `malformed_request` | 400 | Rechazo definitivo | JSON inválido, campos desconocidos, un valor de otro tipo que el del contrato (incluido `null` en un campo que no lo admite, p. ej. `name` o `timezone` en `PATCH /tenant`, DD-43); multipart mal formado o con partes distintas de una sola `file` (DD-31) | No, corregir |
+| `malformed_request` | 400 | Rechazo definitivo | JSON inválido, un cuerpo que no es un objeto JSON (`null`, array, escalar; lo resuelve `httpx.DecodeJSON`, 2026-11-20), campos desconocidos, un valor de otro tipo que el del contrato (incluido `null` en un campo que no lo admite, p. ej. `name` o `timezone` en `PATCH /tenant`, DD-43); multipart mal formado o con partes distintas de una sola `file` (DD-31) | No, corregir |
 | `validation_failed` | 422 | Rechazo definitivo | Payload bien formado pero inválido (email, contraseña corta, CUIT, zona horaria en `PATCH /tenant`; logo sin archivo, ilegible o de más de 2000×2000 px con `field = file`) | No, corregir |
 | `unsupported_media_type` | 415 | Rechazo definitivo | Falta `Content-Type: application/json`, o logo no PNG/JPEG | No |
 | `payload_too_large` | 413 | Rechazo definitivo | Body > límite: logo con archivo > 2 097 152 bytes o cuerpo multipart > 2 162 688 bytes (DD-31); JSON > 64 KB | No |

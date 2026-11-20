@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -22,7 +24,8 @@ import (
 // resource is looked up (001/INV-12).
 // T-002-B404 (002/DD-11, DD-12, DD-18): the stage operations.
 // T-002-B504 (002/DD-11, DD-12, DD-16): the category operations.
-// T-002-B604 (002/DD-9, DD-11, DD-12, ADR-029): the catalog operations; the other operations add their routes with their tasks.
+// T-002-B604 (002/DD-9, DD-11, DD-12, ADR-029): the catalog operations.
+// T-002-B704 (002/DD-10, DD-11, DD-19): the labels and quote defaults operations.
 func RegisterRoutes(r chi.Router, service *Service, logger *slog.Logger) {
 	r.Get("/api/v1/stages", func(w http.ResponseWriter, req *http.Request) {
 		p, _ := authz.PrincipalFrom(req.Context())
@@ -68,8 +71,58 @@ func RegisterRoutes(r chi.Router, service *Service, logger *slog.Logger) {
 		}
 		writeSettingsJSON(w, http.StatusOK, catalogItemResponseOf(item))
 	})
+	r.Get("/api/v1/settings/labels", func(w http.ResponseWriter, req *http.Request) {
+		p, _ := authz.PrincipalFrom(req.Context())
+		labels, err := service.GetLabels(req.Context(), p)
+		if writeSettingsError(w, req, err, logger) {
+			return
+		}
+		writeSettingsJSON(w, http.StatusOK, labelsResponseOf(labels))
+	})
+	r.Get("/api/v1/settings/quote-defaults", func(w http.ResponseWriter, req *http.Request) {
+		p, _ := authz.PrincipalFrom(req.Context())
+		defaults, err := service.GetQuoteDefaults(req.Context(), p)
+		if writeSettingsError(w, req, err, logger) {
+			return
+		}
+		writeSettingsJSON(w, http.StatusOK, quoteDefaultsResponseOf(defaults))
+	})
 	r.Group(func(r chi.Router) {
 		r.Use(authz.RequirePermission(authz.SettingsManage))
+		r.Put("/api/v1/settings/labels", func(w http.ResponseWriter, req *http.Request) {
+			var input labelsRequest
+			if err := httpx.DecodeJSON(w, req, &input); err != nil {
+				return
+			}
+			labels, fields := input.toLabels()
+			if fields != nil {
+				httpx.ValidationError(w, req, fields)
+				return
+			}
+			p, _ := authz.PrincipalFrom(req.Context())
+			saved, err := service.ReplaceLabels(req.Context(), p, labels, settingsRequestMeta(req))
+			if writeSettingsError(w, req, err, logger) {
+				return
+			}
+			writeSettingsJSON(w, http.StatusOK, labelsResponseOf(saved))
+		})
+		r.Put("/api/v1/settings/quote-defaults", func(w http.ResponseWriter, req *http.Request) {
+			var input quoteDefaultsRequest
+			if err := httpx.DecodeJSON(w, req, &input); err != nil {
+				return
+			}
+			defaults, fields := input.toQuoteDefaults()
+			if fields != nil {
+				httpx.ValidationError(w, req, fields)
+				return
+			}
+			p, _ := authz.PrincipalFrom(req.Context())
+			saved, err := service.ReplaceQuoteDefaults(req.Context(), p, defaults, settingsRequestMeta(req))
+			if writeSettingsError(w, req, err, logger) {
+				return
+			}
+			writeSettingsJSON(w, http.StatusOK, quoteDefaultsResponseOf(saved))
+		})
 		r.Post("/api/v1/categories", func(w http.ResponseWriter, req *http.Request) {
 			var input categoryCreateRequest
 			if err := httpx.DecodeJSON(w, req, &input); err != nil {
@@ -241,7 +294,7 @@ func RegisterRoutes(r chi.Router, service *Service, logger *slog.Logger) {
 				return
 			}
 			p, _ := authz.PrincipalFrom(req.Context())
-			stages, err := service.MoveStage(req.Context(), p, id, input.Position.value, settingsRequestMeta(req))
+			stages, err := service.MoveStage(req.Context(), p, id, input.Position.int(), settingsRequestMeta(req))
 			if writeSettingsError(w, req, err, logger) {
 				return
 			}
@@ -252,7 +305,8 @@ func RegisterRoutes(r chi.Router, service *Service, logger *slog.Logger) {
 
 // optional is a JSON field that tells absent from present. It rejects an explicit null, which the contract
 // does not admit in any stage field (plan 9.1: null where it is not admitted is malformed_request): the
-// error makes httpx.DecodeJSON answer 400, like a wrong type.
+// error makes httpx.DecodeJSON answer 400, like a wrong type. The value is decoded strictly (the outer decoder's
+// DisallowUnknownFields does not reach an UnmarshalJSON), so an unknown field inside a nested object is a 400.
 type optional[T any] struct {
 	value   T
 	present bool
@@ -265,7 +319,55 @@ func (o *optional[T]) UnmarshalJSON(data []byte) error {
 		return errNullNotAllowed
 	}
 	o.present = true
-	return json.Unmarshal(data, &o.value)
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	return dec.Decode(&o.value)
+}
+
+// integer is a JSON integer field of the settings bodies (validity_days, position, amount_cents) that tells
+// absent from present. Only a token written as an integer is one: a point or an exponent (30.0, 1e3), a string,
+// null or anything else is an error, which makes httpx.DecodeJSON answer 400. A token that is an integer but does
+// not fit int64 is still a value of the contract's type, only out of any range: it saturates to the limit of its
+// sign, so the field's own range check answers 422 invalid_value like it does for 400 or 0 (plan 9.1).
+type integer struct {
+	value   int64
+	present bool
+}
+
+var errNotAnInteger = errors.New("settings: not a JSON integer")
+
+func (i *integer) UnmarshalJSON(data []byte) error {
+	token := string(bytes.TrimSpace(data))
+	if token == "null" {
+		return errNullNotAllowed
+	}
+	digits := strings.TrimPrefix(token, "-")
+	if digits == "" || strings.Trim(digits, "0123456789") != "" {
+		return errNotAnInteger
+	}
+	v, err := strconv.ParseInt(token, 10, 64)
+	if errors.Is(err, strconv.ErrRange) {
+		v = math.MaxInt64
+		if token[0] == '-' {
+			v = math.MinInt64
+		}
+	} else if err != nil {
+		return err
+	}
+	i.value, i.present = v, true
+	return nil
+}
+
+// int is the value as a Go int, saturated at the limits of int where it is narrower than int64.
+func (i integer) int() int { return int(max(min(i.value, math.MaxInt), math.MinInt)) }
+
+// ptrInt is the value as an int when present and nil when absent.
+func (i integer) ptrInt() *int {
+	if !i.present {
+		return nil
+	}
+	v := i.int()
+	return &v
 }
 
 // ptr is the value when present and nil when absent.
@@ -303,17 +405,131 @@ func (n *nullable[T]) UnmarshalJSON(data []byte) error {
 // patch is the field as the service reads it: Set when it came in the body, null included.
 func (n nullable[T]) patch() Patch[*T] { return Patch[*T]{Set: n.present, Value: n.value} }
 
+// entityLabelRequest is EntityLabel. A missing text or gender reaches the service as its zero value and comes
+// back as a field error (422).
+type entityLabelRequest struct {
+	Singular optional[string] `json:"singular"`
+	Plural   optional[string] `json:"plural"`
+	Gender   optional[Gender] `json:"gender"`
+}
+
+func (r entityLabelRequest) toEntityLabel() EntityLabel {
+	return EntityLabel{Singular: r.Singular.value, Plural: r.Plural.value, Gender: r.Gender.value}
+}
+
+// labelsRequest is Labels: the three names, all required.
+type labelsRequest struct {
+	Project  optional[entityLabelRequest] `json:"project"`
+	Customer optional[entityLabelRequest] `json:"customer"`
+	Quote    optional[entityLabelRequest] `json:"quote"`
+}
+
+// toLabels converts the body. A missing object is reported by its own path with "required", which the service
+// cannot see (a Labels always has the three); the errors of the objects that came are reported in the same answer.
+func (r labelsRequest) toLabels() (Labels, FieldErrors) {
+	labels := Labels{Project: r.Project.value.toEntityLabel(), Customer: r.Customer.value.toEntityLabel(), Quote: r.Quote.value.toEntityLabel()}
+	var missing []string
+	for _, o := range []struct {
+		name    string
+		present bool
+	}{{"project", r.Project.present}, {"customer", r.Customer.present}, {"quote", r.Quote.present}} {
+		if !o.present {
+			missing = append(missing, o.name)
+		}
+	}
+	if len(missing) == 0 {
+		return labels, nil
+	}
+	_, errs := normalizeLabels(labels)
+	return Labels{}, withRequired(errs, missing, true)
+}
+
+// quoteDefaultsRequest is QuoteDefaults: both members are required, and terms may be null.
+type quoteDefaultsRequest struct {
+	ValidityDays integer          `json:"validity_days"`
+	Terms        nullable[string] `json:"terms"`
+}
+
+// toQuoteDefaults converts the body. A missing member is "required" (terms: null is a value, absent is not); the
+// errors of the other member are reported in the same answer.
+func (r quoteDefaultsRequest) toQuoteDefaults() (QuoteDefaults, FieldErrors) {
+	defaults := QuoteDefaults{ValidityDays: r.ValidityDays.int(), Terms: r.Terms.value}
+	var missing []string
+	if !r.ValidityDays.present {
+		missing = append(missing, "validity_days")
+	}
+	if !r.Terms.present {
+		missing = append(missing, "terms")
+	}
+	if len(missing) == 0 {
+		return defaults, nil
+	}
+	_, errs := normalizeQuoteDefaults(defaults)
+	return QuoteDefaults{}, withRequired(errs, missing, false)
+}
+
+// withRequired marks the missing members as "required" and drops the errors the service reported for the zero
+// value that stands in for them (the member itself or, for an object, every path under it).
+func withRequired(errs FieldErrors, missing []string, objects bool) FieldErrors {
+	out := FieldErrors{}
+	for field, code := range errs {
+		skip := false
+		for _, m := range missing {
+			skip = skip || field == m || (objects && strings.HasPrefix(field, m+"."))
+		}
+		if !skip {
+			out[field] = code
+		}
+	}
+	for _, m := range missing {
+		out[m] = codeRequired
+	}
+	return out
+}
+
+// entityLabelBody is EntityLabel as the API answers it.
+type entityLabelBody struct {
+	Singular string `json:"singular"`
+	Plural   string `json:"plural"`
+	Gender   Gender `json:"gender"`
+}
+
+// labelsBody is Labels.
+type labelsBody struct {
+	Project  entityLabelBody `json:"project"`
+	Customer entityLabelBody `json:"customer"`
+	Quote    entityLabelBody `json:"quote"`
+}
+
+func labelsResponseOf(l Labels) labelsBody {
+	return labelsBody{
+		Project:  entityLabelBody(l.Project),
+		Customer: entityLabelBody(l.Customer),
+		Quote:    entityLabelBody(l.Quote),
+	}
+}
+
+// quoteDefaultsBody is QuoteDefaults. terms is null when there are none.
+type quoteDefaultsBody struct {
+	ValidityDays int     `json:"validity_days"`
+	Terms        *string `json:"terms"`
+}
+
+func quoteDefaultsResponseOf(q QuoteDefaults) quoteDefaultsBody {
+	return quoteDefaultsBody(q)
+}
+
 // stageCreateRequest is StageCreate. A missing required field reaches the service as its zero value and
 // comes back as a field error (422), the same way signup treats its required fields.
 type stageCreateRequest struct {
 	Name     optional[string]    `json:"name"`
 	Type     optional[StageType] `json:"type"`
 	Color    optional[Color]     `json:"color"`
-	Position optional[int]       `json:"position"`
+	Position integer             `json:"position"`
 }
 
 func (r stageCreateRequest) toNewStage() NewStage {
-	return NewStage{Name: r.Name.value, Type: r.Type.value, Color: r.Color.value, Position: r.Position.ptr()}
+	return NewStage{Name: r.Name.value, Type: r.Type.value, Color: r.Color.value, Position: r.Position.ptrInt()}
 }
 
 // stageUpdateRequest is StageUpdate: only the present fields change.
@@ -329,7 +545,7 @@ func (r stageUpdateRequest) toChanges() StageChanges {
 
 // stageMoveRequest is StageMove.
 type stageMoveRequest struct {
-	Position optional[int] `json:"position"`
+	Position integer `json:"position"`
 }
 
 // stageResponse is Stage.
@@ -536,10 +752,10 @@ func foldMemberName(key string) string {
 }
 
 // moneyRequest is Money. The fields are pointers underneath (optional) so that a missing amount is not a zero, and
-// amount_cents decodes into an int64, never a float: 1.5, 1e3 and "100" are malformed, and so is anything that
-// does not fit (ADR-029).
+// amount_cents is an integer, never a float: 1.5, 1e3 and "100" are malformed, while a token that does not fit int64
+// saturates and the amount range check rejects it with 422 (ADR-029, plan 9.1).
 type moneyRequest struct {
-	AmountCents optional[int64]  `json:"amount_cents"`
+	AmountCents integer          `json:"amount_cents"`
 	Currency    optional[string] `json:"currency"`
 }
 
