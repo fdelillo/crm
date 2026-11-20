@@ -12,7 +12,7 @@ plan.
 Autor: `backend-architect`. Implementa: `backend-developer`, **una fase por invocación**, en modo
 completo (`.claude/dev-mode`).
 
-### Estado de la implementación (2026-11-19)
+### Estado de la implementación (2026-11-20)
 
 Fases 1, 2 y F0 implementadas. **Fase 8: T-002-B801 y T-002-B802 implementadas (2026-11-20), con lo que la
 sección Backend de 002 queda completa**: el escenario "herrería" (`TestConfigureACompanyOfAnotherIndustryThroughTheAPI`)
@@ -20,7 +20,9 @@ registra una empresa con la plantilla `generic`, la configura solo con la API (n
 catálogo y condiciones, con valores exactos en cada `GET`) y comprueba que un Operador invitado lee los seis
 `GET` (`200`) y recibe `403` en una escritura de cada recurso sin que cambie el estado; el código de producción
 no cambió. `pendingOperations` se eliminó del test de rutas y la documentación viva (glosario, modelo de dominio
-y atlas de diagramas) quedó al día. Fase 7: T-002-B701 a T-002-B704 implementadas (servicio y endpoints de
+y atlas de diagramas) quedó al día. Checkpoint de la Fase 8 cumplido el 2026-11-20: `make check` en verde
+(`reprovision` se reintentó solo por un timeout de arranque del contenedor de PostgreSQL) y el validador del
+atlas (`docs/diagramas/validar.py`) sin incidencias. Fase 7: T-002-B701 a T-002-B704 implementadas (servicio y endpoints de
 nombres y condiciones); checkpoint de la Fase 7 cumplido el 2026-11-19: `make check` en verde y la prueba
 independiente con `curl` (servidor local con TLS, empresa "Genérico"): `PUT /settings/labels` con Proyecto
 → "Obra"/"Obras" femenino (`200`), `GET /settings/labels` como Operador invitado lo devuelve (`200`), y
