@@ -49,7 +49,7 @@ func routeCoverage(t *testing.T, api chi.Router) int {
 		t.Fatal(err)
 	}
 	ops := contract.Default(t).Operations()
-	for _, problem := range contractRouteProblems(ops, seen, pendingOperations) {
+	for _, problem := range contractRouteProblems(ops, seen) {
 		t.Error(problem)
 	}
 	for key := range isolationCases {
@@ -57,7 +57,7 @@ func routeCoverage(t *testing.T, api chi.Router) int {
 			t.Errorf("isolation case without API route: %s", key)
 		}
 	}
-	t.Logf("API routes=%d; contract operations=%d; pending=%d", len(seen), len(ops), len(pendingOperations))
+	t.Logf("API routes=%d; contract operations=%d", len(seen), len(ops))
 	return len(seen)
 }
 
