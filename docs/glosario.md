@@ -12,6 +12,10 @@ Términos del negocio (usados en specs e interfaz) y su nombre en el código.
 | Token de un solo uso | `UserToken` | Secreto enviado por email para verificar el email, restablecer la contraseña o aceptar una invitación. |
 | Permiso | `Permission` | Capacidad concreta de la matriz de permisos de la spec 001 (FR-007), p. ej. `settings.manage`. |
 | Plantilla de rubro | `IndustryTemplate` | Configuración inicial precargada (etapas, categorías, nombres, catálogo). |
+| Configuración de la empresa | `TenantSettings` | Nombres personalizados y valores por defecto de los presupuestos de una empresa. |
+| Nombre personalizado | `EntityLabel` | Singular, plural y género con que la empresa llama a Proyecto, Cliente o Presupuesto (ej. "Obra", "Obras", femenino). |
+| Condiciones comerciales por defecto | `QuoteDefaults` | Texto libre y validez en días que se proponen al crear un presupuesto. |
+| Archivar | `Archive` | Dejar de ofrecer una categoría o un ítem de catálogo sin borrarlo; se puede restaurar. |
 | Tercero | `Party` | Persona o empresa con la que se opera. Puede tener uno o más roles. |
 | Cliente | `Customer` (rol de `Party`) | Tercero al que se le hacen proyectos. |
 | Proveedor | `Supplier` (rol de `Party`) | Tercero al que se le compra. |
@@ -19,10 +23,13 @@ Términos del negocio (usados en specs e interfaz) y su nombre en el código.
 | Socio | `Partner` (rol de `Party`) | Dueño de la empresa que aporta o retira dinero. |
 | Proyecto | `Project` | Trabajo para un cliente (ej. "Aberturas casa Pérez"). El nombre es configurable ("Obra", "Trabajo"). |
 | Etapa | `Stage` | Estado de un proyecto dentro del pipeline configurable de la empresa. |
+| Etapa inicial | — | La primera etapa del pipeline; siempre abierta. Los proyectos nuevos empiezan ahí. |
+| Etapa de cierre | — | Etapa de tipo *ganado* o *perdido*; un proyecto en ella está cerrado. |
 | Presupuesto | `Quote` | Propuesta económica de un proyecto. Un proyecto puede tener varias versiones. |
 | Ítem de presupuesto | `QuoteItem` | Línea del presupuesto: descripción, medidas, cantidad y precio. |
 | Catálogo | `CatalogItem` | Producto o servicio reutilizable con precio de referencia. |
 | Categoría | `Category` | Clasificación de un ingreso o egreso (ej. "Vidrios", "Flete", "Alquiler"). |
+| Categoría de sistema | `SystemCategory` (`Category` con `system_key`) | Categoría que usan las operaciones automáticas (ej. "Cobros de clientes"); se puede renombrar, no archivar. |
 | Cuenta de dinero | `MoneyAccount` | Lugar donde está el dinero: caja efectivo, banco, billetera virtual. Tiene una sola moneda. |
 | Movimiento de caja | `CashMovement` | Entrada o salida de dinero de una cuenta de dinero. |
 | Transferencia | `Transfer` | Paso de dinero entre dos cuentas de dinero propias, incluso de distinta moneda. |
