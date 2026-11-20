@@ -8,12 +8,14 @@ La revisión semántica de las figuras se resume abajo. Actual se refiere a cód
 
 El ruleset de main se verificó con `gh api repos/fdelillo/crm/rules/branches/main`: PR requerido, make check y make vuln requeridos, reglas deletion y non_fast_forward. Esta configuración está fuera de Git y se observó durante esta revisión; la decisión está documentada en [ADR-026](https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/026-vulnerabilidades-dependencias-govulncheck.md#L165-L170).
 
+**Revisión suplementaria (2026-11-20)**: las figuras de configuración de 09-esquema y el nodo Configuración de 03-modulos se contrastaron contra main en `e5c8e355bb250a408d8d44c2987b6750c0e9b879` (spec 002), porque la migración 00010 y el módulo settings no existen en la revisión de referencia. Las demás figuras siguen contrastadas contra la de referencia: re-fijar todo el atlas a main exige revisar las 37 fuentes que cambiaron desde entonces (workflows, Makefile, api.go, ops.go, root.go, specs y ui de 001, entre otras) y queda para la próxima revisión completa. `validar.py` acepta enlaces a ambas revisiones (`supplement_commit` en el manifiesto).
+
 | Página / figura | Estado de la vista | Contraste y resultado |
 |---|---|---|
 | [01-contexto · Contexto del sistema](01-contexto.html) | Mixto | Se mantienen actores, límite CRM y servicios SMTP/S3; se distingue negocio previsto del backend actual. |
 | [02-arquitectura · Arquitectura general](02-arquitectura.html) | Mixto | serve conserva API y worker, PostgreSQL/S3/SMTP; root conserva SPAUnavailableHandler 503 y SPA prevista. |
-| [03-modulos · Mapa de módulos](03-modulos.html) | Mixto | tenant, identity, authz e industrytemplate existen; NoopSeeder no implementa configuración completa. |
-| [04-fronteras · Dependencias y fronteras](04-fronteras.html) | Actual | Se contrastan fronteras de imports y depguard; app compone, tenant consume identidad y ambos usan platform. |
+| [03-modulos · Mapa de módulos](03-modulos.html) | Mixto | tenant, identity, authz e industrytemplate existen; el nodo Configuración (settings, spec 002) pasa a actual y se contrastó contra main en e5c8e35 (revisión suplementaria). |
+| [04-fronteras · Dependencias y fronteras](04-fronteras.html) | Actual | Se contrastan fronteras de imports y depguard; app compone, tenant consume identidad y ambos usan platform. La nota omite también settings (spec 002), que solo importa authz, industrytemplate y platform. |
 | [05-peticion · Recorrido de una petición](05-peticion.html) | Actual | PATCH repite authz.Can con el Principal y luego LockTenant, actualización y auditoría; DD-44 excluye releer actor/sesión en escrituras de empresa. |
 | [06-aislamiento · Aislamiento entre empresas](06-aislamiento.html) | Actual | TxRunner, SET LOCAL ROLE, RLS forzada y reintento 42501 previo al callback permanecen iguales en esta revisión. |
 | [07-permisos · Permisos compartidos](07-permisos.html) | Actual | 15 permisos y 6 del operador coinciden con authz.go; se agregan DD-48, DD-44 y la excepción GET /users. |
@@ -26,6 +28,8 @@ El ruleset de main se verificó con `gh api repos/fdelillo/crm/rules/branches/ma
 | [09-esquema · Outbox por empresa](09-esquema.html) | Actual | Las siete tablas y sus DDL coinciden con las migraciones de referencia; se citan privilegios de 00001 y excepción de readiness de 00009. |
 | [09-esquema · Auditoría y actor](09-esquema.html) | Actual | Las siete tablas y sus DDL coinciden con las migraciones de referencia; se citan privilegios de 00001 y excepción de readiness de 00009. |
 | [09-esquema · Contadores de login](09-esquema.html) | Actual | Las siete tablas y sus DDL coinciden con las migraciones de referencia; se citan privilegios de 00001 y excepción de readiness de 00009. |
+| [09-esquema · Configuración: nombres y etapas](09-esquema.html) | Actual | tenant_settings y stages coinciden con la migración 00010 de main en e5c8e35 (revisión suplementaria); el DDL completo está en el detalle. |
+| [09-esquema · Configuración: categorías y catálogo](09-esquema.html) | Actual | categories y catalog_items coinciden con la migración 00010 de main en e5c8e35 (revisión suplementaria); el DDL completo está en el detalle. |
 | [10-entorno-local · Entorno local de desarrollo](10-entorno-local.html) | Mixto | Compose, loopback, TLS local y SPA ausente contrastados; se precisa toolchain go1.27.2; Vite sigue previsto. |
 | [11-registro · Registro de empresa](11-registro.html) | Actual | Registro mantiene cupos IP/global, aprovisionamiento y atomicidad de usuario/token/outbox/auditoría. |
 | [12-autenticacion · Ingreso y creación de sesión](12-autenticacion.html) | Actual | Cupo IP antes del body (20, 1/3 s), orden hasher/conexión, bloqueo y vigencia de sesión; limpiar throttle requiere activo con credencial válida. |

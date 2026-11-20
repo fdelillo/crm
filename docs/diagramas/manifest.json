@@ -1,5 +1,6 @@
 {
   "commit": "9e6fc311b81221ea051710dc5af08ad244475170",
+  "supplement_commit": "e5c8e355bb250a408d8d44c2987b6750c0e9b879",
   "permissions": [
     "customers.manage",
     "projects.manage",
@@ -43,7 +44,7 @@
       "label": "Negocio previsto"
     }
   ],
-  "figure_count": 59,
+  "figure_count": 61,
   "interactive_figure_count": 17,
   "topic_count": 33,
   "diagram_page_count": 38,
@@ -89,7 +90,9 @@
         "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/001-monolito-modular.md",
         "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/app/api.go",
         "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/industrytemplate/catalog.go",
-        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/cmd/crm/serve.go"
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/cmd/crm/serve.go",
+        "https://github.com/fdelillo/crm/blob/e5c8e355bb250a408d8d44c2987b6750c0e9b879/internal/settings/service.go",
+        "https://github.com/fdelillo/crm/blob/e5c8e355bb250a408d8d44c2987b6750c0e9b879/db/migrations/00010_company_configuration.sql"
       ]
     },
     {
@@ -180,7 +183,8 @@
         "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/db/migrations/00006_outbox_messages.sql",
         "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/db/migrations/00005_sessions_user_tokens.sql",
         "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/db/migrations/00001_schemas.sql#L12-L19",
-        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/db/migrations/00009_readiness_schema_version.sql#L1-L5"
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/db/migrations/00009_readiness_schema_version.sql#L1-L5",
+        "https://github.com/fdelillo/crm/blob/e5c8e355bb250a408d8d44c2987b6750c0e9b879/db/migrations/00010_company_configuration.sql"
       ]
     },
     {
