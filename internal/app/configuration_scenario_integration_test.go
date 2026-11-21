@@ -223,6 +223,11 @@ func TestConfigureACompanyOfAnotherIndustryThroughTheAPI(t *testing.T) {
 	if got := stageViews(t, adminReads[0]); !reflect.DeepEqual(got, wantStages) {
 		t.Fatalf("operator pipeline: %+v", got)
 	}
+	// The single item read is checked against its own expected values, not only against the admin's bytes.
+	detail := decodeInto[catalogItemBody](t, adminReads[3])
+	if got := (catalogView{detail.Name, detail.Unit, detail.UnitLabel, detail.ReferencePrice, detail.Archived}); detail.ID != itemID || !reflect.DeepEqual(got, wantCatalog[0]) {
+		t.Fatalf("operator catalog item %s: id %s, %+v\nwant %+v", itemID, detail.ID, got, wantCatalog[0])
+	}
 	if got := decodeInto[labelsBody](t, adminReads[4]); got != labels {
 		t.Fatalf("operator labels: %+v", got)
 	}
