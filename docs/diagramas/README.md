@@ -36,7 +36,7 @@ El hosting de producción, su implementación operativa y las specs en borrador 
 
 ## Mantenimiento
 
-Excepción vigente: las figuras de configuración (spec 002: 09-esquema y el nodo Configuración de 03-modulos) enlazan a una revisión suplementaria, `e5c8e355bb250a408d8d44c2987b6750c0e9b879`, registrada como `supplement_commit` en el manifiesto. El resto sigue en la revisión de referencia hasta la próxima revisión completa del atlas.
+Excepción vigente: las figuras de configuración (spec 002: 09-esquema, el nodo Configuración de 03-modulos y la mención de settings en la nota de 04-fronteras) enlazan a una revisión suplementaria, `e5c8e355bb250a408d8d44c2987b6750c0e9b879`, registrada como `supplement_commit` en el manifiesto. El resto sigue en la revisión de referencia hasta la próxima revisión completa del atlas.
 
 Cuando cambien arquitectura, contrato, permisos, migraciones o reglas financieras, actualizar figuras afectadas y todos sus enlaces a una nueva revisión única; registrar esa revisión en índice, manifest e informe de validación. Mantener el estilo de `ESTILO.md` y comprobar enlaces, accesibilidad, geometría y controles en escritorio y celular.
 

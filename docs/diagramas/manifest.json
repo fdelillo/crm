@@ -105,7 +105,8 @@
         "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/docs/adr/001-monolito-modular.md",
         "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/.golangci.yml",
         "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/tenant/service.go",
-        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/service.go"
+        "https://github.com/fdelillo/crm/blob/9e6fc311b81221ea051710dc5af08ad244475170/internal/identity/service.go",
+        "https://github.com/fdelillo/crm/blob/e5c8e355bb250a408d8d44c2987b6750c0e9b879/internal/settings/service.go"
       ]
     },
     {
