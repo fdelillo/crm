@@ -30,6 +30,9 @@ class Links(HTMLParser):
         if tag in ('script','img','iframe','link'):
             self.resources.extend(a[k] for k in ('src','href') if a.get(k))
 
+# Páginas, figuras y recorridos interactivos del atlas (38/59/17 en la revisión de referencia; +2 figuras de 09-esquema en la suplementaria).
+EXPECTED_PAGES,EXPECTED_FIGURES,EXPECTED_INTERACTIVE=38,61,17
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--repo',type=Path,required=True)
@@ -90,7 +93,11 @@ def main():
             elif not 1<=int(m[1])<=int(m[2] or m[1])<=files[key]:issue('Rango fuera del archivo: '+url)
             anchors+=1
     if (root/'fuentes').exists():issue('La carpeta de copias de fuentes todavía existe')
-    if len(diagram_pages)!=manifest['diagram_page_count'] or figures!=manifest['figure_count'] or interactive!=manifest['interactive_figure_count']:issue('Conteos inesperados')
+    # Los conteos esperados viven acá y no en el manifiesto: si se borra una figura y se baja el conteo del
+    # manifiesto en el mismo cambio, la comprobación tiene que fallar. Cambiarlos es una decisión explícita.
+    expected=(EXPECTED_PAGES,EXPECTED_FIGURES,EXPECTED_INTERACTIVE)
+    if (len(diagram_pages),figures,interactive)!=expected:issue(f'Conteos inesperados: {(len(diagram_pages),figures,interactive)}, se esperaban {expected}')
+    if (manifest['diagram_page_count'],manifest['figure_count'],manifest['interactive_figure_count'])!=expected:issue('Los conteos del manifiesto no coinciden con los esperados del validador')
     original_failures={};localized_passes=0;original_translation_pages=0
     if args.self_check:
         spec=importlib.util.spec_from_file_location('diagram_self_check',args.self_check)
