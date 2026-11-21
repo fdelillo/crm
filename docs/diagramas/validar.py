@@ -30,12 +30,17 @@ class Links(HTMLParser):
         if tag in ('script','img','iframe','link'):
             self.resources.extend(a[k] for k in ('src','href') if a.get(k))
 
+# Páginas, figuras y recorridos interactivos del atlas (38/59/17 en la revisión de referencia; +2 figuras de 09-esquema en la suplementaria).
+EXPECTED_PAGES,EXPECTED_FIGURES,EXPECTED_INTERACTIVE=38,61,17
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--repo',type=Path,required=True)
     parser.add_argument('--self-check',type=Path)
     args=parser.parse_args();root=Path(__file__).resolve().parent
-    manifest=json.loads((root/'manifest.json').read_text());sha=manifest['commit']
+    manifest=json.loads((root/'manifest.json').read_text());sha=manifest['commit'];supplement=manifest.get('supplement_commit')
+    assert supplement is None or re.fullmatch('[0-9a-f]{40}',supplement)
+    shas=[sha]+([supplement] if supplement else [])
     assert re.fullmatch('[0-9a-f]{40}',sha)
     issues=[];urls=set();local_links=0;figures=0;interactive=0;diagram_pages=[]
     def issue(msg):issues.append(str(msg))
@@ -45,7 +50,7 @@ def main():
         nonlocal local_links
         u=urlsplit(link)
         if u.scheme:
-            if not link.startswith('https://github.com/fdelillo/crm/blob/'+sha+'/'):
+            if not any(link.startswith('https://github.com/fdelillo/crm/blob/'+x+'/') for x in shas):
                 issue(f'{p.name}: referencia externa fuera de la revisión: {link}')
             else:urls.add(link)
             return
@@ -74,20 +79,25 @@ def main():
     scan(manifest)
     files={};anchors=0
     for url in sorted(urls):
-        u=urlsplit(url);prefix='/fdelillo/crm/blob/'+sha+'/'
-        path=unquote(u.path[len(prefix):])
-        if path not in files:
-            r=subprocess.run(['git','-C',str(args.repo),'cat-file','-e',sha+':'+path],capture_output=True,text=True)
+        u=urlsplit(url);url_sha=next(x for x in shas if url.startswith('https://github.com/fdelillo/crm/blob/'+x+'/'))
+        prefix='/fdelillo/crm/blob/'+url_sha+'/'
+        path=unquote(u.path[len(prefix):]);key=(url_sha,path)
+        if key not in files:
+            r=subprocess.run(['git','-C',str(args.repo),'cat-file','-e',url_sha+':'+path],capture_output=True,text=True)
             if r.returncode:issue('git cat-file -e falló: '+path);continue
-            data=subprocess.check_output(['git','-C',str(args.repo),'show',sha+':'+path],text=True)
-            files[path]=len(data.splitlines())
+            data=subprocess.check_output(['git','-C',str(args.repo),'show',url_sha+':'+path],text=True)
+            files[key]=len(data.splitlines())
         if u.fragment:
             m=re.fullmatch(r'L(\d+)(?:-L(\d+))?',u.fragment)
             if not m:issue('Ancla GitHub inválida: '+url)
-            elif not 1<=int(m[1])<=int(m[2] or m[1])<=files[path]:issue('Rango fuera del archivo: '+url)
+            elif not 1<=int(m[1])<=int(m[2] or m[1])<=files[key]:issue('Rango fuera del archivo: '+url)
             anchors+=1
     if (root/'fuentes').exists():issue('La carpeta de copias de fuentes todavía existe')
-    if len(diagram_pages)!=38 or figures!=59 or interactive!=17:issue('Conteos inesperados')
+    # Los conteos esperados viven acá y no en el manifiesto: si se borra una figura y se baja el conteo del
+    # manifiesto en el mismo cambio, la comprobación tiene que fallar. Cambiarlos es una decisión explícita.
+    expected=(EXPECTED_PAGES,EXPECTED_FIGURES,EXPECTED_INTERACTIVE)
+    if (len(diagram_pages),figures,interactive)!=expected:issue(f'Conteos inesperados: {(len(diagram_pages),figures,interactive)}, se esperaban {expected}')
+    if (manifest['diagram_page_count'],manifest['figure_count'],manifest['interactive_figure_count'])!=expected:issue('Los conteos del manifiesto no coinciden con los esperados del validador')
     original_failures={};localized_passes=0;original_translation_pages=0
     if args.self_check:
         spec=importlib.util.spec_from_file_location('diagram_self_check',args.self_check)
@@ -104,7 +114,7 @@ def main():
         for name,errs in original_failures.items():
             if expected_error in errs:original_translation_pages+=1
             for error in errs:
-                if error!=expected_error and not error.startswith('remote reference on <a>: https://github.com/fdelillo/crm/blob/'+sha+'/'):
+                if error!=expected_error and not any(error.startswith('remote reference on <a>: https://github.com/fdelillo/crm/blob/'+x+'/') for x in shas):
                     issue(name+': '+error)
         original_reference_error=module.reference_error
         def reference_error(tag,rel,value):

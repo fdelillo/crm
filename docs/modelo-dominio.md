@@ -142,3 +142,13 @@ directo), nunca en el pago que lo cancela. Así no se cuenta dos veces.
 | Categorías de egreso | Perfiles de aluminio, Vidrios, Accesorios, Flete, Mano de obra, Alquiler, Servicios, Impuestos |
 | Categorías de ingreso | Cobros de clientes (sistema), Otros ingresos |
 | Catálogo | Ventana corrediza (m²), Puerta de abrir (u), Mampara de baño (u), Colocación (u) |
+
+- **Etapa inicial**: la primera del pipeline (posición 1) y siempre de tipo abierto; los proyectos nuevos
+  empiezan ahí. El pipeline tiene al menos una etapa *ganada*; la *perdida* es opcional (P-6 de la 002).
+- **Categorías de sistema**: se identifican por clave (`system_key`), no por nombre: `customer_receipts`
+  ("Cobros de clientes") y `partner_contributions` ("Aportes de socios") de ingreso; `supplier_payments`,
+  `employee_payments` y `partner_withdrawals` de egreso. Se pueden renombrar, nunca archivar, y las
+  operaciones automáticas las buscan por su clave.
+- **Catálogo**: el precio de referencia es opcional; si existe, trae importe en centavos y moneda (ARS o
+  USD) juntos. Una unidad `other` exige un nombre de unidad ("jornada"). Las categorías y los ítems del
+  catálogo se archivan, no se borran.

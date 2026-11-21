@@ -1,7 +1,6 @@
 package app_test
 
 import (
-	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -9,29 +8,18 @@ import (
 	"github.com/fdelillo/crm/internal/testsupport/contract"
 )
 
-// pendingOperations lists the operationIds of spec 002 whose routes are not registered yet.
-// Each phase of 002 removes the operations it implements; the last one leaves it empty (DD-13).
-var pendingOperations = map[string]bool{}
-
 // contractRouteProblems compares the declared operations with the routes the router implements.
-// implemented holds "METHOD /api/v1/path" keys; pending holds operationIds.
-func contractRouteProblems(ops []contract.Operation, implemented, pending map[string]bool) []string {
+// implemented holds "METHOD /api/v1/path" keys.
+func contractRouteProblems(ops []contract.Operation, implemented map[string]bool) []string {
 	var problems []string
 	declared := map[string]bool{}
-	known := map[string]bool{}
 	for _, op := range ops {
 		if op.Path == "/healthz" || op.Path == "/readyz" {
 			continue
 		}
 		key := op.Method + " /api/v1" + op.Path
 		declared[key] = true
-		known[op.ID] = true
-		switch {
-		case pending[op.ID] && op.Document == contract.Documents[0]:
-			problems = append(problems, fmt.Sprintf("pendingOperations lists %s, an operation of %s", op.ID, op.Document))
-		case pending[op.ID] && implemented[key]:
-			problems = append(problems, fmt.Sprintf("route %s is implemented: remove it from pendingOperations (%s)", key, op.ID))
-		case !pending[op.ID] && !implemented[key]:
+		if !implemented[key] {
 			problems = append(problems, "contract route not implemented: "+key)
 		}
 	}
@@ -40,37 +28,24 @@ func contractRouteProblems(ops []contract.Operation, implemented, pending map[st
 			problems = append(problems, "implemented route outside contract: "+key)
 		}
 	}
-	for id := range pending {
-		if !known[id] {
-			problems = append(problems, "pendingOperations lists unknown operation "+id)
-		}
-	}
 	slices.Sort(problems)
 	return problems
 }
 
-// T-002-B203 (DD-13): pendingOperations only lists operations of 002 (none of 001) and the contract declares 20;
-// each phase removes the ones it implements.
-func TestPendingOperationsAreOperationsOfTheSecondContract(t *testing.T) {
-	declared := map[string]bool{}
+// T-002-B203 (DD-13), T-002-B801: the contract of 002 declares 20 operations, all of them implemented.
+func TestSecondContractDeclaresItsOperations(t *testing.T) {
+	declared := 0
 	for _, op := range contract.Default(t).Operations() {
 		if op.Document == contract.Documents[1] {
-			declared[op.ID] = true
-		} else if pendingOperations[op.ID] {
-			t.Errorf("pendingOperations lists %s, an operation of %s", op.ID, op.Document)
+			declared++
 		}
 	}
-	if len(declared) != 20 {
-		t.Errorf("the 002 contract declares %d operations, want 20", len(declared))
-	}
-	for id := range pendingOperations {
-		if !declared[id] {
-			t.Errorf("pendingOperations lists %s, which the 002 contract does not declare", id)
-		}
+	if declared != 20 {
+		t.Errorf("the 002 contract declares %d operations, want 20", declared)
 	}
 }
 
-// T-002-B203 (T-B801, DD-13): pending operations may lack a route, nothing else may.
+// T-002-B203 (T-002-B801, DD-13): every declared operation has a route and every route is declared.
 func TestContractRouteProblems(t *testing.T) {
 	ops := []contract.Operation{
 		{Method: "GET", Path: "/me", ID: "getMe", Document: contract.Documents[0]},
@@ -80,24 +55,17 @@ func TestContractRouteProblems(t *testing.T) {
 	tests := []struct {
 		name        string
 		implemented map[string]bool
-		pending     map[string]bool
 		want        []string
 	}{
-		{"pending operation without route is fine", map[string]bool{"GET /api/v1/me": true}, map[string]bool{"listStages": true}, nil},
-		{"pending operation with a route", map[string]bool{"GET /api/v1/me": true, "GET /api/v1/stages": true}, map[string]bool{"listStages": true},
-			[]string{"remove it from pendingOperations"}},
-		{"operation without route and not pending", map[string]bool{"GET /api/v1/me": true}, nil,
+		{"every operation has its route", map[string]bool{"GET /api/v1/me": true, "GET /api/v1/stages": true}, nil},
+		{"operation without route", map[string]bool{"GET /api/v1/me": true},
 			[]string{"contract route not implemented: GET /api/v1/stages"}},
-		{"implemented route outside the contract", map[string]bool{"GET /api/v1/me": true, "GET /api/v1/stages": true, "GET /api/v1/other": true}, nil,
+		{"implemented route outside the contract", map[string]bool{"GET /api/v1/me": true, "GET /api/v1/stages": true, "GET /api/v1/other": true},
 			[]string{"implemented route outside contract: GET /api/v1/other"}},
-		{"pending operation unknown to every contract", map[string]bool{"GET /api/v1/me": true}, map[string]bool{"listStages": true, "noSuchOperation": true},
-			[]string{"pendingOperations lists unknown operation noSuchOperation"}},
-		{"pending operation of 001", map[string]bool{}, map[string]bool{"listStages": true, "getMe": true},
-			[]string{"pendingOperations lists getMe"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := contractRouteProblems(ops, tt.implemented, tt.pending)
+			got := contractRouteProblems(ops, tt.implemented)
 			if len(got) != len(tt.want) {
 				t.Fatalf("problems=%q, want %d containing %q", got, len(tt.want), tt.want)
 			}
