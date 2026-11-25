@@ -898,6 +898,12 @@ capturas a 375 px: radios de Registro redondos, "+ Invitar" de 44 px, el menú d
 dentro del viewport con el texto que salta y "Datos de la empresa" y "Usuarios" separados. Para el
 rediseño (no bloquea): el menú de acciones queda pegado a los bordes y tapa la barra inferior.
 
+**Pendiente de 001 (2026-11-25, no bloquea)**: los esquemas Zod de 001 recortan con `z.string().trim()`
+(`String.prototype.trim`), y el servidor recorta con `strings.TrimSpace` de Go: difieren en U+0085 y
+U+FEFF. Ejemplo (revisión 2 de Codex del PR #78): un `company_name` que es solo U+0085 pasa la validación
+del registro y el servidor lo rechaza con `required`. 002 recorta con `lib/trimSpace.ts` (T-002-F201,
+`028d887`); alinear 001 queda como tarea aparte (decisión del usuario: anotarlo y seguir).
+
 **Aprobado (2026-10-26)** junto con `ui.md`: el usuario aprobó P-F1 a P-F4 con las opciones
 recomendadas ("ok sigamos con la recomendacion"; `ui.md` §24) y ADR-030 pasó a *Accepted*. Ninguna
 fase empezada. Se empieza por **T-002-F001**, que va en la rama única de T-002-B201 y T-002-B202
