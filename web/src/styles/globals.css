@@ -84,7 +84,10 @@
   h1 {
     @apply text-xl font-semibold leading-7 lg:text-2xl lg:leading-8;
   }
-  button,
+  /* T-002-F103 (002/DD-F13): a radio is a 16 px circle; its target is the whole card <label>.
+     A link that looks like a button (data-slot="button") gets the same minimum as a button. */
+  button:not([role='radio']),
+  a[data-slot='button'],
   input,
   select,
   [role='menuitem'],

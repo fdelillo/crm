@@ -8,6 +8,10 @@ import {
   waitForEmail,
   type BrowserDiagnostics,
 } from './support'
+import {
+  expectCircleRadios,
+  expectConfigurationTouchTargets,
+} from './touchTargets'
 
 const origin = 'https://localhost:8443'
 const initialPassword = 'Example test password 123!'
@@ -68,6 +72,10 @@ test('critical registration, session, recovery, invitation, and access flows', a
     page.getByRole('heading', { level: 1, name: 'Creá tu cuenta' }),
   ).toBeVisible()
   await inspectScreen(page)
+  // T-002-F103 (002/DD-F13, P-F2): the currency radios are circles inside a 44 px card at 375 px.
+  await page.setViewportSize({ width: 375, height: 720 })
+  await expectCircleRadios(page, ['Pesos (ARS)', 'Dólares (USD)'])
+  await page.setViewportSize({ width: 320, height: 720 })
   await page.getByLabel('Tu nombre').fill(adminName)
   await page.getByLabel('Email').fill(adminEmail)
   await page.getByLabel('Contraseña').fill(initialPassword)
@@ -172,6 +180,8 @@ test('critical registration, session, recovery, invitation, and access flows', a
   ).toEqual({ status: 200, emailVerified: true })
   await expect(page.getByRole('link', { name: '+ Invitar' })).toBeEnabled()
   await inspectScreen(page)
+  // T-002-F103 (002/DD-F13, P-F2, P-F3): target sizes and the menu width at 375 and 320 px.
+  await expectConfigurationTouchTargets(page, adminName)
 
   await page.goto('/settings')
   await expect(

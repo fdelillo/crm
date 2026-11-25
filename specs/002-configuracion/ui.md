@@ -1293,7 +1293,7 @@ export interface SettingsLinkListProps {
 // src/components/FormDialog.tsx — Dialog de shadcn con un <form>; controlado desde afuera (C-03, C-04)
 export interface FormDialogProps {
   open: boolean;
-  onOpenChange: (open: boolean) => void;  // al cerrar, Radix devuelve el foco al disparador (INV-F10 de 001)
+  onOpenChange: (open: boolean) => void;  // al cerrar, el foco vuelve según returnFocusRef (INV-F10 de 001)
   title: string;
   description?: string;
   submitLabel: string;                     // "Agregar etapa"
@@ -1303,6 +1303,7 @@ export interface FormDialogProps {
   onSubmit: React.FormEventHandler<HTMLFormElement>;
   children: React.ReactNode;               // campos + FormAlert de error general
   initialFocusRef?: React.RefObject<HTMLElement | null>;  // por defecto, el primer campo
+  returnFocusRef?: React.RefObject<HTMLElement | null>;   // destino del foco al cerrar (ver nota abajo)
 }
 
 // src/components/BlockedActionDialog.tsx — C-05: AlertDialog con un solo botón "Entendido" (foco inicial)
@@ -1311,7 +1312,16 @@ export interface BlockedActionDialogProps {
   onOpenChange: (open: boolean) => void;
   title: string;
   description: string;
+  returnFocusRef?: React.RefObject<HTMLElement | null>;   // destino del foco al cerrar (ver nota abajo)
 }
+
+// Foco al cerrar FormDialog y BlockedActionDialog (INV-F10 de 001; revisión 1 de Codex del PR #77):
+// los dos se controlan desde afuera, sin DialogTrigger, así que Radix no devuelve el foco solo. Al
+// cerrar por cualquier camino, el foco va a returnFocusRef si está dado y conectado; si no, al
+// elemento que tenía el foco al abrir, si sigue conectado; si no, a ninguno (decide la pantalla,
+// INV-F6). Abiertos desde un ítem del menú [⋮], que se desmonta al cerrarse el menú, la pantalla
+// pasa en returnFocusRef el [⋮] de la fila (C-03 "Editar", C-05).
+// lib/useOpenerFocus.ts tiene esa lógica para los dos.
 
 // src/components/ArchivedSection.tsx — disclosure: <button aria-expanded aria-controls> + región; estado interno abierto/cerrado
 export interface ArchivedSectionProps {
