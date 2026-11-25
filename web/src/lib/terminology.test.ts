@@ -15,6 +15,7 @@ describe('midSentence', () => {
     ['Ñandú', 'ñandú'],
     ['OT', 'OT'],
     ['PyME', 'PyME'],
+    ['Obra PyME', 'obra PyME'],
     ['obra', 'obra'],
     ['', ''],
   ])('turns %j into %j', (text, expected) => {
