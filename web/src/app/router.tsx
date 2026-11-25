@@ -87,6 +87,15 @@ export const appRoutes: RouteObject[] = [
                 }),
               },
               {
+                // Read-only for everyone, editable with settings.manage (002/DD-F1): outside the guard.
+                path: 'settings/stages',
+                lazy: async () => ({
+                  Component: (
+                    await import('@/features/configuration/stages/StagesPage')
+                  ).StagesPage,
+                }),
+              },
+              {
                 Component: RequirePermission,
                 children: [
                   {
