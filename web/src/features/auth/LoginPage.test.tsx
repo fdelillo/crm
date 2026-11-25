@@ -23,6 +23,23 @@ function loggedOut() {
     http.get(`${base}/me`, () => serverProblem('unauthenticated', 401)),
   )
 }
+// A login that succeeds leaves a session: /me answers it and the home page it lands on
+// reads the company, as the backend would.
+function sessionAfterLogin() {
+  let authenticated = false
+  server.use(
+    http.get(`${base}/me`, () =>
+      authenticated
+        ? HttpResponse.json(validSession)
+        : serverProblem('unauthenticated', 401),
+    ),
+    http.get(`${base}/tenant`, () => HttpResponse.json(buildTenant())),
+  )
+  return () => {
+    authenticated = true
+    return HttpResponse.json(validSession)
+  }
+}
 async function fillCredentials() {
   const user = userEvent.setup()
   await user.type(await screen.findByLabelText('Email'), ' ana@example.test ')
@@ -282,12 +299,10 @@ describe('LoginPage', () => {
 
   // T-F301: retryable failures preserve credentials and submit only after an explicit retry.
   it('preserves values after 503 and retries without navigation', async () => {
-    loggedOut()
+    const loggedIn = sessionAfterLogin()
     let recovered = false
     const login = vi.fn(() =>
-      recovered
-        ? HttpResponse.json(validSession)
-        : serverProblem('service_unavailable', 503),
+      recovered ? loggedIn() : serverProblem('service_unavailable', 503),
     )
     server.use(http.post(`${base}/auth/login`, login))
     const { router } = renderApp(['/login'])
@@ -300,17 +315,18 @@ describe('LoginPage', () => {
     expect(screen.getByLabelText('Contraseña')).toHaveValue('clave-segura')
     recovered = true
     await user.click(screen.getByRole('button', { name: 'Reintentar' }))
-    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+    expect(
+      await screen.findByRole('heading', { name: 'Hola, Persona de prueba' }),
+    ).toBeVisible()
+    expect(router.state.location.pathname).toBe('/')
     expect(login).toHaveBeenCalledTimes(2)
   })
 
   // T-F301: offline failures use the network message, preserve data, and retry on request.
   it('preserves credentials after a network failure and retries explicitly', async () => {
-    loggedOut()
+    const loggedIn = sessionAfterLogin()
     let recovered = false
-    const login = vi.fn(() =>
-      recovered ? HttpResponse.json(validSession) : HttpResponse.error(),
-    )
+    const login = vi.fn(() => (recovered ? loggedIn() : HttpResponse.error()))
     server.use(http.post(`${base}/auth/login`, login))
     const { router } = renderApp(['/login'])
     const user = await fillCredentials()
@@ -322,7 +338,10 @@ describe('LoginPage', () => {
     expect(screen.getByLabelText('Contraseña')).toHaveValue('clave-segura')
     recovered = true
     await user.click(screen.getByRole('button', { name: 'Reintentar' }))
-    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+    expect(
+      await screen.findByRole('heading', { name: 'Hola, Persona de prueba' }),
+    ).toBeVisible()
+    expect(router.state.location.pathname).toBe('/')
     expect(login).toHaveBeenCalledTimes(2)
   })
 
