@@ -2,6 +2,12 @@ import { useRef, useState } from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { FormDialog, type FormDialogProps } from './FormDialog'
 
 // T-002-F103 (002/§16.1, 002/§18): the shared form dialog. Opened by a real button, like a page does.
@@ -200,6 +206,75 @@ describe('FormDialog', () => {
       await user.click(await screen.findByRole('button', { name: 'Cancelar' }))
 
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+  })
+
+  // T-002-F103 (002/ui.md §14, INV-F10 de 001): opened from a row menu item, which unmounts when the
+  // menu closes; the focus must land on the row's [⋮], given by returnFocusRef.
+  describe('opened from a row menu item', () => {
+    function RowMenuHarness() {
+      const [open, setOpen] = useState(false)
+      const menuButton = useRef<HTMLButtonElement>(null)
+      return (
+        <>
+          <DropdownMenu>
+            <DropdownMenuTrigger ref={menuButton}>
+              Acciones de la fila
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem onSelect={() => setOpen(true)}>
+                Editar
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <FormDialog
+            open={open}
+            onOpenChange={setOpen}
+            returnFocusRef={menuButton}
+            title="Editar etapa"
+            submitLabel="Guardar"
+            pendingLabel="Guardando…"
+            pending={false}
+            onSubmit={(event) => event.preventDefault()}
+          >
+            <label>
+              Nombre
+              <input name="name" />
+            </label>
+          </FormDialog>
+        </>
+      )
+    }
+
+    async function openFromMenu() {
+      render(<RowMenuHarness />)
+      const user = userEvent.setup()
+      screen.getByRole('button', { name: 'Acciones de la fila' }).focus()
+      await user.keyboard('{Enter}')
+      await screen.findByRole('menuitem', { name: 'Editar' })
+      await user.keyboard('{Enter}')
+      await screen.findByRole('dialog', { name: 'Editar etapa' })
+      return user
+    }
+
+    it('returns the focus to the row [⋮] after Cancelar', async () => {
+      const user = await openFromMenu()
+      await user.click(screen.getByRole('button', { name: 'Cancelar' }))
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Acciones de la fila' }),
+      ).toHaveFocus()
+    })
+
+    it('returns the focus to the row [⋮] after Escape', async () => {
+      const user = await openFromMenu()
+      await user.keyboard('{Escape}')
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Acciones de la fila' }),
+      ).toHaveFocus()
     })
   })
 })

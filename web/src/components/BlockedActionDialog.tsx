@@ -14,6 +14,8 @@ export interface BlockedActionDialogProps {
   onOpenChange: (open: boolean) => void
   title: string
   description: string
+  // Where the focus goes on close when the opener unmounts (the row's [⋮]). Defaults to the opener.
+  returnFocusRef?: React.RefObject<HTMLElement | null>
 }
 
 // T-002-F103 (002/§16.1, C-05): says why an action cannot run and what to do first. One button.
@@ -23,8 +25,9 @@ export function BlockedActionDialog({
   onOpenChange,
   title,
   description,
+  returnFocusRef,
 }: BlockedActionDialogProps) {
-  const returnFocus = useOpenerFocus(open)
+  const returnFocus = useOpenerFocus(open, returnFocusRef)
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent onCloseAutoFocus={returnFocus}>

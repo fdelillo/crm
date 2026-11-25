@@ -26,6 +26,8 @@ export interface FormDialogProps {
   children: React.ReactNode
   // Defaults to the first field.
   initialFocusRef?: React.RefObject<HTMLElement | null>
+  // Where the focus goes on close when the opener unmounts (the row's [⋮]). Defaults to the opener.
+  returnFocusRef?: React.RefObject<HTMLElement | null>
 }
 
 // T-002-F103 (002/§16.1, 002/§18, 002/BR-F14): shadcn Dialog with a <form>, controlled from outside.
@@ -41,9 +43,10 @@ export function FormDialog({
   onSubmit,
   children,
   initialFocusRef,
+  returnFocusRef,
 }: FormDialogProps) {
   const reasonId = useId()
-  const returnFocus = useOpenerFocus(open)
+  const returnFocus = useOpenerFocus(open, returnFocusRef)
   return (
     <Dialog
       open={open}
