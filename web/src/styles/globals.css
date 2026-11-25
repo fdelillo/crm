@@ -34,6 +34,14 @@
   --color-success-muted: var(--success-muted);
   --color-warning: var(--warning);
   --color-warning-muted: var(--warning-muted);
+  --color-stage-gray: var(--stage-gray);
+  --color-stage-blue: var(--stage-blue);
+  --color-stage-teal: var(--stage-teal);
+  --color-stage-green: var(--stage-green);
+  --color-stage-yellow: var(--stage-yellow);
+  --color-stage-orange: var(--stage-orange);
+  --color-stage-red: var(--stage-red);
+  --color-stage-purple: var(--stage-purple);
 }
 
 :root {
@@ -63,6 +71,15 @@
   --success-muted: #ecfdf5;
   --warning: #92400e;
   --warning-muted: #fffbeb;
+  /* T-002-F201 (002/ui.md §19.2): stage colors, >= 3:1 on --card. Provisional until the redesign. */
+  --stage-gray: #4b5563;
+  --stage-blue: #2563eb;
+  --stage-teal: #0d9488;
+  --stage-green: #16a34a;
+  --stage-yellow: #a16207;
+  --stage-orange: #ea580c;
+  --stage-red: #dc2626;
+  --stage-purple: #9333ea;
 }
 
 @layer base {
