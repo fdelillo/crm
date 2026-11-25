@@ -1,7 +1,7 @@
-import { Link } from 'react-router'
 import { useSession, useCan } from '@/features/auth/session'
 import { useDocumentTitle } from '@/lib/useDocumentTitle'
 import { PageHeader } from '@/components/PageHeader'
+import { SettingsLinkList } from '@/components/SettingsLinkList'
 import { LogoutButton } from '@/features/auth/components/LogoutButton'
 export function SettingsPage() {
   const { data: session } = useSession()
@@ -25,21 +25,12 @@ export function SettingsPage() {
       {manage && (
         <section>
           <h2 className="mb-3 text-lg font-semibold">Tu empresa</h2>
-          <div className="divide-y rounded-lg border bg-card">
-            {[
+          <SettingsLinkList
+            items={[
               { to: '/settings/company', label: 'Datos de la empresa' },
               { to: '/settings/users', label: 'Usuarios' },
-            ].map(({ to, label }) => (
-              <Link
-                key={to}
-                to={to}
-                className="flex min-h-14 items-center justify-between px-4 py-3 text-primary"
-              >
-                {label}
-                <span aria-hidden="true">›</span>
-              </Link>
-            ))}
-          </div>
+            ]}
+          />
         </section>
       )}
       <div className="mt-6 border-t pt-6">
