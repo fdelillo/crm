@@ -2,7 +2,7 @@
 
 [Abrir índice](index.html) · [Cobertura](cobertura.html) · [Estilo](ESTILO.md) · [Revisión de contenido](REVISION.md) · [Validación](VALIDACION.md) · [Manifest](manifest.json)
 
-33 temas, 38 páginas con diagramas, 59 figuras y 17 recorridos interactivos. Los 33 temas del catálogo inicial están cubiertos.
+33 temas, 38 páginas con diagramas, 61 figuras y 17 recorridos interactivos. Los 33 temas del catálogo inicial están cubiertos.
 
 ## Organización por área
 
@@ -35,6 +35,8 @@ Las notas explican guardas, agrupaciones y omisiones. Las máquinas de estados d
 El hosting de producción, su implementación operativa y las specs en borrador siguen pendientes del proyecto. No se ejecutan despliegues, migraciones ni operaciones de dinero.
 
 ## Mantenimiento
+
+Excepción vigente: las figuras de configuración (spec 002: 09-esquema, el nodo Configuración de 03-modulos y la mención de settings en la nota de 04-fronteras) enlazan a una revisión suplementaria, `e5c8e355bb250a408d8d44c2987b6750c0e9b879`, registrada como `supplement_commit` en el manifiesto. El resto sigue en la revisión de referencia hasta la próxima revisión completa del atlas.
 
 Cuando cambien arquitectura, contrato, permisos, migraciones o reglas financieras, actualizar figuras afectadas y todos sus enlaces a una nueva revisión única; registrar esa revisión en índice, manifest e informe de validación. Mantener el estilo de `ESTILO.md` y comprobar enlaces, accesibilidad, geometría y controles en escritorio y celular.
 

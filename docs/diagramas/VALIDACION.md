@@ -41,3 +41,7 @@ No se editaron plan, tasks, ui, ADRs ni contrato. Los enlaces del README general
 make check y make vuln son checks requeridos del PR; su resultado para el SHA final se consulta en GitHub y se informa al cerrar esta revisión. No se sustituye su resultado con la validación documental. El ruleset de main se contrastó por la API de GitHub.
 
 La reproducción automática continua sigue pendiente por indicación del usuario. Las vistas Especificado conservan su estado; las máquinas de estados de negocio siguen siendo representativas.
+
+## Actualización 2026-11-20 (spec 002)
+
+Se agregan dos figuras de esquema (configuración de la empresa), se actualiza el nodo Configuración de 03-modulos y se agrega la nota sobre `settings` en 04-fronteras: 61 figuras en 38 páginas. Esos contenidos se contrastaron contra main en `e5c8e355bb250a408d8d44c2987b6750c0e9b879` (revisión suplementaria; ver [REVISION.md](REVISION.md)). `validar.py` ahora acepta enlaces a esa segunda revisión. Los conteos esperados (38 páginas, 61 figuras, 17 recorridos) son constantes del propio validador, independientes del manifiesto; el validador exige además que los conteos del manifiesto coincidan con ellas. Ninguno de los dos se actualiza solo: si cambian los conteos del atlas, el validador falla hasta que se actualicen a mano las constantes de `validar.py` y los valores del manifiesto para que coincidan. Resultado con `--self-check`: 38/38 páginas sin incidencias; 122 URLs únicas, 108 rutas verificadas con `git cat-file -e` y 22 anclas de línea.

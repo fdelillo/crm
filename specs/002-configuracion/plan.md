@@ -20,6 +20,11 @@ la fila de `tenant_settings` de una empresa (INV-1 rota) es un error propio del 
 `settings.ErrTenantSettingsMissing`, que el handler traduce a `500` con el evento
 `settings_row_missing`; `settings/http.go` deja de reconocer `db.ErrNotFound` (DD-19, §9, §12.2;
 tareas T-002-B405 y T-002-B406).
+**Estado de la implementación (2026-11-20)**: el backend de 002 está implementado, con las 20 operaciones
+del contrato registradas y la lista de operaciones pendientes del test de rutas eliminada (T-002-B801). El
+escenario de SC-001 (una empresa de otro rubro configurada solo con la API) corre de punta a punta en
+`internal/app/configuration_scenario_integration_test.go`. El detalle por fase y el registro de los
+checkpoints están en el "Estado de la implementación" de [`tasks.md`](tasks.md).
 
 Artefactos de esta spec:
 
