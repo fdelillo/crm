@@ -882,7 +882,21 @@ Autor: `frontend-architect`. Implementa: `frontend-developer`, **una fase por in
 completo (`.claude/dev-mode`). Diseño: [`ui.md`](ui.md) · ADR-030 (*Accepted*, 2026-10-26) · ADR-015
 a ADR-023 y ADR-027 de 001.
 
-### Estado (2026-10-26)
+### Estado (2026-11-25)
+
+**Fase F1 completa (2026-11-25)**: T-002-F101 (#75, `b70e0e6`), T-002-F102 (#76, `2a57ead`) y
+T-002-F103 (#77, `d43740c`) en `main`, cada una con "merge OK" de Codex. Ajustes de las revisiones:
+T-002-F102 suma filas cerca de 2^53 − 1 en el parseo y en el formato porque la mutación a punto flotante
+sobrevivía con las originales; T-002-F103 suma `returnFocusRef` a `FormDialog` y
+`BlockedActionDialog` (`ui.md` §16.1: abiertos desde un ítem del menú `[⋮]`, que se desmonta, el foco
+vuelve al `[⋮]` de la fila). S-F2 en Node 26.8.1 local: "ARS 4.500,00"; la validación en Chromium y
+WebKit queda para las E2E de las pantallas con precios. Con T-002-F103 llegó también #74 (`d65a4ee`):
+tres tests de 001 llegaban al shell sin atender `/tenant` ni `/me` autenticado y fallaban con Node 26.
+Checkpoint cumplido el 2026-11-25: `npm run check` en verde en `main`, E2E en Chromium en los dos grupos
+del CI contra el binario con HTTPS y una base nueva (las filas de geometría de T-002-F103 incluidas) y
+capturas a 375 px: radios de Registro redondos, "+ Invitar" de 44 px, el menú de acciones de Usuarios
+dentro del viewport con el texto que salta y "Datos de la empresa" y "Usuarios" separados. Para el
+rediseño (no bloquea): el menú de acciones queda pegado a los bordes y tapa la barra inferior.
 
 **Aprobado (2026-10-26)** junto con `ui.md`: el usuario aprobó P-F1 a P-F4 con las opciones
 recomendadas ("ok sigamos con la recomendacion"; `ui.md` §24) y ADR-030 pasó a *Accepted*. Ninguna
