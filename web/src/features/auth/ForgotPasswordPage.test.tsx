@@ -2,7 +2,7 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
-import { buildSessionInfo, problem } from '@/test/fixtures'
+import { buildSessionInfo, buildTenant, problem } from '@/test/fixtures'
 import { ForgotPasswordPage } from './ForgotPasswordPage'
 import { server } from '@/test/msw/server'
 import { renderApp } from '@/test/renderApp'
@@ -135,8 +135,10 @@ describe('ForgotPasswordPage', () => {
 
   // T-F402 (INV-F01): a current session leaves the public reset screen.
   it('redirects a signed-in visitor to the home page', async () => {
+    // The home page and the shell read the company, so the test serves it too.
     server.use(
       http.get(`${base}/me`, () => HttpResponse.json(buildSessionInfo())),
+      http.get(`${base}/tenant`, () => HttpResponse.json(buildTenant())),
     )
     const { router } = renderApp(['/forgot-password'])
     expect(
