@@ -69,10 +69,14 @@ describe('formatMoney', () => {
     expect(formatMoney(0, 'ARS')).toContain('0,00')
   })
 
-  it('is exact at 2^53 - 1', () => {
-    expect(formatMoney(9007199254740991, 'ARS')).toContain(
-      '90.071.992.547.409,91',
-    )
+  // Near 2^53 a double cannot hold every cent: formatting through a number shows the wrong
+  // cent for some of these amounts (.91 and .87 on Node), so the three rows together catch it.
+  it.each([
+    [9007199254740991, '90.071.992.547.409,91'],
+    [9007199254740990, '90.071.992.547.409,90'],
+    [9007199254740987, '90.071.992.547.409,87'],
+  ])('is exact near 2^53 - 1: %i', (cents, text) => {
+    expect(formatMoney(cents, 'ARS')).toContain(text)
   })
 
   it.each([-1, 1.5, 9007199254740992, Number.NaN])(
