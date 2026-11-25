@@ -1357,7 +1357,10 @@ export interface StageListItemProps {
 export type StageAction = 'edit' | 'moveUp' | 'moveDown' | 'moveTo' | 'delete';
 
 // features/configuration/stages/components/StageForm.tsx — campos de C-03 (dentro de FormDialog)
-export interface StageFormValues { name: string; type: StageType; color: StageColor; position: number | 'end' }
+// before: id de la etapa delante de la cual va la nueva, o 'end'. La posición numérica se calcula al enviar,
+// con la lista confirmada (BR-F14, DD-F14): un número fijado al abrir el diálogo apuntaría a otra etapa si
+// un movimiento pendiente cambia la lista. Si esa etapa ya no está, va al final. (Revisión de T-002-F202.)
+export interface StageFormValues { name: string; type: StageType; color: StageColor; before: string | 'end' }
 export interface StageFormProps {
   mode: 'create' | 'edit';
   stages: Stage[];                         // para nombres repetidos, reglas y opciones de ubicación
