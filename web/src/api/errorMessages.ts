@@ -27,6 +27,11 @@ export type ErrorContext =
   | 'tenant'
   | 'logo'
   | 'resendVerification'
+  | 'stage'
+  | 'category'
+  | 'categoryRestore'
+  | 'catalogItem'
+  | 'configuration'
   | 'generic'
 export type LogoRejectReason =
   | 'svg'
@@ -56,6 +61,16 @@ const malformed: ErrorMessageResolver = (error, context) => ({
   retryable: false,
   ...(error?.requestId ? { requestId: error.requestId } : {}),
 })
+function notFoundTitle(context: ErrorContext) {
+  if (['users', 'userAction', 'invite'].includes(context))
+    return 'Ese usuario ya no está en tu empresa. Actualizamos la lista.'
+  if (context === 'stage')
+    return 'Esa etapa ya no existe. Actualizamos la lista.'
+  if (context === 'category' || context === 'categoryRestore')
+    return 'Esa categoría ya no está. Actualizamos la lista.'
+  if (context === 'catalogItem') return 'Ese ítem ya no está en el catálogo.'
+  return 'No encontramos lo que buscás.'
+}
 // T-F102 (INV-F05): one resolver per contract code, so a new ErrorCode fails to compile.
 export const errorMessages: Record<ErrorCode, ErrorMessageResolver> = {
   malformed_request: malformed,
@@ -99,10 +114,9 @@ export const errorMessages: Record<ErrorCode, ErrorMessageResolver> = {
     description: 'Si lo necesitás, pedíselo a un administrador.',
     retryable: false,
   }),
+  // T-002-F101 (002/§13.1): one text per configuration context; 001 contexts unchanged.
   not_found: (_error, context) => ({
-    title: ['users', 'userAction', 'invite'].includes(context)
-      ? 'Ese usuario ya no está en tu empresa. Actualizamos la lista.'
-      : 'No encontramos lo que buscás.',
+    title: notFoundTitle(context),
     retryable: false,
   }),
   email_already_registered: () => ({
@@ -127,16 +141,51 @@ export const errorMessages: Record<ErrorCode, ErrorMessageResolver> = {
       'Nombrá a otra persona como administrador antes de hacer este cambio.',
     retryable: false,
   }),
-  invalid_state: () => ({
-    title:
-      'El estado de este usuario cambió mientras tanto. Actualizamos la lista.',
-    retryable: false,
-  }),
-  name_taken: () => ({
-    title: 'Ese nombre ya está en uso.',
-    description: 'Elegí otro nombre.',
-    retryable: false,
-  }),
+  invalid_state: (_error, context) => {
+    if (context === 'stage')
+      return {
+        title: 'No pudimos hacer ese cambio en las etapas.',
+        description:
+          'La primera etapa tiene que ser abierta y tiene que quedar al menos una de cierre ganado. Puede que otra persona las haya cambiado: actualizamos la lista.',
+        retryable: false,
+      }
+    if (context === 'category')
+      return {
+        title: 'Las categorías del sistema no se pueden archivar.',
+        retryable: false,
+      }
+    return {
+      title:
+        'El estado de este usuario cambió mientras tanto. Actualizamos la lista.',
+      retryable: false,
+    }
+  },
+  name_taken: (_error, context) => {
+    if (context === 'stage')
+      return {
+        title: 'Ya hay una etapa con ese nombre.',
+        description: 'Elegí otro nombre.',
+        retryable: false,
+      }
+    if (context === 'category')
+      return {
+        title: 'Ya hay otra categoría activa del mismo tipo con ese nombre.',
+        description: 'Elegí otro nombre.',
+        retryable: false,
+      }
+    if (context === 'categoryRestore')
+      return {
+        title:
+          'No pudimos restaurarla: ya hay otra categoría activa del mismo tipo con ese nombre.',
+        description: 'Renombrá una de las dos y probá de nuevo.',
+        retryable: false,
+      }
+    return {
+      title: 'Ese nombre ya está en uso.',
+      description: 'Elegí otro nombre.',
+      retryable: false,
+    }
+  },
   token_invalid: (_error, context) => {
     if (context === 'resetConfirm')
       return {
@@ -267,7 +316,81 @@ function isFieldErrorCode(value: string): value is FieldErrorCode {
   return Object.hasOwn(knownFieldErrorCodes, value)
 }
 
-export function fieldErrorMessage(field: string, code: FieldErrorCode): string {
+// T-002-F101 (002/§13.3, INV-F10): every maximum of the configuration forms, in one table.
+export type FieldScope =
+  'stage' | 'category' | 'catalogItem' | 'labels' | 'quoteDefaults'
+const scopeMaximums: Record<FieldScope, Record<string, number>> = {
+  stage: { name: 60 },
+  category: { name: 60 },
+  catalogItem: { name: 120, description: 1000, unit_label: 20 },
+  labels: { singular: 40, plural: 40 },
+  quoteDefaults: { terms: 2000 },
+}
+const thousands = (value: number) =>
+  String(value).replace(/\B(?=(\d{3})+$)/g, '.')
+const tooLong = (max: number) =>
+  `Es demasiado largo (máximo ${thousands(max)} caracteres).`
+const reviewThis = 'Revisá este dato.'
+const nameRequired = 'Escribí un nombre.'
+const scopeVariants: Record<
+  FieldScope,
+  Record<string, Partial<Record<FieldErrorCode, string>>>
+> = {
+  stage: {
+    name: { required: nameRequired, invalid_value: reviewThis },
+    type: { invalid_value: 'Elegí un tipo.' },
+    color: { invalid_value: 'Elegí un color.' },
+  },
+  category: { name: { required: nameRequired, invalid_value: reviewThis } },
+  catalogItem: {
+    name: { required: nameRequired, invalid_value: reviewThis },
+    description: { invalid_value: reviewThis },
+    unit_label: {
+      required: 'Escribí el nombre de la unidad, por ejemplo «jornada».',
+      invalid_value: reviewThis,
+    },
+    'reference_price.amount_cents': {
+      invalid_value: 'El importe es demasiado grande.',
+    },
+    'reference_price.currency': {
+      required: 'Elegí la moneda.',
+      invalid_value: 'Elegí la moneda.',
+    },
+  },
+  labels: {
+    singular: { required: 'Escribí el nombre.', invalid_value: reviewThis },
+    plural: { required: 'Escribí el nombre.', invalid_value: reviewThis },
+    gender: { invalid_value: 'Elegí el género.' },
+  },
+  quoteDefaults: {
+    validity_days: {
+      required: 'Escribí la cantidad de días.',
+      invalid_value: 'Tiene que ser un número de días entre 1 y 365.',
+    },
+    terms: { invalid_value: reviewThis },
+  },
+}
+// "project.singular" → "singular": the entity prefix does not change the text.
+const scopedField = (scope: FieldScope, field: string) =>
+  scope === 'labels' ? field.replace(/^(project|customer|quote)\./, '') : field
+function scopedMessage(
+  scope: FieldScope,
+  field: string,
+  code: FieldErrorCode,
+): string | undefined {
+  const key = scopedField(scope, field)
+  const max = scopeMaximums[scope][key]
+  if (code === 'too_long' && max !== undefined) return tooLong(max)
+  return scopeVariants[scope][key]?.[code]
+}
+
+export function fieldErrorMessage(
+  field: string,
+  code: FieldErrorCode,
+  scope?: FieldScope,
+): string {
+  const scoped = scope && scopedMessage(scope, field, code)
+  if (scoped) return scoped
   const long = `Es demasiado largo (máximo ${maximums[field]} caracteres).`
   const defaults: Record<FieldErrorCode, string> = {
     required: 'Completá este campo.',
@@ -335,13 +458,14 @@ export function applyServerFieldErrors<T extends FieldValues>(
   setError: UseFormSetError<T>,
   fieldErrors: FieldError[],
   knownFields: ReadonlyArray<Path<T>>,
+  scope?: FieldScope,
 ): FieldError[] {
   return fieldErrors.filter((error) => {
     const field = knownFields.find((field) => field === error.field)
     if (!field) return true
     setError(field, {
       type: 'server',
-      message: fieldErrorMessage(error.field, error.code),
+      message: fieldErrorMessage(error.field, error.code, scope),
     })
     return false
   })

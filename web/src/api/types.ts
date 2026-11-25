@@ -1,6 +1,8 @@
 import type { components } from './generated/001'
+import type { components as C002 } from './generated/002'
 
 type Schemas = components['schemas']
+type S2 = C002['schemas']
 
 export type SessionInfo = Schemas['SessionInfo']
 export type CurrentUser = Schemas['CurrentUser']
@@ -28,3 +30,22 @@ export type InvitationRequest = Schemas['InvitationRequest']
 export type TokenRequest = Schemas['TokenRequest']
 export type RoleChangeRequest = Schemas['RoleChangeRequest']
 export type FieldErrorCode = FieldError['code']
+
+// T-002-F101 (002/§12.2): aliases of the generated 002 types, never written by hand.
+export type Money = Schemas['Money']
+export type Stage = S2['Stage']
+export type StageType = S2['StageType']
+export type StageColor = S2['StageColor']
+export type StageCreate = S2['StageCreate']
+export type StageUpdate = S2['StageUpdate']
+export type Category = S2['Category']
+export type CategoryType = S2['CategoryType']
+export type CategoryCreate = S2['CategoryCreate']
+export type CatalogItem = S2['CatalogItem']
+export type CatalogUnit = S2['CatalogUnit']
+export type CatalogItemCreate = S2['CatalogItemCreate']
+export type CatalogItemUpdate = S2['CatalogItemUpdate']
+export type GrammaticalGender = S2['GrammaticalGender']
+export type EntityLabel = S2['EntityLabel']
+export type Labels = S2['Labels']
+export type QuoteDefaults = S2['QuoteDefaults']

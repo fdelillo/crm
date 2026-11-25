@@ -1,7 +1,8 @@
 import { expectTypeOf, test } from 'vitest'
 import type { paths as Paths001 } from './generated/001'
+import type { paths as Paths002 } from './generated/002'
 import type { paths as ExternalPaths } from '../../test-fixtures/openapi/generated'
-import type { AssertDisjoint } from './schema'
+import type { AssertDisjoint, paths as Paths } from './schema'
 import type {
   ErrorCode,
   FieldErrorCode,
@@ -57,4 +58,12 @@ test('rejects overlapping route keys', () => {
   // @ts-expect-error Duplicate paths cannot satisfy the disjoint assertion.
   const overlapping: AssertDisjoint<keyof Paths001, '/me'> = true
   expectTypeOf(overlapping).toBeNever()
+})
+
+// T-002-F101 (002/§12.3): the 001 and 002 contracts combine without sharing a route.
+test('keeps the 001 and 002 routes disjoint and combined', () => {
+  const disjoint: AssertDisjoint<keyof Paths001, keyof Paths002> = true
+  expectTypeOf(disjoint).toEqualTypeOf<true>()
+  expectTypeOf<'/stages' | '/me'>().toExtend<keyof Paths>()
+  expectTypeOf<keyof Paths002>().toExtend<keyof Paths>()
 })

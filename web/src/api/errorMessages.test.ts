@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { toApiError } from './errors'
 import type { ErrorCode, FieldErrorCode } from './types'
+import type { FieldScope } from './errorMessages'
 import { problem } from '@/test/fixtures'
 import {
   messageForError,
@@ -401,6 +402,175 @@ describe('user error messages', () => {
     expect(setError).toHaveBeenCalledWith('email', {
       type: 'server',
       message: fieldErrorMessage('email', 'invalid_format'),
+    })
+  })
+})
+
+// T-002-F101 (002/§13.1): contexts of the configuration screens; 001 contexts keep their text.
+describe('configuration error messages', () => {
+  const text = (
+    code: ErrorCode,
+    context: Parameters<typeof messageForError>[1],
+  ) => {
+    const { title, description, retryable } = messageForError(
+      error(code, undefined, 409),
+      context,
+    )
+    return { title, description, retryable }
+  }
+  it.each([
+    ['stage', 'Ya hay una etapa con ese nombre.', 'Elegí otro nombre.'],
+    [
+      'category',
+      'Ya hay otra categoría activa del mismo tipo con ese nombre.',
+      'Elegí otro nombre.',
+    ],
+    [
+      'categoryRestore',
+      'No pudimos restaurarla: ya hay otra categoría activa del mismo tipo con ese nombre.',
+      'Renombrá una de las dos y probá de nuevo.',
+    ],
+  ] as const)('describes name_taken in %s', (context, title, description) =>
+    expect(text('name_taken', context)).toEqual({
+      title,
+      description,
+      retryable: false,
+    }),
+  )
+  it.each([
+    [
+      'stage',
+      'No pudimos hacer ese cambio en las etapas.',
+      'La primera etapa tiene que ser abierta y tiene que quedar al menos una de cierre ganado. Puede que otra persona las haya cambiado: actualizamos la lista.',
+    ],
+    [
+      'category',
+      'Las categorías del sistema no se pueden archivar.',
+      undefined,
+    ],
+  ] as const)('describes invalid_state in %s', (context, title, description) =>
+    expect(text('invalid_state', context)).toEqual({
+      title,
+      description,
+      retryable: false,
+    }),
+  )
+  it.each(['users', 'generic'] as const)(
+    'keeps the 001 invalid_state text in %s',
+    (context) =>
+      expect(text('invalid_state', context).title).toBe(
+        'El estado de este usuario cambió mientras tanto. Actualizamos la lista.',
+      ),
+  )
+  it.each([
+    ['stage', 'Esa etapa ya no existe. Actualizamos la lista.'],
+    ['category', 'Esa categoría ya no está. Actualizamos la lista.'],
+    ['categoryRestore', 'Esa categoría ya no está. Actualizamos la lista.'],
+    ['catalogItem', 'Ese ítem ya no está en el catálogo.'],
+    ['users', 'Ese usuario ya no está en tu empresa. Actualizamos la lista.'],
+    ['generic', 'No encontramos lo que buscás.'],
+  ] as const)('describes not_found in %s', (context, title) =>
+    expect(text('not_found', context).title).toBe(title),
+  )
+})
+
+// T-002-F101 (002/§13.3, INV-F10): maxima come from the scope; unscoped calls are the 001 ones.
+describe('scoped field error messages', () => {
+  it.each([
+    ['name', 'too_long', 'stage', 'Es demasiado largo (máximo 60 caracteres).'],
+    [
+      'name',
+      'too_long',
+      'category',
+      'Es demasiado largo (máximo 60 caracteres).',
+    ],
+    [
+      'name',
+      'too_long',
+      'catalogItem',
+      'Es demasiado largo (máximo 120 caracteres).',
+    ],
+    ['name', 'required', 'stage', 'Escribí un nombre.'],
+    ['type', 'invalid_value', 'stage', 'Elegí un tipo.'],
+    ['color', 'invalid_value', 'stage', 'Elegí un color.'],
+    [
+      'description',
+      'too_long',
+      'catalogItem',
+      'Es demasiado largo (máximo 1.000 caracteres).',
+    ],
+    [
+      'unit_label',
+      'required',
+      'catalogItem',
+      'Escribí el nombre de la unidad, por ejemplo «jornada».',
+    ],
+    [
+      'unit_label',
+      'too_long',
+      'catalogItem',
+      'Es demasiado largo (máximo 20 caracteres).',
+    ],
+    [
+      'reference_price.amount_cents',
+      'invalid_value',
+      'catalogItem',
+      'El importe es demasiado grande.',
+    ],
+    ['reference_price.currency', 'required', 'catalogItem', 'Elegí la moneda.'],
+    [
+      'project.singular',
+      'too_long',
+      'labels',
+      'Es demasiado largo (máximo 40 caracteres).',
+    ],
+    ['quote.plural', 'required', 'labels', 'Escribí el nombre.'],
+    ['customer.gender', 'invalid_value', 'labels', 'Elegí el género.'],
+    [
+      'validity_days',
+      'invalid_value',
+      'quoteDefaults',
+      'Tiene que ser un número de días entre 1 y 365.',
+    ],
+    [
+      'validity_days',
+      'required',
+      'quoteDefaults',
+      'Escribí la cantidad de días.',
+    ],
+    [
+      'terms',
+      'too_long',
+      'quoteDefaults',
+      'Es demasiado largo (máximo 2.000 caracteres).',
+    ],
+    ['terms', 'invalid_value', 'quoteDefaults', 'Revisá este dato.'],
+  ] satisfies [string, FieldErrorCode, FieldScope, string][])(
+    'describes %s %s in %s',
+    (field, code, scope, message) =>
+      expect(fieldErrorMessage(field, code, scope)).toBe(message),
+  )
+  it('keeps the 001 text without a scope', () => {
+    expect(fieldErrorMessage('name', 'invalid_value')).toBe(
+      'Tiene que tener entre 1 y 120 caracteres.',
+    )
+    expect(fieldErrorMessage('name', 'too_long')).toBe(
+      'Es demasiado largo (máximo 120 caracteres).',
+    )
+  })
+  it('applies a server error on a dotted path with the scope text', () => {
+    const setError = vi.fn()
+    expect(
+      applyServerFieldErrors<{ reference_price: { amount_cents: string } }>(
+        setError,
+        [{ field: 'reference_price.amount_cents', code: 'invalid_value' }],
+        ['reference_price.amount_cents'],
+        'catalogItem',
+      ),
+    ).toEqual([])
+    expect(setError).toHaveBeenCalledWith('reference_price.amount_cents', {
+      type: 'server',
+      message: 'El importe es demasiado grande.',
     })
   })
 })
