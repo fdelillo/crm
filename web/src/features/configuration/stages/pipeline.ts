@@ -1,4 +1,5 @@
 import type { Stage, StageColor, StageType, StageUpdate } from '@/api/types'
+import { trimSpace } from '@/lib/trimSpace'
 
 // T-002-F201 (002/INV-F4, DD-F5): pure rules of the pipeline. They give the same result as
 // validatePipeline and the list operations of internal/settings/pipeline.go (table of T-002-B301).
@@ -103,13 +104,13 @@ export function moveOptions(
   })
 }
 
-/** Only the keys that changed; {} if nothing did (002/INV-F9). Never a null; the name is sent trimmed. */
+/** Only the keys that changed; {} if nothing did (002/INV-F9). Never a null; the name is sent trimmed like the server trims it. */
 export function stageChanges(
   initial: Pick<Stage, 'name' | 'type' | 'color'>,
   values: Pick<Stage, 'name' | 'type' | 'color'>,
 ): StageUpdate | Record<string, never> {
   const changes: StageUpdate = {}
-  const name = values.name.trim()
+  const name = trimSpace(values.name)
   if (name !== initial.name) changes.name = name
   if (values.type !== initial.type) changes.type = values.type
   if (values.color !== initial.color) changes.color = values.color

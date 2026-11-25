@@ -265,6 +265,18 @@ describe('stageChanges', () => {
       stageChanges(initial, { ...initial, name: '  En curso ' }),
     ).toStrictEqual({})
   })
+  // T-002-F201 (002/INV-F9; revisión 1 de Codex del PR #78): trimmed like the server (Go's TrimSpace).
+  it('trims U+0085 like the server, so a name made of it is empty', () => {
+    expect(stageChanges(initial, { ...initial, name: '\u0085' })).toStrictEqual(
+      { name: '' },
+    )
+  })
+  it('keeps a U+FEFF the server keeps, so only the color changes', () => {
+    const withMark = { ...initial, name: '\ufeffEn curso' }
+    expect(stageChanges(withMark, { ...withMark, color: 'red' })).toStrictEqual(
+      { color: 'red' },
+    )
+  })
   it('sends name and color, never null', () => {
     const changes = stageChanges(initial, {
       ...initial,
