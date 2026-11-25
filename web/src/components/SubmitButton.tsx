@@ -6,6 +6,7 @@ export interface SubmitButtonProps {
   children: React.ReactNode
   pendingLabel: string
   disabled?: boolean
+  describedBy?: string
   variant?: 'default' | 'destructive'
   className?: string
 }
@@ -15,6 +16,7 @@ export function SubmitButton({
   children,
   pendingLabel,
   disabled = false,
+  describedBy,
   variant = 'default',
   className,
 }: SubmitButtonProps) {
@@ -23,6 +25,7 @@ export function SubmitButton({
       type="submit"
       variant={variant}
       disabled={pending || disabled}
+      aria-describedby={describedBy}
       className={className}
     >
       {pending && (
