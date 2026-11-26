@@ -2,10 +2,13 @@ import { useSession, useCan } from '@/features/auth/session'
 import { useDocumentTitle } from '@/lib/useDocumentTitle'
 import { PageHeader } from '@/components/PageHeader'
 import { SettingsLinkList } from '@/components/SettingsLinkList'
+import { useTerminology } from '@/api/labels'
+import { stageTexts } from '@/features/configuration/stages/texts'
 import { LogoutButton } from '@/features/auth/components/LogoutButton'
 export function SettingsPage() {
   const { data: session } = useSession()
   const manage = useCan('settings.manage')
+  const terms = useTerminology()
   useDocumentTitle(session ? `Ajustes · ${session.tenant.name}` : 'Ajustes')
   if (!session) return null
   const { user } = session
@@ -33,6 +36,17 @@ export function SettingsPage() {
           />
         </section>
       )}
+      <section className="mt-6">
+        <h2 className="mb-3 text-lg font-semibold">Configuración</h2>
+        {!manage && (
+          <p className="mb-3 text-muted-foreground">
+            Podés consultarla; solo un administrador la cambia.
+          </p>
+        )}
+        <SettingsLinkList
+          items={[{ to: '/settings/stages', label: stageTexts(terms).title }]}
+        />
+      </section>
       <div className="mt-6 border-t pt-6">
         <LogoutButton />
       </div>
