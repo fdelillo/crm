@@ -208,7 +208,8 @@ jobs:
           npx playwright test --project="$E2E_BROWSER" \
             --output=test-results/auxiliary \
             e2e/application.spec.ts e2e/shell-layout.spec.ts \
-            e2e/pwa-lifecycle.spec.ts e2e/logo-preparation.spec.ts || auxiliary_status=$?
+            e2e/pwa-lifecycle.spec.ts e2e/logo-preparation.spec.ts \
+            e2e/dialog-viewport.spec.ts || auxiliary_status=$?
           node scripts/manage-e2e-server.mjs restart
           critical_status=0
           npx playwright test --project="$E2E_BROWSER" \
