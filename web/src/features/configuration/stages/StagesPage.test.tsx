@@ -382,6 +382,36 @@ describe('StagesPage', () => {
       )
     })
 
+    // INV-F6, BR-F14: the neighbour is the one in the order the DELETE leaves with, not the one on screen when confirming.
+    it('moves the focus to the neighbour in the order a held move left, not the one seen when confirming', async () => {
+      const held = gate()
+      const { user, stages } = await renderStages({
+        holdMoveResponse: held.opened,
+      })
+      await runRowAction(user, 'Finalizado', 'Subir')
+      await waitFor(() => expect(stages.writes).toHaveLength(1))
+      await runRowAction(user, 'Aprobado', 'Eliminar')
+      await user.click(
+        within(await screen.findByRole('alertdialog')).getByRole('button', {
+          name: 'Eliminar',
+        }),
+      )
+      expect(stages.writes).toHaveLength(1)
+      held.open()
+      expect(
+        await screen.findByText('Eliminaste la etapa «Aprobado».'),
+      ).toBeVisible()
+      expect(stageOrder()).toEqual([
+        'Presupuesto',
+        'Finalizado',
+        'En curso',
+        'Perdido',
+      ])
+      await waitFor(async () =>
+        expect(await actionsTrigger('Finalizado')).toHaveFocus(),
+      )
+    })
+
     it('returns the focus to the row when the confirmation is cancelled', async () => {
       const { user, stages } = await renderStages()
       await runRowAction(user, 'Aprobado', 'Eliminar')

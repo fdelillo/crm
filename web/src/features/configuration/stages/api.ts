@@ -114,15 +114,30 @@ export function useMoveStage() {
 
 export function useDeleteStage() {
   const client = useQueryClient()
-  return useMutation<void, ApiError, { stageId: string }>({
+  return useMutation<
+    void,
+    ApiError,
+    {
+      stageId: string
+      // Called when the DELETE leaves the queue, with the ids in the order the last confirmed write
+      // left (INV-F6): a write that was queued before it may have moved the neighbours.
+      onSend?: (orderedIds: readonly string[]) => void
+    }
+  >({
     scope: STAGE_CHANGES_SCOPE,
     mutationKey: STAGE_MUTATION_KEY,
-    mutationFn: async ({ stageId }) =>
-      unwrap<void>(
+    mutationFn: async ({ stageId, onSend }) => {
+      onSend?.(
+        client
+          .getQueryData<Stage[]>(queryKeys.settings.stages)
+          ?.map((stage) => stage.id) ?? [],
+      )
+      return unwrap<void>(
         await api.DELETE('/stages/{stageId}', {
           params: { path: { stageId } },
         }),
-      ),
+      )
+    },
     onSuccess: () => reloadStages(client),
     onError: (error) => reloadWhenListWasOld(client, error),
   })

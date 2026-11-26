@@ -186,20 +186,21 @@ export function StagesPage() {
     }
   }
 
-  async function runDelete(stage: Stage, list: Stage[]) {
-    const target = focusTargetAfterRemoval(
-      list.map((item) => item.id),
-      stage.id,
-    )
+  async function runDelete(stage: Stage) {
+    // INV-F6: chosen when the DELETE leaves the queue, over the order the previous writes left.
+    const focus: { target: string | null } = { target: null }
+    const onSend = (orderedIds: readonly string[]) => {
+      focus.target = focusTargetAfterRemoval(orderedIds, stage.id)
+    }
     try {
       await withRowPending(stage.id, 'delete', () =>
-        remove.mutateAsync({ stageId: stage.id }),
+        remove.mutateAsync({ stageId: stage.id, onSend }),
       )
       toast(`Eliminaste la etapa «${stage.name}».`)
       setDialog(null)
       whenListSettled(
         (ids) => !ids.includes(stage.id),
-        () => refocus(target),
+        () => refocus(focus.target),
       )
     } catch (error) {
       toastError(error, reloadStages)
@@ -424,7 +425,7 @@ export function StagesPage() {
           pendingLabel="Eliminando…"
           destructive
           pending={rowPending[target.id] === 'delete'}
-          onConfirm={() => void runDelete(target, stages)}
+          onConfirm={() => void runDelete(target)}
         />
       )}
     </>
